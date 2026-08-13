@@ -1,4 +1,3 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # Controlled Live-Model Runs
 
 This page records bounded development evidence for the `0.1.10-dev-mc26.2`

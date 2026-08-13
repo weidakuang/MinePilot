@@ -1,4 +1,3 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # MinePilot Usage Guide
 
 This guide covers the `0.1.10-dev-mc26.2` development line: Minecraft Java

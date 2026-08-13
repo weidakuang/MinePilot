@@ -1,4 +1,3 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # MinePilot — Minecraft AI Companion
 
 MinePilot is the public repository name. The production Forge mod id is

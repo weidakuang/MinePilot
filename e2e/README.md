@@ -1,4 +1,3 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # Real-client E2E harness
 
 This directory contains test-only infrastructure. None of it belongs in the

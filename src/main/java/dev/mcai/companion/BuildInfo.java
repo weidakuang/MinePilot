@@ -1,4 +1,3 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 package dev.mcai.companion;
 
 public final class BuildInfo {

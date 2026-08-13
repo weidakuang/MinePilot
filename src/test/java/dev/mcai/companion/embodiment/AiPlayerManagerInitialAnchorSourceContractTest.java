@@ -1,0 +1,60 @@
+package dev.mcai.companion.embodiment;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Keeps the one-time first-human anchor boundary tied to survival ownership.
+ *
+ * <p>The actual lifecycle is exercised by the Forge GameTest.  This small
+ * source contract protects the ordering from being weakened while the
+ * headless player lifecycle is refactored: an emergency-owned body must stay
+ * in place, and a deferred login must be retried only through the normal
+ * server-tick reconciliation path.</p>
+ */
+final class AiPlayerManagerInitialAnchorSourceContractTest {
+    @Test
+    void initialAnchorReplacementCannotPreemptEmergencyOwnership()
+            throws IOException {
+        final String source = Files.readString(Path.of(
+                "src/main/java/dev/mcai/companion/embodiment/AiPlayerManager.java"
+        ));
+
+        final int replaceGate = source.indexOf(
+                "private boolean canReplaceInitialBody()"
+        );
+        final int survivalState = source.indexOf(
+                ".survival().state()",
+                replaceGate
+        );
+        final int emergencyClaim = source.indexOf(
+                "BehaviorArbiter.Lane.EMERGENCY_SURVIVAL",
+                survivalState
+        );
+        final int retry = source.indexOf(
+                "private boolean tryDeferredInitialAnchor()"
+        );
+        final int normalReanchor = source.indexOf(
+                "reanchorInitialBodyNear(anchor)",
+                retry
+        );
+
+        assertTrue(replaceGate >= 0);
+        assertTrue(
+                survivalState > replaceGate,
+                "initial anchor must inspect the real survival state"
+        );
+        assertTrue(
+                emergencyClaim > survivalState,
+                "initial anchor must inspect emergency arbiter ownership"
+        );
+        assertTrue(
+                retry >= 0 && normalReanchor > retry,
+                "a deferred login must retry through server-tick reanchor"
+        );
+    }
+}

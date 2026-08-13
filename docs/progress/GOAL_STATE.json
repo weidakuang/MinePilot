@@ -1,10 +1,11 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-14T07:02:00Z",
-  "sourceState": "DIRTY_NO_COMMIT",
+  "updatedAtUtc": "2026-08-13T22:22:48Z",
+  "sourceState": "CLEAN_COMMITTED",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
-  "version": "0.1.9-dev-mc26.2",
+  "version": "0.1.10-dev-mc26.2",
   "compatibility": {
     "minecraft": "26.2",
     "forgeRange": "[65.0.0,66.0.0)",
@@ -30,7 +31,10 @@
     "soak100h": "NOT_RUN",
     "m1Unseen100": "NOT_RUN",
     "m2Unseen200": "NOT_RUN",
-    "m4Hidden1000": "NOT_RUN"
+    "m4Hidden1000": "NOT_RUN",
+    "dedicatedServerLifecycle": "PASS_CONTROLLED_REAL_SERVER",
+    "restartPersistence": "PASS_CONTROLLED_REAL_SERVER",
+    "delayedFirstHumanAnchorClient": "NOT_RUN_XVFB_MISSING"
   },
   "developmentEvidence": {
     "offlineDragonBaseline": {
@@ -56,18 +60,78 @@
       "details": "Follow request produced accepted decision, skill start, low-level movement, and server evidence. Not a formal client or long-term gate.",
       "formalGate": "NOT_RUN"
     },
+    "latestLiveMovement": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL travel_to",
+      "actions": "The body walked to the requested point through ordinary movement; no teleport or command was used.",
+      "runtimeSeconds": 12.26,
+      "fixtureConstraint": "Bounded straight safe course with an embedded GameTest player; not a rendered client or random world.",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveFollow": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL follow_entity",
+      "actions": "The body rejoined through the initial-anchor lifecycle and followed the moving course with vanilla movement.",
+      "runtimeSeconds": 18.17,
+      "fixtureConstraint": "Bounded follow course with an embedded GameTest player; not the formal Actor/Observer gate.",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveSurpriseDefense": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL engage_observed_entity",
+      "actions": "Local emergency survival reacted to contact and the body killed the visible zombie with ordinary combat actions.",
+      "runtimeSeconds": 14.27,
+      "fixtureConstraint": "One visible fixture zombie; no random hostile population or Hardcore statistic.",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveGoldenApple": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL consume_owned_food",
+      "actions": "The body consumed the owned golden apple through the vanilla item-use path and passed the food-consumption integrity checks.",
+      "runtimeSeconds": 15.26,
+      "fixtureConstraint": "Owned fixture inventory and bounded food goal; not a general inventory policy claim.",
+      "formalGate": "NOT_RUN"
+    },
+    "latestDedicatedServerSmoke": {
+      "status": "PASS_CONTROLLED_REAL_SERVER",
+      "runRoot": "e2e/results/6f6b8f76db9f/20260813T221301Z-e2e6f6f3cabeb02",
+      "details": "Exact production jar on Forge 65.1.1 started a dedicated server, loaded the oracle, logged the AI body, opened SQLite once, and shut down cleanly.",
+      "functionalAiClaim": false,
+      "formalGate": "NOT_RUN"
+    },
+    "latestRestartSmoke": {
+      "status": "PASS_CONTROLLED_REAL_SERVER",
+      "runRoot": "e2e/results/6f6b8f76db9f/20260813T221354Z-e2e33e1e166cda6",
+      "details": "Two exact-jar boots preserved one companion UUID and four lifecycle events without a functional AI claim.",
+      "functionalAiClaim": false,
+      "formalGate": "NOT_RUN"
+    },
+    "latestDelayedAnchorSmoke": {
+      "status": "NOT_RUN_XVFB_MISSING",
+      "runRoot": "e2e/results/6f6b8f76db9f/20260813T221446Z-e2e3dd906141a0f",
+      "details": "The dedicated no-human phase recorded the AI becoming active, but macOS lacked Linux/Xvfb for the required real human client; no anchor pass was claimed.",
+      "functionalAiClaim": false,
+      "formalGate": "NOT_RUN"
+    },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "Full offline Gradle JUnit, release build, verifyReleaseJar, compatibility checker, and 61 Python E2E tests passed after the combat fix. Public documentation Han scan and git diff check passed.",
-      "artifact": "build/libs/mcai_companion-0.1.9-dev-mc26.2.jar",
-      "sha256": "9191a24e799a451f88994ba725bcf32cab7100ccbee1acdd10d105e5b60a2722",
+      "artifact": "build/libs/mcai_companion-0.1.10-dev-mc26.2.jar",
+      "sha256": "7ecf2e1d2a8a5d6a7192a7603cdb5fd47b76681703cf1bfec1dd0d98f2eb9e8c",
       "formalGate": "NOT_RUN"
     }
   },
   "nextActions": [
     "Extend the controlled live causal chain to natural-world progression.",
     "Add regression coverage for observed target points, projectile lead, and bounded combat retry.",
-    "Extend the controlled live causal chain to natural-world progression and continue fair combat regression coverage.",
     "Run formal Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker."
   ],
   "evidencePolicy": "No controlled test, model acknowledgement, historical run, or no-model arena may be promoted to a formal M0-M4 PASS."

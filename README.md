@@ -1,3 +1,4 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # MinePilot — Minecraft AI Companion
 
 MinePilot is the public repository name. The production Forge mod id is
@@ -13,7 +14,7 @@ rules, and a single high-level language model. It does not run a second game
 client, use a Microsoft account, teleport, read hidden blocks, or grant cheat
 abilities.
 
-> **Current status: `0.1.9-dev-mc26.2`.** The embodied player, model gateway,
+> **Current status: `0.1.10-dev-mc26.2`.** The embodied player, model gateway,
 > fair perception, memory, configuration screen, skin synchronization, and
 > many atomic survival skills are implemented. The release is still a
 > development build: the 24-hour stability gate, unseen random Hardcore
@@ -117,10 +118,11 @@ to an M0–M4 PASS. Current M0, M1, M2, M3, M4, unseen-seed, rendered-client, an
 long-soak statuses are recorded as `NOT_RUN` or `FAIL` until the exact frozen
 artifact passes the required protocol.
 
-The latest focused live dragon run reached a visible, physically interacting
-fight but timed out before a kill; it is evidence of a remaining combat gap,
-not a victory claim. The latest offline dragon baseline passes only as a
-controlled no-model physical lower bound.
+The latest controlled live-model runs include a physical End victory/return,
+ordinary movement, follow, surprise-zombie defense, and owned golden-apple
+consumption. These are bounded slices, not random-seed, Hardcore, speedrun, or
+formal M0-M4 results. The offline dragon baseline remains only a controlled
+no-model physical lower bound.
 
 ## Fairness and safety boundaries
 

@@ -1,6 +1,7 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # MinePilot Usage Guide
 
-This guide covers the `0.1.9-dev-mc26.2` development line: Minecraft Java
+This guide covers the `0.1.10-dev-mc26.2` development line: Minecraft Java
 26.2, Forge 65.x, and Java 25. It is not a two-hour completion guarantee; the
 formal M0–M4 gates remain in progress.
 

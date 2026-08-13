@@ -1,9 +1,17 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 MinePilot change log
 ====================
 
-0.1.9-dev-mc26.2
+0.1.10-dev-mc26.2
 -----------------
 
+- Added fresh authorized MiMo live slices for ordinary movement, follow,
+  surprise-zombie defense, and owned golden-apple consumption; each required
+  a model decision followed by vanilla body evidence.
+- Recorded the dedicated-server lifecycle, two-boot persistence, and delayed
+  first-human anchor smoke results without promoting missing Xvfb evidence.
+- Kept public documentation English-only while allowing multilingual runtime
+  chat and GameTest fixtures.
 - Added fair multipart Ender Dragon collider-center perception and retained
   ordinary first-person line-of-sight evidence for every target point.
 - Added a bounded melee burst followed by a ranged retreat in the dragon skill.

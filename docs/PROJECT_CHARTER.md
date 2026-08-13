@@ -1,3 +1,4 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # MinePilot Project Charter and Behavior Standard
 
 ## Identity
@@ -6,7 +7,7 @@ MinePilot is the repository and product name. The Forge mod id remains
 `mcai_companion`. The mod creates a visible AI teammate for Minecraft Java
 26.2 using a normal server-side `ServerPlayer` body and one high-level model.
 
-The current line is `0.1.9-dev-mc26.2`:
+The current line is `0.1.10-dev-mc26.2`:
 
 - Minecraft Java 26.2;
 - Forge 65.0.0 inclusive through 66.0.0 exclusive;

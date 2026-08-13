@@ -1,13 +1,14 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # Implementation Status
 
-Last reviewed: 2026-08-14
+Last reviewed: 2026-08-13
 
 ## Current release line
 
 - Repository: `MinePilot`; mod id: `mcai_companion`.
 - Minecraft Java 26.2; Forge 65.0.0 inclusive through 66.0.0 exclusive;
   Java 25.
-- Development version: `0.1.9-dev-mc26.2`.
+- Development version: `0.1.10-dev-mc26.2`.
 - Public backup: `https://github.com/weidakuang/MinePilot`.
 - Local development branch: `agent/minecraft-companion-0.1.9`.
 - Forge 65.x major-line backup branch: `mc26.2-forge65`.
@@ -61,8 +62,8 @@ or speedrun claim.
 - The current working tree passed the focused combat test, the complete offline
   JUnit suite, the release build and jar verification, the compatibility
   checker, and the 61-case Python audit after this change. The artifact is
-  `build/libs/mcai_companion-0.1.9-dev-mc26.2.jar` with SHA-256
-  `9191a24e799a451f88994ba725bcf32cab7100ccbee1acdd10d105e5b60a2722`.
+  `build/libs/mcai_companion-0.1.10-dev-mc26.2.jar` with SHA-256
+  `7ecf2e1d2a8a5d6a7192a7603cdb5fd47b76681703cf1bfec1dd0d98f2eb9e8c`.
 
 ### Live MiMo result (latest)
 
@@ -80,6 +81,15 @@ controlled live-model chain, not a random-seed, Hardcore, or speedrun claim.
 Earlier controlled MiMo slices reached End entry and demonstrated follow and
 other task chains, but they are historical evidence and do not upgrade the
 current formal gates.
+
+### Fresh controlled live slices
+
+Using the same real `mimo-v2.5` gateway, the current line also passed bounded
+model-to-action slices for ordinary movement, follow, surprise-zombie defense,
+and owned golden-apple consumption. The model returned an actionable skill in
+each case, and the verifier observed vanilla movement, follow, combat, or food
+use. See `docs/progress/CONTROLLED_LIVE_RUNS.md`; these remain controlled
+evidence and do not upgrade any formal gate.
 
 ## Formal gate status
 

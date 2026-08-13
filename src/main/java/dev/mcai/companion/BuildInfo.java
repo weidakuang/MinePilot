@@ -1,7 +1,8 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 package dev.mcai.companion;
 
 public final class BuildInfo {
-    public static final String VERSION = "0.1.9-dev-mc26.2";
+    public static final String VERSION = "0.1.10-dev-mc26.2";
     public static final int MEMORY_SCHEMA_VERSION = 3;
     public static final int MODEL_CONTRACT_VERSION = 2;
 

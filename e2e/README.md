@@ -1,3 +1,4 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # Real-client E2E harness
 
 This directory contains test-only infrastructure. None of it belongs in the
@@ -185,7 +186,7 @@ python3 scripts/create-worker-job.py \
   --scenario-id real_client_chat_follow_inventory \
   --case-count 1 \
   --seed-commitments-file seed-commitments.txt \
-  --product-jar build/libs/mcai_companion-0.1.9-dev-mc26.2.jar \
+  --product-jar build/libs/mcai_companion-0.1.10-dev-mc26.2.jar \
   --forge-version 65.1.0 \
   --model mimo-v2.5 \
   --base-url https://token-plan-cn.xiaomimimo.com/v1 \

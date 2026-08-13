@@ -1,3 +1,4 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # See https://docs.minecraftforge.net/en/1.21.x/gettingstarted/modfiles/#modstoml
 # There are lots of things you can do with the mods.toml, and not all fields are included with this MDK
 # References: https://github.com/MinecraftForge/MDKExamples
@@ -9,7 +10,7 @@ license="Apache-2.0"
 
 [[mods]]
 modId="mcai_companion"
-version="0.1.9-dev-mc26.2"
+version="0.1.10-dev-mc26.2"
 displayName="Minecraft AI Companion"
 authors="weida"
 #displayTest="MATCH_VERSION" #optional, default=MATCH_VERSION when not clientSideOnly, else IGNORE_ALL_VERSION

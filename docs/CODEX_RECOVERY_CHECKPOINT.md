@@ -1,6 +1,7 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-14T07:24:00Z
+Last updated: 2026-08-13T22:20:56Z
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -67,6 +68,10 @@ FightEnderDragonSkillTest                         PASS
 FairPerception focused tests                      PASS
 Offline End/dragon/return physical baseline       PASS (no model)
 Live MiMo End victory and return                  PASS (controlled real-model chain; Forge 65.1.1)
+Live MiMo movement, follow, surprise defense, food PASS (four controlled live-model slices)
+Exact Forge 65.1.1 dedicated lifecycle smoke      PASS (real dedicated server; no functional claim)
+Exact Forge 65.1.1 two-boot persistence smoke     PASS (real restart; no functional claim)
+Delayed first-human anchor client smoke           NOT_RUN (macOS lacks Linux/Xvfb; no client claim)
 Full offline Gradle/JUnit, release jar, compatibility, and Python audit     PASS (61 Python tests)
 Formal Actor/Observer client gate                 NOT_RUN
 Hidden random Hardcore M1/M2/M4 gates             NOT_RUN
@@ -79,23 +84,20 @@ seed statistic.
 
 ## Immediate next steps
 
-1. Preserve this live End victory/return result as controlled evidence; do not
-   promote it to a random-seed or speedrun claim.
-2. Improve target reacquisition, projectile lead, and bounded combat retry only
-   through first-person observations and vanilla actions. Never add a health
-   shortcut, direct damage, teleport, hidden entity scan, or synthetic arrow.
-3. Extend the controlled live causal chain to natural-world progression and
+1. Preserve the movement, follow, defense, food, and End results as controlled
+   evidence; do not promote them to a random-seed or speedrun claim.
+2. Extend the controlled live causal chain to natural-world progression and
    keep adding regression coverage for fair observed combat recovery.
-4. Run formal Actor/Observer and hidden-seed gates only on an authorized
+3. Run formal Actor/Observer and hidden-seed gates only on an authorized
    Linux/Xvfb worker with the exact frozen jar. Keep missing infrastructure as
    `NOT_RUN`.
 
 ## Repository and release state
 
 - Public repository: `https://github.com/weidakuang/MinePilot`.
-- Main backup commit before this work: `41a7839f9232377ef8e33073248312cb2c057b41`.
+- Main backup commit before this work: `8ba8a554aa461f0ce2c09c3924d996cbe0854d82`.
 - Forge 65.x backup branch: `mc26.2-forge65`.
 - Local branch: `agent/minecraft-companion-0.1.9`.
-- Worktree: dirty until the focused fix, documentation, tests, and preflight
-  checks are committed intentionally.
+- Worktree: clean at the last checkpoint; the current metadata and evidence
+  update is pending the preflight-before-commit check.
 - API keys are process-only during live tests and are never written here.

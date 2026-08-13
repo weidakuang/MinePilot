@@ -1,3 +1,4 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 // This is a minimal setup of a Forge mod workspace.
 // For complex examples (including AccessTransformers, Jar-in-Jar, and Mixin), see our examples repository.
 // https://github.com/MinecraftForge/MDKExamples
@@ -10,7 +11,7 @@ plugins {
     id 'net.minecraftforge.jarjar' version '0.2.3'
 }
 
-version = '0.1.9-dev-mc26.2'
+version = '0.1.10-dev-mc26.2'
 group = 'dev.mcai.companion'
 base.archivesName = 'mcai_companion'
 

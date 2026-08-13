@@ -1,5 +1,50 @@
 # Codex recovery checkpoint
 
+## 当前恢复摘要（2026-08-14T02:49:00Z）
+
+- 第二次真实 MiMo 连续 M2 运行已明确失败在末地战斗：模型真实选择了
+  `fight_ender_dragon`，但日志只出现一次 `begin_mining`，龙保持 200 点生命，身体
+  随后被龙的魔法伤害击杀。此前的首登身体引用竞态已越过，故本次不是模型请求或
+  ServerPlayer 生命周期失败；M2 仍记为 `FAIL`，不宣称通关。
+- 针对该根因已实现并提交前验证：`FightEnderDragonSkill` 活动时声明接触威胁、可见
+  投射物和近距离龙目标责任；受击/龙息无实体线索时用危险信号做有界第一人称侧移，
+  投射物闪避带 6 tick 节流；龙靠近时优先攻击龙而不是继续拆晶体铁栏，并可中断
+  正在卡住的铁栏拆除。所有动作仍通过原版 `ServerPlayer` 交互/移动，未读隐藏实体、
+  未传送、未直接改世界。新增的末地技能测试和 JDK25 全量离线测试通过。
+- 下一步在提交和 GitHub 备份后，用同一真实 MiMo M2 连续切片重跑；只有看到龙血下降、
+  `low_level_actions_issued` 的攻击/移动、`DRAGON_KILLED` 与返回传送门事件，才会升级
+  结果；否则继续保留 `FAIL` 并按日志定位。M0–M4 正式统计门禁和随机 Hardcore 仍为
+  `NOT_RUN`。
+
+## 当前恢复摘要（2026-08-14T02:41:00Z）
+
+- 真实 MiMo `mimo-v2.5` / `https://api.slomerex.xyz` 的同一条连续
+  `real_player_task_to_live_model_nether_materials_to_victory` 已从下界物资阶段
+  走到主世界、要塞三角测量、末地门激活和末地进入；模型实际选择了
+  `craft_recipe`、`return_via_verified_portal`、`triangulate_stronghold_search_area`、
+  `reach_observed_stronghold`、`search_stronghold_portal_room`、
+  `activate_observed_end_portal`、`find_and_enter_observed_portal` 和
+  `fight_ender_dragon`。这次运行不是聊天/模型等待假死，而是在真实末地战斗中
+  按 Hardcore 规则被末影龙击杀，龙仍为 200 点生命，Gradle/GameTest 退出码为 1，
+  用时约 14.34 分钟；因此记录为 `FAIL`，不宣称 M2 或通关。
+- 第一次尝试在模型动作前因首登初始锚定的 ServerPlayer remove/relogin 窗口使用了
+  旧引用而失败；已将 `LiveEyeCraftReturnStrongholdScenario` 改为每 tick 重新获取
+  同 UUID 的权威身体，并在 `FAILED` 以外等待临时空窗。第二次运行证明该竞态已越过，
+  但暴露末地龙息/火球期间应急车道抢占击龙技能、身体停在危险区的真实缺口。
+- 当时未提交源码修复：新增技能能力 `managesVisibleProjectileThreats`，只让
+  `FightEnderDragonSkill` 在活动期间拥有可见投射物邻近的有限责任；应急监督器仍保留
+  接触、着火、坠落、空气、生命、食物和未被该技能声明覆盖的投射物。击龙技能加入
+  基于第一人称可见投射物/无方向危险信号的有限反向移动和转向，不读隐藏实体、不传送。
+  定向 JDK25 SkillSupervisor/Fight/Emergency 测试已通过，下一步是真实 MiMo 重跑，
+  观察龙血下降、闪避动作和最终死亡事件；若仍失败继续以 `FAIL` 记录。
+- 本轮已创建公开仓库 `weidakuang/MinePilot` 的分支
+  `codex/minepilot-0.1.9`。提交 `8261db8` 已上传完整源码树、Apache-2.0、项目规范、
+  使用教程、贡献纪律和 `scripts/preflight-before-commit.sh`；远端 `main` 未被覆盖。
+  本机 HTTPS 推送因缺少 `gh` 凭据助手失败，后续提交继续使用已验证的 GitHub 连接器。
+- 密钥只作为当前测试进程输入，未写入源码、世界、SQLite、日志、工件或 Git；测试后
+  建议轮换凭据。M0–M4 正式门禁、真实 Actor/Observer、Hardcore 随机种子统计仍是
+  `NOT_RUN`，受控切片不升级正式状态。
+
 ## 当前恢复摘要（2026-08-14T02:10:41Z）
 
 - 使用用户临时进程凭据真实运行 `mimo-v2.5` / `https://api.slomerex.xyz`，Forge 65.1.1、Minecraft 26.2、JDK 25 GameTest `real_player_task_to_live_model_foundation_bootstrap`。从空背包开始，真实模型依次选择木材、基础合成、石工具、食物、铁工具、工作站、箱子/供应品和 `build_shelter_step`；服务端验证木材、石器、食物、铁工具、工作台/熔炉/箱子、封闭紧凑避难所和门均完成。
@@ -1773,7 +1818,4391 @@ client, model or Hardcore completion gate.
 - 同一精确 JAR 的 Forge 65.1.0 专服 smoke 目录为 `e2e/results/no-commit-dirty/20260810T161619Z-e2e2fa869e7371c/`，`server-smoke-verdict.json` 为 `PASS`：退出码 0、精确 JAR、SQLite Jar-in-Jar、ServerPlayer 生命周期通过；`functionalAiClaim=false`。
 - 证据边界不变：源码 `DIRTY_NO_COMMIT`、产物 `NON_RELEASE`；真实供应商模型、真实客户端 Actor/Observer、随机 Hardcore 以及 M0--M4 正式门禁仍为 `NOT_RUN`。
 
-## 当前继续记录（2026-08-11，跟随再捕获等待窗口与提示启动…62152 tokens truncated…travel and resumed the new local depth probe:
+## 当前继续记录（2026-08-11，跟随再捕获等待窗口与提示启动回归）
+
+- 现场反馈中“跟随目标离开视野后原地转很久”的停顿根因已进一步收窄：已绑定跟随再捕获仍按普通地形调查的每视角新鲜观察等待窗口执行。生产路径现在只为这条已绑定跟随路径使用 4 个水平扇区和 `observationWaitTicks=12`；普通模型选择的地形调查仍默认 40 tick，未扩大视野、读取隐藏坐标或引入传送。
+- 为了让可选参数仍兼容旧模型决策，`survey_surroundings` 保留三参数形式（默认 40），并接受严格规范的第四参数 `observationWaitTicks`（4..40，拒绝前导零/符号）。定向 `SurveySkillsTest`、`BrainOrchestratorTest` 通过。
+- 第一次真实 Forge 复跑没有被掩盖：服务端在行为测试前因新增提示文字超过 13,000 字符硬上限（13,176）启动失败；压缩后再次发现仍为 13,033。最终继续压缩提示并在全新目录 `/tmp/mcai-follow-reacquire-wait12-retry2-20260811` 重跑，Forge 65.1.0 `real_player_chat_to_immediate_bound_follow` 真实 ServerPlayer/聊天夹具通过 1/1，日志为 `All 1 required tests passed`。日志中的关闭连接告警来自夹具主动结束，不是技能失败。
+- 最终源码的 JDK25 `check verifyReleaseJar e2eClientJar e2eOracleJar` 通过 16 tasks；Python E2E 39/39；`validate-compat.py` 报 Forge 65 已发布 11 个版本、形式矩阵仍未完成。当前产品 JAR `build/libs/mcai_companion-0.1.5-dev-mc26.2.jar` SHA-256 为 `3ab40062df265d69824edeb930c32e34b26a8f3f2ffe1b5cae1fc7aca91bcf82`。
+- 该精确 JAR 的 Forge 65.1.0 专服 smoke 目录为 `e2e/results/no-commit-dirty/20260810T155824Z-e2eafa39b81c9dd/`，`server-smoke-verdict.json` 为 `PASS`：退出码 0、精确 JAR、SQLite Jar-in-Jar、ServerPlayer 生命周期通过；`functionalAiClaim=false`。附带 oracle 的 `server_stopped_before_result` 是 smoke 主动停服且模型配置为空的预期状态，不是 AI 玩法通过。
+- 同一源码在 Forge 65.0.0 最低线全新目录 `/tmp/mcai-follow-reacquire-wait12-floor-20260811` 的同一 `real_player_chat_to_immediate_bound_follow` 也通过 1/1；这只是该跟随参数/物理切片的双版本回归，不代表 65.x 完整功能矩阵已经通过。
+- 证据边界不变：源码 `DIRTY_NO_COMMIT`、产物 `NON_RELEASE`；真实供应商模型、真实客户端 Actor/Observer、随机 Hardcore 以及 M0--M4 正式门禁仍为 `NOT_RUN`。没有把这次无模型服务端链路写成“AI 陪玩”或“通关”结论。
+
+## 当前继续记录（2026-08-11，跟随丢失后的低延迟再捕获）
+
+- 现场反馈中的“跟我走后原地慢慢转”有一个可复现的局部原因：已明确绑定玩家、但目标暂时离开当前第一人称语义帧时，`BrainOrchestrator` 会启动 `survey_surroundings`；该专用再捕获路径此前固定做 8 个水平采样，每个采样都等待新鲜语义帧。
+- 现在只把这条“已绑定跟随目标”的低风险再捕获改为 4 个水平扇区，并保留 `includeVertical=false`、第一人称语义采样、同维度和普通技能监督边界；模型自行请求的通用地形调查仍可使用 8+视角，未扩大视野或引入隐藏坐标。
+- `BrainOrchestratorTest` 与 `PlayerTaskIntentTest` 定向通过；全新 Forge 65.1.0 `real_player_chat_to_immediate_bound_follow` 真实 ServerPlayer/真人聊天夹具通过 1/1（`/tmp/mcai-follow-reacquire-20260811`，GameTest 日志 `All 1 required tests passed`）。这仍是无模型服务端绑定跟随物理证据，不等于自然语言任意任务或 M0--M4 正式通过。
+- 本切片随后完成 JDK25 `check verifyReleaseJar e2eClientJar e2eOracleJar`（16 tasks）、Python E2E 39/39、JSON/兼容校验；产品 JAR SHA-256 为 `f00441e3f82f44da8a74c67f9c0d22ec4cf3207470a7b6107547f0a4cd24c30e`。同一精确 JAR 的 Forge 65.1.0 专服 smoke 目录为 `e2e/results/no-commit-dirty/20260810T154508Z-e2e747d9d1f6a98/`，verdict `PASS`，`functionalAiClaim=false`；附带 oracle 的 `server_stopped_before_result` 仍是 smoke 主动停服的预期状态。正式模型/客户端 Actor/Observer、随机 Hardcore 和 M0--M4 仍 `NOT_RUN`，源码仍 `DIRTY_NO_COMMIT`、产物仍 `NON_RELEASE`。
+
+## 当前继续记录（2026-08-11，金苹果切片打包与精确 JAR smoke）
+
+- `real_offline_critical_golden_apple` 在全新 Forge 65.1.0 GameTest 工作目录
+  `/tmp/mcai-golden-offline-20260811` 通过 1/1；随后当前源码的
+  `check verifyReleaseJar e2eClientJar e2eOracleJar` 通过 16 tasks，Python E2E 通过 39/39，
+  `GOAL_STATE.json` 可解析。
+- 当前唯一产品 JAR `build/libs/mcai_companion-0.1.5-dev-mc26.2.jar` SHA-256 为
+  `6ce64e88b35e47a9a39e428b9ead6a6643580190a96cfd0ef47bc58d7f2b39cc`。精确 Forge 65.1.0
+  专服 smoke 结果目录为
+  `e2e/results/no-commit-dirty/20260810T152951Z-e2e6135dcca3a8f/`，`server-smoke-verdict.json`
+  为 `PASS`：退出码 0、精确 JAR、SQLite Jar-in-Jar、ServerPlayer 加入及优雅生命周期通过，
+  `functionalAiClaim=false`。附带 oracle 的 `server_stopped_before_result` 是 smoke 主动停服的
+  预期场景状态，不改变专服 smoke verdict。
+- 正式模型/客户端 Actor/Observer、真实聊天到动作、随机 Hardcore 和 M0--M4 仍为 `NOT_RUN`；
+  源码仍 `DIRTY_NO_COMMIT`、产物仍 `NON_RELEASE`。
+- 同一 `real_offline_critical_golden_apple` 夹具又在 Forge 65.0.0 最低线全新工作目录
+  `/tmp/mcai-golden-offline-6500-20260811` 通过 1/1；这只是该动作切片的双端版本回归，
+  不是 Forge 65 每个功能/聊天/客户端门禁已完成。
+
+## 当前继续记录（2026-08-11，危急生命金苹果真实原版交互门禁）
+
+- 为回应“收到金苹果却只说不吃”的具体失败模式，新增了
+  `real_offline_critical_golden_apple` Forge GameTest。夹具仅在初始化时给真实
+  `ServerPlayer` 一枚金苹果并将生命值设为 4；之后关闭模型/规划器，由生产
+  `EmergencySurvivalController`、库存菜单适配器和普通持物使用动作完成装备与进食。
+- 精确 Forge 65.1.0、全新工作目录 `/tmp/mcai-golden-offline-20260811` 已通过 1/1，日志明确为
+  `All 1 required tests passed`。断言包含身体存活、库存金苹果减少和原版吸收效果；这证明的是
+  本地 20 TPS 危急生存动作链，不是模型聊天理解、PVP 或 M1--M4 通关。
+- 该门禁没有注入世界方块、健康、效果或“已吃完”状态；这些只由测试初始夹具设置，运行过程通过
+  真实库存交易和原版持物使用观察。正式模型/客户端 Actor/Observer、随机 Hardcore 和 M0--M4
+  仍为 `NOT_RUN`；源码仍 `DIRTY_NO_COMMIT`、产物仍 `NON_RELEASE`。
+
+## 当前继续记录（2026-08-11，观察式甘蔗单株真实物理门禁收口）
+
+- 本轮把观察式甘蔗单株技能接入了真实 Forge GameTest，而不是只用 JVM 假执行器。首次失败的根因已
+  由日志和方块状态确认：测试夹具把重力方块沙放在空气上，沙块在观察后的下一 tick 正常下落，随后
+  原版准星只能命中空气；这是夹具物理错误，不是生产技能绕过。已在夹具中补充真实泥土底座，并保留
+  相邻水、第一人称 OUTLINE 命中、普通 `equipMainHand`/`useOnBlock` 和新观察确认。
+- 清理调试输出后，精确 Forge 65.1.0 的 `mcai_companion:real_plant_observed_sugarcane` 在全新工作目录
+  `/tmp/mcai-sugarcane-clean` 通过 1/1；服务端日志为 `All 1 required tests passed`。这证明沙块保持、
+  真实准星命中 `sand` 顶面、消耗一根自有甘蔗并在 `support.above()` 看到甘蔗，仍是无模型受控原子门禁，
+  不是完整甘蔗机、随机生存或 M3 通过。
+- `PlantObservedSugarcaneSkillTest` 同步覆盖了“先发出转向、下一观察帧再装备/使用”的真人时序；定向
+  JDK25 测试通过。仓库已移除 `SUGAR_DEBUG_*` 临时输出，产品 JAR 也不含这些字符串。
+- JDK25 `check verifyReleaseJar e2eClientJar e2eOracleJar --offline --no-daemon` 通过（16 tasks），Python
+  E2E 39/39、`GOAL_STATE.json`、Forge 兼容性校验通过。当前唯一产品 JAR
+  `build/libs/mcai_companion-0.1.5-dev-mc26.2.jar` SHA-256 为
+  `6ce64e88b35e47a9a39e428b9ead6a6643580190a96cfd0ef47bc58d7f2b39cc`。
+- 随后精确 Forge 65.1.0 专服 smoke 结果为 `e2e/results/no-commit-dirty/20260810T151942Z-e2e2ec651a76d7f/`，
+  `server-smoke-verdict.json` 为 `PASS`，服务器退出码 0、精确 JAR、SQLite Jar-in-Jar、headless
+  ServerPlayer 生命周期全部通过；`functionalAiClaim=false`。附带 oracle 的“server stopped before
+  result”是 smoke 主动停服的场景状态，不是专服生命周期失败。
+- 证据边界不变：源码仍 `DIRTY_NO_COMMIT`、产物仍 `NON_RELEASE`；真实模型/客户端 Actor/Observer、
+  随机 Hardcore 和 M0--M4 正式门禁仍为 `NOT_RUN`。本轮只收口一个可复现的原版物理/技能切片。
+
+## 当前继续记录（2026-08-10，观察式甘蔗单株技能）
+
+- 新增 `PlantObservedSugarcaneSkill` 与 `PlantObservedSugarcaneParameters`，并注册为
+  `plant_observed_sugarcane`。它只接受同一第一人称语义采样中的沙/红沙/泥土/草方块顶面、相邻
+  可见水和自有甘蔗；通过正常 `equipMainHand`/`useOnBlock` 一次性种植，再以新观察或库存减少
+  确认。没有坐标外推、世界扫描、直接改方块或固定建筑蓝图；这是一株甘蔗原子技能，不是完整
+  甘蔗机或 M3 农场通过。
+- `FarmingSkillParametersTest`、`PlantObservedSugarcaneSkillTest`、注册测试以及提示长度边界
+  定向通过。曾短暂超出 13,000 字符 planner guide 硬上限，已压缩说明并保留约束；没有提高预算
+  来掩盖问题。
+- 固定 Temurin JDK25 `check verifyReleaseJar e2eClientJar e2eOracleJar --offline --no-daemon`
+  通过（16 tasks）；Python E2E 39/39、GOAL_STATE JSON 与 Forge 兼容校验通过。当前唯一产品
+  JAR `build/libs/mcai_companion-0.1.5-dev-mc26.2.jar` SHA-256 为
+  `d6d7ae585022f63351aa65d860a0f3aeb08fde24295472e293891d084b3fd1d9`。
+- 精确 Forge 65.1.0 专服 smoke 结果为 `e2e/results/no-commit-dirty/20260810T144225Z-sugarcane-skill-contract/`，
+  verdict `PASS`，服务器退出码 0，精确 JAR、SQLite Jar-in-Jar、headless ServerPlayer 加入和
+  优雅生命周期均通过；`functionalAiClaim=false`，没有客户端或模型请求。
+- 证据边界不变：源码仍 `DIRTY_NO_COMMIT`、产物仍 `NON_RELEASE`；真实模型/客户端 Actor/Observer、
+  随机 Hardcore 和 M0--M4 正式门禁仍为 `NOT_RUN`。本轮只收口一个可审计的生产技能切片。
+
+## 当前继续记录（2026-08-10，危险状态下规划器禁止口头拖延）
+
+- 为直接收口“光说不做”路径，`MinecraftPlannerInputFactory` 的可信提示现在明确规定：
+  `currentSafetyDeficits` 报告受击、着火、坠落、溺水、危急生命或其他即时生存缺口时，
+  若当前白名单有适用技能必须立即返回完整参数的 `START_SKILL`，不得用带语音的
+  `CONTINUE/REPLAN` 假装正在格挡、后退、吃东西、战斗或逃跑；若没有适用技能只能裸
+  `REPLAN`/按评测规则 `SAFE_IDLE`。提示同时区分 20 TPS 应急反射已经持有输入与规划器
+  没有启动技能，避免把本地反射误报成模型动作。
+- 新增 `MinecraftPlannerInputFactoryTest` 契约断言，连同 `BrainOrchestratorTest` 定向运行
+  通过。该改动只约束模型输出，不绕过技能白名单、第一人称证据或原版执行器。
+- 同一源码重新执行 JDK25 `check verifyReleaseJar e2eClientJar e2eOracleJar`：16 tasks
+  `BUILD SUCCESSFUL`；Python E2E 39/39、GOAL_STATE JSON 和 Forge 兼容校验通过。当前产品
+  JAR SHA-256 为 `f5b05e1eb1a446fc92632e276c2f21e7528cc4d9b490e3d4d4ef1557afa50cf1`，
+  client/oracle 测试 JAR 哈希仍为 `d714b3d7e2a4744d5577e0073bb525e5a2452498662b0c98698983cde952adcf` /
+  `97ee9280a2b160b7082d3b993601a646ac030e8c62665facef63937f32809dae`。
+- 当前精确产品 JAR 的 Forge 65.1.0 专服 smoke 也为 `PASS`，结果目录为
+  `e2e/results/no-commit-dirty/20260810T142046Z-safety-prompt-contract/`；服务器退出码 0，
+  精确 SHA、SQLite Jar-in-Jar、headless ServerPlayer 加入和优雅生命周期均通过，
+  `functionalAiClaim=false`（没有客户端或模型请求）。
+- 这仍是提示/协议/无模型内循环证据；真实模型、Linux/Xvfb Actor/Observer、随机 Hardcore
+  和 M0--M4 正式门禁继续保持 `NOT_RUN`，工作树仍 `DIRTY_NO_COMMIT`、产物仍 `NON_RELEASE`。
+
+## 当前继续记录（2026-08-10，连续受击空中脱离回归已收口）
+
+- 最新完整生命周期回归 `run-debug308` 重新验证了此前 `run-debug291` 的真实失败：末地水晶造成无方向连续伤害时，控制器不再因短暂 `onGround=false` 而原地扫描，已在有限受击窗口发出普通水平脱离。Forge 65.1.0 `headless_player_lifecycle_state_and_fair_action` 现 1/1 通过；运行时样本 5967、平均 269540 ns、滚动 p95 1272625 ns，均低于 1 ms/2 ms 目标。日志为 `/tmp/mcai-lifecycle-after-air-knockback-fix.log`。
+- 根因修复位于 `EmergencySurvivalController.java`，并新增 `EmergencySurvivalControllerTest.directionlessDamageStillSeparatesDuringShortKnockbackAirTime`；定向 JUnit 通过。未知投射物仍不会触发这条移动分支，水中、着火和真正下落仍由更高优先级应急车道处理。
+- 当前修订又在全新 Forge 65.1.0 工作目录重跑 `real_emergency_zombie_skeleton_horde` 与 `real_emergency_iron_golem_duel`，各 1/1 通过（GameTest 分别 1.185 秒、1.089 秒）；这保持了十僵尸/十小白压力场和铁傀儡近战的原版应急证据。日志为 `/tmp/mcai-horde-after-air-knockback-fix.log` 与 `/tmp/mcai-golem-after-air-knockback-fix.log`，仍不等于模型 PVP 或正式 Hardcore。
+- 刚用新产品 JAR `63f1b80e…f3dc5d00` 运行一次 Forge 65.1.0 精确专服 smoke：verdict `PASS`，服务器退出码 0，JAR/SQLite Jar-in-Jar/ServerPlayer/生命周期校验全部通过，结果目录为 `e2e/results/no-commit-dirty/20260810T141222Z-air-knockback-fix/`。该命令没有启动客户端，`functionalAiClaim=false`；随附 oracle 的“server stopped before result”是因为 smoke 场景主动停服，不是专服失败。
+
+## 当前继续记录（2026-08-10，农田水边逃逸与移动加速度回归已收口）
+
+- 本轮最后两个真实 Forge 65.1.0 失败已闭合：水边一次跳跃的候选坐标原先漏检脚下 farmland，导致小麦支撑被踩成 dirt；农田移动每帧先调用交互式 `stop()`，清空原版加速度，导致潜行拾取只转向不前进。
+- 已改 `HarvestAndReplantStepSkill.java`：水逃落点同时核验当前/上方坐标的 farmland 与作物块，并且每个新鲜非农田落点最多跳一次；新增不清空连续输入的移动准星，精确交互仍使用 stop。此前的中心准星门禁、事务掉落关联、有界路线继续保留。
+- fresh-world Forge 65.1.0 定向结果：`real_maintain_observed_crop_field`（wheat）、carrot、potato、beetroot、expanded wheat 各 1/1 通过；本轮 source compileJava/compileTestJava 通过。随后完整 JDK25 package 16 tasks 与 Python E2E 39/39 通过；当前产品 JAR SHA-256 为 `63f1b80e9e6712e1d3c1f807017f86d927d03dca9c483501914aee03f3dc5d00`，client/oracle 测试 JAR 哈希保持 `d714b3d7e2a4744d5577e0073bb525e5a2452498662b0c98698983cde952adcf` / `97ee9280a2b160b7082d3b993601a646ac030e8c62665facef63937f32809dae`。
+- 同一最终源码再跑了与用户反馈直接相关的 fresh Forge 65.1.0 物理回归：`real_parkour_course`、`real_emergency_iron_golem_duel`、`real_emergency_zombie_skeleton_horde` 各 1/1 通过；这验证受控 headless 身体的原版移动/应急车道，不是模型控制、PVP 或正式 M1--M4。
+- 继续跑了 fresh Forge 65.1.0 的维度/终局与在线生命周期回归：`real_end_portal_activation`、`real_end_victory_and_return`、`zero_human_dedicated_server_chunk_and_respawn`（`mcai.zeroHumanAutoSpawnTest=true`）和 `auto_presence_on_human_login` 各 1/1 通过。终局日志确认获得 `The End?`、`Free the End` 并完成返回；无人服务器日志确认生产 ServerStartedEvent 自动登录 MCAI，玩家进入日志确认 TestHuman 与 MCAI 同时在线。`zero_human` 的死亡包警告属于预期关闭 headless 通道，不改变 GameTest 通过结果。
+- 再跑了 `real_furnace_batch` 与 `real_charcoal_furnace_batch` 的 fresh Forge 65.1.0 功能方块回归，各 1/1 通过；并用 JDK25 定向重跑 `ApiKeyManagerRestartPersistenceTest`、`ApiKeyManagerConcurrencyTest` 与 `ModelRuntimeTest`，全部通过，未把凭据写入日志或世界数据。
+- 当前源码还重跑了 `real_player_chat_to_immediate_bound_follow`：fresh Forge 65.1.0 1/1，通过日志可见 TestHuman 的任务消息被安装，MCAI 以原版 ServerPlayer 跟随而非只发送“我来了”；这是服务端绑定跟随的无模型物理回归，不等于任意模型自然语言任务均能动作。
+- 基础生存/技术路径 fresh Forge 65.1.0 也已补跑：`real_zero_human_dedicated_server_foundation`、`real_prepare_and_plant_plot`、`real_build_hydrated_crop_field`、`real_verified_portal_return` 各 1/1。最后一项保留了服务端的到达诊断，结论只取 GameTest 的实际通过，不把调试距离或无模型脚本外推成正式通关。
+- 当前源码最终复核：JDK25 `check verifyReleaseJar e2eClientJar e2eOracleJar` 16 tasks 通过，Python E2E 39/39、GOAL_STATE JSON 和 Forge 兼容脚本均通过；唯一产品 JAR 仍为 `63f1b80e9e6712e1d3c1f807017f86d927d03dca9c483501914aee03f3dc5d00`，测试 JAR 哈希未变。兼容输出仍是 Forge 65.x 11 个 patch、`formalMatrixComplete=false`。
+- 官方下载页在 2026-08-10 UTC 复核仍将 Minecraft 26.2 的 Latest/Recommended 列为 Forge 65.1.0，并列出 65.0.0--65.0.9；没有 Forge 66 发布条目。因此没有把 Forge 65 JAR 的声明范围扩大到 66，事实记录和 `compat/forge-lines.toml` 的检查时间已更新。
+- 当前源码在 Forge 65.0.0 最低线 fresh GameTest `real_zero_human_dedicated_server_foundation` 也通过 1/1；日志确认 Forge 65.0.0 加载 71 个测试函数、SQLite Jar-in-Jar 运行时和基础无人服务器场景。该结果只是最低线启动/基础内循环，不是 65.x 全补丁正式兼容矩阵。
+- `offline_idle_equipment` 在 fresh Forge 65.1.0 通过 1/1，日志出现原版 `Suit Up` 成就；这是给定装备后的真实 ServerPlayer 穿戴/耐久路径，不是模型决定或人工客户端验收。
+- `real_emergency_enderman_defense` 当前源码 fresh Forge 65.1.0 通过 1/1，日志出现 `Cover Me with Diamonds`；这补齐了末影人近战/防御的无模型应急回归，仍不等于模型 PVP 或随机 Hardcore。
+- 本次继续在全新 Forge 65.1.0 工作目录运行 `real_nether_blaze_rod_acquisition`，1/1 通过；日志确认 MCAI 以原版近战击杀烈焰人、拾取烈焰棒并获得 `Into Fire`。这是下界战斗/掉落拾取的受控无模型组件证据，不是自然要塞发现、模型控制或 M2 通关证据。命令末尾仅有 zsh 保留变量名造成的壳层退出，Forge/Gradle 日志本身为 `BUILD SUCCESSFUL`，不作为游戏测试失败。
+- 随后在全新 Forge 65.1.0 工作目录运行 `real_stronghold_reach`，1/1 通过（GameTest 14.16 秒，Gradle `BUILD SUCCESSFUL`）；日志确认 MCAI 从已观察入口外沿普通行走、下降挖掘并消耗铁镐/火把后完成测试。这是已验证目标的接近/挖掘内循环，不是自然随机种子定位、模型控制或正式 M2 证据。
+- 再在全新 Forge 65.1.0 工作目录运行 `real_ender_pearl_reserve`，1/1 通过（GameTest 7.798 秒）；日志显示真实 ServerPlayer 完成受控战斗/拾取并达到 13 颗末影珍珠储备。这是预置资源条件下的末影珍珠收集组件，不是自然探索、模型控制或随机 Hardcore 证据。
+- 再在全新 Forge 65.1.0 工作目录运行 `real_nether_blaze_material_reserve`，1/1 通过（GameTest 5.145 秒）；日志确认真实 ServerPlayer 完成可见烈焰人近战、原版掉落拾取并达到 7 根烈焰棒储备，技能状态为 `COMPLETED`。这是受控下界材料储备组件，不是模型控制、自然要塞路线或 M2 通关证据；日志保存在 `/tmp/mcai-next-blaze-material-65.1.0.log`。
+- 当前源码又逐个在全新工作目录运行 Forge 65.x 全部 11 个已发布 patch 的 `real_zero_human_dedicated_server_foundation`：65.0.0、65.0.1、65.0.2、65.0.3、65.0.4、65.0.5、65.0.6、65.0.7、65.0.8、65.0.9、65.1.0 均 `rc=0` 且 1/1 通过。对应日志保存在 `/tmp/mcai-forge65-<version>-foundation.log`。这是兼容启动/加载/无人 ServerPlayer 基础 smoke，不是每个 patch 的聊天、移动、菜单、保存、重启完整矩阵。
+- 当前正确 CLI 的正式客户端 preflight 也已重跑（`python3 e2e/orchestrator.py preflight --forge-version 65.1.0`）：`ready=false`，明确缺少 Linux host、Xvfb、`MCAI_BASE_URL`、`MCAI_MODEL` 和 `MCAI_API_KEY(_FILE)`；物理显示器保持未触碰，未启动客户端、未读取或发送密钥。输出保存在 `/tmp/mcai-preflight-current.log`，因此真实 Actor/Observer/模型门禁继续是 `NOT_RUN`，不是游戏失败。
+- 随后在同一 11 个 Forge 65 patch 上逐个运行 `zero_human_dedicated_server_chunk_and_respawn` 与 `auto_presence_on_human_login`，共 22/22 通过（每个 `rc=0`、1/1）；对应日志为 `/tmp/mcai-forge65-<version>-zero_human_dedicated_server_chunk_and_respawn.log` 与 `/tmp/mcai-forge65-<version>-auto_presence_on_human_login.log`。这补齐了 patch 级无人自动出生/重生与真人登录并存的生命周期内循环，不等于每 patch 的聊天、移动、菜单、保存/重启完整门禁。
+- 在上述矩阵后再次执行固定 Temurin JDK25 的 `check verifyReleaseJar e2eClientJar e2eOracleJar`：16 tasks 通过；Python E2E 39/39、GOAL_STATE JSON 与 compat 校验也通过。修复空中脱离后产品 JAR SHA-256 更新为 `63f1b80e9e6712e1d3c1f807017f86d927d03dca9c483501914aee03f3dc5d00`，client/oracle 仍为 `d714b3d7e2a4744d5577e0073bb525e5a2452498662b0c98698983cde952adcf` / `97ee9280a2b160b7082d3b993601a646ac030e8c62665facef63937f32809dae`。
+- 证据边界不变：以上均为无模型、受控 headless ServerPlayer 内循环，不是 AI 聊天到动作、真人客户端、随机 Hardcore 或 M1--M4 通过。正式模型/Actor/Observer 门禁仍因上游 401 与本机 Darwin 无 Linux/Xvfb 为 `NOT_RUN`，工作树仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+## 当前继续记录（2026-08-10，农田拾取定向修复进行中）
+
+- 最近一次真实 Forge 65.1.0 `real_maintain_observed_crop_field` 仍失败在
+  `timed_out_collecting_harvest`：第一人称感知已经看见与本次 wheat 事务关联的掉落物，身体在水田边
+  通过受限普通步进向其靠近，但 180 tick 拾取窗口结束时仍相距约 2.8 格。此前还复现过水边逃逸
+  盲跳导致农田支撑变 dirt，以及同类根作物把旧种子掉落误关联为本次收获；这些都已分别加上
+  无跳跃/低空气反射保护、事务内新鲜掉落关联和短期第一人称掉落记忆。
+- 本轮已改 `HarvestAndReplantStepSkill.java`（水边不盲跳、农田着陆自适应潜行、普通步进速度与
+  停滞阈值、可见掉落物关联/记忆、拾取窗口延长）和
+  `EmergencySurvivalController.java`（看见农田时不触发低空气反射跳跃）。相关 farming JVM
+  测试可编译通过，但最新 wheat Forge GameTest 尚未重跑收口，不能把 farming 矩阵写成通过。
+- 最后失败门禁是上述 fresh wheat 1/1；此前 carrot/beetroot/potato 有通过也有水边/拾取间歇失败。
+  这仍是无模型、受控 headless 内循环，不是 AI 陪玩、真人客户端、随机 Hardcore 或 M1--M4 证据。
+- 下一步立即在当前源码上重跑 fresh wheat，再按结果收窄拾取步进/事务超时；若 wheat 收口，重跑
+  carrot、beetroot、potato、wheat 重复矩阵，随后更新实现状态、GOAL_STATE、changelog，最后重跑
+  JDK25 package 与 Python E2E。正式模型/Actor/Observer 仍受 401 授权边界和本机 Darwin 无
+  Linux/Xvfb 阻断，所有 M0--M4 继续保持 NOT_RUN。
+
+## 当前继续记录（2026-08-10）
+
+- 真实 Forge 65.1.0 `real_maintain_observed_crop_field` 新鲜临时世界首次复现了
+  `harvest_and_replant_step.harvest_drop_not_collected`：日志中的真实麦子掉落物仍在约
+  1.8 格外，身体只在作物中心附近转向，未完成普通拾取。这不是模型或脚本通过，已按失败保留。
+- 生产修复已落在 `HarvestAndReplantStepSkill`：当普通第一人称感知实际看到匹配的收获掉落物时，
+  在已重植地块、在地面、非水的有界走廊内直接以掉落物当前位置作为短距离移动目标；不扫描实体、
+  不直接改背包或世界。`HydratedCropFieldPlanService.planMaintenance` 同时移除永久
+  `UnsupportedOperationException` 默认生产桩，并让维护规划服务契约显式实现。
+- 修复后的定向农田 JVM 测试通过；同一 `real_maintain_observed_crop_field` 在全新 Forge
+  65.1.0 世界通过 1/1，服务端日志为 “All 1 required tests passed”。这是无模型受控内循环证据，
+  不提升 M1--M4、真实聊天到动作、Actor/Observer 或随机 Hardcore 结论。
+- 随后完整 `./gradlew check verifyReleaseJar e2eClientJar e2eOracleJar --offline --no-daemon`
+  通过（16 tasks；Forge 65.x published=11，formalMatrixComplete=false），Python E2E 通过 39/39。
+  新产品 JAR `build/libs/mcai_companion-0.1.5-dev-mc26.2.jar` SHA-256 为
+  `9114adea1edb3a4dfef943fa57b172640ac710dc9062d62d54fb1975f3f92bcd`；客户端/Oracle 测试 JAR
+  分别为 `d714b3d7e2a4744d5577e0073bb525e5a2452498662b0c98698983cde952adcf` 与
+  `97ee9280a2b160b7082d3b993601a646ac030e8c62665facef63937f32809dae`。这仍是源码/封装/无模型
+  内循环证据，formal AI gates unchanged。
+- 当前需要继续：跑完整 JDK25 Gradle/package/Python 门禁，更新精确产品 JAR 哈希；真实模型仍受
+  之前的 401/授权边界与本机 Darwin 无 Linux/Xvfb 阻断，正式模型/客户端和 M0--M4 仍保持未运行。
+
+## 恢复审计摘要（2026-08-10）
+
+- 当前用户反馈的“光说不做/没有身体”不能归结为一个单一 bug：没有通过能力验证的模型时，生产
+  高层移动/采集/战斗技能会故意 fail-closed；身体和 20 TPS 紧急生存车道仍在线。此前唯一真实
+  MiMo 请求使用 `api-key` 头仍返回 HTTP 401，因此真实模型动作门禁没有启动；真实 Actor/Observer
+  门禁在本机 Darwin 还缺 Linux/Xvfb。这两项是当前外部阻断，不是通过脚本可伪造的成功。
+- 本轮先补了 Tab 列表的真实身体在线标记，随后修复模型断线时 active skill 永久 RUNNING 的
+  生产缺口：已授权技能现在只收尾当前安全原子段，紧急车道会先释放旧输入再安全摘除技能。
+  没有借此把产品源码或 JAR 改成未验证的“AI 已完成”状态。最新开发 JAR SHA-256 为
+  `731b7a4d572ffdb8494c98026c1da0fd008c156a78e54ceeba388185278eae21`。
+- 最后失败/未运行的正式门禁仍是：真实模型 movement/chat-to-action（上游 401）、真实客户端
+  Actor/Observer（Darwin 无 Xvfb）、以及所有 M0--M4/随机 Hardcore 统计；这些全部保持 `NOT_RUN`
+  或 `BLOCKED`，工作树仍为 `DIRTY_NO_COMMIT`/`NON_RELEASE`。
+- 下一步必须在取得有效且获准用于该自定义应用的模型凭据、可运行真实客户端的 Linux/Xvfb worker
+  后，先跑真实 dedicated + Actor/Observer 聊天到动作垂直切片；通过前继续补生产技能与定向
+  Forge 门禁，但不扩大声明范围。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: worker job creator (open)
+
+继续补齐跨平台真实验收的协调端：新增 `scripts/create-worker-job.py`。它从指定 Git
+checkout 读取完整 40 位提交、从精确产品 JAR 计算 SHA-256、从 HTTPS Base URL 只提取主机名，
+并从仅含 64-hex 承诺的文件生成 canonical job manifest；默认发现脏工作树即拒绝，开发诊断的
+`--allow-dirty` 仍在 manifest 中保留 `source.dirty=true`。脚本从不读取或序列化 API key、原始
+seed、世界路径或玩家身份；模型凭据只通过显式公开的 `credential-present/source` 元数据声明，
+实际值仍由 Linux worker 注入。worker 启动前和子运行结束后还会比较实际模型名、Base URL 主机、
+凭据存在性及声明来源；`injected` 只允许 worker 的环境变量或安全文件呈现，不比较或记录密钥内容。
+`e2e/test_worker_protocol.py` 新增干净提交、脏工作树、原始 seed
+拒绝和 URL 路径不泄露测试；完整 Python E2E 通过 39/39，随后 Gradle `check
+verifyReleaseJar e2eClientJar e2eOracleJar --offline` 通过（JDK 25，Forge 65 兼容检查
+published=11，formalMatrixComplete=false）。生产 JAR 哈希仍为
+`731b7a4d572ffdb8494c98026c1da0fd008c156a78e54ceeba388185278eae21`；正式模型/客户端门禁仍未运行。
+
+下一步：在具备 Linux/Xvfb、精确 Forge 65.x JAR 和获授权模型凭据的隔离 worker 上使用 creator
+生成 job，再运行真实 dedicated + Actor/Observer；当前 macOS 仍只允许 `BLOCKED_INFRA`，M0--M4
+及隐藏 Hardcore 统计保持 `NOT_RUN`，源码仍为 `DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: provider-neutral Linux worker contract (open)
+
+为正式 Actor/Observer 和隐藏种子分片补上了一个不绑定云厂商的 worker 契约：
+`e2e/worker_protocol.py`、`scripts/run-e2e-worker.py` 与
+`scripts/verify-worker-result.py`。作业只携带 64 位种子承诺，不接受原始 seed、API key、
+世界路径或玩家身份；作业哈希绑定源码提交、精确产品 JAR SHA-256、Minecraft/Forge/Java、
+模型主机和分片。worker 只把 `MCAI_API_KEY(_FILE)` 作为进程注入，不把凭据写入结果，且发布前
+扫描工件中的密钥。结果必须逐文件 SHA-256、canonical result hash 和 job manifest hash 均通过，
+才能交给中央聚合器；缺少 Linux/Xvfb 或凭据分别记录为 `BLOCKED_INFRA`/`BLOCKED_CREDENTIAL`，
+不会被提升为游戏通过。
+
+定向验证：worker 协议单测与完整 Python E2E 共 34/34 通过；在当前 Darwin 主机用临时公共 job
+运行 worker，正确返回 `BLOCKED_INFRA`、`functionalAiClaim=false`，随后中央 verifier 仍能验证
+结果包。该运行没有启动 Minecraft 客户端，也没有调用模型，因此正式真实模型、Actor/Observer、
+Hardcore 随机种子和 M0--M4 状态不变，继续为 `NOT_RUN`/外部阻断；工作树仍为
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: offline active-skill teardown (open)
+
+本轮修复了一个会直接造成“模型说要做、随后身体停住”的运行时缺口：模型连接丢失时，运行时
+原先完全跳过已经授权的 active skill tick；`SkillSupervisor` 因而一直保持 `RUNNING`，而
+finally 代码又释放了所有身体输入。现在 `CompanionRuntime` 在模型离线时仍允许已存在的 skill
+走一次正常 supervisor 收尾路径；若紧急生存车道先取得所有权，则调用
+`SkillSupervisor.abandonForModelDisconnect()` 记录 `model_disconnected` 的安全终态。该路径不
+启动新技能、不发起规划请求、不传送、不改世界，也不会把“模型在线”伪装成在线。
+
+验证结果：`SkillSupervisorTest`、离线 active-skill source contract 通过；完整 JVM `check`
+通过（当前报告 1076 tests、0 failures、0 errors、2 skips），`verifyReleaseJar`、客户端/Oracle
+测试 JAR、Forge 兼容检查和 Python E2E 30/30 均通过。最新精确产品 JAR
+`build/libs/mcai_companion-0.1.5-dev-mc26.2.jar` SHA-256 为
+`731b7a4d572ffdb8494c98026c1da0fd008c156a78e54ceeba388185278eae21`；释放旧输入后的 Forge
+65.1.0 exact-JAR 专服 lifecycle smoke `e2e/results/no-commit-dirty/20260810T104022Z-e2e071cf86ffb19/` 为
+`PASS`，但 `functionalAiClaim=false`，仍不是模型或陪玩验收。
+
+正式模型/Actor+Observer/随机 Hardcore/M0--M4 继续 `NOT_RUN` 或受外部凭据/客户端环境阻断；
+工作树仍为 `DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步仍需在 Linux/Xvfb 注入经授权的模型环境，
+先完成真实聊天到动作垂直切片，再继续统计门禁。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: formal chat preflight (not run)
+
+正式 `e2eChat` 前置检查明确返回 `NOT_RUN`，不是动作失败：当前主机是 Darwin，未发现隔离
+`Xvfb`，且本次测试进程没有 `MCAI_BASE_URL`、`MCAI_MODEL` 或 `MCAI_API_KEY(_FILE)`。因此
+没有启动客户端、没有调用模型、没有写入任何凭据，也没有改变 M0--M4 门禁状态。结果文件位于
+`e2e/results/no-commit-dirty/20260810T102441Z-formal20260810102441/`，其中
+`functional-preflight.json` 的 `ready=false`，缺失项为 `linux_host`、`Xvfb` 和模型环境。
+
+下一步必须在 Linux/Xvfb worker 上注入经授权用于该自定义应用的模型配置，再运行真实 dedicated
+server、Actor、Observer 和聊天到动作；当前继续保持 `NOT_RUN`/`NON_RELEASE`，不把预检或无模型
+GameTest 当作陪玩验收。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: exact JAR dedicated lifecycle smoke (open)
+
+刚用最新产品 JAR 在 Forge 65.1.0 独立专服运行 `python3 e2e/orchestrator.py server-smoke`。
+`server-smoke-verdict.json` 为 `PASS`：专服干净退出、Mod 加载、SQLite Jar-in-Jar、生产
+headless `ServerPlayer` 登录与关闭生命周期均通过，加载的 JAR SHA-256 与
+`build/libs/mcai_companion-0.1.5-dev-mc26.2.jar` 的
+`ceefa3e120c13d1bbc71cb1fa8787af1fb4a185c2426b907f6856062684065cb` 完全一致。Oracle 的任务
+结果仍是 `functionalAiClaim=false`（没有模型凭据且没有启动聊天/移动/物品任务），所以这只是
+精确工件的服务器生命周期证据，不是 AI 陪玩或 M1--M4 通过。
+
+运行归档：`e2e/results/no-commit-dirty/20260810T102609Z-e2e42b26f3709cf/`。下一步不变：在
+Linux/Xvfb 和有效模型环境中跑真实 Actor/Observer 聊天到动作。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: Tab presence status (open)
+
+本轮修复了一个可见性缺口：Tab 列表此前只有 `[AI]` 前缀，不能区分在线身体和离线/正在
+重建的会话。`src/main/java/dev/mcai/companion/embodiment/EmbodimentModule.java` 现在
+只对真实服务端 `ServerPlayer` 读取 `AiPlayerManager.Status.online()`，显示 `[AI] Name  ●
+online` 或 `[AI] Name  ○ offline`；它不把模型未验证误报成在线模型，也不读取隐藏世界数据。
+
+定向 JVM 编译/测试通过，完整 `check verifyReleaseJar e2eClientJar e2eOracleJar` 通过，Python
+E2E 30/30 通过。新开发 JAR 为
+`build/libs/mcai_companion-0.1.5-dev-mc26.2.jar`，SHA-256 为
+`ceefa3e120c13d1bbc71cb1fa8787af1fb4a185c2426b907f6856062684065cb`；客户端实际视觉门禁仍
+因 Darwin 无 Xvfb 为 `NOT_RUN`。真实模型、随机 Hardcore 与 M0--M4 仍未通过，工作树继续
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+下一步仍是有效模型凭据和 Linux/Xvfb worker 就绪后，先跑真实 dedicated + Actor/Observer
+聊天到动作垂直切片，再继续正式统计；本次 Tab 状态改动不扩大产品声明。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.36 Forge 65.0.0 floor smoke (open)
+
+同一当前源码在声明的最低支持版本 Forge 65.0.0 上运行独立专服
+`zero_human_dedicated_server_chunk_and_respawn`，结果 1/1、1.539 秒；日志确认 Forge 65.0.0
+加载 Mod、无真人时创建 headless `ServerPlayer`、远端玩家区块模拟和普通重生链均通过。Forge
+版本检查提示 65.0.0 不是 65.1.0 最新补丁，这是预期提示而非失败。该结果只证明最低补丁的
+启动/身体/区块内循环，不代表 65.x 全矩阵、真实模型、真人客户端或正式 M0--M4。
+
+没有产品源码变更，产品 JAR SHA-256 仍为
+`2f46900f12f330371e8de15e5f62916d1c2ec7f5f3b5c7a71d82816f43ae7030`；工作树仍为
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步继续生产技能缺口和外部模型/客户端门禁，不把此兼容
+smoke 冒充 AI 陪玩验收。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.35 Python E2E and compatibility audit (open)
+
+离线 Python E2E 结构/安全/兼容回归 `python3 -m unittest discover -s e2e -p 'test_*.py'` 已通过
+30/30。它检查工件清单、测试代码隔离、密钥不泄露、Forge 65.x 声明和失败闭合协议，不启动
+Minecraft 客户端、不调用模型，也不改变正式门禁状态。当前产品 JAR SHA-256 仍为
+`2f46900f12f330371e8de15e5f62916d1c2ec7f5f3b5c7a71d82816f43ae7030`，源码仍为
+`DIRTY_NO_COMMIT`/`NON_RELEASE`；真实模型、真人客户端、随机 Hardcore 和 M0--M4 继续
+`NOT_RUN`。下一步回到生产技能实现/验证，不会把离线审计当成 AI 陪玩结果。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.34 full JVM/package gates (open)
+
+在上述定向回归后运行了 `./gradlew check verifyReleaseJar e2eClientJar e2eOracleJar --offline`：
+Forge 兼容检查通过（当前 65.1.0 运行线，正式矩阵仍未完成），完整 JVM `check`、发布 JAR 内容
+门禁、客户端/Oracle 测试 JAR 构建均通过。测试中的受控异常日志和无效环境覆盖仍按设计被安全
+处理；没有向任何模型提供商重新发送用户凭据。产品 JAR SHA-256 保持
+`2f46900f12f330371e8de15e5f62916d1c2ec7f5f3b5c7a71d82816f43ae7030`，GOAL_STATE JSON 也已验证。
+
+这只是源码、封装和受控内循环证据，不能升格为真实模型/真人客户端/随机 Hardcore 或 M0--M4
+通过；工作树仍为 `DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步继续实现和验证生产技能，不会把脚本
+模拟当作真实 AI 陪玩结果。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.33 headless lifecycle and menu transactions (open)
+
+Forge 65.1.0 独立 GameTest `headless_player_lifecycle_state_and_fair_action` 已通过 1/1，
+耗时 28.79 秒。它让真实 PlayerList-backed headless `ServerPlayer` 完成登录/移除/重登录和状态
+保持，并经过原版箱子存取、熔炉装载/取出、切石机菜单选项、交易、船乘坐/航行、动力铁轨矿车
+乘坐/航行以及其他生命周期/公平动作检查；
+日志显示所有必需测试通过。该测试使用受控物品与结构、无模型和无自然随机世界，只证明身体、菜单
+事务和会话生命周期链，不能升级为模型陪玩、PVP 或 M0--M4 通关证据。
+
+没有新的产品源码变更，产品 JAR SHA-256 仍为
+`2f46900f12f330371e8de15e5f62916d1c2ec7f5f3b5c7a71d82816f43ae7030`。正式 M0--M4、真实模型、
+真人客户端、聊天到动作和随机 Hardcore 通关继续为 `NOT_RUN`；工作树仍为
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步继续选择生产技能缺口做定向门禁，并保留真实模型/客户端
+前置条件的阻断记录。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.32 zero-human simulation window (open)
+
+Forge 65.1.0 独立专服 GameTest `zero_human_dedicated_server_chunk_and_respawn` 已通过 1/1，
+运行约 1.736 秒。测试确认没有真人玩家时，生产启动路径仍创建唯一在线的 headless
+`ServerPlayer`；把它移动到远离测试结构的区块后，原版玩家 ticket 维持了远端区块和相邻模拟区块，
+非玩家实体/方块 tick 正常，随后普通死亡/重生生命周期也完成。测试没有使用强制加载区块、模型、
+命令传送或隐藏扫描，因此只证明“无人在线仍有身体和正常区块模拟”这一门槛，不证明模型会自主游玩。
+
+当前仍没有产品源码变更，产品 JAR SHA-256 仍为
+`2f46900f12f330371e8de15e5f62916d1c2ec7f5f3b5c7a71d82816f43ae7030`。正式 M0--M4、真实模型、
+真人客户端、聊天到动作和随机 Hardcore 通关继续为 `NOT_RUN`；工作树为
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步继续做能直接暴露生产技能的交互/运输原子链，同时维持
+真实模型与客户端门禁不冒充通过。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.31 water, charcoal, and portal atoms (open)
+
+当前源码的 Forge 65.1.0 定向 GameTest 又通过三条真实原版交互链：
+`real_prepare_water_source` 1/1（普通水桶取水/放置水源，631.2 ms）、
+`real_charcoal_furnace_batch` 1/1（木材转木炭并完成熔炉批处理，651.2 ms）以及
+`real_portal_cast_and_light` 1/1（岩浆/水浇筑并点燃下界门，1.246 秒）。这些测试都由真实
+headless `ServerPlayer` 经过原版物品、方块和菜单路径完成，使用受控夹具且无模型；它们只证明
+局部物理原子链，不代表自然随机世界、真实模型、Hardcore 或正式 M2/M4 通关。
+
+本次没有新的产品源码变更，产品 JAR SHA-256 仍为
+`2f46900f12f330371e8de15e5f62916d1c2ec7f5f3b5c7a71d82816f43ae7030`。正式 M0--M4、真实模型、
+真实客户端、聊天到动作和随机种子通关继续保持 `NOT_RUN`；工作树仍为
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步先补齐本轮证据与配置门禁核对，再继续寻找能直接暴露
+生产技能的原版容器/运输、附魔或村民原子链；不会用这些无模型结果冒充专业陪玩验收。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.28 end victory and return regression (open)
+
+当前源码的 Forge 65.1.0 定向 GameTest `real_end_victory_and_return` 已完成 1/1：真实
+headless `ServerPlayer` 进入末地、完成末影龙击杀、触发 `Free the End`，再从返回传送门回到
+主世界并完成退出；日志中的最终状态为 `All 1 required tests passed :)`，运行时间 8.464 秒。
+该测试使用无模型内循环/受控战斗和世界夹具，只证明维度、胜利状态和返回生命周期没有被近期
+受击/导航改动破坏，绝不等价于随机种子、Hardcore、真实模型或真人客户端通关。
+
+本检查点没有新的产品源码变更；当前产品 JAR SHA-256 仍为
+`2f46900f12f330371e8de15e5f62916d1c2ec7f5f3b5c7a71d82816f43ae7030`。正式 M0--M4、真实模型、
+真实客户端、聊天到动作、双客户端/PVP 和随机种子通关继续保持 `NOT_RUN`；工作树仍为
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步继续补充可复现的 M2/M3 原子链并维持每项“无模型内循环”
+边界，之后再处理合规模型和 Actor/Observer 外部门禁。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.29 M2/M3 workstation and farming atoms (open)
+
+在没有新的产品源码变更的情况下，当前 Forge 65.1.0 独立 GameTest 又通过三条真实原版交互链：
+`real_furnace_batch` 1/1（熔炉批处理/燃料/产物）、`workstation_wood_prerequisite_composition`
+1/1（从木材前置到工作台和基础工具组合）以及 `real_prepare_and_plant_plot` 1/1（准备耕地、
+水源和播种，触发 `A Seedy Place`）。这些测试运行在真实 headless `ServerPlayer` 和 vanilla
+菜单/交互路径上，但使用受控夹具且无模型，不代表自然世界、长期农业或正式 M3/M1 门禁。
+
+正式 M0--M4、真实模型、真人客户端、Hardcore 随机种子和双客户端/PVP 仍为 `NOT_RUN`；工作树
+仍为 `DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步继续选择独立的容器/运输或附魔/村民原子链，优先
+查找能直接暴露生产技能而不是只测工具类的场景。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.30 local combat and food atoms (open)
+
+当前源码在 Forge 65.1.0 又通过两条独立物理回归：`real_emergency_slime_defense` 1/1（真实
+headless `ServerPlayer` 受击后的护盾/近战/装备链）和 `real_food_animal_hunt` 1/1（公平第一人称
+观察、接近并获取食物）。它们覆盖用户反馈的“被怪物打后只看不做”这一局部身体路径，但都是
+受控夹具、无模型内循环，不能宣称模型 PVP、自然随机世界或 M0--M4 通过。
+
+接下来审计模型未就绪分支：确保任何高层任务都不会在没有真实模型决策时伪装成已执行，同时保留
+本地紧急生存和低风险装备的合法反射；正式模型请求仍因先前上游 401/Token Plan 使用边界保持
+停止，不重复发送用户凭据。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.27 movement and damage-response audit (open)
+
+本轮先核对了用户反馈中的“转头很慢、跟随只说不走、受击后盯着怪物不动”。当前代码证据显示：
+`FairPlayerActuator` 每 tick 最多旋转 20°，180° 只需约 9 ticks；`MoveToSkill` 仅在水平误差
+达到阈值后推进，并在 20/80 ticks 的对齐停滞窗口重规划。因此暂时没有证据把旋转上限本身改大；
+高层技能仍严格要求模型网关就绪，无 API 时只运行本地生存反射，这个边界与产品声明一致。
+受击路径已是 20 TPS `LivingDamageEvent -> recordDamage -> requestObservation(SEMANTIC_REFRESH)`，
+并由公平视锥/遮挡采样提供实体；不允许通过隐藏实体扫描“解决”误报。正确选择器
+`live_model_selector=mcai_companion:real_player_chat_to_immediate_bound_follow` 已在 Forge 65.1.0
+当前源码通过 1/1，但这是 HoldingModelGateway 内循环证据，不是真实模型或真实客户端门禁。
+
+本检查点之后尚无新的产品源码变更；此前的 Keychain `-w <password>`、保存后读回核验、软期限配置、
+以及不确定地形形状提示均已在 v91.24--v91.26 记录。最近一次正式失败仍是上游模型 401，以及
+Darwin 无 Xvfb 的 Actor/Observer 真实客户端前置失败；M0--M4、真实模型、聊天到动作和移动正式门禁
+继续保持 `NOT_RUN`，第一次错误使用选择器启动的整批测试不计证据。
+
+下一步立即运行正确选择器的无模型专服受击/十僵尸十骷髅回归，若出现可复现停滞再修改最小公平
+动作链；若通过则只记录内循环证据，并继续检查真实模型/真实客户端的外部阻断，不把脚本或无模型
+通过冒充专业陪玩验收。
+
+后续定向结果：十僵尸/十骷髅与铁傀儡场景均在 Forge 65.1.0 通过 1/1；`offline_idle_equipment`
+也通过 1/1，确认没有模型时仍可通过原版背包菜单自动穿戴已拥有的铁帽和盾牌。它们都只是
+当前源码的真实 headless/无模型内循环证据，不能替代用户 API 的真实模型请求、真人客户端或正式
+PVP/M0--M4 门禁。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.26 bounded terrain-shape cues (open)
+
+为回应“深峡谷被描述成石头堆、站在地形里不知如何走”的可复现感知缺口，
+`SemanticObservationJsonCodec` 在既有第一人称表面射线摘要上增加三个不确定提示：
+`possible_canyon_or_cliff_wall`、`possible_confined_uneven_terrain`、
+`possible_drop_or_overhang`。它们只由当前已命中的上/下/侧表面、相对高度跨度和最近距离推导，
+不扫描邻区块、不读取隐藏地形；JSON 警告明确标为 uncertain hypothesis，规划器仍被要求重新观察
+后再跳跃、搭桥、下降或穿越。新增 codec 回归覆盖四个可见表面和提示边界；定向感知/规划器测试通过。
+这改善模型输入可解释性，但没有真实模型或随机峡谷纵向门禁证据，不能宣称地形专家已验收。
+
+当前源码重新打包与精确专服 smoke：产品 JAR SHA-256
+`2f46900f12f330371e8de15e5f62916d1c2ec7f5f3b5c7a71d82816f43ae7030`，审计 slim JAR SHA-256
+`129c7d1ec0d7fd3240b104114f80f8295ccc4139fc66a44b7db7bb49d792bb69`；归档
+`e2e/results/no-commit-dirty/20260810T092830Z-e2e58d5314bb4e8`。生命周期和精确 SHA 通过，
+Oracle 无模型配置停止，`functionalAiClaim=false`。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.25 persistent-store round-trip guard and status clarity (open)
+
+在 v91.24 的 macOS helper 修复上再加了跨平台保存后读回核验：
+`ApiKeyManager.saveFromSetup` 只有在平台安全存储读回值与候选凭据逐字符一致时才返回
+`persistent=true`；写入成功但读回为空/失败会明确返回
+`process_only_secure_store_unavailable`，不会把下一次重启风险隐藏起来。加载副本只在内存中
+比较后立即清零。新增 `ApiKeyManagerRestartPersistenceTest` 的 write-only store 回归，和原有
+跨管理器重启/并发测试均通过。
+
+设置界面补齐 `ready`、Keychain、unchanged、process-only、恢复失败等状态的中英文说明，避免
+把原始内部状态码显示成“无响应”或把仅当前会话的凭据误报为重启安全。
+
+当前工件已重新打包：`check jar jarJar verifyReleaseJar e2eClientJar e2eOracleJar` 通过；产品
+JAR `build/libs/mcai_companion-0.1.5-dev-mc26.2.jar` SHA-256 为
+`39edbe51a4acd144af8893147d327757f3d8e831431e4655f219830ea7a9e5a2`，审计 slim JAR SHA-256 为
+`ba4473ffc39af80b4e56366f27acf1f6f85757943265361bbe07af646d247671`。精确产品 JAR 专服 smoke
+归档为 `e2e/results/no-commit-dirty/20260810T092229Z-e2e787c3b3608de`，专服启动、AI
+ServerPlayer、SQLite Jar-in-Jar、精确 SHA 和干净退出均通过；Oracle 无模型配置而停止，
+`functionalAiClaim=false`。
+
+同一当前工件类路径创建全新的 `ApiKeyManager` 读取现有 macOS Keychain（只输出布尔值、长度和
+格式形状，不输出密钥内容），结果 `fresh_manager_restored=true credential_length=51
+prefix_shape=true`；这证明“新服务运行时恢复”本地链路已可用。该结果不等价于服务商认证成功，
+也不改变已知上游 401 和 Token Plan 使用范围限制。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.24 macOS Keychain persistence root-cause fix (open)
+
+复核用户反复反馈的“重进世界必须重新输入 API Key”后，确认不是设置界面单纯丢状态，而是
+`MacOsKeychainCredentialStore.save` 的真实实现错误：`security add-generic-password -w` 在
+非交互进程中不从 stdin 读取密码，旧代码会返回成功但创建空密码项；随后新的
+`ApiKeyManager` 能找到 Keychain 项却拿不到实际凭据。已修复为系统工具支持的非交互
+`-w <password>` 形式；父进程不记录命令行、不写日志，启动子进程后立即清空命令数组，错误输出仍被丢弃，
+密钥不会进入 TOML、世界、SQLite、日志、崩溃报告或截图。Windows DPAPI、Linux Secret Service、
+`MCAI_API_KEY(_FILE)` 注入路径未改变。
+
+验证：在当前 macOS 主机用独立测试 service/account 写入一个非用户密钥占位值，随后通过同一
+适配器读取并核验长度/首字符，最后删除测试项；结果 `loaded_length=24 first_char_matches=true`，
+退出码 0，未接触用户 Keychain 项。定向 `ApiKeyManagerRestartPersistenceTest`、
+`ApiKeyManagerConcurrencyTest`、`ModelRuntimeTest` 通过。该证据只证明本地凭据持久化边界，
+不证明 MiMo 凭据有效或真实模型陪玩；现有真实模型 401、Actor/Observer 缺失和 M0--M4 正式门禁
+仍保持 `NOT_RUN`。
+
+下一步：重新打包并运行精确产品 JAR 的专服生命周期 smoke，更新工件哈希；随后继续真实模型
+纵向切片所需的外部凭据/隔离客户端检查，不把无模型 GameTest 升格为功能通过。
+
+重新打包结果：`check jar jarJar verifyReleaseJar e2eClientJar e2eOracleJar` 通过；产品 JAR
+`build/libs/mcai_companion-0.1.5-dev-mc26.2.jar` SHA-256 为
+`6a6f9bf293047794cb277453f2911feb0ffb99ba0e3bc0ee66a228bcf20db341`，审计 slim JAR SHA-256 为
+`73169613e79cb4919debeca41a5777dac993a15fc4cc1a9df31d9ed8f438d678`。精确产品 JAR 专服
+smoke 归档为 `e2e/results/no-commit-dirty/20260810T091548Z-e2ee8179f946fe8`，生命周期检查
+通过且精确 SHA 一致；Oracle 因没有模型配置在结果前停止，`functionalAiClaim=false`，因此
+不是聊天到动作或正式 M0--M4 证据。工作树仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.23 immediate follow Forge retest (open)
+
+当前产品源码在 Forge 65.1.0 / MC 26.2 实际 GameTest
+`real_player_chat_to_immediate_bound_follow` 1/1 通过。测试由正常 ServerPlayer 聊天提交自然
+跟随请求，服务端绑定发起者身份、安装普通 `follow_entity` 技能并推进身体；第二条跟随催促保留
+原目标且没有重复替换。该链路不依赖模型往返，但仍仅覆盖受控测试场，不是复杂峡谷/随机地形或
+真实模型专家证明。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.22 Enderman regression (open)
+
+在 v91.21 方向性受击修复后，Forge 65.1.0 / MC 26.2 实际服务端
+`real_emergency_enderman_defense` 1/1 通过；末影人受击、传送后的有限重捕获、盾牌/近战和身体
+生命周期均完成，未调用模型网关。该结果只属于当前源码的无模型物理回归，不改变真实模型、双客户端、
+Hardcore 随机种子或 M0--M4 正式门禁的 `NOT_RUN` 状态。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.21 directional damage footwork and Forge combat retest (open)
+
+当前可复现的“光说不做/受击只举盾”身体缺口已做一个窄范围修复：
+`src/main/java/dev/mcai/companion/skills/core/EmergencySurvivalController.java` 现在只在
+自身公平伤害事件携带非零方向时，允许已处于 `GUARDING`/`HOLDING` 的状态重新选择一个刚观察到的
+安全相邻格；没有完整格证据时，仍只发有界的原版潜行退避输入。它不读取攻击者身份、隐藏坐标或玩家意图，
+也不会因被玩家击中自动还击。盾牌连续使用与 `RETREATING` 的时间上限保持不变。对应回归测试在
+`src/test/java/dev/mcai/companion/skills/core/EmergencySurvivalControllerTest.java`，覆盖方向性
+受击、盾牌和潜行后退。
+
+验证结果：定向 `EmergencySurvivalControllerTest` 通过；Forge 65.1.0 / MC 26.2 实际服务端
+`real_emergency_iron_golem_duel` 1/1 通过；`real_emergency_zombie_skeleton_horde`（十僵尸、十骷髅）
+1/1 通过。两项均为无模型身体/原版物理证据，不是模型决策或正式 PVP 统计。
+
+当前源码重新完成 `check jar jarJar verifyReleaseJar e2eClientJar e2eOracleJar`，全部通过；产品 JAR
+`build/libs/mcai_companion-0.1.5-dev-mc26.2.jar` SHA-256 为
+`34a4bff873d9b8a46510f78632e94daefbf3402c805749afcf8023904dabc50e`，审计 slim JAR
+`1921dd57474b3404bbd4de052163f8c2f54a5722da52a01dd5a231dc9755ecb5`。精确产品 JAR 专服 smoke
+归档为 `e2e/results/no-commit-dirty/20260810T085930Z-e2eee78ce9309ca`，生命周期检查通过，
+`functionalAiClaim=false`；工作树仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+最后的正式阻断仍未改变：真实 MiMo 凭据能力探测此前收到上游 401，当前 macOS 无 Linux/Xvfb
+Actor/Observer worker；真实模型 chat-to-action、双客户端、Hardcore 随机种子和 M0--M4 继续
+`NOT_RUN`。下一步是继续做可复现的本地动作/模型协议修复，并在合规有效凭据和隔离客户端 worker
+到位后先跑真实 dedicated + Actor/Observer 纵向切片；不把本地 GameTest 或无模型身体测试升级为
+“专业陪玩”通过。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.20 package and lifecycle retest (open)
+
+本轮变更后的完整 JVM/工件链已通过：`check jar jarJar verifyReleaseJar e2eClientJar
+e2eOracleJar --offline --no-daemon --rerun-tasks -Pforge_compile_version=65.1.0`，以及 Python
+E2E `30/30`、Python 编译和 JSON/兼容校验。当前产品工件为
+`build/libs/mcai_companion-0.1.5-dev-mc26.2.jar`，SHA-256
+`176b197edfc5db4240090c77c35b92d1eb7dd4775a88c62fd1ab604f578a6c67`；测试用 slim JAR
+`9f8b0f1b5af55be6344c4b95399601b4e404043d4690d16a7413d42a03779318`，仍不属于可安装产品。
+
+精确产品 JAR 的 Forge 65.1.0 dedicated-server smoke 也通过：AI `ServerPlayer` 出现、
+SQLite 仅从产品 Jar-in-Jar 加载、精确 SHA 绑定、干净退出均通过；归档为
+`e2e/results/no-commit-dirty/20260810T084901Z-e2eed372da18cab`。Oracle 在无模型配置下
+按设计停止，`functionalAiClaim=false`，所以该归档不是聊天到动作、双客户端、模型或 M0--M4
+证据。工作树仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`，正式门禁保持 `NOT_RUN`。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.19 punctuation-safe follow intent (open)
+
+本轮先复核了当前用户侧“光说不做”的可复现边界：离线装备 GameTest 在 Forge 65.1.0 /
+MC 26.2 实际服务端启动并通过，说明已经拥有的铁头盔和盾牌会通过原版背包菜单事务穿戴；
+它不是当前停滞的根因。当前真实模型门禁仍在能力握手阶段收到上游 `AUTHENTICATION`/
+401，因而高层技能合法保持停用，不能把无模型 GameTest 当作陪玩通过。官方 MiMo 文档仍
+确认 Token Plan 使用 `tp-` 凭据和专用 Base URL，并允许 `api-key` 或 Bearer 认证；本次
+没有输出、写入或重新传播任何密钥。
+
+为减少真实聊天中的“跟我，走”/“跟我……”被当成普通对话，已改
+`src/main/java/dev/mcai/companion/communication/PlayerTaskIntent.java`：只在跟随短语
+匹配阶段去除标点和空白，增加“跟我去”“跟过来”“跟着走”等自然变体；原始玩家文本仍保留
+在审计/目标上下文中，不改变模型权限或世界写入边界。新增断言在
+`src/test/java/dev/mcai/companion/communication/PlayerTaskIntentTest.java`。
+
+定向验证：`PlayerTaskIntentTest` 通过；Forge 65.1.0 实际 GameTest
+`mcai_companion:offline_idle_equipment` 通过（1/1，普通菜单装备，零模型）。最后失败门禁
+仍是 Darwin 无 Linux/Xvfb 且当前真实凭据 401；Actor/Observer、真实模型 chat-to-action、
+M0--M4 继续 `NOT_RUN`。下一步是获得合规且有效的模型凭据后，先跑真实 dedicated + Actor /
+Observer 纵向切片；在此前继续只做可复现的本地安全/动作修复并保持正式门禁未通过。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.18 provider-auth rejection quarantine (open)
+
+真实 provider 探测只发出 1 个请求，当前本机安全存储中的凭据被服务商拒绝；结果为
+`AUTHENTICATION`，没有把失败伪装成可用模型，也没有输出密钥。这个失败解释了“进世界后
+API 又失效/身体只说不做”的一条真实根因：认证失败后旧凭据仍可能被同一运行时再次恢复。
+本轮再次用同一真实配置运行 `LiveProviderSmokeTest`，仍在第 1 个请求收到
+`AUTHENTICATION`；失败发生在能力握手，不是游戏脚本或模型动作结果。
+
+现在 `ModelRuntime` 在 401/403 后会清除进程内凭据、标记
+`credentialRejected`，阻止恢复/能力探测/缓存模型重新启用，并让设置快照报告凭据不可用；
+不自动删除 Keychain、DPAPI 或 Secret Service 中的持久密钥。只有用户在设置页显式保存一
+个替换凭据，运行时才解除隔离；空凭据更新会返回
+`api_key_rejected_requires_replacement`。新增 `ModelRuntimeTest` 覆盖恢复阻断、探测阻断、
+空凭据拒绝和新凭据解除隔离。
+
+定向 `ModelRuntimeTest` 在 Temurin JDK 25/Forge 65.1.0 下通过。当前仍未有有效的真实
+模型凭据，所以 Actor/Observer、自然聊天到动作、Hardcore 随机种子和 M0--M4 继续
+`NOT_RUN`；最近正式可复现的专服 smoke 仍仅证明生命周期，不能证明陪玩功能。下一步是
+把新的隔离状态接入真实客户端设置页回归，并在用户重新输入且 provider 探测成功后运行
+真实模型纵向切片；在此之前不升级任何正式门禁。随后完整
+`check jar jarJar verifyReleaseJar e2eClientJar e2eOracleJar`、30/30 Python 审计和兼容
+校验均通过；当前产品 JAR SHA-256 为
+`bc5e16d096ca797383cd80f6371dadb95e42934d7c29730628d6f095fb9b1753`，审计 slim JAR 为
+`9bc89eeeb6877b7a61ecc314ae98efebf393eea76317469f9b0f109d158cc278`。
+随后以同一精确产品 JAR 运行
+`e2e/results/no-commit-dirty/20260810T083151Z-e2ef802762c8cd6` 专服 smoke：自动出现
+AI `ServerPlayer`、SQLite 仅从产品 Jar-in-Jar 加载、干净退出和精确 SHA 绑定均通过；
+Oracle 因无有效模型配置在结果前停止，`functionalAiClaim=false`，所以这只是生命周期
+证据，不是模型聊天或动作通过。
+设置页还增加了 `api_key_rejected`、`saved_probe_authentication` 等状态的中英文可读
+提示，避免用户把认证失败误解为模型仍在思考；未知服务端代码继续原样保留用于诊断。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.17 explicit credential precedence (open)
+
+又闭合一个可复现的跨平台恢复边界：`ApiKeyManager.unlockPersisted()` 之前先读
+Keychain/DPAPI/Secret Service，再读 `MCAI_API_KEY(_FILE)`；当服务账号留下旧安全
+存储项时，管理员轮换的显式注入会被旧值遮蔽，表现为“重新进世界后 API 失效”。
+现在显式外部注入优先，若没有注入才读取平台安全存储；凭据仍只进可擦除进程内存，
+不会写入世界/TOML/SQLite/日志，且同一进程内保存的设置值仍由 session store 优先。
+新增重启持久化回归覆盖旧持久值被新注入覆盖，README、SECURITY、IMPLEMENTATION_STATUS
+同步了跨平台语义。
+
+验证：固定 Temurin JDK 25/Forge 65.1.0 下
+`ApiKeyManagerRestartPersistenceTest` 通过；完整
+`check jar jarJar verifyReleaseJar e2eClientJar e2eOracleJar --offline --no-daemon`
+通过；当前唯一可安装产品 JAR SHA-256 为
+`ad83a6a11756e24a41add0b2910752179e4c8727c24e532d2aeb7ec9d643c08d`，审计 slim JAR
+为 `e9a070a3f4f410a8b87e12cad5c914db1a6aac198fa400504f0724732b11d66b`。这些是
+本地凭据/工件门禁，不是实际模型或游戏陪玩证明。
+
+最后失败门禁仍是真实客户端 preflight：Darwin 无 Linux/Xvfb、模型端点/名称和凭据；
+真实 Actor/Observer、模型 chat-to-action、M0--M4 仍 `NOT_RUN`。下一步是在可用的
+隔离 Linux/Xvfb worker 和合规模型凭据上运行现有 functional 及 M3 摘要协议；没有这些
+外部前置时继续保持 `NOT_RUN`，不把本地测试冒充正式通过。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.16 M3 evidence protocol (open)
+
+本轮继续的可执行缺口不是再写一个“理论上支持生电”的声明，而是 M3 正式
+门禁此前只有一个泛化 `scenario_runner_not_implemented` 分支，无法审计陪玩、
+建筑、农场/机器变体和长期记忆摘要。新增 `e2e/m3_protocol.py`、
+`scripts/aggregate-m3-summaries.py`，并将 `e2eM3` 接入正式入口。协议拒绝
+凭据、提示词、世界路径、玩家身份、原始种子、重复 case 或 partial shard；每个
+case 必须由真实 dedicated server、正常客户端、实际配置模型和只读 Observer
+共同证明，且明确无作弊命令、无直接世界/背包修改、重启/区块卸载/玩家中断均已
+验证。聚合器还要求至少 50 个自然语言陪玩 case、30 个未见场地建筑 case、协议
+列出的每种农场和机器能力各 3 个未见变体，以及 100 小时、10,000 标点、100,000
+资产和查询 p95 预算；精确产品 SHA-256 与 40 位源码提交绑定后才有资格进入
+release pass。
+
+已改文件：`e2e/m3_protocol.py`、`scripts/aggregate-m3-summaries.py`、
+`e2e/formal_gates.py`、`e2e/test_m3_protocol.py`、`e2e/test_formal_gates.py`、
+`e2e/README.md`、`docs/verification/M3.md`、`docs/progress/GOAL_STATE.json`。
+定向 M3/formal-gate 测试、Python 全套 `30/30`、py_compile 和 GOAL_STATE JSON
+校验通过。协议小夹具仅证明 fail-closed wiring，不是模型或游戏功能证据。
+
+最后的真实功能门禁仍是 `python3 e2e/orchestrator.py preflight
+--forge-version 65.1.0` 返回 `ready=false`：当前宿主 Darwin，缺 Linux/Xvfb、
+`MCAI_BASE_URL`、`MCAI_MODEL` 和 `MCAI_API_KEY`/文件注入；真实 Actor/Observer、
+模型聊天到动作、M0--M4 仍为 `NOT_RUN`。下一步是获得合规模型凭据和隔离 Linux/Xvfb
+worker 后运行现有 `functional`，然后按 M3 摘要协议归档真实分片；在此前继续做
+本地可验证的安全/动作回归，但不把任何无模型 GameTest 或协议夹具提升为专业陪玩
+通过。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.15 real-client preflight boundary (open)
+
+最新 `python3 e2e/orchestrator.py preflight --forge-version 65.1.0` 仍明确返回
+`ready=false`：当前宿主为 Darwin，缺少 Linux host、Xvfb、`MCAI_BASE_URL`、`MCAI_MODEL` 和
+`MCAI_API_KEY`/`MCAI_API_KEY_FILE`。预检没有启动 Minecraft 客户端、没有触碰物理显示器、没有
+读取或发送任何密钥；这是真实功能门禁的基础设施状态，不是产品 PASS/FAIL。故 chat-to-action、
+双客户端渲染、M1--M4 随机 Hardcore 统计继续保持 `NOT_RUN`。本轮可完成的凭据、保存/重启、
+WAL、工件和本地回归已继续闭合，下一步外部恢复命令仍是把合规模型与 Linux/Xvfb worker 注入同一
+`e2e/orchestrator.py functional`/隐藏种子 runner。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.14 WAL restart audit closure (open)
+
+重启门禁暴露并修复了一个真实的审计竞态。`restart-smoke` 第一次读取时偶发得到
+`readable_production_memory_database`/零生命周期行，但随后同一归档的 SQLite 已出现完整
+4 行（两次 `started`、两次 `stopping`）；不是产品生命周期丢失，而是 Forge userdev 退出尾部的
+WAL/共享内存锁和只读 URI 的即时读取相撞。生产 `MemoryDatabase.close()` 现在在释放 JDBC 连接前
+做有界的 `wal_checkpoint(TRUNCATE)`；`e2e/restart_gate.py` 使用 `query_only`、30 秒 busy timeout；
+`e2e/orchestrator.py` 对只读验证做最多 30 秒的有界重试，不修改数据库、不放宽缺失证据。
+
+定向 MemoryDatabase/JUnit 与 Python restart-gate/orchestrator 测试通过；随后固定 JDK 25 的完整
+Gradle `check`、Python E2E `26/26`、Python 编译、JSON 校验和兼容声明校验也通过。最新真实两次启动归档
+`20260810T074848Z-e2e1d12655b10fc` 在 Forge 65.1.0 为 `PASS`（`verifierAttempts=1`，4 条
+lifecycle audit，稳定 companion UUID，start goal revisions `[0, 0]`，两次 clean exit），产品
+SHA-256 为 `520bdfcda0e6296db08d3cfa5ed231267dde4037e74939dfe7c19aab8901aed9`，但
+`functionalAiClaim=false`。这仍是生命周期/保存恢复证据，不是模型聊天、实时客户端或 M0--M4
+通过；正式状态继续 `NOT_RUN`，工作树仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.13 injected-credential restart regression (open)
+
+为直接覆盖 Debian/Windows Server/容器的无 UI 路径，新增
+`ApiKeyManagerRestartPersistenceTest.aFreshServerManagerRestoresAnInjectedCredentialWithoutUiInput`：
+两个独立服务端作用域使用 `MCAI_API_KEY` 注入，在没有平台持久存储时都能从启动注入恢复，且
+测试会清零读取到的临时 `char[]`。该测试与 secure-store 进程降级、ModelRuntime 和设置状态
+测试均通过固定 Temurin JDK 25/Forge 65.1.0 定向 Gradle 运行；随后完整 `./gradlew check`
+也通过（含兼容检查与全部 JVM 测试）。生产 exact-JAR smoke 的上一
+次绑定仍是 `20260810T073450Z-e2e4a5896da4719`，未因测试源文件改变产品逻辑；正式 M0--M4
+仍保持 `NOT_RUN`。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.12 setup status correctness (open)
+
+定向复核又发现一个 UI 语义 bug：`ModelSetupModule` 之前用
+`!outcome.credentialPersistent()` 直接计算 `restartRequired`，所以玩家只改 Base URL 或
+Model Name、继续使用已从 Keychain/DPAPI/Secret Service/环境注入恢复的凭据时，也会看到错误的
+“restart required”。现在由 `requiresCredentialRestart` 只把 `process_only` 与
+`process_only_secure_store_unavailable` 标记为需要重启注入；`unchanged` 和实际平台安全存储都
+不会误报。新增 `ModelSetupCredentialStatusTest` 覆盖这些存储值。
+
+固定 Temurin JDK 25、Forge 65.1.0 的定向 Gradle 测试通过（凭据恢复、ModelRuntime、设置状态），
+此前 exact-JAR smoke 仍为 `20260810T073125Z-e2e0e32248a9531` PASS。该修复只改善设置反馈，不
+改变模型请求、安全边界或正式门禁；M0--M4/真实 Actor+Observer/真实模型继续 `NOT_RUN`。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.11 packaged fallback verification (open)
+
+跨平台凭据修复已完成定向闭环：固定 Temurin JDK 25、Forge 65.1.0 下 `./gradlew check
+--offline --no-daemon --rerun-tasks` 成功；随后 `jar jarJar verifyReleaseJar e2eClientJar
+e2eOracleJar` 成功。随后 exact-JAR dedicated-server smoke
+`20260810T073450Z-e2e4a5896da4719` 在 Forge 65.1.0 通过：启动、Oracle、headless
+ServerPlayer、SQLite Jar-in-Jar、精确工件和优雅退出均通过，`functionalAiClaim=false`。
+该次实际生产工件为
+`build/libs/mcai_companion-0.1.5-dev-mc26.2.jar`，SHA-256
+`1094ac0e9fe8ecd5032f99cfb8a9fdc7172aa463b4c0f6ba4d8261339c3ffc55`，审计 slim JAR 仍隔离在
+`build/audit-libs/`；Python E2E 26/26、JSON 校验、Python 编译和 secret-pattern 扫描通过。
+这只是源码/工件回归，未运行真实模型或双客户端，不改变 formal M0--M4 的 `NOT_RUN` 状态。
+
+下一步优先级保持不变：在可用合规模型、Linux/Xvfb Actor+Observer 和隐藏随机 Hardcore worker
+就绪后，运行真实 chat-to-action、移动、背包/菜单与长时门禁；在这些前置条件缺失时继续修复可验证
+的本地安全边界，并保持 `DIRTY_NO_COMMIT`/`NON_RELEASE`，不把本地夹具结果包装成专业陪玩证明。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.10 cross-platform credential fallback (open)
+
+本轮继续处理“换平台/重启后 API Key 不可用”的确定性缺口。根因不是 API Key 被写入日志或
+模型网关重复请求，而是 `ModelRuntime.storeAndInstallProfile` 在设置页请求持久化保存时，把
+“当前平台没有可用安全凭据存储”错误地当成硬失败；这会阻断 Debian 无桌面 Secret Service、
+受限 Windows/macOS 环境，以及服务器进程内通过环境变量注入的合法降级路径。`ApiKeyManager`
+本来已经支持 macOS Keychain、Windows DPAPI、Linux Secret Service、`MCAI_API_KEY` 和
+`MCAI_API_KEY_FILE`，但此前最后一个分支被 runtime 拒绝，导致用户看见保存失败或下次进入世界
+再次输入。
+
+已改文件：`runtime/ModelRuntime.java` 接受并明确标记
+`process_only_secure_store_unavailable`（只在当前进程有效，不伪装成重启安全保存）；
+`modelsetup/ModelSetupModule.java` 将该结果映射为 secret-free 的
+`saved_verified_process_restart_required` 状态并设置 `restartRequired=true`；英文/中文语言包
+增加对应说明；`credential/ApiKeyManagerRestartPersistenceTest.java` 改为验证 secure store
+不可用时仍可用当前会话、但 `credentialPersistent=false`。下一次启动应通过系统安全存储或在启动前
+设置 `MCAI_API_KEY`/`MCAI_API_KEY_FILE` 恢复，运行时不会把明文密钥写入世界、TOML、SQLite、
+日志或崩溃报告。
+
+本轮最后一次定向 Gradle 运行（固定 Temurin JDK 25、Forge 65.1.0、offline、rerun）中
+`ApiKeyManagerRestartPersistenceTest` 与 `ModelRuntimeTest` 通过，`BUILD SUCCESSFUL`；尚未把
+此结果升级为正式模型或游戏门禁。正式 M0--M4、真实模型、Actor/Observer、随机 Hardcore 统计
+仍为 `NOT_RUN`，工作树仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步是跑完整 `check`、Python E2E
+和 JSON/密钥审计，再在具备合规模型与隔离 worker 时运行真实分片；不可用外部前置条件时继续
+保持正式状态为 `NOT_RUN`，不凭本地夹具宣称陪玩可用。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.09 hidden-seed statistical gate (open)
+
+本轮没有把受控 GameTest 或单个成功样本提升为 M4。当前正式缺口是隐藏种子评测只有分片
+`summary.json` 生成器，没有安全的跨分片审计入口；直接相信分片计数会允许重复用例、准备未运行
+用例、原始种子泄露或被篡改的小时比例进入统计结果。已新增共享协议模块
+`e2e/hidden_seed_protocol.py`、命令 `scripts/aggregate-hidden-seed-summaries.py`，并将
+`aggregateHiddenSeeds` 接入 `e2e/formal_gates.py`。
+
+聚合器现在逐分片重算终态、Hardcore/evaluation lock、污染/死亡、末影龙/返回传送门、1/2/6 小时
+计数和比例；拒绝 raw seed、private salt、caseDir、重复 `caseId`/seed commitment、非 terminal
+或 harness failure。completion 的 1,000-case M4 只在 2 小时至少 `ceil(95%)` 且 6 小时至少
+`ceil(99%)` 时才返回 PASS；缺少 `MCAI_HIDDEN_SEED_SUMMARIES` 时正式门禁明确返回 `NOT_RUN`。
+M1 foundation 和 M2 completion 的聚合阈值也在共享协议中保留，尚未执行任何正式样本。
+
+本轮定向证据：Python E2E `26/26` 通过，hidden summary 协议/工件绑定/重复/计数篡改/原始种子/慢样本/Hardcore
+死亡分母测试通过，M1/M2/M4 三条统计门禁的无摘要边界通过，正式 release 还要求
+`MCAI_EXPECTED_PRODUCT_SHA256` 精确绑定，CLI 缺文件 fail-closed，
+`aggregateHiddenSeeds` 无摘要返回 `NOT_RUN`，Python 文件编译通过；
+固定 Temurin JDK 25 下 `./gradlew check --offline -Pforge_compile_version=65.1.0` 也通过。
+没有真实模型、Linux/Xvfb Actor+Observer 或随机 Hardcore 评测运行，因此 M0--M4、
+`m4Hidden1000` 仍为 `NOT_RUN`；工作树仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步是把该统计
+入口在可用合规模型与隔离评测 worker 上运行真实分片，并在干净 release commit 上复核，不伪造统计结果。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-10 continuation checkpoint: v91.08 lifecycle safety and p95 closure (open)
+
+本轮已闭合当前真实整合门禁的最后一条性能阻断，但仍未提升正式 M0--M4 状态。根因链如下：
+`run-debug293` 在末地入口持续收到无方向 `RECENT_DAMAGE_EVENT`，原安全扫描只转头不脱离；新增
+的第一次方向性探针在 `run-debug295` 被证明方向错误，身体进入入口石墙并发生窒息。探针改为沿当前
+第一人称扫描方向的有界潜行输入后，`run-debug297` 已真实走完末地击龙/返回路径，但 rolling p95
+为 3.669 ms，性能门禁失败。随后 `run-debug298` 的导航/应急 JVM 定向测试通过；导航射线采样和
+重复 AIR 证据做了无行为变化的分配优化，并在 `PerceptionNavMapper` 对同一语义 revision 缓存不可变
+`LocalNavSnapshot`，避免多个读者重复复制滚动地图。
+
+当前源码真实 Forge 65.1.0 无客户端 lifecycle 复测为 `run-debug302`（终端会话最终完整收尾）：
+登录/移除/重连、原版菜单与装备、移动、下界传送门、掉落物拾取、末地入口、末影龙击杀、返回
+传送门全部完成；`samples=6159`、平均 `641592 ns`、rolling p95 `1497500 ns`、窗口最大值
+`57745041 ns`，低于 2 ms p95 门禁，GameTest `1 required tests passed`，Gradle `BUILD SUCCESSFUL`。
+这是无模型、无真人客户端的 embodied inner-loop 证据；不是实时模型、Actor/Observer、Hardcore
+随机种子或 M0--M4 统计通过。当前模型凭据历史探测仍为一次 HTTP 401，不能据此宣称 AI 陪玩。
+
+已改文件：`skills/core/EmergencySurvivalController.java`、其定向测试、
+`navigation/PerceptionNavMapper.java`（射线分配优化与快照缓存），以及本检查点和状态证据。
+随后完成的当前源码审计为 `check jar jarJar verifyReleaseJar e2eClientJar e2eOracleJar` 全部成功、
+JVM `1066`（0 failures/0 errors/2 skipped）、Python E2E `20/20`、Forge 65.0.0 compile 成功、
+兼容声明和密钥模式扫描通过；`run-debug303` 零真人区块/死亡/重生和 `run-debug304` 真人登录邻近
+出生也各自 `1/1 PASS`。下一步仅在存在合规可用模型和真实 Actor/Observer 环境时运行聊天到动作门禁，
+继续保持正式 M0--M4 `NOT_RUN`，不把这些无模型生命周期结果包装成陪玩或通关证明。
+
+当前源码的两条局部战斗复测也通过：Forge 65.1.0 `run-debug305` 铁傀儡单挑 `1/1`（4.192 s），
+`run-debug306` 十僵尸/十小白局部生存 `1/1`（4.224 s）。它们证明无模型时本地应急 PVE 车道不会
+原地挨打，但不等于模型控制 PVP 或正式 M0--M4 统计门禁。
+
+Updated: 2026-08-10 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v91.07 coordinate-free crop maintenance (open)
+
+当前 bug 根因已经收敛：整田维护并非缺少模型话术，而是普通玩家身体在处理后半块农田时会被水渠、
+不可达旧工作位和过长巡检拖住，最终表现为“接受任务但不完成”。修复保持公平边界：技能仍只消费自身
+第一人称滚动观察，不读隐藏区块或世界坐标答案；每次破坏和补种前重新观察并绑定 revision。不可达格
+改为延后处理，巡检改用有 240 tick 上限的滚动 `TravelToSkill`，并让 `MoveToSkill` 在水中只朝新鲜观察
+到的安全落脚格持续游动/跳跃。机制地图保留期延长到 12,000 tick，但动作仍现场重验，且总半径、容量、
+会话和维度边界不变。
+
+最后一次失败门禁为 `run-debug180`：完成 3/8 后巡检耗尽；随后 `run-debug181`、`run-debug182` 在
+Forge 65.1.0 两个独立 dedicated GameTest 进程中连续 1/1 PASS。每次都要求真实 headless
+`ServerPlayer` 完成八次原版挖掘、拾取至少八份小麦、八次原版补种，并最终看到全部八格为 0 龄小麦。
+这只是 release-excluded、无模型、无真人客户端的 embodied inner-loop 证据，不是 M3 或随机种子
+通关通过。
+
+最低版本复验又发现并闭合了一个此前被几何运气掩盖的生产缺陷。`run-debug183` 在 Forge 65.0.0
+完成 4/8 后于水渠旁耗尽；给短程 `TravelToSkill` 加上同等的公平岸边游泳恢复后，`run-debug184`
+仍在 3/8 后失败。其日志证明身体实际站在无碰撞的小麦内，但导航把所有非空气视觉表面都归类为
+`SOLID`，形成“身体占用的头部格是墙”的自锁。语义格式 7 现从已被第一人称射线命中的原版方块状态
+只发布 `EMPTY` 或 `OBSTRUCTED_OR_PARTIAL` 粗粒度碰撞 affordance，不暴露碰撞箱或相邻隐藏方块；
+导航把 `EMPTY` 映射为可穿行且保留独立来源。修复后 `run-debug185`（32.05 秒）和离线缓存复跑
+`run-debug187`（18.52 秒）在 Forge 65.0.0 连续 1/1 PASS。`run-debug186` 仅在启动前下载 launcher
+manifest 超时，未进入 Minecraft，单独保留为基础设施失败而非功能结果。
+
+本轮主要改动文件为 `skills/farming/MaintainObservedCropFieldSkill.java`、
+`HarvestAndReplantStepSkill.java`、`skills/core/MoveToSkill.java`、
+`skills/core/TravelToSkill.java`、`navigation/PerceptionNavMapper.java`、
+`perception/VisibleBlockFace.java`、两个生产感知采样器、`mechanism/MechanismSurveyPolicy.java`，以及
+对应 planner/skill/GameTest 测试和 test resources。恢复时的下一步是完成正在运行的完整 JVM
+回归，再在 Forge 65.1.0 复验当前源码并进行组装和 release JAR 内容审计；
+正式 Actor/Observer、合法真实模型、无玩家服务器长时运行和 M1--M4 统计门禁继续保持 `NOT_RUN`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v91.06 field commissioning (open)
+
+`run-debug161` 在前一版整田物理门禁之上增加了投产判据并再次 1/1 PASS（Forge 65.1.0，
+GameTest 约 1.552 分钟）。`FieldScenario` 只在 skill 启动前把测试专用
+`random_tick_speed` 设为 128，cleanup 恢复原值；生产 Mod 和技能均不会修改 GameRule。施工完成
+后测试不再立即成功，而是继续等待原版随机刻，始终要求一格水源、八格耕地和八株小麦不退化，
+最终只有八格 `FarmlandBlock.MOISTURE == 7`、八个作物格原版亮度均 >=9、且小麦年龄总和 >0
+才通过。由此证明当前结构能经原版水合并至少发生一次真实生长，但加速样本不是默认速度
+items/hour 测率，也不替代重启、区块卸载和三场地泛化门禁。
+
+新增改动集中于 release-excluded `FarmingGameTests.FieldScenario`，并使用公开
+`GameRules.RANDOM_TICK_SPEED`、`FarmlandBlock.MOISTURE` 和 `CropBlock.AGE` 只读验收；没有直接调
+`randomTick`、设置作物年龄或在 skill 边界后改方块。定向 JVM 编译/测试 PASS。正式状态仍为
+M0--M4 `NOT_RUN`、`DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步实现一个坐标无关的整田维护技能：
+滚动勘测成熟作物、生成现场工作顺序、普通步行并逐格委托现有
+`harvest_and_replant_step`，最终核验每个成熟格已补种及收获物确实进入自身背包；随后再做真实
+物理门禁。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v91.05 physical whole field (open)
+
+`build_hydrated_crop_field` 的首条 release-excluded 真实 Forge 物理门禁已经完成失败到修复闭环。
+`run-debug158` 在第 0/9 个水源作业只记录到装备铲子后失败，且多层技能前缀超过
+`SkillFailure` 的 64 字符边界，真实原因被错误归一成 `skill_failure`。现在
+`PrepareWaterSourceSkill` 将 `break_block`/`use_item` 子错误映射为有界、稳定、可操作的
+`break_*`/`place_*`，整田执行器继续映射为 `water_*`/`plot_*`；定向测试保证嵌套错误既具体又
+不越界。`run-debug159` 随即准确暴露
+`build_hydrated_crop_field.water_break_action_world_denied`。
+
+拒绝来自正式 `PlayerSupportBlockGuard`，不是 Forge 权限或视角：旧施工停靠半径 0.35 格会让
+宽 0.6 格的玩家停在工作格边缘并把包围盒压到相邻待挖格，安全层因该方块仍承载玩家而正确拒绝。
+`MoveToParameters` 现在允许最低 0.10 格的普通精确停靠，整田工作位使用 0.15 格；在最坏轴向误差
+下仍给相邻方块留下至少 0.05 格净空，不绕过支撑保护，也不传送。移动参数、完整 MoveTo、支撑
+保护、水源原子技能与整田技能定向测试全部 PASS。
+
+全新 `run-debug160` 在 Forge 65.1.0、真实 dedicated GameTest 服务端和真实 Headless
+`ServerPlayer` 上 1/1 PASS（GameTest 约 1.551 分钟，Gradle 任务约 1分57秒）。它从第一人称全景
+证据生成现场 3x3/8 格方案，普通步行到每个工作位，实际挖一格并放置一个水源，耕作八格、消耗
+八颗种子并生成八株小麦，随后重新全景复核；fixture 还核验水桶变空桶、铲/锄耐久和恰好一次
+`begin_mining`、一次 `use_item`、十六次 `use_on_block`。这只是无模型、无真人客户端的 inner-loop
+施工证据，不是 M3 专业生电玩家或极限通关通过。
+
+本轮主要改动文件：`skills/farming/PrepareWaterSourceSkill.java`、
+`BuildHydratedCropFieldSkill.java`、对应两个测试、`skills/core/MoveToParameters.java` 和
+`CoreSkillParametersTest.java`；上一检查点所列整田、亮度、异步规划和 GameTest 文件继续属于同一
+未提交变更。最后实际失败门禁 `run-debug159` 已由 `run-debug160` 定向通过取代；正式
+Actor/Observer/真实模型、长期作物生产率和 M0--M4 仍 `NOT_RUN`，工作树仍
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步只扩展该机制的长期生产验收：让普通随机刻推动至少一株
+作物生长，并验证水合/光照在一段真实时间内保持；通过后再继续下一类参数化农场机制，不先跑
+无关完整回归。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v91.04 whole-field executor (open)
+
+M3 水合农田已从“规划器＋两个单格原子动作”推进到生产注册的整块任务
+`build_hydrated_crop_field`。模型参数只有维度、wheat/carrot/potato/beetroot、8--80 格规模与
+单区块约束，不能提交坐标或方块数组。执行器使用已有第一人称 `ShelterFrameSource` 做 24 视角
+滚动勘测，将不可变的有界证据提交给容量为一执行、一排队的后台机制规划服务；服务端 Tick 只
+轮询结果。生成后按远离服务通道到靠近通道的蛇形顺序，逐项走到现场约束得到的相邻工作位，
+重新转头取得当前可见上表面，再委托普通 `prepare_water_source` 或
+`prepare_and_plant_plot`，最终等待并重新全景观察水源和全部作物。动作前仍重新核验身体会话、
+维度、危险、观察 revision、触及与目标状态；失败不会被伪装为完成。
+
+旧规划中的 `skyVisible` 没有可靠生产来源，直接使用会让夜间或室内场地猜测天光。当前生产
+`VisibleBlockFace` 已增加相邻可见单元原版亮度（未知为 -1），只在真实命中面旁读取，不使用
+高度图、区块扫描或隐藏方块；中央农田规划现在接受已观察到的作物格亮度 >=9，未知或不足均
+失败关闭，同时保留旧测试的正向天光证据兼容。语义 JSON 升级为格式 6，并只在已知时公开
+`adjacentLight`。本地 Forge 65.1.0 注入源码确认 `CropBlock.randomTick` 的生长门槛确为
+`getRawBrightness(pos, 0) >= 9`。
+
+已改文件包括 `perception/VisibleBlockFace`、两个生产采样器与 JSON codec，`mechanism/` 的异步
+规划服务和亮度约束，以及 `skills/farming/BuildHydratedCropField*`、注册、运行时生命周期和定向
+测试。新增后首个失败门禁为 `CompanionRuntimePlannerGuideTest`：生产技能指南 13,129 字符超过
+13,000 硬限制；已压缩新说明且未放宽边界。机制、感知、farming 与指南定向共 74 tests 当前
+PASS。下一步不是跑无关全量回归，而是增加 release-excluded 3x3/8格真实 Forge GameTest，验证
+真实身体全景勘测、后台规划、普通移动、水槽/水桶、8次耕种播种与最后第一人称复验；失败后只
+按最先暴露的物理根因修复。
+
+正式状态未改变：当前 Darwin 没有隔离 Linux/Xvfb、真实 Actor/Observer 客户端和合规可用模型
+环境，M0--M4 继续 `NOT_RUN`；当前工作树仍是 `DIRTY_NO_COMMIT`/`NON_RELEASE`，以上均为
+unit/inner-loop 证据，不是专业陪玩或随机种子通关声明。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v91.03 physical water primitive (open)
+
+M3 参数化农田的第二条生产原子动作 `prepare_water_source` 已实现并注册。它绑定 AI 自己的
+第一人称方块面、世界维度、观察序号和身体会话，拒绝下界、侧面目标、自身脚下支撑、缺少水桶、
+过期/替换身体；施工时经普通挖掘技能移除一格泥土，重新观察坑底、正常切换水桶并沿原版
+`use_item` 路径放水。完成必须同时看到目标格的水方块且自身 `water_bucket -1`、`bucket +1`；
+只发出动作、只改变背包或只看到水均不能完成。失败状态现在稳定保留首个具体原因，不再被下一
+tick 的泛化 `invalid_state` 覆盖。参数解析、注册、失败关闭及生产规划指南长度定向测试通过。
+
+真实物理门禁保留了完整失败到修复证据。`run-debug152` 暴露失败原因被后续 tick 覆盖；修复诊断
+后 `run-debug153` 明确为 `timed_out_revealing_bottom`。`run-debug154` 仍复现该问题，随后发现测试
+工作位离坑两格，挖开后相邻地面遮挡坑底；改为合法的相邻玩家工作位后，`run-debug155` 进一步
+暴露 `water_not_confirmed`：坑底已由公平射线看到，但 `use_on_block` 不是水桶正常放水语义。
+参考仓库内已经通过物理门禁的落地水/浇筑路径，改用原版 `use_item`，并在装备后等待新语义帧
+确认主手确为水桶。全新 `run-debug156` 1/1 PASS（约 794.4 ms），验证真实水源、坑底石块未破坏、
+石铲耐久恰好 +1、水桶恰好变为空桶、且审计恰有一次 `begin_mining` 和一次 `use_item`。
+`run-debug157` 又独立复跑耕地播种 1/1 PASS（约 528.3 ms），未出现回归。
+
+这些仍是 release-excluded、无模型、无真人客户端的 inner-loop Forge GameTest，不能提升正式
+M0--M4 状态。当前 Darwin 仍缺少隔离 Linux/Xvfb、真实 Actor/Observer 客户端和合规可用模型
+环境，正式门禁继续 `NOT_RUN`，工作树继续 `DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步是把每帧
+最多 24 个可见方块面的限制纳入设计：实现有界、按身体会话/维度隔离的滚动现场勘测证据，再让
+现场生成规划器消费这些证据；随后才能用普通移动 + 水源 + 耕种原子技能执行整块农田，而不是
+让单帧测试伪造 80 个同时可见表面。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v91.02 parameterized crop mechanism (open)
+
+物理门禁已开始形成失败到修复的闭环。`run-debug150` 在进入场景前真实崩溃：生产
+`CORE_SKILL_GUIDE` 因新增技能达到 13,359 字符，超过 13,000 硬边界。没有放宽 Token/上下文
+限制；压缩重复 farming 指南后，`CompanionRuntimePlannerGuideTest` 与 farming 定向测试通过。
+全新隔离进程 `run-debug151` 随后 1/1 PASS（约 640.3 ms）：真实 headless `ServerPlayer` 经
+生产 `ServerOwnedCoreSkillActuator`/`ServerOwnedInteractionSkillActuator` 发出两次普通方块使用，
+将泥土变为耕地、让石锄耐久恰好 +1、种子恰好 -1，并生成 0 龄小麦；测试预置的相邻水源保持
+存在。测试类、环境和实例资源均被 release JAR 排除。该证据仍仅为无模型、无真人客户端的
+inner-loop 物理门禁，不能提升 M3 或陪玩声明。
+
+当前 M3 缺口不是语言模型能否描述农场，而是计划尚未拥有可验收的普通玩家动作链。已新增
+`MechanismSpec`/`MechanismPlan` 及坐标无关的 `HydratedCropFieldPlanner`：它只使用 AI 第一人称
+保留的当前地面、通行和背包证据，按现场尺寸、朝向、作物、障碍与单区块约束生成中央水源农田
+施工 DAG，不保存绝对坐标蓝图。规划器现会拒绝侧面射线冒充地面、过期导航证据和无上表面证据，
+平移后的相同现场会得到整体平移而非世界坐标相关布局；定向规划测试 9/9 通过。
+
+为避免再次出现“模型说会种地但身体不做”，已把第一条施工原子动作
+`prepare_and_plant_plot` 注册到生产技能表。它绑定具体观察序号与朝上的可见方块，重新核验当前
+泥土/草方块/耕地、触及距离、会话和身体实例，随后只经普通背包槽位事务、转头与原版
+`useOnBlock` 依次装备锄、耕地、装备种子、播种；只有新观察看到幼苗或自身种子数量下降才允许
+完成。缺少锄/种子、视野过期、方块变化、确认超时或身体替换均失败关闭。对应 farming/planner
+JVM 定向测试已通过。
+
+已改文件集中在 `mechanism/`、`skills/farming/` 及其测试；最后失败的正式门禁仍未变化：当前
+Darwin 没有隔离 Linux/Xvfb、真实 Actor/Observer 客户端和合规可用模型环境，正式 M0--M4
+继续 `NOT_RUN`，源码为 `DIRTY_NO_COMMIT`/`NON_RELEASE`。上述 JVM 结果不能作为陪玩或生存
+能力通过。下一步立即增加 release-excluded Forge GameTest，让真实 `AiServerPlayer` 在物理世界
+中实际损耗锄、把泥土变成耕地、消耗种子并生成小麦；只先跑这一条定向门禁。通过后再把单格
+原子技能接入整块农田施工/验收调度。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v91.01 immediate bound follow (open)
+
+物理集成门禁第一次运行已明确失败，不能计入通过：`run-debug143` 中
+`mcai_companion:real_player_chat_to_immediate_bound_follow` 在 5000 tick 超时，GameTest 汇总为
+1 required test failed。SQLite 审计只有 `conversation_model_not_ready`，最终 goal revision 2 为
+`SAFE_IDLE/PLAYER_CHAT`，没有 `direct_player_skill_started`。根因不是身体寻路，而是该无模型
+fixture 在聊天协调器的“模型尚未验证”入口即被诚实拒绝，命令从未安装；它因此尚未测到即时跟随
+执行层。下一步只修测试边界：给 release-excluded fixture 临时安装一个会记录任何调用的 holding
+gateway，使聊天入口处于“已验证”状态，同时断言即时路径对它的请求数始终为零；产品仍保持无
+API/未验证模型时不接受聊天动作。随后重跑这一条物理门禁，再决定是否存在真实移动缺陷。
+
+修正测试前置后，`run-debug144` 曾最终通过但 SQLite 暴露一次
+`tick_budget_exceeded` 后自动重启；门禁因此被收紧为 FOLLOW 阶段逐 tick 保持同一运行中技能。
+`run-debug145` 严格通过，但独立重复的 `run-debug146` 明确失败：第 52 个执行 tick、身体路径仍为
+0 时，导航样本已有 2090 个体素，连续三次超出 2 ms 后 `follow_entity` 进入 FAILED。根因现收敛
+到 `MoveToSkill` 每次规划重试都重新复制整份 bounded-memory snapshot，而内层 A* 的 2 ms 上限
+又与外层整个技能 tick 的 2 ms 上限相同；内层设计的 8 次有界延迟尚未到达，外层已在第 3 次
+终止。最后失败门禁是 `run-debug146` 1/1 FAIL，不得引用 `run-debug145` 作为稳定通过。下一步缓存
+同 revision/start 的不可变规划记忆快照，并缩小 arrival-goal 枚举开销；保持 2 ms 产品门槛与严格
+连续性断言不变，然后执行独立重复门禁。
+
+该缺陷现已修复并完成定向收敛。`MoveToSkill` 只复用完全相同的不可变 navigation source 与脚下
+格对应的安全融合快照；新观察对象或移动到新格立即重建。`LocalAStarPlanner` 的到达候选改为在
+精确 arrival cube 和已观测 key set 之间选择较小集合，所有候选仍逐个执行原 `insideArrivalRegion`
+与 `isValidGoal` 公平/安全校验。未提高 `SkillRuntimePolicy` 的 2 ms 上限。导航、移动、跟随和监督器
+定向 JVM 59/59 通过；完整 JVM 1016 cases、0 failures、0 errors、2 skipped。
+
+修复后的严格物理门禁在 `run-debug147`、`run-debug148`、`run-debug149` 三个独立 Java/Forge
+进程中连续 1/1 PASS（分别 2.335、2.728、3.340 秒），每次都要求普通 Forge 聊天、服务器绑定
+玩家身份、单次 `follow_entity`、连续技能所有权、两段追随、body path >= 7、单 tick <= 0.9，且
+holding gateway 请求数为零；SQLite 无 `skill_failed`、`tick_budget_exceeded` 或模型审计。
+完整 `check verifyReleaseJar e2eClientJar e2eOracleJar` 与兼容检查通过，mutation 在
+`2026-08-09T11:03:40Z` 捕获 10/10。新 fat/slim SHA-256 为
+`e760f4387c3079f49f216402c22c5d9f2ad78990f76f843210eff6fec51d1696` /
+`a04217873ddd8d2078c1a397f969a7b24d9182fcf3f6f56be6776d699c50326e`；精确 Forge 65.1.0
+专服 smoke `e2e/results/no-commit-dirty/20260809T110358Z-e2eaf8f76907f1a` PASS、加载哈希一致、
+server exit 0、SQLite 仅 Jar-in-Jar、生命周期正常。该证据仍为 inner-loop/lifecycle，
+`functionalAiClaim=false`；真实 Actor/Observer/模型与正式 M0--M4 仍 `NOT_RUN`。
+
+根因：明确的玩家聊天“跟我/跟我走”虽然已经在服务端绑定发话者姓名与 UUID，但旧执行顺序仍先
+发起高层模型请求；只有模型返回无技能决策后才恢复 `follow_entity`。因此慢请求、失效端点或模型
+答非所问仍会直接表现成“答应但站着不动”。现在 `BrainOrchestrator` 在没有活动技能与请求时，
+只针对 `PLAYER_CHAT` 来源、由服务端绑定了发话者身份的跟随目标，使用 AI 自己当前的公平语义样本
+立即启动正常类型化 `follow_entity`。目标不在当前视野时只允许一次 `survey_surroundings`，之后交还
+普通模型规划，避免无限转头。该路径不携带坐标、不追踪遮挡目标、不传送，仍经过
+`SkillSupervisor` 和原版移动；审计明确写成直接玩家指令，绝不伪造 provider trace。改动文件为
+`BrainOrchestrator.java` 与 `BrainOrchestratorTest.java`。
+
+定向 JVM 契约 58/58 通过，覆盖可见玩家零模型往返启动、不可见玩家只搜索一次、原模型无动作/
+澄清恢复路径继续有效。完整 `check verifyReleaseJar e2eClientJar e2eOracleJar`（Forge 65.1.0）与
+兼容检查通过；当前 mutation 在 `2026-08-09T10:37:46Z` 仍捕获 10/10。唯一产品 fat JAR
+SHA-256 为 `dc8f9b33af8e20f7fefb03bb27dc1bf5092417beae6c6c306a06c140db9c1beb`，审计 slim JAR 为
+`9e9807fb927bc5a90fdb24bcbdf2a1c8571b70ca53c9e902c7c9eebfdedba182`。精确专服 smoke 归档
+`e2e/results/no-commit-dirty/20260809T103752Z-e2e340cf381816e` 为 PASS、加载哈希完全一致，
+但范围仍仅为生命周期且 `functionalAiClaim=false`。
+
+最后正式失败/未运行门禁未改变：真实 Actor/Observer 客户端与合规模型环境在当前 Darwin 上
+不可用，M0--M4 继续 `NOT_RUN`，源码继续 `DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步先给这条
+即时跟随补真实 headless `ServerPlayer` 的物理位移集成场景，再继续 M3 参数化机制规格与施工/
+验收链；不得把无模型 JVM/GameTest 写成正式陪玩通过。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v91.00 bounded no-action escalation (open)
+
+根因：虽然短确认和动作承诺不再错误进入 `WAITING_FOR_PLAYER`，一般 `CONTINUE`/`REPLAN`
+仍可无限返回而不启动任何技能；这会继续消耗模型请求，且在锁定 Hardcore 评测中形成无声站桩。
+`BrainOrchestrator` 现在只给这种无技能决策三次有界重规划机会。第四次时，普通
+`PLAYER_CHAT` 目标进入可由下一条真实玩家消息唤醒的 `WAITING_FOR_PLAYER`；MCP/恢复目标与
+外部写入锁定评测则以 `SAFE_IDLE/planner_no_action_exhausted` 终止，绝不请求人工干预或虚构动作。
+`MinecraftBrainEventSink` 对普通聊天目标额外广播一次诚实的“尚未找到可执行动作，请把目标说得
+更具体”状态，且不在评测锁定时广播。改动文件：
+`BrainOrchestrator.java`、`MinecraftBrainEventSink.java` 和
+`BrainOrchestratorTest.java`。
+
+定向 JVM 回归验证了：四次无动作后不会继续花费请求；下一条玩家消息可恢复规划；锁定 Hardcore
+不等待人工而保留安全终止审计。随后 `check verifyReleaseJar e2eClientJar e2eOracleJar`
+（Forge 65.1.0）、兼容检查与当前源 mutation 门禁均通过；mutation 在
+`2026-08-09T10:24:32Z` 仍 10/10 捕获。精确专服 smoke 归档
+`e2e/results/no-commit-dirty/20260809T102438Z-e2e519d82e232c1` 为 PASS，唯一产品 fat JAR
+SHA-256 为 `9c8892bcd5cba1dca7b5bfefbe5373e33a4ca2c6bb05a1a852dca52a291ad1c0`，审计 slim JAR
+为 `eb7e864092065fa311708cb41e53b8c0627976b841dee72228e425b792457aac`。该 smoke 仅证明
+ServerPlayer/Jar 生命周期，`functionalAiClaim=false`。
+
+最后失败/未运行门禁仍是正式真实客户端模型路径：`e2eChat` 预检归档
+`20260809T092655Z-recoverychat20260809`，当前 Darwin 缺少隔离 Linux/Xvfb 与模型环境；尚未
+启动客户端或读取密钥。下一步先审计并实现 M3 参数化机制规格与施工/验收链，同时在授权
+Linux/Xvfb + 合规有效模型环境到位后重跑 `python3 e2e/formal_gates.py --gate e2eChat
+--forge-version 65.1.0`。正式 M0--M4 继续 `NOT_RUN`，源码继续 `DIRTY_NO_COMMIT`/
+`NON_RELEASE`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.99 formal chat gate preflight (open)
+
+按持久目标再次真实调用 `python3 e2e/formal_gates.py --gate e2eChat --forge-version
+65.1.0 --nonce RECOVERYCHAT20260809`。它在启动任何客户端、触碰物理显示或读取密钥前
+诚实返回 `NOT_RUN`：归档
+`e2e/results/no-commit-dirty/20260809T092655Z-recoverychat20260809` 的
+`functional-preflight.json` 标明当前 Darwin 缺少隔离 Linux/Xvfb、`MCAI_BASE_URL`、
+`MCAI_MODEL` 和凭据；`physicalDisplayUntouched=true`。这次没有发送模型请求，也没有将
+无模型/无客户端结果写成聊天到动作通过。当前源和最新产品哈希没有变化，后续恢复命令仍是
+在授权 Linux/Xvfb worker 注入有效模型环境后重跑同一 gate。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.98 no-action status visibility + fresh package/smoke (open)
+
+在上一条短确认防线之上，`MinecraftBrainEventSink` 现在对同一目标 revision 的
+`planner_no_action_backoff` 最多向玩家广播一次诚实状态：`[AI] 名称：我还没有选定可执行动作，正在重新规划。`
+它不伪造技能启动、移动或完成结果，并且评测锁定时不广播，避免污染正式评测。字段只在服务端
+事件消费线程使用，目标完成或 revision 变化后自然允许下一次状态。定向
+`BrainOrchestratorTest`、`PlayerTaskIntentTest`、`ConversationCommitmentSourceContractTest`、
+`RuntimeActionTraceTest` 及完整 `check` 均通过。
+
+本次新源重新打包后的 fat JAR SHA-256 为
+`9ab54de35550d5606c77626487ebf6dec0807a9881b9795672edbb4274c12c13`，审计 slim JAR 为
+`1b52c936abec92701f992612133e1304c299d7f2b0fa24ab285b1a4ea48f1b73`。当前源 mutation 门禁归档
+`20260809T092022Z` 仍 10/10 捕获；Forge 65.1.0 专服 smoke 归档
+`20260809T092026Z-e2e6c00a8c279d5` 为 PASS，精确加载同一 fat JAR，SQLite 仅来自产品
+Jar-in-Jar，`functionalAiClaim=false`。兼容检查、JSON 校验和秘密扫描也通过。
+
+这仍不是正式产品门禁：真实模型、真人客户端、Actor/Observer、随机 Hardcore 和 M0--M4
+统计继续 `NOT_RUN`，源码仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`。当前 macOS 真实客户端预检
+仍因无隔离 Linux/Xvfb 且没有模型环境而 `ready=false`，没有读取或发送用户密钥。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.97 bare-acknowledgement no-action guard (open)
+
+修复了一个会把模型的短确认误判成“需要玩家继续回答”的停滞路径：规划器在玩家任务仍为
+`RUNNING` 时返回 `ASK_PLAYER` + `好的`、`收到`、`OK` 等无问句短语，之前会进入
+`WAITING_FOR_PLAYER`，身体既没有技能租约也不会继续请求规划。现在这些短确认与既有的
+“我这就来/I'm on my way”承诺一样，只会触发有界重规划，抑制未被技能接受的语音，不宣称
+已经移动；新增 `BrainOrchestratorTest` 和 `PlayerTaskIntentTest` 均通过。改动文件为
+`BrainOrchestrator.java`、`PlayerTaskIntent.java` 及对应测试。
+
+当前最后门禁仍不是正式产品门禁：本轮只完成定向 JVM 测试；真实模型、真人客户端、Actor/
+Observer、随机 Hardcore 和 M0--M4 统计继续 `NOT_RUN`，源码仍 `DIRTY_NO_COMMIT`/
+`NON_RELEASE`。下一步先运行完整 `check`/打包与当前源 mutation/smoke，确认这条防线未破坏
+动作、生命周期和发布边界，再继续处理真实环境缺失导致的验证阻断。
+
+本轮完整包门禁通过，当前 fat JAR SHA-256 为
+`e2f3e04522cc39f8d562629186c36fc5b2fcdbecca7d3ac63dfbf1a5dbc10b99`，审计 slim JAR 为
+`1e4f36268306de897b9fb6bd46bbba0eb6502f66fd7d597e756e7e8ece412de1`；mutation
+`20260809T090612Z` 仍 10/10 捕获，Forge 65.1.0 专服 smoke
+`20260809T090616Z-e2e52778ef17299` 为 PASS（仅生命周期，`functionalAiClaim=false`）。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+最新真实客户端预检 `2026-08-09T09:08:39Z` 仍为 `ready=false`：当前 Darwin 缺少隔离
+Linux/Xvfb，且没有从环境读取模型端点、模型名或凭据；预检未启动客户端、未触碰物理显示、
+未读取或发送密钥。真实 Actor/Observer、模型聊天到动作和 M0--M4 继续 `NOT_RUN`。
+
+## 2026-08-09 continuation checkpoint: v90.96 current-source mutation gate (open)
+
+软期限修复后的当前脏源码重新运行了故障注入门禁：归档时间
+`20260809T085848Z`，10/10 变体均被捕获，包括聊天丢失、只说不做、技能启动空操作、
+移动空操作/瞬移、菜单空操作、直接写背包、虚假完成和数据包泄漏。证据分类为
+`DETERMINISTIC_FAULT_INJECTION`、`releaseEligibleSource=false`、`functionalAiClaim=false`；
+它只证明测试能拒绝坏实现，不替代真实客户端、真实模型或 M0--M4。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.95 model soft-deadline wiring (open)
+
+修复了配置声明存在但没有生效的模型等待边界：`model.softTimeoutSeconds` 现在同时接入
+BrainOrchestrator 和聊天 lane。规划请求首次跨软期限只记录一次
+`model_request_soft_deadline` 审计事件，不取消、不重试、不产生动作；聊天请求首次跨软期限
+只向原发消息玩家发送一次“仍在处理”的明确进度。软期限与硬期限做跨字段保护：当用户把硬
+期限设得低于软期限时，服务端记录不含密钥的警告并使用 `hard - 1` 秒，避免启动构造
+`BrainPolicy` 失败。`CompanionConfigTest` 三个边界用例和 `BrainOrchestratorTest` 软期限
+单次通知/不取消用例通过。
+
+当前源码随后通过 `check verifyReleaseJar e2eClientJar e2eOracleJar`、兼容检查、JVM 测试、
+Python E2E `20/20`、JSON 校验和秘密扫描；当前可安装 fat JAR SHA-256 为
+`dfe417b7dfb4dc90055891b92e15208fcf61d657844f5cbcc40bb12317905d94`，审计 slim JAR 为
+`307c0ff901aa8e0d338cc252e3a6a2fca0f2fe66d8a7b51ab18aaa760843f9c8`。精确 Forge 65.1.0
+专服 smoke 归档 `20260809T085339Z-e2e6ce26d860d9f` 为 `PASS`，三份产品副本哈希一致，
+但 `functionalAiClaim=false`，仍只证明 JAR 生命周期。真实模型/Actor/Observer、PVP、
+正式 M0--M4 和随机 Hardcore 统计继续 `NOT_RUN`；源码仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.94 external functional preflight (open)
+
+最新预检（2026-08-09T08:41:27Z）仍诚实返回 `ready=false`：宿主为 Darwin，缺少隔离
+Linux/Xvfb，也没有 `MCAI_BASE_URL`、`MCAI_MODEL` 和模型凭据。预检没有启动客户端、没有
+触碰物理显示、没有读取或发送任何 API Key。因此真实 Actor/Observer 聊天到动作、模型
+移动/背包以及 M0--M4 仍是 `NOT_RUN`，本轮的服务端/物理/打包 PASS 不会替代它们。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.93 packaging regression guard (open)
+
+`verifyReleaseJar` 现在还会检查 `build/libs` 中 `mcai_companion-*.jar`（排除 slim）必须
+恰好只有当前 fat JAR；否则构建直接失败。旧产物处理已改为可恢复移动到
+`build/archive-libs`，不会删除文件。随后当前源码的 `check verifyReleaseJar e2eClientJar
+e2eOracleJar`、Forge 65.1.0 兼容检查、JVM 测试（0 failures/0 errors/2 skips）、Python
+E2E `20/20`、JSON 校验和秘密扫描均通过。`build/libs` 当前仍只有
+`mcai_companion-0.1.5-dev-mc26.2.jar`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.92 exact single-artifact smoke (open)
+
+构建边界修复后的精确 Forge 65.1.0 专服 smoke 已完成：归档
+`e2e/results/no-commit-dirty/20260809T083522Z-e2e17481252e31d` 的
+`server-smoke-verdict.json` 为 `PASS`，server/actor/observer 三份安装副本都严格匹配
+`f040fdc8c4e8a95292db74e1be6d25520260a56f29d4e5e3521f76acbcf857f4`，只加载一份
+Jar-in-Jar SQLite，headless ServerPlayer 正常加入并优雅退出，未出现 mod loading failure。
+这仍是精确 JAR 生命周期证据，`functionalAiClaim=false`；没有真人客户端画面、真实模型
+请求或 M0--M4 统计门禁。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.91 single-installable-artifact boundary (open)
+
+修复了用户曾遇到的“只加入一个模组却出现两个无关/重复模组”的构建层根因：Gradle 在升级
+版本时不会自动移除 `build/libs` 中的旧产品 JAR，复制整个目录会把旧的可安装 fat JAR
+和新 JAR 一起交给 Forge。现在 `jarJar` 先运行受限的 `archiveStaleProductJars`，把
+`build/libs/mcai_companion-*.jar` 旧产物移动到可恢复的 `build/archive-libs`；开发 slim
+JAR 改写到 `build/audit-libs` 且继续不含
+`META-INF/mods.toml`。当前 `build/libs` 只剩一个可安装 JAR：
+`mcai_companion-0.1.5-dev-mc26.2.jar`；`verifyReleaseJar` 通过，fat SHA-256 为
+`f040fdc8c4e8a95292db74e1be6d25520260a56f29d4e5e3521f76acbcf857f4`，审计 slim SHA-256
+为 `b1a3a3984084ecded7c8912215cf9df11d1088490517b7b3eb9df02ebf4aa96a`。
+
+这只是发布/安装边界修复，不提升模型、真人客户端或 M0--M4 门禁；源码仍为
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.90 hostile-contact retest (open)
+
+针对“被僵尸打后站着不动”的本地安全路径，当前 Forge 65.1.0 源码在新隔离目录
+`run-debug142` 通过 `real_emergency_zombie_skeleton_horde` 1/1（1.450 s）：十只僵尸和
+十只骷髅对真实 headless `ServerPlayer` 施压，生产 20 TPS 紧急生存车道完成防御/移动，
+测试服务器报告 required test passed。该场景没有模型网关，所以只能证明无 API 时的受击
+自救不会把身体冻结，不能证明模型控制的 PVE/PVP、聊天动作链或随机 Hardcore 通关。
+
+此前同一源码的落水自救 `run-debug140` 和跑酷 `run-debug141` 仍分别为 1/1；当前工作树仍
+`DIRTY_NO_COMMIT`，真实模型/客户端预检仍被 macOS 无 Linux/Xvfb 和模型环境阻断。下一步
+继续保留真实失败边界，优先做可独立验证的服务端/身体路径；不把无模型测试改写成陪玩完成。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.89 focused water-clutch and parkour gates (open)
+
+当前定向问题已完成一个可核验闭环：`run-debug140` 在 Forge 65.1.0 当前源码通过
+`real_water_clutch` 1/1（844 ms），日志记录生产紧急车道进入 `DEPLOYING_WATER` 并在坠落中
+实际放水；`run-debug141` 通过 `real_parkour_course` 1/1（2.849 s），使用真实 headless
+`ServerPlayer` 的普通物理移动完成跑酷。两项都没有模型网关，属于无模型本地自救/移动证据，
+不能冒充实时 AI、PVP、真人客户端或 M0--M4 正式门禁。
+
+当前根因与边界仍未改变：设置界面请求持久化时，平台安全存储不可用必须失败关闭，已修复为
+`persistent_credential_store_unavailable`；没有 API Key 时身体仍可按本地安全车道出生、受击和
+自救，但高层聊天、跟随、采集、建造和通关必须等待真实可用模型。MiMo 之前唯一真实探测为
+HTTP 401，本轮没有重试或发送凭据。下一步继续只做有证据的定向实现/验证，并保持正式 M0--M4
+和真实客户端预检为 `NOT_RUN`，直到合规 Linux/Xvfb、真实模型与真实客户端基础设施可用。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.88 persistent credential fail-closed (open)
+
+修正了一个会直接造成用户现场“本次验证成功、重新进入世界又要求输入 API Key”的配置缺口。
+设置界面一直请求重启安全存储，但 `ApiKeyManager` 在平台安全存储不可用或保存失败时会返回
+`process_only_secure_store_unavailable`，`ModelRuntime` 仍把端点和进程密钥安装为成功配置。
+现在只要用户界面请求持久化而安全存储没有实际落盘，配置事务会返回
+`persistent_credential_store_unavailable`，清掉新缓存的进程密钥，不安装新端点，也不再伪装成
+“已保存”。无桌面安全存储的服务器应使用 `MCAI_API_KEY`/`MCAI_API_KEY_FILE` 注入；正常
+macOS Keychain、Windows DPAPI、Linux Secret Service 成功时仍可跨重启恢复。
+
+新增跨实例/失败存储回归：`ApiKeyManagerRestartPersistenceTest` 的持久化成功恢复和不可用
+安全存储拒绝路径均通过；随后完整 `check`、工件校验、兼容性检查和 Python E2E 均通过。
+Forge 65.1.0 的 `zero_human_dedicated_server_chunk_and_respawn`（`run-debug138`）和
+`auto_presence_on_human_login`（`run-debug139`）也各 1/1 通过。此前真实 MiMo 探测仍只有
+一次 HTTP 401，本轮没有重试或读取/输出用户凭据；真实客户端/模型和 M0--M4 仍是 NOT_RUN。
+最新 `e2e/orchestrator.py preflight`（2026-08-09T08:23:38Z）仍诚实返回
+`ready=false`：当前 macOS 没有 Linux/Xvfb 和模型环境变量，未启动客户端、未触碰物理显示、
+未读取或发送任何密钥。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.87 recent-damage isolation retest (open)
+
+上一轮 `run-debug131` 在集中隔离入口后的生命周期复测暴露了真实运行时 p95 门禁超限（约
+2.030 ms）；`run-debug132` 与 `run-debug133` 又在末地水晶后的安全等待阶段以合法的
+`RECENT_DAMAGE_EVENT` 失败，说明不能把一次成功重跑包装成确定性修复。当前仅在
+GameTest 夹具中加入了受限诊断日志（世界 tick、语义帧 tick、伤害/无敌状态），并把测试
+等待上限从 80 调整为 100 tick；没有清除生产伤害信号、没有放宽生产技能安全前置，也没有
+改变生产自动重生策略。
+
+Forge 65.1.0 当前源码定向复测：`run-debug134` 和 `run-debug135` 的
+`headless_player_lifecycle_state_and_fair_action` 均 1/1 通过（约 27.51/27.90 秒），
+两次都完成真实 headless `ServerPlayer` 的连接、菜单/物理动作、下界与末地往返、末影龙
+阶段和清理；运行时滚动 p95 分别约 1.397/1.414 ms。`run-debug132`/`133` 仍保留为失败
+边界，不能删除或改写成通过。
+
+随后 `./gradlew check verifyReleaseJar e2eClientJar e2eOracleJar --no-daemon` 通过，
+JVM 测试为 1005（0 failures、0 errors、2 skipped），兼容检查通过，Python E2E
+`20/20`；fat/slim 工件哈希仍为
+`ef06e0ec5f6dc48a062920cc7b604eb1286f1bfd54a28f9c6a3a9a17214d95c9` /
+`a05d9cff2f448fa14d127fd3b6136b69ef0c11b37fc3d4b1be5d3336152227d5`。这些是无模型的真实
+服务端/物理和构建证据，不是实时模型、真人客户端、PVP、M0--M4 或随机 Hardcore 门禁。
+
+另外，测试专用的 live-model 场景入口现在也复用同一隔离清理边界，避免共享
+GameTestServer 在失败场景后把旧 body、动作租约或紧急车道带入下一场；该类仍被发布 JAR
+排除，未改变生产启动/重生行为。
+
+Forge 65.1.0 离线本地战斗复核也通过：`run-debug136` 的十僵尸＋十骷髅压力场景 1/1
+（约 1.874 秒），`run-debug137` 的铁傀儡单挑 1/1（约 1.618 秒）。两者均由真实
+headless `ServerPlayer` 触发生产 20 TPS 紧急车道，包含实际移动、装备和近战；这是无模型
+PVE/自救物理证据，不是 PVP、真实模型或 M0--M4 正式门禁。
+
+源码仍为 `DIRTY_NO_COMMIT`/`NON_RELEASE`；MiMo Token Plan 之前的 HTTP 401 仍是唯一一次
+真实探测，本轮没有重试或暴露凭据。正式下一步是继续降低批量 GameTest 的共享状态/性能
+抖动，并在合规的 Linux Xvfb + 真实模型环境可用后运行真实 Actor/Observer 门禁；在此之前
+不宣称专业陪玩或两小时通关完成。
+
+本轮重新运行真实客户端预检（未启动客户端、未触碰物理显示、未读取或发送任何密钥）：
+当前宿主是 macOS，缺少 Linux/Xvfb 与 `MCAI_BASE_URL`、`MCAI_MODEL`、模型凭据，预检明确
+返回 `ready=false`/退出码 2。因此真实 Actor/Observer 和模型聊天到动作仍是外部基础设施
+阻断，不被任何无模型 GameTest 结果替代。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.86 isolated lifecycle cleanup (open)
+
+补上了仅供 GameTest 使用的 `GameTestCompanionSpawn.resetForIsolatedFixture`，在普通批次
+夹具开始前终止遗留目标、停止动作车道、释放技能监督器并移除旧 headless body；生产 JAR
+不包含该测试类，也没有改变生产自动重生策略。`zero_human_dedicated_server_chunk_and_respawn`
+只在普通 selector 路径调用它，`mcai.zeroHumanAutoSpawnTest=true` 的生产启动断言保持不触碰
+初始 body。
+
+Forge 65.1.0 定向结果：`run-debug128` 普通零人路径 1/1（约 6.184 秒），
+`run-debug129` 真正生产零人自动出生路径 1/1（约 6.230 秒），
+`run-debug130` `headless_player_lifecycle_state_and_fair_action` 1/1（约 36.04 秒）。
+后者此前批量中出现的 `fight_ender_dragon.session_mismatch` 在新目录中未复现；日志还记录了
+真实传送、下界/末地、掉落收集、紧急落水/护甲和末影龙阶段。它们均为无模型的真实服务端
+headless `ServerPlayer` 物理/生命周期证据，不是模型聊天到动作、真人客户端、PVP 或 M0--M4
+正式门禁。
+
+此前 `run-debug127` 的 Forge 65.1.0 默认全批次在约 90 分钟后因严重停滞被安全中断（退出码
+130），已保留日志；中断前观察到零人测试的 `already_active` 和生命周期的旧会话不匹配，
+不能记为通过。完整批次仍未重新运行，当前证据只支持“隔离测试修复后定向通过”，不支持
+63/63 全批次通过。
+
+源码仍为 `DIRTY_NO_COMMIT`/`NON_RELEASE`；没有新的模型请求，M0--M4、真实客户端和随机
+Hardcore 统计门禁继续 `NOT_RUN`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.85 full Forge batch diagnostic (open)
+
+在 `localGeometry` 当前源码上用 Forge 65.1.0 做了完整默认 GameTest 批次（`run-debug121`）。
+服务端确实跑完了 63 个测试，但进程以退出码 4 结束，4 个必需测试失败：
+
+* `headless_player_lifecycle_state_and_fair_action`：`return_via_verified_portal.timeout`，
+  tick 3248，停在 `RETURNING_TO_NETHER_PORTAL`；
+* `real_nether_blaze_material_reserve`：tick 4010 超过窗口；
+* `shelter_material_wood_exploration`：tick 0 要求 isolated body；
+* `roof_jump_placement`：tick 0 要求 isolated body。
+
+这次批次不能记为 63/63 通过，也不能用历史 38/38 内循环记录替代它。前两个技能超时和后两个
+初始隔离断言在独立的新目录重跑后分别通过：`run-debug122` 1/1（约 39.06 秒）、
+`run-debug123` 1/1（约 4.151 秒）、`run-debug124` 1/1（约 21.67 秒）、
+`run-debug125` 1/1（约 31.35 秒）。因此目前证据指向批次内状态/清理与负载顺序诊断，尚未证明
+`localGeometry` 有确定性回归；这也不等于产品门禁通过。下一步保持测试隔离问题显式可见，检查
+GameTest 失败后的 headless session 清理和批量超时预算；在修复前不把批量结果包装成 PASS。
+
+本轮仍没有真实模型请求、真实观察客户端、PVP 统计或隐藏随机种子；M0--M4 正式门禁仍为
+`NOT_RUN`，源码为 `DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.84 Forge 65.1 combat + parkour retests (open)
+
+在加入有界 `localGeometry` 后，Forge 65.1.0 当前源码再次通过三个定向真实服务端
+物理场景：`real_parkour_course` 在 `run-debug117` 通过 1/1（约 4.247 秒），
+`real_emergency_iron_golem_duel` 在 `run-debug118` 通过 1/1（约 1.817 秒），
+`real_emergency_zombie_skeleton_horde` 在 `run-debug119` 通过 1/1（约 1.970 秒）。
+它们使用真实 headless `ServerPlayer`、原版碰撞/攻击/装备/移动和生产紧急生存车道，
+覆盖用户点名的铁傀儡单挑及十僵尸十小白压力场景；仍然没有模型请求、真人客户端或
+PVP 统计，因此不能冒充真实 AI 对战、视觉判断或 M0--M4 正式门禁。测试结束时连接
+正常清理；Forge 测试夹具偶发的关闭通道发送 WARN 不影响必需测试结果，也未观察到
+生产 tick 失败。
+
+当前生产 fat/slim 工件仍为本轮 `localGeometry` 构建的 SHA-256
+`ef06e0ec5f6dc48a062920cc7b604eb1286f1bfd54a28f9c6a3a9a17214d95c` /
+`a05d9cff2f448fa14d127fd3b6136b69ef0c11b37fc3d4b1be5d3336152227d5`；源码仍
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步仍是优先完善可由真实客户端验证的端到端
+聊天/动作链，并在合规的真实模型和客户端环境可用后重新运行正式门禁；不会把这些
+无模型 GameTest 结果升级成专业陪玩或两小时速通承诺。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+补做 `auto_presence_on_human_login`（`run-debug120`）后，测试在没有模型凭据的情况下仍
+让 `TestHuman` 与 `MCAI` 在同一服务器相邻出生，1/1 通过（约 1.018 秒）；这验证了
+“无 API 也创建可见身体、API 只影响说话和高层动作”的生命周期约束以及公开身份路径。
+它仍不是渲染客户端 TAB 截图，也不证明真实模型可用。
+
+## 2026-08-09 continuation checkpoint: v90.83 bounded localGeometry perception (open)
+
+为改善模型对峡谷、墙面、上/下方表面和狭窄空间的理解，语义感知 JSON 现在加入
+`localGeometry`：它只从本次有限第一人称射线已经命中的表面、清晰射线片段和预算计数
+派生 `surfaceHits`、面方向计数、相对高度范围、最近表面距离和有限形状提示，并明确
+标注“缺失不能证明开放空间”。该改动参考 Numen 公开的自我中心语义表征原则，但未复制
+其代码、资源或实现；没有邻居扫描、隐藏方块读取、强制加载或坐标定位。
+
+`SemanticObservationJsonCodecTest` 定向通过；随后 Temurin JDK 25 下完整 `check`、
+`verifyReleaseJar`、客户端/Oracle 工件和兼容检查通过，JVM `1005`（0 failures、0 errors、
+2 skipped），Python E2E `20/20`。Forge 65.1.0 无真人专服 `run-debug116` 仍通过
+`zero_human_dedicated_server_chunk_and_respawn` 1/1（约 2.100 秒），证明新增感知字段不
+破坏身体生命周期；新生产 fat/slim SHA-256 为
+`ef06e0ec5f6dc48a062920cc7b604eb1286f1bfd54a28f9c6a3a9a17214d95c9` /
+`a05d9cff2f448fa14d127fd3b6136b69ef0c11b37fc3d4b1be5d3336152227d5`。
+
+这仍不是模型视觉、真实客户端聊天到动作、PVP 或 M0--M4 正式门禁；源码仍
+`DIRTY_NO_COMMIT`/`NON_RELEASE`，MiMo Token Plan 请求没有重试。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.82 Forge 65.1 no-human + Observer task audit (open)
+
+当前源码在 Forge 65.1.0 隔离 `zero_human_dedicated_server_chunk_and_respawn` 通过
+1/1（`run-debug115`，约 1.890 秒）：没有真人客户端时，生产 runtime 自动创建真实
+headless `ServerPlayer`，完成模拟区块窗口、死亡/原版重生和断开清理。该证据不含模型，
+不等于客户端聊天到动作或 M0--M4 通过。
+
+同时用 Temurin JDK 25 对真实客户端任务做了配置级审计：
+`runE2eObserverClient`、`runE2eInstalledObserverClient`、`e2eClientJar` 和
+`e2eOracleJar` 的 Gradle 配置 `--dry-run` 通过，未启动窗口或发送供应商请求；随后
+`check verifyReleaseJar e2eClientJar e2eOracleJar` 通过。当前生产 fat/slim 工件哈希仍为
+`a69fe0438e1764fad6a3551e00cc079a1e0b2dce01ed39cf475bf9744138a766` /
+`85373c5cfd6dc130b2fb093057e8cb895f0a15f9b2bc4034bfcb19cbde9ffac6`。
+
+这轮没有修改生产逻辑、没有重试 MiMo Token Plan 请求；正式真实客户端、真实模型、
+Hardcore 随机种子和 M0--M4 仍为 `NOT_RUN`，源码仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.81 evidence seal (open)
+
+本轮文档与状态封存前的定向审计通过：`docs/progress/GOAL_STATE.json` 可解析，
+`scripts/validate-compat.py` 通过，Python E2E `20/20`，长 Token 扫描无匹配；本轮
+没有生成新生产 JAR，也没有发送新的供应商请求。所有正式模型/客户端/M0--M4 门禁仍按
+当前外部条件保留 `NOT_RUN`，不是从无模型物理测试推断出来的 PASS。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.80 Forge 65.1 travel-detour retest (open)
+
+Forge 65.1.0 隔离 `real_travel_diagonal_detour` 在当前源码通过 1/1（`run-debug114`，约
+3.839 秒）。真实 headless `ServerPlayer` 完成对角障碍绕行和路线恢复；该证据仍是无模型
+物理/导航回归，不能代表真实聊天、视觉、复杂地形或 M1--M4 随机种子统计。源码保持
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.79 Forge 65.1 water-clutch retest (open)
+
+用户此前询问的落地水已在 Forge 65.1.0 隔离 `real_water_clutch` 通过 1/1
+（`run-debug113`，约 797 ms）。日志显示真实 headless `ServerPlayer` 触发
+`PREPARING_WATER`/`DEPLOYING_WATER`/`BRACING_FALL` 紧急车道并完成场景；这是本地
+20 TPS 无模型物理证据，不代表模型会在自然随机世界中可靠识别每次悬崖，也不提升
+聊天到动作、视觉、PVP 或 M1--M4 正式门禁。源码仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.78 post-parkour package gate (open)
+
+跑酷回归后的当前源码再次通过 Temurin JDK 25 下的 `compat-checker`、`check` 和
+`verifyReleaseJar`（`BUILD SUCCESSFUL`，测试/产物均为增量未变）。Forge 65 发布补丁仍仅
+声明 65.0.0--65.1.0，正式矩阵、真实客户端/模型和 M0--M4 继续 `NOT_RUN`；源码保持
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.77 Forge 65.1 parkour retest (open)
+
+当前源码在 Forge 65.1.0 的隔离 `real_parkour_course` 通过 1/1（`run-debug112`，约
+3.095 秒）。该场景由真实 headless `ServerPlayer` 经过原版碰撞、跳跃和落差移动并完成
+清理；它是无模型的物理回归证据，不等同于真实客户端视觉、模型聊天到动作、PVP、陪玩
+或 M1--M4 正式门禁。源码仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`，此前官方 MiMo Token
+Plan 限制仍使用户提供的 `tp-` 凭据不可继续用于自动化游戏控制；没有发送新的供应商请求。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.76 post-research code gate (open)
+
+供应商条款研究后的当前源码快速收尾门禁通过：`compat-checker`、`check` 和
+`verifyReleaseJar` 在 Temurin JDK 25 下 `BUILD SUCCESSFUL`（测试与工件保持上一轮
+`1005/0/0/2`、Python E2E `20/20`）。本轮只更新研究/状态文档与跨补丁证据，不改变
+生产 JAR；源码仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`，真实模型请求不再重发。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.75 provider-use boundary (blocked)
+
+重新核对 MiMo 官方 Token Plan 文档后确认：`token-plan-cn.xiaomimimo.com/v1`
+和 `tp-` 凭据格式本身正确，`api-key`/Bearer 鉴权均有官方说明；但 Token Plan
+订阅条款把用途限定在编程工具，并禁止用于自动化脚本或自定义应用后端。持续驱动
+Minecraft 的模型网关不应继续消耗该 Token Plan 凭据，除非用户取得供应商明确授权。
+此前真实探测的唯一请求仍为 HTTP 401，故没有再次发送请求；正式模型/M0--M4 门禁继续
+`NOT_RUN`。恢复条件是提供允许此用途的 API 凭据或供应商书面授权，然后按真实客户端
+命令重跑，不把本地 GameTest 提升成模型证据。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.73 offline-fixture package retest (open)
+
+离线装备夹具隔离改动后的当前源码重新完成包门禁：固定 Temurin JDK 25 下 JVM
+`1005`（0 failures、0 errors、2 skipped），`check`、`verifyReleaseJar`、客户端/Oracle
+工件任务和 Python E2E `20/20` 均通过；`build/libs` 仍为 `0.1.5-dev-mc26.2`。
+这次只改 GameTest 夹具隔离，不改变生产 fat JAR，因此生产 JAR 仍以 v90.66 的精确
+SHA 和 smoke 归档为准。模型、真实客户端、Hardcore 随机种子和 M0--M4 仍是
+`NOT_RUN`；此前 MiMo 实测唯一请求为 HTTP 401，不能伪称聊天到动作或专业陪玩通过。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.74 Forge 65.1 lifecycle retest (open)
+
+当前源码在 Forge 65.1.0 的隔离 `headless_player_lifecycle_state_and_fair_action`
+通过 1/1（`run-debug111`，约 26.59 秒）。该链实际覆盖 headless ServerPlayer 加入/重登、
+原版菜单事务、移动/跳跃、落水自救、浇筑并进入下界门、下界材料、末地/强hold链、返回门
+和关闭清理；运行时 20 TPS 样本平均约 `0.283 ms`、滚动 p95 约 `1.420 ms`。
+日志中的 portal/drop 诊断 WARN 来自 release-excluded GameTest 观测夹具，测试结果为
+`All 1 required tests passed`，不提升为真实模型、客户端视觉、PVP 或 M0--M4 证据。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.72 isolated Nether acquisition (open)
+
+`real_nether_blaze_rod_acquisition` 在单独 Forge 65.0.0 运行 `run-debug110` 通过 1/1
+（约 2.044 秒），完成真实下界实体战斗、掉落和拾取交接。历史批次中的
+`already_active` 是共享 GameTestServer 的 AI 单例/并发夹具冲突，不是该生产技能的
+独立失败；批次 OOM 与并发污染仍保留，不改写成全批通过。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.71 offline fixture isolation (open)
+
+离线装备夹具的批次污染也已隔离：前一个聚焦场景留下 HoldingGameTestGateway，令
+`offline_idle_equipment` 的“无模型”断言误报。夹具现在在断言前清除 verified delegate，
+保持生产网关和安全回退不变；`run-debug109` Forge 65.0.0 通过 1/1（约 709 ms），
+仍通过原版菜单装备铁头盔和盾牌。历史批次失败仍保留，不把夹具修复当模型能力证据。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.70 post-fixture gate (open)
+
+强hold安全等待修复后的完整 JVM/package 门禁再次通过：`test`/`check`/
+`verifyReleaseJar`、兼容检查和客户端/Oracle 工件通过，JVM 1005（0 failures、0 errors、
+2 skipped），Python E2E 20/20。生产 fat JAR 未因这次仅测试夹具改动而改变，仍以
+`v90.66` 的精确 SHA 和 smoke 归档为准；正式 M0--M4、真实模型和客户端继续 `NOT_RUN`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.69 stronghold safety-cue fixture fix (open)
+
+历史批次中的 `headless_player_lifecycle_state_and_fair_action` 单独复现为
+`run-debug107` 失败：不是路径或强hold理解错误，而是前一阶段 End 水晶留下的真实
+短时 recent-damage cue，生产 `search_stronghold_portal_room` 正确返回
+`danger_detected`。测试夹具原来只在第一次 Eye 投掷前等待该 cue，却直接启动传送门
+房搜索。已在夹具中加入同一公平语义的有界自然等待，不清除危险状态、不放宽生产技能。
+
+修复后 `run-debug108` Forge 65.0.0 通过 1/1（约 27.42 秒），完成整条 headless
+生命周期/菜单/移动/下界/末地/强hold/返回门链，运行时指标样本 5835、平均约 0.271 ms、
+滚动 p95 约 1.427 ms。`run-debug107` 保留为修复前失败证据；这是无模型的受控 Forge
+链，不提升 M0--M4、自然种子、真实聊天到动作或专业陪玩声明。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.68 Forge 65.1.0 combat retest (open)
+
+当前源码在 Forge 65.1.0 的两个隔离真实 PVE 场景通过：
+`run-debug105` `real_emergency_iron_golem_duel` 1/1（约 1.147 秒），
+`run-debug106` `real_emergency_zombie_skeleton_horde` 1/1（10 僵尸＋10 骷髅，约 1.312 秒）。
+这证明服务端原版身体的受击、移动/攻击和紧急生存车道在该补丁版本仍可工作；无模型、无
+自然种子，不提升 PVP、聊天到动作或 M0--M4 门禁。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.67 Forge 65.1.0 roof compatibility (open)
+
+当前屋顶修复在 Forge 65.1.0 继续通过：`run-debug104` 选择
+`roof_jump_placement` 1/1（约 24.05 秒）。这扩展了当前源码的两个 65.x 定向物理
+证据（65.0.0 的 `run-debug103` 与 65.1.0 的本次运行），不等同于完整 65.x 正式矩阵，
+也不声明 Forge 66 已适配。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.66 post-roof package and exact smoke (open)
+
+屋顶修复后的当前源码已完成完整工件门禁：固定 Temurin JDK 25 下 JVM `1005`（0 failures、
+0 errors、2 skipped），`check`、`verifyReleaseJar`、客户端/Oracle 工件和 Python E2E
+`20/20` 均通过。当前 0.1.5 fat/slim SHA-256 为
+`a69fe0438e1764fad6a3551e00cc079a1e0b2dce01ed39cf475bf9744138a766` /
+`85373c5cfd6dc130b2fb093057e8cb895f0a15f9b2bc4034bfcb19cbde9ffac6`。
+
+精确产品 Forge 65.0.0 专服 smoke 归档
+`20260809T050723Z-e2ead06345411b8`：生产 JAR、服务端/Actor/Observer 副本哈希一致，
+Forge 启动、Jar-in-Jar SQLite、headless ServerPlayer 加入和优雅退出均通过。Oracle
+因本次没有模型凭据按设计停止，`functionalAiClaim=false`；这不是聊天到动作通过。
+源码仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`，M0--M4、真实客户端、有效 MiMo（此前唯一一次
+HTTP 401）和隐藏 Hardcore 统计继续 `NOT_RUN`。
+
+下一步继续隔离真实 Forge 物理/动作审计；不把无模型 GameTest、生命周期 smoke 或已知
+批次 OOM 说成专业陪玩或两小时速通证据。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.65 roof-jump clean retest (open)
+
+移除临时诊断日志后重新执行 `run-debug103`：Forge 65.0.0
+`roof_jump_placement` 1/1（约 24.22 秒），真实服务端身体完成屋顶跳跃/放置、外侧
+观察和保护边界校验。`run-debug102` 的首次修复通过也保留；`run-debug96`--`101`
+仍作为修复前失败证据。当前待做的是重新打包和产品级 smoke，尚未改变 M0--M4 或真实
+模型门禁状态。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.64 roof-jump traversal fix (open)
+
+当前源码的隔离屋顶跑酷门禁已在 Forge 65.0.0 修复并通过：`run-debug102`
+`roof_jump_placement` 1/1（约 23.68 秒）。根因是顶面支撑候选只从半径 2--3
+开始，紧凑庇护所外墙 apron 恰好只有一格宽，导致所有合法第一人称跳跃站位落在
+工作带之外；同时观察站位和实际瞄准历史曾共用集合，造成已观察站位不能重新作为
+合法瞄准点。当前修复分离两类历史，并让顶面候选从半径 1 开始；候选仍必须通过
+公平安全站位、跳跃净空、观察射线、计划通行约束和原版触及距离检查。
+
+`run-debug96`--`run-debug101` 的失败证据仍保留，未改写为通过；本轮临时候选诊断日志
+已移除。该门禁仍是无模型的真实 Forge 物理证据，不是陪玩、真实聊天到动作或 M1--M4
+统计证据。源码待重新打包，当前仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`；M0--M4、真实客户端、
+MiMo（此前唯一一次 HTTP 401）和隐藏 Hardcore 矩阵继续 `NOT_RUN`。
+
+下一步：用移除诊断后的当前源码重跑屋顶门禁，再执行 JVM/package、Python E2E 和精确
+Forge 65.0.0 fat-JAR smoke，记录新工件哈希；随后继续按隔离场景审计，不把已知批次 OOM
+或无模型测试提升为专业陪玩声明。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.63 zero-human and login-presence lifecycle retest (open)
+
+当前源码继续通过两个专服生命周期场景（Forge 65.0.0）：
+
+- `run-debug94` `zero_human_dedicated_server_chunk_and_respawn` 1/1（约 1.738 秒）：没有
+  真人客户端时自动创建可见 headless ServerPlayer，保持模拟区块窗口，按原版受击死亡并重生；
+- `run-debug95` `auto_presence_on_human_login` 1/1（约 647.8 ms）：真人登录时 AI 同步出现、
+  在玩家附近安全出生，并由 TAB/玩家列表公开显示身份。
+
+这两项没有模型凭据，只证明身体和生命周期；不等同于真实聊天到动作、PVP、陪玩或速通。
+`run-debug84` 的 63 项无过滤批次仍因原版结构生成 4 GiB heap OOM 失败，不能提升为批次通过。
+当前源码仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`，真实 MiMo 仍只有一次 HTTP 401，M0--M4、
+真实客户端和隐藏 Hardcore 统计继续 `NOT_RUN`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.62 isolated physical matrix and batch OOM boundary (open)
+
+当前源码在 Forge 65.0.0 的隔离、单场景 GameTest 继续通过：
+
+- `run-debug85` `real_emergency_iron_golem_duel` 1/1（1.218 秒）；
+- `run-debug86` `real_emergency_enderman_defense` 1/1（1.434 秒）；
+- `run-debug87` `real_emergency_zombie_skeleton_horde` 1/1（10 僵尸＋10 骷髅，1.272 秒）；
+- `run-debug88` `real_parkour_course` 1/1（2.738 秒）；
+- `run-debug89` `offline_idle_equipment` 1/1（577.9 ms）；
+- `run-debug90` `real_travel_diagonal_detour` 1/1（3.466 秒）；
+- `run-debug91` `shelter_material_wood_exploration` 1/1（17.59 秒）；
+- `run-debug92` `real_portal_cast_and_light` 1/1（1.395 秒）；
+- `run-debug93` `real_water_clutch` 1/1（771.1 ms）。
+
+重新启动的 63 项无过滤批次 `run-debug84` 没有形成批次通过证据：Forge GameTest 在连续
+生成全部结构后于约 104 秒以 `OutOfMemoryError: Java heap space` 崩溃（4 GiB heap，栈在
+原版 `StructureTemplate.loadPalette`），此前已经记录的测试单例冲突、离线配置污染和屋顶
+失败也仍然有效。后续使用单场景隔离或串行小批次；不把 OOM、并发夹具或旧失败改写成产品
+功能通过。
+
+这些是无模型的原版身体/公平感知/技能物理证据，不是实时模型聊天到动作，也不提升 M0--M4、
+隐藏 Hardcore 统计或 Forge 66；真实 MiMo 仍只有一次 HTTP 401。当前源码仍
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.61 current-source package and exact smoke (open)
+
+修复后的当前源码已重新打包。固定 Temurin JDK 25 下 `test check verifyReleaseJar
+e2eClientJar e2eOracleJar` 通过：JVM 1005（0 failures、0 errors、2 skipped），Python
+E2E 20/20。最新生产 fat/slim JAR SHA-256 为
+`32900a438282ae4ca343229736c3fb9d8e183a42a7c4ec818e7a290330d14c56` /
+`11623bbfec5b6f3527eeb224dbc13288460e5e599656fee9787b059be581c4e8`。
+
+当前产品 JAR 的 Forge 65.0.0 精确专服 smoke 归档为
+`20260809T043610Z-e2e5dac10058c64`：生产 JAR、服务端加载副本、Actor 和 Observer
+副本哈希全部一致，专服启动、SQLite Jar-in-Jar、headless ServerPlayer 加入和优雅
+退出均通过；`functionalAiClaim=false`，因为本次没有模型凭据，不能把生命周期 smoke
+写成聊天到动作通过。真实 MiMo 仍只有此前一次 HTTP 401；M0--M4、真实客户端、隐藏
+Hardcore 统计和 Forge 66 继续未通过/未适配。
+
+下一步继续处理 `run-debug74` 完整 63 项中仍存在的并发单例夹具、离线配置污染、屋顶
+跳跃与战斗/传送失败；使用隔离、定向的真实 Forge 场景记录证据，不用修改测试去掩盖
+失败。当前源码仍 `DIRTY_NO_COMMIT`/`NON_RELEASE`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.60 Blaze hand-off starvation fix and Forge retest (open)
+
+本轮针对现场“模型已经选了战斗/采集但身体站住”的同类根因做了真实服务端诊断。最新
+`run-debug77` 的 `real_nether_blaze_material_reserve` 不是烈焰人攻击算法失败：上一只
+目标死亡并生成下一只目标时，资源子技能仍处于拾取交接阶段；20 TPS 生存监督器看到旧的
+敌对帧后进入 `GUARDING`，技能车道再也没有机会处理新目标，最终执行计数停在 43。
+
+最终保留的生产修复位于 `SecureNetherBlazeMaterialSkill` 与
+`AcquireNetherBlazeRodSkill`：选择阶段允许无投射物且没有未授权敌对实体的有界车道交接，
+并允许资源子技能在拾取交接期间处理一个远离近战距离的已授权 Blaze；投射物、其他敌对
+实体和近身接触仍由紧急车道优先。仅用于诊断的 `EmbodimentGameTests` 仲裁日志和状态字段
+已移除。`SecureNetherBlazeMaterialSkillTest` 定向 JVM 测试通过。
+
+真实 Forge GameTest 证据：`run-debug81` Forge 65.0.0 `real_nether_blaze_material_reserve`
+通过 1/1（约 2.599 秒），移除诊断日志后的 `run-debug82` 仍通过 1/1（约 3.624 秒）；
+Forge 65.1.0 `run-debug83` 同一场景通过 1/1（约 7.656 秒）。这证明了连续击杀、普通掉落、
+拾取和下一目标交接，仍不是模型聊天、自然种子或 M1--M4 门禁证据。完整 63 项并发批次的
+`run-debug74` 仍记录 10 项失败（其中包含并发单例夹具、离线配置污染、屋顶跳跃和下界
+材料等），不可写成整批通过；M0、M1、M2、M3、M4 与隐藏 Hardcore 统计门禁继续
+`NOT_RUN`。Forge 65.1.0 通过不等于 Forge 66 已适配。
+
+当前源码仍为 `DIRTY_NO_COMMIT`/`NON_RELEASE`。此前 MiMo `mimo-v2.5` 真实请求只有一次
+HTTP 401，未重复消耗或写入密钥；下一步是以当前源重新生成包/精确 smoke，并继续拆分完整
+GameTest 的并发夹具问题与真实战斗/屋顶失败，不把无模型测试冒充专业陪玩。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.58 exploration route regression and fair Forge retest (open)
+
+本轮先把现场导航缺陷写清楚再继续实现。前一轮 Forge 65.1.0/65.0.0 的真实
+`shelter_material_wood_exploration` 在 tick 5003 确定性卡在探索子航段；根因是探索
+航点沿着“稍近但偏航”的局部格子反复消耗长航段预算。最终保留的修复是：
+`RollingTravelPlanner` 对目标推进候选显式要求目标方向投影不为负，探索组合使用短而有界的
+`TravelSkillPolicy.explorationDefaults()`（900 总 tick、240 无进展 tick、12 次扫描），
+并删除会把真实对角分支拉回基线的过强物理回程触发器。临时进度日志已全部移除；新增
+`TravelSkillPolicyTest` 覆盖探索预算严格短于普通远程旅行预算。
+
+证据按全新隔离 Forge 65.0.0 世界记录：`run-debug68` 的
+`real_travel_diagonal_detour` 1/1（约 3.281 秒）、`run-debug69` 的
+`shelter_material_wood_exploration` 1/1（约 17.38 秒）、`run-debug70` 的
+`workstation_wood_prerequisite_composition` 1/1（约 5.788 秒），以及
+`run-debug71` 的 `zero_human_dedicated_server_chunk_and_respawn` 1/1（约 1.739 秒）。
+中间实现的 `run-debug65`/`run-debug66` 对角回归失败（`no_progress`）已由移除过强回程
+触发器修复，不能被误写成通过；更早的 63 项批次仍是 57/63，六项失败也仍保留为历史
+失败，不提升为整批通过。
+
+本 checkpoint 对应源码状态仍为 `DIRTY_NO_COMMIT`/`NON_RELEASE`。真实 MiMo
+`mimo-v2.5` 请求此前只得到一次 HTTP 401 `Please provide valid API Key`；没有模型的
+GameTest 只能证明原版身体/物理与本地安全车道，不能替代真实聊天到动作。M0、M1、M2、M3、
+M4 以及隐藏随机种子统计门禁继续 `NOT_RUN`。下一步是用当前源码重跑 JVM/package，生成
+新工件后执行精确 fat-JAR 专服 smoke；拿到有效凭据和独立 Linux/Xvfb 客户端环境后，才
+继续真实模型黑盒聊天/移动门禁。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.59 navigation-fixed package and exact smoke (open)
+
+当前源码已完成导航修复后的完整包：固定 Temurin JDK 25 下 JVM 1005（0 failures、0 errors、
+2 skipped），`check`、`verifyReleaseJar`、客户端/Oracle 工件和 Python E2E 20/20 通过。
+产品 fat/slim SHA-256 为
+`a3ef87d39f8c204b9b04ee3b414b4a057124af8fef0b31fe48dfa4303591fd8d` /
+`3aaef97bb59d5b0463c24f70be3702d3a6d01774c9d2567f71a202a0b6580066`。
+精确产品专服 smoke `20260809T041117Z-e2ee0a41b042bcf` 在 Forge 65.0.0 通过启动、
+精确哈希、Jar-in-Jar SQLite、headless ServerPlayer 和优雅退出；oracle 因没有模型
+凭据按设计失败，`functionalAiClaim=false`。
+
+这只更新开发证据，不提升 M0--M4：真实 MiMo 之前已收到 HTTP 401，Linux/Xvfb 真实
+客户端环境仍未就绪，Hardcore 隐藏种子矩阵继续 `NOT_RUN`。
+
+随后用 Forge 65.1.0 当前发布补丁复核同一修复：`run-debug72` 的
+`shelter_material_wood_exploration` 1/1（17.39 秒），`run-debug73` 的
+`real_travel_diagonal_detour` 1/1（3.439 秒）。这扩大了当前源码的定向运行证据，
+不是完整 65.x patch matrix，也不改变 Forge 66 未适配声明。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.57 immediate social lane, physical retest, and exact smoke (open)
+
+当前现场问题的两个根因仍需分开看：模型链路不是“光说不做”的可验收证据，因为本轮真实
+MiMo capability probe 已实际发出请求并收到 HTTP 401；同时没有模型时，原先普通闲聊会
+等待高层规划，造成玩家看到长时间无回应。已补充低风险本地即时社交回复（Hello/Hi、
+询问中文/英文），仍先经过模型可用性边界，未配置或认证失败时不伪造模型回复；任务、移动、
+战斗和世界修改仍必须由真实模型/本地公平应急车道决定。跨实例凭据测试也确认第二个
+`ApiKeyManager` 可从同一持久化凭据存储恢复密钥，不再依赖每次进世界重新输入。
+
+本轮已改文件：`PlayerTaskIntent.java`、`CompanionConversationCoordinator.java` 及其
+`PlayerTaskIntentTest.java`；并更新 `BuildInfo`/发布工件账本和本检查点。最后一次实际 Forge
+65.0.0 物理回归 `run-debug58` 的 `real_emergency_zombie_skeleton_horde` 为 1/1 通过
+（真实 10 僵尸＋10 骷髅、无模型本地生存车道）。最新精确 fat JAR 专服 smoke
+`20260809T033729Z-e2eb8f364fe1c3d` 通过启动、精确哈希、Jar-in-Jar SQLite、headless
+ServerPlayer 和优雅退出；`functionalAiClaim=false`，oracle 功能动作仍未声称通过。
+最新产品/ slim JAR SHA-256：
+`6b7c7d28bb87209d7d50443ea661f2e1f0f861fafba8bca0e05f62f078481a56` /
+`3ea8c8c94d1282259a1d9d90875cdf125c78d5cc99860d394a4da121b72dd2ca`。
+
+最后失败门禁：`run-live-movement-0.1.5b` 真实 MiMo 请求 HTTP 401（不是 mock、不是脚本
+替代），所以真实客户端聊天到动作、M0、M1、M2、M3、M4 仍是 `NOT_RUN`；当前源码仍为
+`DIRTY_NO_COMMIT`/`NON_RELEASE`。下一步不再重试已确认无效的密钥：等待有效凭据或替换
+密钥后，重新运行同一个真实客户端/模型黑盒选择器；在此之前继续做不依赖外部凭据的公平
+动作、重启、传输和故障审计，但不把这些提升为陪玩或速通产品声明。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.56 real-model movement probe (blocked, open)
+
+按用户要求实际启动 Forge 65.0.0 GameTest，只选择
+`real_player_task_to_live_model_movement`，没有使用 fixture/mock 模型。第一次隔离目录
+缺少端点，先安全返回 `INVALID_CONFIGURATION`（requestsMade=0）；随后只注入非秘密的
+`MCAI_BASE_URL=https://token-plan-cn.xiaomimimo.com/v1` 与
+`MCAI_MODEL=mimo-v2.5`，API Key 由 macOS Keychain 自动恢复。真实 capability probe
+发出 1 个请求后收到 HTTP 401，服务端明确返回 `Please provide valid API Key`，因此
+聊天到动作场景在模型请求前失败，不能把这次运行记成 PASS，也没有继续重试或消耗更多
+请求。该结果同时证明当前版本确实走到了真实 MiMo 认证链路；需要用户在设置中替换为
+有效 Key 后，才能继续真实聊天/移动及 M1--M4 黑盒门禁。工作树仍为
+`DIRTY_NO_COMMIT`，所有正式门禁保持 `NOT_RUN`。
+
+Run directories: `run-live-movement-0.1.5` (missing endpoint),
+`run-live-movement-0.1.5b` (real probe HTTP 401).
+
+随后新增的跨实例 `ApiKeyManagerRestartPersistenceTest` 通过；完整 Gradle 包为
+1003 JVM tests（1003 total、0 failures、0 errors、2 skipped），`check`、
+`verifyReleaseJar`、客户端/Oracle 工件、Python E2E `20/20` 和 Forge 兼容性校验均通过。
+产品/ slim JAR 哈希未因测试代码变化而改变：
+`37d3c6ee0976710b40f204b1fbe0d9b9618eca2f367461fb91f0ad5f0318c82f` /
+`0fd56fdd31bceed8997e710b571f1a6ceaec2b3754d0d9e4fecb7ce6cc1b5226`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.55 emergency combat suite retest (open)
+
+在 v90.54 的受击事实桥接后，Forge 65.0.0 当前源码用
+`-Plive_model_selector='mcai_companion:real_emergency_*'` 跑了四个真实服务端场景：
+铁傀儡、僵尸/骷髅、史莱姆和末影人，4/4 全部通过，GameTest 总耗时约 3.359 秒。
+这组测试验证原版 `ServerPlayer` 的公平视角、盾牌/装备、反击或退避、末影人有限
+重获和紧急车道仲裁；测试没有模型网关，因此不能提升为聊天到动作、PVP 或 M1--M4。
+工作树仍为 `DIRTY_NO_COMMIT`，当前产品精确 smoke 与模型门禁状态保持前一条记录。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.54 trusted damage bridge and physical horde retest (open)
+
+修复“模型/对话语义样本说没有僵尸，但身体刚刚确实受击”的事实延迟：
+`ServerCoreSkillFrameSource` 现在向对话层只提供一个有时限的
+`hasRecentThreatSignal` 布尔事实，来源仍是本体的公平 20 TPS 伤害/威胁帧；不暴露
+攻击者 UUID、隐藏位置或区块信息。对话的 `trustedBodyStatus` 标记该事实，僵尸否定句
+在当前语义样本落后一拍时也会被改成诚实的不确定/受击说明。生产运行时已接入该边界。
+
+Forge 65.0.0 当前源码定向 GameTest `real_emergency_zombie_skeleton_horde` 在
+`run-debug56` 通过 1/1（约 1.205 秒），测试实际创建 10 个僵尸和 10 个骷髅并由
+无模型本地紧急车道完成防御；这不是模型聊天、PVP 或 M1--M4 证据。新增代码的
+定向 `PlayerTaskIntent`/`BrainOrchestrator` JVM 测试仍通过。产品包尚未因本次改动重打，
+随后已完成完整 JVM/package、精确 JAR smoke。当前产品 JAR SHA-256 为
+`37d3c6ee0976710b40f204b1fbe0d9b9618eca2f367461fb91f0ad5f0318c82f`，slim 为
+`0fd56fdd31bceed8997e710b571f1a6ceaec2b3754d0d9e4fecb7ce6cc1b5226`；JVM 为
+`1002`（1000 passed、0 failures、0 errors、2 skipped），Python E2E `20/20`，兼容性与
+发布 JAR 校验通过。精确 smoke `20260809T031954Z-e2effac8762a49f` 在 Forge 65.0.0
+通过，且 `functionalAiClaim=false`、工作树 `DIRTY_NO_COMMIT`。真实模型/客户端门禁仍需
+有效凭据和隔离环境，不能提升为通过。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.53 versioned 0.1.5 package and exact smoke (open)
+
+本轮将开发工件推进到 `0.1.5-dev-mc26.2`，没有改写历史证据。产品 JAR
+`build/libs/mcai_companion-0.1.5-dev-mc26.2.jar` SHA-256 为
+`c3d5e931f1fba9fb56168a4ca66fef5317e5f937ea2a28415dbf926ab4fd6796`，slim 工件为
+`16b857c99dd775f2c7154ffcefdf7fddcede8e0ef810250655a1ff0ab0baeb2f`；固定 Temurin
+JDK 25 下完整 Gradle 包含 `1002` 个 JVM 测试用例（1000 passed、0 failures、0 errors、
+2 skipped），`check`、`verifyReleaseJar`、客户端/Oracle 工件和兼容性校验均通过，
+Python E2E 为 `20/20`。旧 0.1.4 JAR 仍可留在本地构建目录，E2E 编排器现按当前
+`build.gradle` 版本精确选择产品、客户端和 Oracle 工件，不会误用旧包。
+
+精确产品 JAR 专服 smoke `20260809T030913Z-e2ed1e2e2db2264` 在 Forge 65.0.0
+通过启动、精确哈希复制、SQLite Jar-in-Jar、headless ServerPlayer 加入与优雅退出；
+`functionalAiClaim=false`，工作树仍为 `DIRTY_NO_COMMIT`。这轮没有模型凭据和 Linux/Xvfb，
+所以真实客户端聊天到动作、PVP、Hardcore 隐藏种子及 M0--M4 继续保持 `NOT_RUN`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.52 follow liveness and zero-human audit (open)
+
+继续针对现场“跟我只得到口头回应、视野丢失后站着不动”的链路修复：中文短命令
+`跟我`现在由服务端任务分类器直接绑定发话玩家；绑定玩家名比较改为大小写不敏感，
+避免 `Alex` 被保存为 `alex` 后永远无法匹配。模型返回 CONTINUE、REPLAN 或
+ASK_PLAYER 而绑定玩家暂时不在当前第一人称语义样本时，BrainOrchestrator 现在启动
+`survey_surroundings` 的 8 向有界真实环视，重新获取新鲜公平样本；不追踪隐藏位置、
+不注入坐标、不传送，重新看到玩家后仍由正常 `follow_entity`、SkillSupervisor、
+局部 A* 与原版玩家输入执行。
+
+本轮聚焦 JVM：PlayerTaskIntent/BrainOrchestrator 定向测试通过，新增“短命令、目标离开
+视野、有大小写差异”回归。Forge 65.0.0 无真人服务器定向 GameTest
+`zero_human_dedicated_server_chunk_and_respawn` 在 `run-debug55` 以 1/1、约 1.693 秒
+通过；日志确认生产 runtime 自动创建真实 headless ServerPlayer，测试随后按设计杀死并
+验证远区块/重生路径。macOS Keychain 用独立占位值完成 add/find/delete 控制探针，结果
+通过，未读取或写入用户 API Key。
+
+仍需明确：这些是源码、真实 Forge 身体/物理和本机密钥存储证据，不是模型聊天到动作、
+真实客户端、PVP、随机 Hardcore 或 M1--M4 统计证据。当前 macOS preflight 仍缺
+Linux/Xvfb、模型环境和有效凭据，故所有真实模型/客户端/M0--M4 门禁保持 `NOT_RUN`；
+工作树仍为 `DIRTY_NO_COMMIT`。下一步继续审计模型可用性/客户端前置条件，并在具备真实
+凭据和隔离客户端后运行同一黑盒门禁，不把本地 GameTest 提升为产品声明。
+
+## 2026-08-09 continuation checkpoint: v90.51 preflight/evidence boundary (open)
+
+定向审计继续确认：当前源码已实现双启动生命周期审计、生产连接队列审计、Xaero
+授权坐标的动作边界和变异门禁；最近在 macOS 主机执行 `e2e/orchestrator.py
+preflight --forge-version 65.1.0`，结果严格为 `ready=false`，缺少 Linux/Xvfb、
+`MCAI_BASE_URL`、`MCAI_MODEL` 和有效模型凭据。因此真实模型/真实客户端聊天到动作、
+M1--M4 仍是 `NOT_RUN`，不能把 GameTest 或本地脚本结果提升为通过。
+
+本次仅更新形式门禁文案并完成定向核验，未改变产品 JAR 的作弊边界。下一步仍是：
+在具备 Linux+Xvfb+真实模型凭据后运行同一 `functional` 黑盒归档；若条件仍缺失，
+继续完善不依赖外部条件的动作/故障审计，并保持 `NOT_RUN`。
+
+## 2026-08-09 continuation checkpoint: v90.50 real two-boot restart archive (open)
+
+新增 `restart-smoke` 真实运行器在同一隔离世界连续启动/停止两次，加载相同精确 fat
+JAR；归档 `20260809T022742Z-two-boot-audit` 的生产 SQLite 实际有四条生命周期行
+（started→stopping→started→stopping），两次启动共享 companion UUID，SavedData
+goalRevision 均为0且 schema 版本为3。修正相对 SQLite URI 后
+`python3 e2e/restart_gate.py` 返回 `PASS`；通过 `formal_gates.py --gate e2eRestart`
+在当前 `DIRTY_NO_COMMIT` 源上记录为 `NOT_RUN`，原因是
+`restart_archive_passed_on_non_release_source`。这是真实双启动持久化证据，但不是
+模型、双客户端或 M0--M4 通过。
+
+## 2026-08-09 continuation checkpoint: v90.49 restart evidence boundary (open)
+
+`CompanionRuntime` 现在把启动/停止时的稳定 UUID、SavedData 目标修订号、目标状态/来源、
+身体是否曾出生、Hardcore/评测锁、数据库 schema 版本写入无正文的
+`runtime_lifecycle_audit`。新增 `e2e/restart_gate.py` 只读验证真实归档：必须有同一
+SQLite 中两次有序启动和停止行、稳定 UUID及单调修订号；单次专服 smoke 被明确拒绝。
+`formal_gates.py --gate e2eRestart` 没有 `MCAI_RESTART_RUN_ROOT` 时返回
+`NOT_RUN/restart_archive_required`，避免把一次生命周期测试冒充重启通过。
+
+新建包包含该事件；精确 JAR smoke `20260809T022349Z-lifecycle-audit-smoke` 在 Forge
+65.0.0 的启动/停止生命周期 PASS，重启 verifier 正确以缺少第二次启动行而 FAIL。
+Python E2E 19/19，仍没有真实双启动归档、模型客户端或 M0--M4正式通过。
+
+## 2026-08-09 continuation checkpoint: v90.48 Xaero coordinate action boundary (open)
+
+针对“收到共享坐标后只回复、不走”的实际链路，规划输入现在识别服务端已经持久化
+的 Xaero 授权坐标目标：同维度且当前帧安全时明确要求模型立即选择
+`START_SKILL move_to` 并复制目标的 dimension/x/y/z；跨维度只有已验证传送门边才
+允许 `travel_to`，否则请求重规划。该 playbook 不执行传送、命令、小地图读取或
+模型外部坐标推断，坐标目标仍必须由模型返回结构化技能决定。
+
+新增 `MinecraftPlannerInputFactoryTest.xaeroWaypointGoalReceivesImmediateCoordinateActionPlaybook`
+通过；当前 Forge 包门禁、transport smoke 和正式状态将在本轮定向修改后重新生成。
+
+## 2026-08-09 continuation checkpoint: v90.47 production transport audit (open)
+
+将包队列门禁从合成 JSON 合约提升为生产证据：`HeadlessConnectionPump` 现在记录出站
+队列高水位、未释放包数、keepalive/传送/区块批确认及断开处理状态；运行中的身体按
+低频写入 `connection_transport_audit`，服务器停止时由 `AiPlayerManager` 在真实
+vanilla disconnect 回调之后写入最终快照。外部 `e2e/orchestrator.py` 读取同一 SQLite
+事件并拒绝缺失、未释放或未正确断开的链路；`PACKET_LEAK` mutation 现在直接篡改该
+生产事件验证，而不是另造旁路文件。
+
+定向结果：Forge `compileJava test`、完整 `check verifyReleaseJar e2eClientJar
+e2eOracleJar` 通过；Python E2E `16/16`，mutation `10/10`。当前 fat/slim SHA-256
+为 `4b1ab93f9f9c0f38fcedd0f577de2daab5517e74c996cf2c18f06b1cbe75b37b` /
+`d43d2c2c846ac22392f9fe30ccf55d075f1e4695616e4efaf1014f0b29b8580e`。工作树仍为
+`DIRTY_NO_COMMIT`；没有 Linux/Xvfb 或有效模型环境，本轮不提升真实客户端、模型、
+Hardcore 或 M0--M4 门禁。
+
+随后精确 fat JAR 专服 smoke `20260809T021444Z-transport-audit-smoke` 在 Forge
+65.0.0 通过：产品哈希加载一致、Jar-in-Jar SQLite 与优雅生命周期通过；数据库中
+实际写入运行中和最终断开两条 `connection_transport_audit`，最终快照为
+`disconnectHandled=true`、`unreleasedOutboundPackets=0`。该 smoke 仍标记
+`functionalAiClaim=false`。
+
+## 2026-08-09 continuation checkpoint: v90.46 inventory provenance and mutation gate (open)
+
+发现并修复外部库存门禁的完整性缺口：Oracle 现在只在 Forge 原版
+`PlayerEvent.ItemPickupEvent` 对准确的测试掉落实体触发后，才允许库存目标通过；单纯
+增加背包数量或删除掉落实体不再足够。`e2e/orchestrator.py` 要求拾取事件及累计数量，
+`test_orchestrator.py` 新增直接写背包故障回归。
+
+新增 `e2e/mutation_gate.py` 并接入 `formal_gates.py` 的真实 `mutationGate` 入口；
+聊天丢失、AI 回复丢失、只说不做、技能空操作、移动无动作、瞬移、菜单无效、直接写
+背包、虚假完成和包队列泄漏 10/10 均被捕获。该门禁是确定性故障注入证据，不冒充
+真实模型或 M0--M4。当前 Python E2E 16/16；固定 JDK25 下
+`check verifyReleaseJar e2eClientJar e2eOracleJar` 通过，fat/slim SHA-256 仍为
+`824b56125e734958e03aaed090167e667a6fe6037432ad4f379243302d7fed61` /
+`303f6ff1f8dda125de76358bef086c301cd2f908a0fccf09cf533da56326cd79`，Oracle 测试
+JAR 更新为 `97ee9280a2b160b7082d3b993601a646ac030e8c62665facef63937f32809dae`，
+且产品 JAR 不含测试客户端/Oracle 类。
+
+## 2026-08-09 continuation checkpoint: v90.45 focused post-audit (open)
+
+账本格式与兼容声明再次通过：`python3 -m json.tool docs/progress/GOAL_STATE.json`、
+`python3 scripts/validate-compat.py` 和 Python E2E 16/16；固定 Temurin JDK 25 下
+`./gradlew verifyReleaseJar --no-daemon` 通过，当前 fat/slim SHA-256 仍为
+`824b56125e734958e03aaed090167e667a6fe6037432ad4f379243302d7fed61` /
+`303f6ff1f8dda125de76358bef086c301cd2f908a0fccf09cf533da56326cd79`。通信、凭据恢复、
+单人免 `@` 与承诺链定向 JVM 测试通过；这只是当前源码和工件审计，不提升任何模型、
+客户端、Hardcore 或 M0--M4 门禁。
+
+## 2026-08-09 continuation checkpoint: v90.44 chat task-authority guard (open)
+
+继续针对“模型把聊天误报成目标、然后身体停住”的现场症状收紧服务端边界：
+`PlayerTaskIntent` 新增会话问题/问候识别；单人普通消息仍无需 `@`，但多人未明确
+寻址的消息不能创建目标。即使模型错误地把“Could you speak Chinese?”、“Hello”或
+“What do you mean by speak Chinese?” 返回成 `ASK_PLAYER`，只要它不是本地高置信
+游戏祈使句，运行时会抑制目标写入并保留会话路径；非疑问的陌生建造描述仍可由
+模型接管。该修复不选择技能、不写世界，也不替代有效模型。
+
+变更文件：`PlayerTaskIntent.java`、`CompanionConversationCoordinator.java`、
+`PlayerTaskIntentTest.java`、`ConversationCommitmentSourceContractTest.java`。
+定向聊天测试通过。随后完整 `check verifyReleaseJar e2eClientJar e2eOracleJar` 通过：
+JVM 998/0/0/2、Python E2E 15/15；fat/slim SHA-256 为
+`824b56125e734958e03aaed090167e667a6fe6037432ad4f379243302d7fed61` 与
+`303f6ff1f8dda125de76358bef086c301cd2f908a0fccf09cf533da56326cd79`，客户端/Oracle
+仍为 `d714b3d7e2a4744d5577e0073bb525e5a2452498662b0c98698983cde952adcf` /
+`bbb03590de866bf1ba4de0cdd18fd21a282ec19b79b8070a2c10861463a515fc`。精确 JAR
+专服 smoke `20260809T013915Z-e2e9503d501c9cc` 的加载、headless 加入、SQLite、
+精确哈希、优雅退出通过；Oracle 因无有效模型仍为
+`FAIL/server_stopped_before_result`，`functionalAiClaim=false`。
+
+通信边界改动后的物理回归也通过：`offline_idle_equipment` 在 `run-debug49`、
+Forge 65.0.0 以 1/1、约610.3 ms 再次完成铁帽/盾牌原版菜单穿戴；
+`real_emergency_zombie_skeleton_horde` 在 `run-debug50` 以 1/1、约1.203 s
+再次完成十僵尸十骷髅压力场景，身体移动、存活并造成伤害。这些仍是无模型受控
+本地证据，不是模型聊天、真人 PVP 或 M0--M4 证据。
+
+本轮还复核了公开的 Dwinovo/minecraft-numen 架构说明：其可借鉴点是把真玩家身体、
+受限感知、原版动作和“动作结果反馈回模型”拆成独立层，并用 Skill/MCP 扩展能力；
+本仓库已有同等方向的 `ServerPlayer`、公平语义观察、技能监督器、失败反馈和适配器
+边界。没有复制其源码、资源或作弊通道；该复核不会把对方 README 的能力宣称当成本
+仓库实测证据。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.43 offline equipment physical gate (open)
+
+无模型装备车道已从源码契约提升为真实 Forge GameTest：隔离 `run-debug48` 使用
+Forge 65.0.0、无模型网关，启动 headless `ServerPlayer` 后由测试夹具把铁帽和
+盾牌放入其普通背包；`IdleEquipmentController` 通过原版 `inventoryMenu` 事务在
+614.7 ms 内完成头盔与副手穿戴，1/1 required tests passed。该测试只证明已拥有
+物品的本地维护，不证明模型聊天、移动、战斗策略或 M0--M4。
+
+新增测试及资源：
+`src/main/java/dev/mcai/companion/embodiment/EmbodimentGameTests.java`、
+`src/main/resources/data/mcai_companion/test_instance/offline_idle_equipment.json`、
+`src/main/resources/data/mcai_companion/test_environment/exclusive_offline_idle_equipment.json`。
+
+随后当前源码 `check verifyReleaseJar e2eClientJar e2eOracleJar` 通过：JVM 998/0/0/2、
+Python E2E 15/15；fat/slim 产品 SHA-256 为
+`9535d4d4d8cd21a5bf2f91fac501d63176d45998f37bdbfe1ffcc0fe82c495fc` 与
+`e36984abe405aa08ca75eac7f78b23dbbf22a82e891f8ebd76f810aebf887522`，测试客户端与
+Oracle 工件保持 `d714b3d7e2a4744d5577e0073bb525e5a2452498662b0c98698983cde952adcf` 与
+`bbb03590de866bf1ba4de0cdd18fd21a282ec19b79b8070a2c10861463a515fc`。精确产品 JAR
+专服 smoke `20260809T013113Z-e2efe9f19e6c9d4` 的启动、Oracle 加载、headless
+加入、单一 Jar-in-Jar SQLite、精确哈希和优雅退出通过；Oracle 因本机没有有效模型
+凭据仍为 `FAIL/server_stopped_before_result`，`functionalAiClaim=false`。工作树
+仍是 `DIRTY_NO_COMMIT`，这些不是发布版或 M0--M4 证据。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.42 offline equipment lane (open)
+
+现场“给了装备但身体不穿”的缺口继续收紧：没有已验证模型时仍禁止高层技能、移动
+和聊天，但 `IdleEquipmentController` 现在作为低风险独立行为车道继续运行，通过
+正常库存菜单事务装备已拥有的护甲升级、盾牌和更好的普通武器。它不创建目标、不
+选择模型技能、不传送、不直接改库存。`ModelBootstrapSourceContractTest` 及完整
+源码包通过；Forge 65.0.0 当前源码 `run-debug45` 的十僵尸十骷髅真实压力场景仍
+1/1 通过（约1.225秒）。
+
+最新 `./gradlew check verifyReleaseJar e2eClientJar e2eOracleJar` 为 JVM
+998/0/0/2、Python E2E 15/15。当前 fat/slim 产品 JAR SHA-256 为
+`9535d4d4d8cd21a5bf2f91fac501d63176d45998f37bdbfe1ffcc0fe82c495fc` 与
+`e36984abe405aa08ca75eac7f78b23dbbf22a82e891f8ebd76f810aebf887522`。
+精确 JAR 专服 smoke `20260809T012442Z-e2ee1bb30e5c8da` 的加载、AI
+ServerPlayer 加入、SQLite Jar-in-Jar、哈希和优雅退出通过；独立 Oracle 因无有效
+模型凭据仍为 `FAIL/server_stopped_before_result`，`functionalAiClaim=false`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.41 current-source package and exact-jar smoke (open)
+
+当前工作树在单人聊天寻址修复后重新打包。普通单人聊天现在由服务端明确标记为
+`addressedForServer=true`，因此不需要 `@` 或 Agent 名；专用多人服务器仍要求
+显式地址，避免 Agent 抢答无关队伍聊天。变更文件为
+`src/main/java/dev/mcai/companion/communication/ChatAddressing.java`、
+`CommunicationModule.java` 及其定向测试。`ChatAddressingTest` 和通信相关定向测试通过。
+
+当前 `./gradlew check verifyReleaseJar e2eClientJar e2eOracleJar` 通过：JVM
+998/0/0/2，Python E2E 15/15。产品 JAR SHA-256 为 fat
+`c2782fed27256521f5381306236cde2517b1a829d3fe41e3ffe5e43b7a7e654e`、slim
+`10b263f1452ba1ee82c2c93a637a0d0aa5cda3dffe7fd3ccec9b39d36c6a83a7`；测试客户端和
+Oracle 工件哈希保持 `d714b3d7e2a4744d5577e0073bb525e5a2452498662b0c98698983cde952adcf`
+与 `bbb03590de866bf1ba4de0cdd18fd21a282ec19b79b8070a2c10861463a515fc`。
+
+当前源码 Forge 65.0.0 `run-debug44` 的真实
+`real_emergency_zombie_skeleton_horde` 通过 1/1（约1.194秒）；精确产品 JAR
+专用服务器 smoke `20260809T011912Z-e2eae301135c205` 的生命周期、零真人身体、
+SQLite Jar-in-Jar、哈希和优雅退出通过，但独立 Oracle 为
+`FAIL/server_stopped_before_result`，`functionalAiClaim=false`。这仍是受控服务端
+与生命周期证据，不是实时模型聊天、真人客户端、随机 Hardcore 或 M0--M4 通过。
+当前正式预检仍受 Darwin、无 Xvfb/Linux worker 和无有效模型凭据阻断，不能把这些
+结果升级成专业陪玩或两小时通关声明。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.39 action-promise ASK_PLAYER recovery (open)
+
+继续复盘“模型说我这就来但身体不动”链路时发现，规划层对已经由玩家聊天创建的
+目标返回无疑问的 `ASK_PLAYER` 行动承诺（如“我这就来”“I'm on my way”）会直接
+进入 `WAITING_FOR_PLAYER`，即使没有任何需要玩家回答的问题。现在仅对
+`GoalSource.PLAYER_CHAT` 且文本明确是行动承诺、没有问号的响应，压掉该话术，保留
+原目标，设置 `planner_no_action` 纠正并按短退避重新请求模型的具体
+`START_SKILL`；真实问题、Hardcore 锁定目标和普通不确定语句仍走原安全澄清路径。
+该恢复不选择技能、不写世界、不生成坐标。
+
+变更文件：`src/main/java/dev/mcai/companion/brain/BrainOrchestrator.java`、
+`src/test/java/dev/mcai/companion/brain/BrainOrchestratorTest.java`。新增回归通过：
+玩家聊天目标不会再被此类空头 ASK_PLAYER 锁死，且没有错误播报。正式模型、真人
+客户端和 M0--M4 仍按 v90.37 保持 NOT_RUN。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.38 follow physical-progress watchdog (open)
+
+源码审计发现 `FollowEntitySkill` 会把 `MoveToSkill` 的局部扫描/转身 tick 当作
+“进度”。在通道受阻或路线未知时，身体可以持续转头而没有任何位移，监督器因而
+不会触发停滞重规划。当前修复在跟随技能内记录身体第一人称位置：连续80 tick
+（4秒）超过0.08格没有真实位移就安全停止并返回
+`follow_entity.no_physical_progress`，由 `SkillSupervisor` 结束当前原子技能，随后
+规划器重新取样/选择路线；搜索重新看到目标时会重置停滞计时。该看门狗不写坐标、
+不传送、不读取隐藏实体位置。
+
+变更文件：`src/main/java/dev/mcai/companion/skills/core/FollowEntitySkill.java`、
+`src/test/java/dev/mcai/companion/skills/core/FollowEntitySkillTest.java`。
+定向 FollowEntitySkillTest 已通过，新增回归证明固定身体位置的转身不能无限维持
+跟随。当前工作树仍为 DIRTY_NO_COMMIT；完整包与 Forge GameTest 将在本次定向修复
+后重跑，正式模型/真人客户端/M0--M4 仍受 v90.37 的 Linux/Xvfb 与有效凭据门禁
+阻断，不能把该源码回归写成真实 AI 通关。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.37 formal preflight (strict external block)
+
+最新 `python3 e2e/orchestrator.py preflight --forge-version 65.0.0` 于
+`2026-08-09T01:00:41Z` 返回 `ready=false`：主机为 Darwin，缺少隔离 Linux/Xvfb
+和模型环境（`MCAI_BASE_URL`、`MCAI_MODEL`、`MCAI_API_KEY`/文件）。预检没有
+接触物理显示器、没有启动真人客户端、没有写入或记录密钥，也没有改变任何
+正式门禁状态；因此 live Actor+Observer、聊天到动作、随机 Hardcore 与 M0--M4
+保持 `NOT_RUN`。恢复条件是提供 Linux/Xvfb（或已配置的隔离 Linux worker）和
+一次有效模型凭据，然后运行 `python3 e2e/formal_gates.py --gate e2eChat`
+及其余正式门禁。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.36 current-source human-login presence (open)
+
+在当前源码/Forge 65.0.0 隔离 `run-debug42` 重跑 `auto_presence_on_human_login`，
+1/1 通过（597.6 ms）：普通真人测试玩家先登录，AI 身体随后通过正常
+`PlayerList`/嵌入连接路径在安全邻近位置加入，TAB 身份标识和无模型静止约束
+保持有效。该场景不请求模型，不证明聊天、移动、随机 Hardcore 或 M0--M4。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.35 current-source iron golem duel (open)
+
+按用户指定的单挑场景，在当前源码/Forge 65.0.0 隔离 `run-debug41` 重跑
+`real_emergency_iron_golem_duel`，1/1 通过（934.5 ms）。这是实体真实生成、
+原版 ServerPlayer 身体、装备/移动/攻击与受控中立铁傀儡压力响应的回归；没有
+模型请求、真人 PVP、随机种子或胜率统计，因此不能提升为完整 PVP/M0--M4 通过。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.34 current-source hostile pressure recheck (open)
+
+在暂停菜单修复后的当前源码上，Forge 65.0.0 GameTest
+`real_emergency_zombie_skeleton_horde` 于隔离 `run-debug40` 重新通过 1/1
+（1.243 秒）。场景实际生成十只僵尸和十只骷髅，headless `ServerPlayer` 通过
+原版连接/玩家列表路径加入、移动、存活并完成本地应急战斗。嵌入连接关闭时的
+系统消息 fallback 仍是已知拆除警告，不是测试断言失败；该场景没有模型请求、
+真人客户端、随机 Hardcore 或 PVP 胜率，不提升 M0--M4。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.33 pause-menu anchor and package recheck (open)
+
+修复暂停菜单“AI 陪玩”覆盖“游戏菜单”的现场问题。原因是本地化后的“回到游戏”
+按钮可能是已解析的 literal，旧代码只比较 translatable `Component`，找不到锚点
+就使用固定 y=54；现在同时比较最终显示文本，并在仍找不到时从最上方全宽主按钮
+推断同列位置，避免固定坐标覆盖标题。变更文件为
+`src/main/java/dev/mcai/companion/client/modelsetup/ClientModelSetupRegistration.java`。
+
+本次与 v90.32 的响应式设置页修复一起完成了完整
+`./gradlew check verifyReleaseJar e2eClientJar e2eOracleJar`，Python E2E 15/15，
+设置/皮肤网络定向测试通过。最新 fat/slim JAR SHA-256 为
+`e84b41a5fc26389069470937c6b5169f8cde441ca41049976b644998e69c9070` 与
+`fddb88a5f944b23492753c25ae4f7ecec535ba0ed78b01e2ac8264e2ee260672`。
+精确 Forge 65.0.0 smoke `20260809T005504Z-e2ef47399ffee9f` 的服务端启动、
+零真人身体、Jar-in-Jar SQLite、精确哈希和优雅退出均通过；oracle 因无有效模型
+凭据为 `FAIL/server_stopped_before_result`，`functionalAiClaim=false`。正式
+真实模型、Linux/Xvfb Actor+Observer、随机 Hardcore、M0--M4 仍 `NOT_RUN`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.32 responsive model setup layout (open)
+
+修复了设置页在窄窗口上的实际布局断点：原实现把表单最小宽度固定为220像素，
+同时保留146像素侧栏，导致字段、配色/温度控件以及保存/返回按钮越过屏幕或
+互相覆盖。`ModelSetupScreen` 现在根据内容面板宽度计算侧栏和表单宽度，配色/
+温度与保存/返回按钮使用可容纳的分栏尺寸，教程控件也随侧栏缩放；表单滚轮
+区域扩展到整个左右内容面板，并在滚动前后夹紧偏移。没有伪造多Agent能力，
+仍保持首发单Agent后端契约。
+
+定向设置/皮肤网络测试通过；源改动后的完整
+`./gradlew check verifyReleaseJar e2eClientJar e2eOracleJar` 通过，Python E2E
+15/15 通过。新精确 fat/slim JAR SHA-256 分别为
+`e1b37b4458c8c5c933d715bc1fd33db01cec18c682067db889e61dc60a4e97bf` 与
+`be2ac128963361f51f82745c7d6a24360e9fada5635ab4e8b6399f3577b35087`。
+Forge 65.0.0 精确 JAR 生命周期 smoke
+`20260809T005023Z-e2edac5b8bfdf42` 通过加载、零真人身体、SQLite 和退出校验，
+但独立 oracle 因没有有效模型凭据而为 `FAIL/server_stopped_before_result`，
+`functionalAiClaim=false`。正式 Linux/Xvfb、有效模型、真人 Actor/Observer、
+随机 Hardcore 与 M0--M4 仍 `NOT_RUN`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.31 formal chat gate recheck (open)
+
+重新调用 `python3 e2e/formal_gates.py --gate e2eChat --forge-version 65.0.0`
+后，门禁在 `CONTINUEASKPLAYER` run 中按契约记录为 `NOT_RUN`：当前工作树无
+提交、主机为 Darwin、无 Xvfb 且没有可用模型凭据。该归档没有启动真人客户端、
+没有写入密钥，也没有将前面的精确服务器 smoke 或 GameTest 提升为聊天通过。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.30 hostile pressure recheck (open)
+
+在 bound-follow `ASK_PLAYER` 恢复改动后，真实 Forge 65.0.0 GameTest
+`real_emergency_zombie_skeleton_horde` 于隔离 `run-debug39` 重新运行并通过
+1/1（1.249 秒）。场景仍是真实生成的十只僵尸和十只骷髅，身体通过原版
+ServerPlayer 路径加入、移动、存活并完成生产应急战斗车道；关闭时嵌入连接的
+fallback 警告仍是已知清理行为。该结果不含模型请求、真人客户端、随机种子或
+PVP 胜率，M0--M4 继续 `NOT_RUN`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.29 bound-follow ASK_PLAYER recovery (open)
+
+真实编排器审计确认 `build_artifacts` 的所有调用点与两参数签名一致，未发现
+之前 v90.28 所写的实际参数错误；该条只作为审计假设保留，不能当作失败证据。
+本轮真正修复了现场“已答应但站着不动”的窄路径：对已由玩家聊天绑定的
+`serverBoundPlayerName` 跟随目标，如果当前公平语义样本确实看见同名、非敌对
+玩家，而模型返回 `ASK_PLAYER`，Brain 不再把它锁成 `WAITING_FOR_PLAYER`，而是
+生成当前样本绑定的 `follow_entity` 决策，再经 SkillSupervisor、观察绑定、局部
+A* 和原版玩家移动。普通 ASK_PLAYER、不可见目标、名称不匹配和损坏样本仍走原
+来的澄清/安全路径。
+
+变更文件：`src/main/java/dev/mcai/companion/brain/BrainOrchestrator.java`、
+`src/test/java/dev/mcai/companion/brain/BrainOrchestratorTest.java`、
+`docs/IMPLEMENTATION_STATUS.md`、`docs/progress/GOAL_STATE.json`。定向测试通过；
+完整 `./gradlew check verifyReleaseJar e2eClientJar e2eOracleJar` 通过，JVM 为
+996/0/0/2，Python E2E 为15/15。最新精确 Forge 65.0.0 smoke
+`20260809T003432Z-e2e811774ddd5e0` 生命周期通过，fat SHA 为
+`cf3475665f6b3baf4e7fd111969422e76b20adcc2836730b89a184a238628381`；同 run
+独立 Oracle 因当前 MiMo 凭据 HTTP 401 而 `FAIL/server_stopped_before_result`，
+`functionalAiClaim=false`。Linux/Xvfb/有效模型/真实 Actor+Observer 仍是外部门禁，
+M0--M4 继续 `NOT_RUN`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.28 real-client runner audit (open)
+
+继续目标仍未完成：当前正式模型/真人客户端/M0--M4 门禁没有任何一个可提升为
+PASS。上一轮新增的 bound-follow recovery 已经接入 BrainOrchestrator，相关
+`BrainOrchestratorTest` 与当前 995 项 JVM 套件通过；但这只是源代码和受控
+GameTest 证据，不能解释现场“光说不做”或冒充真实模型动作。
+
+本轮审计发现真实 Actor/Observer/Oracle 工件与独立验证器已经存在，正式链路仍
+受 Linux/Xvfb 和有效模型凭据阻断。当前 `e2e/orchestrator.py` 的
+`command_server_smoke` 还存在参数调用不一致风险（`build_artifacts` 的调用点
+需要与其两参数签名一致），必须先定向修复/验证；任何修复都不能把无模型
+oracle 的 FAIL 改成 PASS。下一步：修正该 runner 的最小缺陷，补充真实聊天到
+动作证据链的健壮性审计，运行 Python/Gradle 定向门禁，再更新状态与当前 SHA。
+
+已改文件（最近）：`src/main/java/dev/mcai/companion/brain/BrainOrchestrator.java`、
+`src/test/java/dev/mcai/companion/brain/BrainOrchestratorTest.java`、
+`docs/IMPLEMENTATION_STATUS.md`、本检查点；最后模型-backed smoke 仍为
+HTTP 401/`functionalAiClaim=false`，Darwin 仍缺 Linux/Xvfb。恢复命令：
+`python3 e2e/orchestrator.py preflight --forge-version 65.0.0`。
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.27 final source audit (open)
+
+The final source audit for this continuation passed `./gradlew check` and the
+compatibility checker.  The JVM result is 995 tests, 0 failures, 0 errors, and
+2 skips; the current production and slim artifact hashes remain
+`15b257d1aed11ad15c62c4293b16a81bf65b30121c2d5780ff6b32b75f8f68a0` and
+`4e47bd327b06c93f0bad5704141f9f5779d7b02b6482beea2efcb36e09b86ddc`.
+
+The repository still deliberately distinguishes controlled Forge lifecycle,
+combat, and unit evidence from live-model gameplay.  MiMo remains HTTP 401 in
+the independent probe; no model/client/Hardcore M0--M4 gate is promoted.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.26 combat pressure recheck after Brain change (open)
+
+The real Forge 65.0.0 GameTest `real_emergency_zombie_skeleton_horde` was
+rerun in isolated `run-debug38` after the bound-follow recovery changed the
+Brain source.  The server spawned exactly ten vanilla zombies and ten vanilla
+skeletons, the accountless body joined through the normal player path, and the
+required pressure-response assertion passed 1/1 in 1.380 seconds.  The
+embedded-channel warning at teardown is the known cleanup fallback.
+
+This confirms that the new high-level recovery did not disable or alter the
+20-TPS emergency combat lane.  It remains a bounded controlled PVE pressure
+test, not a model-backed fight, PVP result, random Hardcore statistic, or
+M0--M4 promotion.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.25 exact-JAR smoke after follow recovery (open)
+
+The exact fat JAR containing the bound-follow recovery was staged into a clean
+Forge 65.0.0 dedicated server and passed the lifecycle-only smoke in run
+`20260809T002006Z-e2edab04dfdcca1`.  Forge loaded without a mod failure, the
+headless player joined, the Jar-in-Jar SQLite payload opened, the server exited
+cleanly, and the staged artifact matched the production SHA-256
+`15b257d1aed11ad15c62c4293b16a81bf65b30121c2d5780ff6b32b75f8f68a0`.
+
+The same run intentionally records the oracle as `FAIL` with
+`functionalAiClaim=false`: no valid model credential was available, so no
+model chat or movement result was fabricated.  The release contract reports
+995 JVM tests (0 failures, 0 errors, 2 skips); formal M0--M4, live model,
+rendered client, random Hardcore, and professional陪玩 gates remain `NOT_RUN`.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.24 bound-follow action recovery (open)
+
+The “光说不做” path now has a narrowly scoped recovery in
+`BrainOrchestrator`: when a player-authored goal contains the server-bound
+player name and the current fair semantic sample visibly contains that exact
+non-hostile player, a provider `CONTINUE`/`REPLAN` cannot leave the body idle.
+The runtime synthesizes only the typed `follow_entity` high-level envelope
+with the observed handle and sample sequence, then routes it through the
+existing `SkillSupervisor` preconditions, leases, local A* movement and
+vanilla player actuator.  Missing/malformed/occluded samples still take the
+ordinary model retry path; no coordinates, teleport, entity lookup or hidden
+world read was added.
+
+Evidence: `BrainOrchestratorTest` now has 36 passing tests, including positive
+visible-bound recovery and a negative wrong-player binding case.  The normal
+speech-only `CONTINUE`/`REPLAN` tests remain passing, so ordinary goals still
+suppress action narration and keep their bounded backoff.
+
+This is a code-level action-stall mitigation, not a live-provider, rendered
+client, random Hardcore, PvP, or M0--M4 promotion.  The supplied MiMo token
+still returns HTTP 401 in the independent probe.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.23 release artifact recheck (open)
+
+After the combat, Numen prompt, and zero-human lifecycle changes, the source
+release contract was rerun with the current files:
+`./gradlew check verifyReleaseJar e2eClientJar e2eOracleJar` completed
+successfully.  The JVM suite totals 993 tests with 0 failures, 0 errors, and 2
+skips; the compatibility checker passes while its formal matrix remains
+incomplete.  The installable fat JAR and slim JAR hashes are respectively
+`696d8760ee55c9748da3ff8c887793efb6f36579003c84e109c1bcc33c8372d2` and
+`a29504d2dd438990012ee8c905b525bd8ec12d23924b86f64ea081b7d331c26d`.
+
+This is a source/package regression result, not a model-backed or client
+playability result.  The MiMo credential remains HTTP 401, and M0--M4,
+rendered-client, live-chat, random Hardcore, and professional陪玩 claims stay
+`NOT_RUN`.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.22 zero-human remote-chunk/respawn recheck (open)
+
+The focused Forge 65.0.0 GameTest `zero_human_dedicated_server_chunk_and_respawn`
+was rerun in an isolated `run-debug37` lifecycle with no human client.  The
+headless `ServerPlayer` loaded the remote test area, joined through the normal
+player-list path, was killed through vanilla damage, and completed the bounded
+respawn/rejoin assertion before the server shut down.  The server reported
+`All 1 required tests passed` in 1.816 seconds.  The closed-channel fallback
+warning is the expected teardown of the embedded connection, not a failed
+GameTest assertion.
+
+This remains a lifecycle proof only: no live model request, rendered client,
+random unseen Hardcore seed, or two-hour completion statistic was involved.
+The supplied MiMo credential is still independently rejected with HTTP 401,
+so model-backed M0--M4 gates remain `NOT_RUN` and `functionalAiClaim` remains
+false.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.21 Numen reference and prompt-boundary recheck (open)
+
+The public `Dwinovo/minecraft-numen` repository was reviewed for architecture,
+not copied.  Its useful principles are an actual server-side player body,
+tool-result feedback, background long-running jobs, failure-directed recovery,
+and an explicit “act rather than narrate” prompt.  This project already has
+those boundaries through `ServerPlayer`, fair observations, skill leases,
+checkpoints, and the single high-level `DecisionEnvelope`; the comparison is
+recorded in `docs/REFERENCE_NUMEN_ANALYSIS.md`.
+
+An attempted duplicate static follow-routing hint was rejected by the existing
+planner prompt-length gate (three focused prompt tests failed).  It was removed
+immediately; the existing goal-specific `TRUSTED_IMMEDIATE_FOLLOW_PLAYBOOK`
+remains the sole routing hint, and
+`MinecraftPlannerInputFactoryTest` passes all 24 cases after the correction.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.20 combat-pressure recheck (open)
+
+The combat response lane was tightened and then exercised in real Forge
+65.0.0/Minecraft 26.2 GameTest server lifecycles.  Iron golems remain neutral
+by default: proximity alone does not create a target.  An explicit combat
+decision, or a recent fair golem damage/contact lease, is required before the
+local emergency controller may reacquire one.  This closes the first honest
+golem failure, where the body attacked once and then returned to `CLEAR` while
+the golem was still visible.
+
+Evidence:
+
+- `real_emergency_iron_golem_duel`: 1/1 passed in `run-debug35` after the
+  lease fix.  The body used ordinary sword/shield movement and caused
+  meaningful target damage while surviving the pressure window.
+- `real_emergency_zombie_skeleton_horde`: 1/1 passed in `run-debug36` with
+  exactly ten vanilla zombies and ten vanilla skeletons.  The body survived,
+  moved, consumed the ordinary combat lane, and damaged multiple targets.
+
+The first golem run (`run-debug32`) failed at tick 1683 with the target still
+at 79 health and `survival=CLEAR`; that failure was retained as diagnostic
+evidence rather than hidden.  A later full-kill-only assertion also timed out,
+so the gate was corrected to measure bounded pressure-response evidence, not
+to pretend that a deterministic fixture proves PvP expertise.  These tests
+still use no live model request, no rendered client, no hidden-world reads,
+and no random Hardcore seed.  M0--M4 and model-backed gates remain `NOT_RUN`.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.19 physical movement and survival recheck (open)
+
+After the release-contract check, the current source was exercised again in
+separate real Forge 65.0.0/Minecraft 26.2 GameTest server lifecycles.  The
+following focused tests each completed 1/1 with an embedded `ServerPlayer` and
+vanilla movement/menu paths:
+
+- `real_water_clutch` (fall-water deployment and bracing);
+- `real_parkour_course` (multi-step jump course);
+- `real_travel_diagonal_detour` (diagonal travel with an obstruction and
+  recovery);
+- `real_furnace_batch` and `real_charcoal_furnace_batch` (ordinary and
+  charcoal smelting);
+- `real_food_animal_hunt` (visible animal food acquisition).
+
+An attempted combined selector using a regular expression was rejected by
+Minecraft's selector matcher before any test ran; it was not recorded as a
+product failure.  The tests were therefore rerun one at a time and all passed.
+This evidence still does not promote M1--M4: no live model request, rendered
+client observation, random unseen Hardcore seed, or long-run success-rate
+measurement was involved.  The supplied MiMo credential remains independently
+401-rejected, so the model-backed gates remain `NOT_RUN`.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.18 release-contract recheck (open)
+
+The final source-side release contract for this continuation passed:
+`./gradlew check verifyReleaseJar e2eClientJar e2eOracleJar` completed
+successfully, including the JVM suite, compatibility contract, release-JAR
+audit and both test-only client/oracle artifacts.  The installable fat JAR
+remains SHA-256
+`4d0a28c14de668341a164d8509c25467d6c37e997ff72e12685e188409c963b3`.
+
+No formal milestone is promoted by this command.  The compatibility task
+reports all eleven Forge 65 patches as declared/published but keeps
+`formalMatrixComplete=false`, and the model, rendered-client and hidden-seed
+evaluators remain `NOT_RUN`.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.17 presence/restart regression gates (open)
+
+The latest source also re-passed the two lifecycle paths behind the earlier
+“世界里没有 AI” report on Forge 65.0.0/Minecraft 26.2:
+
+- `zero_human_dedicated_server_chunk_and_respawn`: 1/1; with no human client,
+  the body was spawned, remained simulated outside the observer area, died
+  through vanilla damage, and rejoined through normal respawn handling;
+- `auto_presence_on_human_login`: 1/1; a human login caused the AI body to
+  appear at a nearby safe point with its `[AI]` identity, and the no-credential
+  safety rule kept it still rather than pretending to be model-ready.
+
+These are lifecycle/availability gates only.  They do not prove that an
+invalid or absent provider credential can produce speech or ordinary goals;
+the earlier independent MiMo probe remains HTTP 401 and model gates stay
+`NOT_RUN`.
+
+The bounded emergency combat recheck also passed both matched tests in one
+Forge server run (`real_emergency_slime_defense` and
+`real_emergency_enderman_defense`, 2/2).  This confirms the latest source still
+leaves the local damage-response lane active when no model credential is
+available; it is not a PvP or random-world success-rate claim.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.16 fat-JAR lifecycle audit (open)
+
+The freshly regenerated installable fat JAR was staged into a clean dedicated
+server by `python3 e2e/orchestrator.py server-smoke --forge-version 65.0.0`.
+The exact artifact SHA-256 is
+`4d0a28c14de668341a164d8509c25467d6c37e997ff72e12685e188409c963b3` and the
+server, actor and observer staging copies all match it.  The declared
+`dedicated_server_exact_jar_lifecycle_only` verdict is `PASS`: Forge loaded,
+the accountless headless player joined, SQLite loaded from the Jar-in-Jar
+payload, and shutdown was clean.  As designed, the oracle gameplay portion is
+`FAIL`/`functionalAiClaim=false` because this run has no model credential and
+does not claim chat-to-action or movement.
+
+The complete JVM suite and the cleaned focused/dragon GameTests also pass.
+The repository remains dirty and this is development evidence only; formal
+M0--M4, live model-backed chat-to-action, rendered/offscreen client E2E and
+unseen-seed Hardcore statistics remain `NOT_RUN`.
+
+`./gradlew compat-checker` also passes the repository contract for the Forge 65
+line: published entries `65.0.0` through `65.1.0` are listed, while the report
+correctly keeps `formalMatrixComplete=false` until each runtime matrix case is
+actually executed.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.15 End entry/dragon/return recheck (open)
+
+After the diagnostic cleanup, the broader controlled server chain was rerun:
+`real_end_victory_and_return` passed 1/1 on Forge 65.0.0/Minecraft 26.2 in
+`run-debug17`.  The same headless `ServerPlayer` entered the End, completed
+the ordinary dragon fixture using vanilla combat attribution, earned
+`Free the End`, and physically returned through the central portal to the
+Overworld.  The run also exercised the normal damage/emergency observation
+path; no direct dragon kill, teleport, inventory injection, or portal block
+write was added by the test.
+
+This is still a deterministic controlled GameTest and therefore does not
+promote M2, M4, a live-model claim, a rendered client claim, or a random
+Hardcore-seed statistic.  Formal M0--M4 and the model/client/offscreen gates
+remain `NOT_RUN`.
+
+The post-fix focused portal JVM regression and full Forge `check` also pass on
+Forge 65.1.0 (the suite reports zero failures/errors and two external skips),
+and the compatibility schema validator passes. The expected warning/error
+lines are bounded-failure test diagnostics; Gradle completed successfully.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v90.14 end-portal interaction fix (open)
+
+The focused real Forge GameTest now passes after the end-frame interaction
+correction.  The failure chain had progressed through portal return, stronghold
+room search, and crystal combat, then repeatedly stalled while filling the
+remaining End portal frames.  The cause was not a model response or a hidden
+world read: the semantic ray fan could expose a different face of the same
+frame while the body turned, and the skill sent that newer face to the vanilla
+actuator instead of reusing the exact fair hit that started the alignment.
+
+`ActivateObservedEndPortalSkill` now keeps the first observed block/face/hit
+for an alignment, upgrades only when a later fair top hit of that same frame is
+visible, and sends that stored `BlockInteractionTarget` through the normal
+server crosshair, face, reach, inventory and block-use checks.  The temporary
+crystal, eye, portal-search and end-frame action diagnostics were removed from
+the production skill and GameTest after the cause was reproduced.
+
+Evidence:
+
+- `compileJava`: `BUILD SUCCESSFUL` after the interaction-target fix;
+- `runGameTestServer -Pgametest_working_dir=run-debug15
+  -Plive_model_selector=mcai_companion:real_end_portal_activation`: 1/1
+  required test passed on Forge 65.0.0/Minecraft 26.2;
+- the run consumed all twelve ordinary `ender_eye` items and produced all
+  nine vanilla `end_portal` blocks; no direct frame/world mutation was added.
+
+This is a controlled fair-player server gate, not a model-backed completion,
+rendered-client gate, Hardcore random-seed result, or M0--M4 pass.  Formal
+M0--M4, live model-backed chat-to-action, client/offscreen E2E, and hidden-seed
+Hardcore statistics remain `NOT_RUN`.  Next is a clean compile plus the
+broader no-human completion-chain gate; the supplied MiMo credential remains
+unverified (the earlier endpoint probe returned 401), so no model claim will be
+made without a valid credential and an auditable run.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v81--v83 handoff correction and next gate (open)
+
+v81 captured the failure owner: the portal-return tick was claimed by
+`EMERGENCY_SURVIVAL` in `GUARDING` even though the current frame had no danger
+and the return skill did not own hostile proximity.  The prior Blaze combat
+timestamp was the only reason the 120-tick reacquisition window stayed alive.
+The fix adds a one-shot `SkillSupervisor` completion edge and clears only that
+bounded timestamp at the next skill handoff; fresh visible hostiles, recent
+damage, physical contact, fire, falls, air, and food still preempt normally.
+
+v82 showed the production-only handoff was insufficient because the lifecycle
+GameTest manually ticks a skill before the emergency controller.  v83 changed
+the shared handoff edge so the test path consumes it too.  The portal-return
+portion then passed: the body walked through the real corridor and reached the
+verified portal area with `survival=CLEAR` and the active-skill lease.
+
+The same v83 run exposed the next genuine lifecycle failure at the subsequent
+crystal-cage pillar: `tower_up.visible_support_face_unavailable` at tick 2490.
+Its manual test order lets `tower_up` rotate first and then lets a fresh
+`WARNING_REACTING`/`GUARDING` emergency overwrite the first-person view every
+tick, so the skill exhausts its alignment counter even though production would
+not tick the lower skill while emergency owns the body.  The next change is to
+make the GameTest actuator order match the production arbiter (emergency first;
+run the active skill only when emergency passes), then rerun the same full
+lifecycle gate.  v83 is a failure and is not counted as a lifecycle pass.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v78--v80 portal-return failure (open)
+
+The fresh lifecycle gate was rerun after the planner start/support changes and
+is still a real failure, not a pass:
+
+- v78 `headless_player_lifecycle_state_and_fair_action` failed at
+  `return_via_verified_portal` with the body held at the one-block portal
+  approach (`travel_to.stuck`);
+- v79 confirmed that accepting the current grounded cell as a bounded start
+  lets the body leave the original cell, but it then selected an unhelpful
+  reverse frontier and stopped;
+- v80 added a 128-observation-revision memory for only body-contact-confirmed
+  support cells.  It still failed at `travel_to.stuck`, ending near
+  `(-46.450740872484914,49.0,-0.16741180191619878)` for the verified target
+  `(-46.5,48,-11.5)`.
+
+The changed files are `LocalAStarPlanner`, `MoveToSkill`, `RollingTravelPlanner`
+and `TravelToSkill`; they do not authorize unknown blocks, hidden world reads,
+teleportation, or direct world edits.  The last failed run is
+`run-patch-matrix/forge-65.0.1-v80-body-lifecycle` (Gradle exit 1).  The next
+step is to capture the emergency-survival/behavior-arbiter state during the
+same return tick, because the logs show a stale `GUARDING` intervention after
+Blaze combat and the final movement input is false.  If that lane is the
+owner, the handoff will be narrowed so only an actual fresh threat can preempt
+portal travel; if it is clear, the portal corridor/rolling planner trace will
+be corrected instead.  No v78--v80 result promotes M0--M4; formal M0--M4,
+live model-backed chat-to-action, client/offscreen E2E, and unseen-seed
+Hardcore statistics remain `NOT_RUN`.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v74--v77 physical safety gates
+
+Fresh Forge GameTest server runs against the current source passed four
+player-body physics gates, each 1/1 on Forge 65.0.0/Minecraft 26.2:
+
+- v74 `real_emergency_enderman_defense`;
+- v75 `real_emergency_slime_defense`;
+- v76 `real_water_clutch` (the log records real
+  `DEPLOYING_WATER`/`PREPARING_WATER` interventions);
+- v77 `real_parkour_course`.
+
+These gates use the actual fair headless `ServerPlayer`, vanilla collision,
+inventory and movement actuators.  They cover the concrete field failures of
+standing still while attacked, failing to self-rescue from a fall, and being
+unable to traverse a bounded parkour course.  They do not prove model
+classification, natural conversation, PvP, or survival completion.
+
+Formal M0--M4, live model-backed chat-to-action (the supplied MiMo endpoint
+currently returns 401), rendered/offscreen client E2E, Hardcore unseen-seed
+statistics, and the Forge compatibility matrix remain `NOT_RUN`.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: dedicated playerless lifecycle smoke
+
+The exact regenerated fat artifact was staged into a fresh dedicated-server
+run by `python3 e2e/orchestrator.py server-smoke --forge-version 65.0.0`.
+The server ran with no human client and no model credential.  The immutable
+verdict is `PASS` for its declared lifecycle scope: dedicated server started,
+the oracle loaded, the headless `MCAI` ServerPlayer joined, runtime memory
+opened SQLite only from the product Jar-in-Jar payload, the exact product hash
+was preserved in all staged copies, and graceful shutdown removed the player
+with exit code 0.  Artifact SHA-256 was
+`8e5dae81bd8543c9564c096ebb03f89c26155873438b8a58642b9a707a2e2fab`.
+
+The associated oracle gameplay result is intentionally `FAIL`/`setupComplete`
+false because this smoke has no model and does not run chat or movement; the
+separate `server-smoke-verdict.json` correctly reports
+`functionalAiClaim=false`.  This is a real playerless-server lifecycle gate,
+not a functional companion or M1 result.  The E2E Python audit suite also
+passed all 15 tests.  Formal M0--M4, live model-backed chat-to-action, rendered
+client/offscreen, Hardcore unseen-seed statistics, and Forge compatibility
+matrix remain `NOT_RUN`.
+
+Run evidence: `e2e/results/no-commit-dirty/20260808T223019Z-e2e28dfca768af5`.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v72--v73 scan-frame fix and package refresh
+
+The v63 Ender reserve failure was isolated to `SecureEnderPearlReserveSkill`:
+the scan-alignment timeout was charged once per server tick even when the
+semantic perception frame had not changed.  At the fixture's lower-frequency
+observation cadence this could exhaust the setup budget while the body was
+still correctly waiting for a fresh aligned frame.  The scan phase now counts
+only a new `observationRevision`, records the revision it last charged, and
+resets that marker on alignment and every new scan turn.  This preserves the
+bounded timeout while avoiding duplicate charges from the same observation.
+
+Fresh real Forge GameTests after the correction:
+
+- v72 `real_ender_pearl_reserve`: 1/1, `All 1 required tests passed`;
+- v73 `real_ender_pearl_reserve` recheck: 1/1, `All 1 required tests passed`,
+  Gradle `BUILD SUCCESSFUL`.
+
+The focused JVM suite had already passed with the correction.  The installable
+fat artifact was then regenerated with `jarJar` (not only the slim `jar` task):
+`build/libs/mcai_companion-0.1.4-dev-mc26.2.jar`, SHA-256
+`8e5dae81bd8543c9564c096ebb03f89c26155873438b8a58642b9a707a2e2fab`.
+The slim development archive is
+`build/libs/mcai_companion-0.1.4-dev-mc26.2-slim.jar`, SHA-256
+`e4c418789a787303787bb3dc194e6cb309df2abd78dde72f2f7f34e8afb90df1`.
+Both archives contain the same corrected `SecureEnderPearlReserveSkill`
+class; only the fat archive includes the bundled SQLite dependency and mod
+metadata.
+
+Formal M0--M4, live model-backed chat-to-action (the supplied MiMo endpoint
+currently returns 401), real client/offscreen observation, playerless-server
+lifecycle, Hardcore unseen-seed statistics, and the Forge compatibility matrix
+remain `NOT_RUN`.  These v72/v73 results are directed fair-player server
+skill gates, not a final professional-companion or speedrun claim.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v58--v68 pearl-merge race correction
+
+The fresh v58/v59 Forge runs passed the corrected blaze-material and
+workstation gates.  The first fresh Ender reserve rerun (v60) failed with
+`collect_observed_item.item_lost_without_pickup`; v61 reproduced the same
+failure.  This was not a random no-drop case: the fixture gives the held
+Enderman a guaranteed pearl drop, and the failure snapshot showed the bound
+drop UUID gone while another pearl ItemEntity remained nearby.
+
+The cause is vanilla `ItemEntity` merging.  Minecraft removes one entity UUID
+and keeps a nearby same-item entity as the stack survivor.  The fair collector
+was bound forever to the removed UUID, while the Ender wrapper's filter also
+hid the survivor when it had been visible before the current combat attempt.
+That made a normal vanilla merge look like a lost drop.
+
+The correction is bounded and observation-only:
+
+- `CollectObservedItemSkill` rebinds only when both synchronized core and
+  interaction frames currently show a different same-item entity within the
+  two-block merge radius of the last genuinely observed position.  No entity
+  query, hidden stack count, teleport, or direct inventory edit is used.
+- `AcquireShelteredEnderPearlSkill` allows that nearby survivor through the
+  already-authorized drop filter, including a pre-combat survivor only inside
+  the same bounded death-site radius.  Inventory growth remains the success
+  authority.
+- `CollectObservedItemSkillTest` now covers the merge-radius boundary.
+
+Evidence after the correction: v62 passed the focused reserve, v63 exposed a
+separate pre-target `scan_alignment_timed_out` setup flake and is not counted
+as a pearl result, and v64, v66, v67, and v68 each passed a fresh real
+`real_ender_pearl_reserve` server gate.  v65 was the instrumented failure
+capture used to identify the removed/surviving UUIDs; temporary production and
+GameTest instrumentation has been removed.  The runtime printed Forge
+65.0.0/Minecraft 26.2 in these runs (the working-directory labels are not a
+version claim).
+
+Formal M0--M4, live model-backed chat-to-action (the supplied MiMo endpoint
+currently returns 401), real client/offscreen observation, Hardcore unseen
+seed statistics, and the Forge compatibility matrix remain `NOT_RUN`.  The
+next exact work is a focused JVM regression including all modified skills,
+fresh blaze/workstation/diagonal gates, then `jar` packaging and artifact
+inspection.  No milestone is promoted by these directed passes.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v69--v71 adjacent gates and package
+
+After the merge correction, fresh directed Forge gates also passed:
+
+- v69 `real_nether_blaze_material_reserve`: 1/1, physical combat, visible
+  blaze-rod collection, and vanilla inventory confirmation;
+- v70 `workstation_wood_prerequisite_composition`: 1/1 (the normal closed
+  channel warning occurs during GameTest shutdown after the pass);
+- v71 `real_travel_diagonal_detour`: 1/1, including the bounded reverse
+  frontier and diagonal arrival.
+
+The focused JVM suite covering `RollingTravelPlanner`, `TravelToSkill`, the
+emergency survival controller, observed-item collection, Enderman and Blaze
+acquisition, and both secure reserve wrappers passed.  `gradlew jar` also
+passed.  The packaged fat artifact is
+`build/libs/mcai_companion-0.1.4-dev-mc26.2.jar` (SHA-256
+`d903b44c943de7d17adcf130044fdbf5466d71224a0d3bedc0e96a6a0f764d58`); the
+slim development artifact is retained separately.  Its metadata explicitly
+declares Forge `[65.0.0,66)` and Minecraft `[26.2]`; these runs printed Forge
+65.0.0/Minecraft 26.2 and do not establish compatibility with 64.x, 65.0.8,
+66.x, or the older 26.1.2 target.
+
+These are directed inner-loop/skill gates only.  Formal M0--M4, the live
+model-backed chat path (the supplied MiMo endpoint returns 401), real client
+and offscreen visual E2E, playerless-server lifecycle, Hardcore unseen-seed
+statistics, and the Forge compatibility matrix remain `NOT_RUN`.  The next
+work is to preserve these artifacts/checksums and move to the dedicated
+offscreen/model gates; no final product or “professional companion” claim is
+made from this package alone.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v48--v57 adjacent real gates
+
+The fresh regression sequence found and corrected three adjacent production
+issues instead of treating the earlier green runs as a completion claim.
+
+- v48 `real_nether_blaze_material_reserve` failed at
+  `collect_observed_item.item_lost_without_pickup`: the emergency hostile
+  reacquisition sweep reclaimed the actuator after combat had already handed
+  the first-person frame to pickup.
+- v49 then exposed the same stale lease during
+  `SecureNetherBlazeMaterialSkill` selection, causing
+  `secure_nether_blaze_material.scan_alignment_timed_out` while the body was
+  stationary.  `AcquireNetherBlazeRodSkill` and the secure material
+  selection/exploration phases now suppress only a clean stale sweep; a newly
+  visible hostile/projectile still returns ownership to emergency safety.
+- v50 `real_nether_blaze_material_reserve` passed 1/1 on a fresh server, with
+  physical combat, drops, pickup, and a completed reserve.  v51
+  `workstation_wood_prerequisite_composition` passed 1/1 on a fresh server.
+- v52 and v53 reproduced the same `real_travel_diagonal_detour` failure:
+  `travel_to.route_unknown` at tick 532.  Terminal evidence showed the sole
+  target-advancing safe cell `(-291,-42,-292)` was permanently rejected even
+  though it had previously been reached successfully.  v54 added bounded
+  terminal evidence confirming `rejected=true` rather than an observation
+  flake.
+- Removing successful endpoints from the rejection set (v55) changed the
+  failure to a real oscillation and `travel_to.no_progress`, which proved
+  that simply allowing revisits is also unsafe.  A temporary segment trace in
+  v56 showed the body oscillating around the dead-end baseline and repeatedly
+  entering course recovery without taking the unexplored branch.
+- The final correction adds a separate, bounded reverse-frontier choice in
+  `RollingTravelPlanner`: only when no non-rejected target-advancing cell is
+  available, an adjacent fully observed safe cell may move away from the
+  waypoint by at most the existing detour budget.  It is still routed through
+  vanilla `MoveTo`, has no world query or teleport, and is covered by
+  `boundedReverseFrontierEscapesARejectedDeadEnd()`.
+- v57 `real_travel_diagonal_detour` passed 1/1 on a fresh server and completed
+  the diagonal branch and arrival.  Temporary segment tracing has been
+  removed; the bounded terminal observation evidence remains for audit.
+
+The actual runtime printed by every v50--v57 server is Forge 65.0.0 for
+Minecraft 26.2 (Forge reports target 65.1.0), despite the historical working
+directory names.  This is compatibility evidence for that runtime only, not
+proof of Forge 65.0.1 or 26.1.2 support.
+
+Formal M0--M4, live model-backed chat-to-action (the supplied MiMo endpoint
+currently returns 401), real client/offscreen observation, Hardcore unseen
+seed statistics, and the Forge compatibility matrix remain `NOT_RUN`.
+The next exact work is to rerun the corrected blaze and workstation gates,
+run the focused JVM suite without diagnostic noise, then package and inspect
+the JAR. No milestone is promoted by these directed passes.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: v40--v47 real pickup/return gate
+
+The focused Forge 65.0.1 `real_ender_pearl_reserve` run v47 passed 1/1 on a
+fresh working directory (`run-patch-matrix/forge-65.0.1-v47`).  The log ends
+with `Completed focused real Ender pearl reserve acquisition GameTest`,
+`All 1 required tests passed`, and Gradle `BUILD SUCCESSFUL`.  This is a
+directed, deterministic server GameTest using the fair `ServerPlayer` body;
+it is not an AI-model test and it is not an M1--M4 acceptance result.
+
+The repeat history is intentionally retained: v40 passed, v41 reproduced a
+stationary collection failure, v42 traced the failure to the emergency guard
+lane claiming the actuator while collection was active, v43 removed that
+lease conflict and exposed a real sheltered-return `move_to.route_unknown`,
+v44 exposed a second collection movement-gate race, and v45/v46 passed after
+the race correction.  v47 is the first repeat after removing the temporary
+observed-item trace logging; the remaining ender-reserve diagnostic lines are
+the existing bounded GameTest audit, not a production recovery trace.
+
+Current production corrections:
+
+- `EmergencySurvivalController` no longer steals the movement lease from an
+  active collection/combat skill merely because the local attack cooldown is
+  active; physical contact and unmanaged hostile proximity remain emergency
+  owned.
+- `AcquireShelteredEnderPearlSkill` releases collection when a causally
+  correlated new pearl is visible even if the defeated Enderman UUID lingers
+  for one semantic observation.  A reappearing bound target on a newer
+  observation revision is still rejected, and inventory growth remains the
+  pickup authority.
+- `SecureEnderPearlReserveSkill` now gives bounded re-observation/retry for
+  only `move_to.route_unknown`, `move_to.stuck`, and `move_to.turn_stuck` while
+  returning to the verified shelter.  It never teleports, inserts items, or
+  bypasses the hardcore danger gate.
+- Temporary `CollectObservedItemSkill` reacquisition diagnostics have been
+  removed.  The focused JVM suite covering the modified controller, acquire,
+  collect, engage/collect, and secure-return skills passes.
+
+The v47 run still shows physically moving vanilla-player motion, repeated
+combat/drop/pickup cycles, shelter verification, and normal shutdown.  It does
+not prove model responsiveness, passive chat interpretation, navigation in a
+playerless client, PvP, parkour, chunk-ticket policy, or survival completion.
+Formal M0--M4, real model-backed chat-to-action, real client/offscreen
+observation, Forge 65.x compatibility matrix, and unseen-seed Hardcore
+statistical gates remain `NOT_RUN`.
+
+Next exact work is a fresh Forge 65.0.1 regression for the blaze reserve,
+wood/workstation prerequisite composition, and diagonal travel gates, then a
+compile/package check.  Any failure will be recorded rather than hidden.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: sheltered pearl return and pickup repeat
+
+The previous Forge 65.0.1 ender-pearl reserve run exposed a second, distinct
+failure after the bounded observed-item approach fix.  At the end of a real
+combat cycle the body was physically back inside its shelter, but a fresh
+first-person sample could temporarily omit the roof proof while pickup
+entities were still settling.  Starting the precision return mover from that
+sample caused the hardcore residual-risk gate to reject with
+`move_to.hardcore_danger` (v36).
+
+`SecureEnderPearlReserveSkill.tickHunter` now treats a completed hunt already
+inside the shelter as a selection reset/re-observation boundary.  It no
+longer starts a precision return solely because the just-consumed semantic
+sample lacks transient roof proof.  It still uses the normal return path when
+the body is actually outside the shelter, and the builder path remains the
+authority when a later fresh observation confirms that the shelter is not
+safe.
+
+The next run (v37) crossed that failure and reached repeated physical
+Enderman/drop cycles, but failed at
+`collect_observed_item.item_lost_without_pickup`.  A temporary physical/entity
+trace in v38 showed live pearl entities outside the one-block pickup envelope
+and intermittent first-person visibility while the collection lease was still
+waiting for the combat child to authorize the drop.  This was diagnostic only;
+no teleport, direct item insertion, hidden-world scan, or synthetic pickup was
+used.  The same source completed the required reserve in v39 (Forge 65.0.1,
+`real_ender_pearl_reserve`, 1/1, Gradle `BUILD SUCCESSFUL`), but that single
+pass does not erase the v38 flake or establish stability.
+
+Temporary production and GameTest logging used for v38/v39 has now been
+removed.  Focused JVM tests for `SecureEnderPearlReserveSkill`,
+`AcquireShelteredEnderPearlSkill`, and `CollectObservedItemSkill` pass after
+cleanup.  The immediate next gate is to repeat the real reserve on fresh
+Forge worlds (v40 and, if needed, v41), then rerun the diagonal travel gate.
+Only repeated clean runs will allow this narrow inner-loop fix to be marked
+stable.  Formal M0--M4, real model-backed chat-to-action, offscreen client,
+and unseen-seed Hardcore statistical gates remain `NOT_RUN`.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-09 continuation checkpoint: observed drop pickup lease ordering
+
+The Forge 65.0.1 Blaze-reserve gate reproduced a concrete production failure:
+the drop was still alive and first-person visible at roughly 1.85--2.3
+blocks, but `CollectObservedItemSkill` queued a direct forward frame and then
+cancelled the stale `MoveToSkill`.  `MoveToSkill.cancel()` quiesces the fair
+actuator, clearing that just-queued input.  The body therefore rotated and
+waited until the 50-tick lost-target grace expired with
+`collect_observed_item.item_lost_without_pickup`.
+
+Source correction in
+`src/main/java/dev/mcai/companion/skills/loot/CollectObservedItemSkill.java`:
+
+- quiesce an old route before issuing a direct visible/remembered approach;
+- permit one bounded same-level approach frame when the body is on ground,
+  not in water, no unmanaged threat is present, and the known support is not
+  liquid, even if the exact centre-below voxel is absent from the current ray
+  fan; the next semantic frame remains the collision/inventory authority;
+- retain the ordinary vanilla inventory-growth confirmation as the only
+  pickup success signal.
+
+Evidence:
+
+- `CollectObservedItemSkillTest`, `EngageAndCollectObservedDropSkillTest`,
+  and `SecureNetherBlazeMaterialSkillTest`: PASS;
+- Forge 65.0.1 `real_nether_blaze_material_reserve` v34: PASS 1/1, Gradle
+  `BUILD SUCCESSFUL`; logs show the player physically approaching drops and
+  completing repeated combat/pickup cycles.  This is an inner-loop directed
+  gate, not formal M1--M4 acceptance.
+- v32 and v33 remain recorded as failures before the final bounded-approach
+  correction; no earlier failure is being erased.
+
+Last current next work: run fresh Forge 65.0.1 regressions for
+`workstation_wood_prerequisite_composition`, `real_ender_pearl_reserve`, and
+`real_travel_diagonal_detour`; update the progress evidence and only then
+rebuild/package. Formal M0--M4, model-backed chat-to-action, real offscreen
+client, and unseen-seed Hardcore gates remain `NOT_RUN`.
+
+Updated: 2026-08-09 (Asia/Tokyo)
+
+## 2026-08-07 continuation checkpoint: observed travel still fails the shelter gate
+
+Current root cause: the fair body is moving through vanilla `ServerPlayer`
+physics, but `TravelTo` can choose a locally safe cell that is only mildly
+closer (or later farther) from a remote exploration waypoint.  Repeated local
+segments then consume the exploration budget without reaching the wood.  This
+is a production navigation defect, not a model-response or chunk-loading
+claim.
+
+Latest source changes:
+
+- `TravelToSkill` keeps bounded rejected frontier cells across tiny target
+  improvements, records nested `MoveTo` checkpoints, and resets its no-progress
+  watchdog only for target-closing or map-distance progress; sideways motion
+  no longer counts as successful journey progress.
+- `RollingTravelPlanner` preserves `CANDIDATE_UNREACHABLE` as an explicit
+  reject/replan result instead of silently replacing it with another frontier.
+- `ExploreForObservedTargetSkill`, `PrepareFoundationShelterMaterialsSkill`,
+  and the shelter GameTest expose nested child state, position, and look for
+  reproducible diagnosis.
+
+Directed evidence after these changes:
+
+- `TravelToSkillTest` and `RollingTravelPlannerTest`: PASS.
+- `real_travel_diagonal_detour` on Forge 65.0.1: PASS 1/1; this does not cover
+  the remote wood-search failure.
+- `shelter_material_wood_exploration` v24, v25, v26, and v27: FAIL 1/1 each.
+  v25 showed 223 completed local segments and a body physically moved to
+  `(-300.3865,-42,-298.8492)` while the target remained outside arrival.
+  v26/v27 showed target-distance deterioration after a best distance near
+  `3.01`, with nested `MoveTo` still following a local cell; v27 correctly
+  timed out/replanned rather than treating that wandering as progress.
+
+Last failed gate: the isolated Forge 65.0.1 shelter-material GameTest timed
+out at 5000 ticks.  Formal M0--M4, model-backed chat-to-action, real-client,
+and unseen-seed Hardcore gates remain `NOT_RUN`; no milestone is promoted.
+
+Next exact work: add a target-direction invariant to rolling detour selection
+and a bounded course-recovery transition when the body is materially farther
+from the waypoint than its best observed distance; then rerun the shelter gate
+and the three previously passing component gates (`real_ender_pearl_reserve`,
+`real_nether_blaze_material_reserve`, and
+`workstation_wood_prerequisite_composition`) on fresh Forge 65.0.1 worlds.
+
+Updated: 2026-08-06 (Asia/Tokyo)
+
+## 2026-08-06 continuation checkpoint: current-source compatibility evidence
+
+The credential restore and authentication-status fixes are now built from the
+same source against the Forge 65.0.0 compile floor.  `compileJava` also passes
+for 65.0.8 and 65.0.9, so the source does not depend on the newer patch API.
+This is compile evidence only: the complete Forge 65 patch matrix, client
+rendering, and model-backed gameplay gates remain `NOT_RUN`.  The authoritative
+artifact is the package gate below; its hash is unchanged by the documentation
+update.
+
+The next independent check is limited to JSON/hash/Python audit consistency and
+the focused credential/lifecycle tests.  No provider request is made by that
+check and no key is written to repository artifacts.
+
+The focused JVM set passed, followed by fresh Forge 65.1.0 lifecycle checks:
+zero-human dedicated-server chunk/death/respawn 1/1 in 1.724 seconds and
+human-login auto-presence 1/1 in 649.9 ms.  The Python audit is 15/15 and the
+product hashes remain the values recorded below.  These checks prove body
+admission/lifecycle and credential state handling only; they do not prove model
+authentication, ordinary task execution, combat competence, or M0--M4.
+
+## 2026-08-07 continuation checkpoint: Forge 65 compile coverage
+
+The current source was compiled independently against every published Forge 65
+patch: `65.0.0`, `65.0.1`, `65.0.2`, `65.0.3`, `65.0.4`, `65.0.5`,
+`65.0.6`, `65.0.7`, `65.0.8`, `65.0.9`, and `65.1.0`. The compatibility
+declaration now records all eleven in `compileVerifiedPatches`.
+
+This is deliberately not a runtime compatibility claim. The formal patch
+matrix still requires exact product loading plus chat, movement, menu,
+save/restart, and real-client checks for each patch; those remain `NOT_RUN`.
+
+The two bounded lifecycle tests were then run on each of the same eleven
+patches. `zero_human_dedicated_server_chunk_and_respawn` and
+`auto_presence_on_human_login` passed 1/1 on every patch, 22/22 total. This
+proves only body admission, chunk/death/respawn, and login presence; the
+patch-level chat/movement/menu/save/restart and exact-client matrix remains
+`NOT_RUN`.
+
+## 2026-08-06 continuation checkpoint: setup-screen credential restore race
+
+The setup screen could ask for the API key again immediately after a world
+restart even when the key was stored in the platform credential store.  The
+server created a new `ApiKeyManager`, while its Keychain/Secret-Service load
+ran only on the model bootstrap worker; `handleOpen` sent the UI state before
+that local restore completed, so `credentialAvailable` was briefly false.
+
+`ModelRuntime.restoreCredential()` now performs exactly one local restore
+operation off the server thread and returns only a boolean.  The setup-open
+handler waits for that completion before sending the secret-free state.  It
+does not contact the provider, expose the key, or write it to the world.  A
+focused `ModelRuntimeTest` verifies that this path makes credential
+availability visible without creating a provider probe.  The existing
+macOS-Keychain, Windows-DPAPI, Linux-Secret-Service, systemd credential-file,
+and environment injection boundaries remain unchanged.
+
+This fixes the observed re-entry race in source and focused JVM tests; it is
+not a claim that the supplied MiMo credential is valid (the independent live
+probe remains HTTP 401), nor a real-client or M1--M4 pass.
+
+After the change, the complete package gate passed 987 JVM tests (0 failures,
+0 errors, 2 skips), with product SHA-256
+`d686592b129711b6689a0d96657597f8c1f924840163101ce5743c64b5232093` and slim
+SHA-256 `a2fb43449a396badfd100c54fe58e1f0e329eee72844ffd0678dbf338f121e5d`.
+The exact-JAR Forge 65.1.0 lifecycle smoke
+`e2e/results/no-commit-dirty/20260806T145900Z-e2e73cc54db7b60` passed cleanly
+with matching expected/loaded product hashes and `functionalAiClaim=false`.
+The Python audit remains 15/15 and `./gradlew check` passes.
+
+The setup state also now preserves a non-empty runtime configuration error
+when the requested state code is merely `ready`; after a real provider 401 the
+screen therefore shows `api_key_rejected` instead of a misleading healthy
+status. `ModelRuntimeTest` covers this snapshot contract. The subsequent full
+package passed 988 JVM tests (0 failures, 0 errors, 2 skips), with product
+SHA-256 `02a90602ad25414be26f0f024e6d2adaca6e81de53ca93c0f33ade7173272898`
+and slim SHA-256
+`edde0aafdfeccb73dca74a05393fb15ea605b22958a52c09e2fa51ae004e27a8`.
+Exact smoke `e2e/results/no-commit-dirty/20260806T150608Z-e2e0fe4e64a48f8`
+passed with matching product hashes and `functionalAiClaim=false`.
+
+The credential manager now serializes persistent save/restore/clear/close
+operations. This prevents an old platform-store read from overwriting a newly
+submitted key in the process cache while setup and world-start bootstrap run
+concurrently. `ApiKeyManagerConcurrencyTest` reproduces that ordering with a
+blocked store and passes.
+
+The final package after this concurrency fix passed 989 JVM tests (0 failures,
+0 errors, 2 skips), with product SHA-256
+`d903b44c943de7d17adcf130044fdbf5466d71224a0d3bedc0e96a6a0f764d58` and slim
+SHA-256 `18083297d1ae2b243d28e8fd1a10c73040470ebe2d941e0d55b158aed1692526`.
+Exact smoke `e2e/results/no-commit-dirty/20260806T151632Z-e2e8fd9f4119cab`
+passed with matching hashes and `functionalAiClaim=false`.
+
+After restoring the Forge 65.0.0 compile floor, the exact product was rerun
+once more as `e2e/results/no-commit-dirty/20260806T152134Z-e2e26cc46bb701f`;
+the expected and loaded SHA-256 values still match and the lifecycle verdict
+is PASS with `functionalAiClaim=false`.
+
+The current source was also rerun on real Forge 65.1.0 with no model
+credential: `zero_human_dedicated_server_chunk_and_respawn` passed 1/1 in
+1.795 s and `auto_presence_on_human_login` passed 1/1 in 726.4 ms. These
+verify only real ServerPlayer lifecycle, safe spawn, death/respawn, and
+human-login presence; they do not promote chat, movement, model, or M1--M4.
+
+## 2026-08-06 continuation checkpoint: Forge compatibility declaration and lifecycle smoke expansion
+
+The compatibility declaration had drifted from the objective's machine-readable
+contract: it used `[[lines]]` and snake_case fields, so an automated checker could
+not reliably consume the required Forge line metadata. `compat/forge-lines.toml`
+now uses schema version 2 with `[[line]]`, `forgeMajor`, `minimumForge`,
+`recommendedForge`, `module`, `status`, explicit published patches, and separate
+compile/runtime/formal-matrix evidence arrays. Forge 66 remains explicitly
+unreleased and unclaimed.
+
+`scripts/validate-compat.py --json` passes on the host's Python 3.9 using its
+dependency-free TOML fallback parser. It reports Forge 65 as required, 11
+published 65.x patches, four lifecycle-smoke-verified patches, and
+`formalMatrixComplete=false`.
+
+The same two real Forge GameTests were rerun on every cached floor/recommended
+candidate that is available locally:
+
+- `zero_human_dedicated_server_chunk_and_respawn`: Forge 65.0.0, 65.0.8,
+  65.0.9, and 65.1.0 — 1/1 each.
+- `auto_presence_on_human_login`: Forge 65.0.0, 65.0.8, 65.0.9, and 65.1.0
+  — 1/1 each.
+
+This is 8/8 targeted lifecycle tests, not a formal compatibility matrix: the
+unavailable 65.0.1–65.0.7 patches and all chat, movement, menu, save/restart,
+real-client, model, and statistical gates remain unverified/`NOT_RUN`.
+
+The current exact product JAR was then smoke-tested again in
+`e2e/results/no-commit-dirty/20260806T144411Z-e2e364577cc21c8` on Forge 65.1.0:
+expected and loaded SHA-256 both equal
+`f1bf8301ec09c25934c0c396aa4be849de431b4e6f0b7ae8c47256c232df0440`, SQLite
+loaded only from Jar-in-Jar, lifecycle and clean exit passed, and
+`functionalAiClaim=false`.
+
+## 2026-08-06 continuation checkpoint: zero-human spawn deadlock correction
+
+The first real Forge 65.1.0 zero-human run after the login-anchor grace fix
+found a production-side blocking defect. The server thread entered
+`PrepareSpawnTask.Ready.spawn -> ServerLevel.waitForEntities` and remained
+there for more than four minutes; no GameTest timeout or model request caused
+it. The same stack reproduced when the test requested an unanchored spawn
+directly, so the previous zero-human gate was recorded as a real failed/hung
+attempt and the process was stopped rather than reported as a pass.
+
+Production correction:
+
+- `AnchoredPlayerSpawn` now prepares the bounded anchor chunk asynchronously,
+  locates the vanilla-safe player position only after that load completes, and
+  hands off through the ordinary `ServerPlayer` and
+  `PlayerList.placeNewPlayer` lifecycle without the synchronous
+  `waitForEntities` call.
+- `PendingPlayerSpawn` uses this same non-blocking path for both a real login
+  anchor and the no-human fallback. A saved player position/dimension is
+  preferred; otherwise the world's vanilla respawn position is used. The
+  40-tick unanchored login grace and replacement-only-before-ACTIVE rule are
+  unchanged.
+- No direct block/entity/world mutation was added; the body remains a real
+  `ServerPlayer`, with normal player-data loading, connection pump, inventory,
+  and death/respawn lifecycle.
+
+Directed verification after this correction:
+
+- Focused JVM tests (`PendingPlayerSpawnTest`, `FollowEntitySkillTest`, and
+  `EmergencySurvivalControllerTest`): PASS.
+- Real Forge 65.1.0
+  `zero_human_dedicated_server_chunk_and_respawn`: PASS 1/1 in 1.670 s. The
+  log shows `MCAI[embedded]` joining with no human client, the remote
+  simulation/death/respawn assertions completing, and clean shutdown.
+- Real Forge 65.1.0 `auto_presence_on_human_login`: PASS 1/1. The human and
+  `[AI]` body were both present at the bounded safe positions.
+- The current full package gate passed 986 JVM tests, 0 failures, 0 errors, and
+  2 skips with `jar`, `jarJar`, `verifyReleaseJar`, `e2eClientJar`, and
+  `e2eOracleJar`. Product SHA-256 is
+  `f1bf8301ec09c25934c0c396aa4be849de431b4e6f0b7ae8c47256c232df0440`; slim
+  audit SHA-256 is
+  `b54747c5495d9c5db99881250e823342e518b71d44baa6c1522a59dd755bcb28`.
+- Exact-JAR dedicated-server smoke
+  `e2e/results/no-commit-dirty/20260806T140920Z-e2eb3454cd62bfc` passed on
+  Forge 65.1.0 with server/Actor/Observer product copies matching that
+  product hash, SQLite loading from Jar-in-Jar, clean lifecycle, and
+  `functionalAiClaim=false`. Python E2E audit tests: 15/15 PASS, including
+  compatibility declaration and legacy-schema rejection checks.
+
+The MiMo credential is still independently observed as HTTP 401 and this
+macOS host still lacks the Linux/Xvfb Actor + Observer environment. Real model
+chat-to-action, formal mutation, M0--M4, unseen-seed Hardcore, and
+professional-companion claims remain `NOT_RUN`.
+
+## 2026-08-06 continuation checkpoint: login-time spawn-anchor race fix
+
+The next lifecycle symptom under review was a body that could be present on a
+dedicated server but not beside the player who opened a single-player world.
+`CompanionRuntime` is allowed to start an unanchored vanilla `PendingPlayerSpawn`
+at `ServerStartedEvent` so a server with zero human players still has a real
+body.  When the first human then logged in, `ensureSpawnNear` treated the
+`PREPARING` state as final and left that preparation at its saved/world spawn.
+This was a real ordering gap, not a model decision or a teleport failure.
+
+Production correction:
+
+- `PendingPlayerSpawn` now exposes only an `anchored()` lifecycle bit.
+- `AiPlayerManager.ensureSpawnNear/requestSpawn` replaces an unanchored,
+  still-pending preparation with a new bounded `SafeCompanionSpawnLocator`
+  preparation around the logged-in player.  The replacement is limited to
+  the pre-login `PREPARING` window; an `ACTIVE` body is never moved by login.
+- `PendingPlayerSpawnTest` records the source contract for this narrow branch.
+
+Directed verification after this fix:
+
+- Focused Gradle tests for `PendingPlayerSpawnTest`, `FollowEntitySkillTest`,
+  and `ConversationCommitmentSourceContractTest`: PASS.
+- Full current package: 985 JVM tests, 0 failures, 0 errors, 2 skips; Forge
+  65.0.0 compile floor, `jarJar`, `verifyReleaseJar`, `e2eClientJar`, and
+  `e2eOracleJar` passed. Product SHA-256 is
+  `85c227c3d3161f465499cbb2171b94658ee9dfdba5917f4fc71251705fdeea60`; the
+  slim audit artifact is `6f36a8218e0248b2b9bc193509a66fbbd11b3505491a9d15479d9d46300e461d`.
+- Exact product smoke
+  `e2e/results/no-commit-dirty/20260806T134602Z-20260806-login-anchor-final-smoke`
+  passed all dedicated-server lifecycle/hash/SQLite checks on Forge 65.1.0
+  with `functionalAiClaim=false`. The real Forge `auto_presence_on_human_login`
+  GameTest also passed 1/1 on the current source.
+- No gate failed in this slice. Real-model chat-to-action, rendered client,
+  M1--M4 and professional-companion gates remain `NOT_RUN`/blocked by the
+  observed provider HTTP 401 and missing Linux/Xvfb Actor+Observer worker.
+
+## 2026-08-06 continuation checkpoint: delayed follow binding no-op fix
+
+The remaining field symptom being addressed in this slice is the truthful
+acknowledgement followed by no movement during `follow_entity`.  The direct
+execution race was in `FollowEntitySkill`: its documentation promised a
+bounded search after a short line-of-sight loss, but `preconditions` and
+`start` rejected any target that was not still in the newest camera frame when
+the model response arrived.  A player turning a corner during provider
+latency therefore produced `follow_entity.target_not_currently_visible`
+before the skill could issue even one legal input.
+
+Production correction:
+
+- `src/main/java/dev/mcai/companion/skills/core/FollowEntitySkill.java` now
+  accepts only a recent, same-dimension, non-hostile target from the exact
+  fair authored sample; it binds the private entity identity and enters the
+  existing bounded `SEARCHING` phase when the target is temporarily absent.
+  The normal `lostGraceTicks` timeout, first-person scan, visibility filter,
+  and no-teleport/no-hidden-position rules remain unchanged.
+- `src/test/java/dev/mcai/companion/skills/core/FollowEntitySkillTest.java`
+  now verifies that a recent target leaving the current view starts a
+  stop-and-scan search instead of being rejected, while stale observation
+  windows and forged indices remain rejected.
+
+Directed verification:
+
+- `./gradlew test --tests dev.mcai.companion.skills.core.FollowEntitySkillTest
+  --tests dev.mcai.companion.communication.ConversationCommitmentSourceContractTest
+  --rerun-tasks --no-daemon`: PASS.
+- Full package after this source change: 984 JVM tests, 0 failures, 0
+  errors, 2 skips; `jarJar`, `verifyReleaseJar`, `e2eClientJar`, and
+  `e2eOracleJar` passed. The final rebuild used the Forge 65.0.0 API floor
+  (the produced bytes are identical to the previously smoked artifact).
+  Product SHA-256 is
+  `e82c63f4b303236621b202adb9d77e22fea43e1d963c926503a30e8b32c352d1` and
+  slim SHA-256 is
+  `dd55f73f33dabae8b041395735853358a0582c240281a4d0ed4eeeee3358fa90`.
+- Exact-JAR smoke
+  `e2e/results/no-commit-dirty/20260806T133127Z-20260806-follow-search-final-smoke`
+  passed all dedicated-server lifecycle/hash/SQLite checks on Forge 65.1.0;
+  `functionalAiClaim=false` remains explicit.
+- The no-human Forge GameTest was rerun from the same source after this change:
+  `zero_human_dedicated_server_chunk_and_respawn` passed 1/1 in 1.840 s on
+  Forge 65.1.0. It verified body creation on a dedicated server with no human
+  client, simulated-chunk/lifecycle continuity, ordinary death and respawn,
+  and clean shutdown; no model credential or model decision was involved.
+- The same production source also compiled against the declared Forge API
+  floor 65.0.0 after the follow correction: `compileJava` PASS. This is a
+  compatibility compilation check, not a runtime matrix or formal milestone.
+
+The provider credential remains independently observed as HTTP 401 and the
+macOS host still lacks Linux/Xvfb Actor + Observer infrastructure.  Therefore
+real model chat-to-action, formal mutation, M0--M4, unseen-seed Hardcore, and
+professional-companion claims remain `NOT_RUN`.
+
+## 2026-08-06 continuation checkpoint: formal gate entrypoints and preflight evidence
+
+The current gameplay blocker is unchanged: the configured MiMo credential
+still fails the real provider probe with one HTTP 401, and this macOS host has
+no Linux/Xvfb environment for the real Actor + Observer clients. Therefore
+real model chat-to-action, movement, inventory, mutation, M0--M4, and hidden
+Hardcore gates remain `NOT_RUN`; the recent Enderman/Slime GameTests are only
+fair local survival evidence.
+
+This continuation fixed two audit/infrastructure gaps rather than weakening a
+gate:
+
+- `e2e/orchestrator.py` now creates and prints an immutable functional run
+  before preflight. A blocked launch writes `manifest.json` with
+  `status=NOT_RUN`, `functionalAiClaim=false`, a secret-safe model summary,
+  `functional-preflight.json`, and `infrastructure-error.json`. The actual
+  run `e2e/results/no-commit-dirty/20260806T131041Z-20260806-preflight-archive`
+  records Darwin, missing Linux/Xvfb/model prerequisites and no credential
+  value or path.
+- `e2e/formal_gates.py` and `build.gradle` now expose all 17 named formal
+  entries from the plan (`e2eFunctional`, `e2eRendered`, `e2eChat`,
+  `e2eMovement`, `e2eInventory`, `e2eRestart`, `e2eXaero`, `e2eM1`,
+  `e2eM2`, `e2eM3`, `e2eM4Shard`, `aggregateHiddenSeeds`, `soak24h`,
+  `soak100h`, `recordHumanBaseline`, `naturalnessReport`, `mutationGate`).
+  The first five invoke the real external-client runner; the others record
+  explicit `NOT_RUN` until their gate-specific scenarios exist. A dirty
+  checkout, preflight failure, or absent verdict cannot become `PASS`.
+
+Verification:
+
+- Python orchestrator tests: 8/8 PASS; CI evidence tests remain green.
+- `python3 -m py_compile e2e/orchestrator.py e2e/formal_gates.py`: PASS.
+- `./gradlew tasks --all`: all 17 formal task names present.
+- `./gradlew e2eChat -Pforge_runtime_version=65.1.0`: expected non-zero
+  `NOT_RUN`; archived gate record at
+  `e2e/results/formal-gates/no-commit-dirty/20260806T131501Z-e2eChat.json`.
+- The exact packaged-JAR dedicated-server smoke was rerun after these
+  entrypoints as `20260806T131656Z-20260806-formal-entry-final-smoke-2` and
+  passed all lifecycle/hash/SQLite checks on Forge 65.1.0 with product SHA
+  `0ab57f138c9cefa48cf07bae3ffb49368fbaff354fdc519049243ee6b3a054e6`;
+  `functionalAiClaim=false` remains explicit.
+- After the truthful immediate-task acknowledgement change, the final
+  package gate passed with 984 JVM tests (0 failures, 0 errors, 2 skips),
+  product SHA
+  `f7a2303e5288965b6b204d31a43f2f662f1e4aa01391a5ab2bac2222af971955`, and
+  slim SHA
+  `87aa0a75f81622f2a2b5c06ead9655599dc396ebfe134fdcae7196db73a8c702`.
+  Exact-JAR smoke `20260806T132222Z-20260806-commitment-fix-final-smoke`
+  passed all lifecycle/hash/SQLite checks on Forge 65.1.0; it remains
+  `functionalAiClaim=false`.
+
+Next action is still a real Linux/Xvfb run with a valid, authorized model
+credential; no local script result will be promoted to a gameplay or
+professional-companion claim.
+
+## 2026-08-06 continuation checkpoint: Enderman footwork ownership fix and final rebuild
+
+The first post-package Enderman rerun failed honestly despite a long shield
+window: `maximumShieldTicks=131` but `maximumDistanceFromStart=0.019` and no
+footwork bit. Three consecutive reruns reproduced this, proving that the
+failure was real. The cause was two-sided: the top-level attack-cooldown branch
+called the ordinary hazard guard, whose `stop()` erased the combat movement
+lease, and an Enderman teleport removed the target from the current semantic
+sample before the body could request the next backstep.
+
+The production controller now keeps a bounded direction from the last fair
+close hostile observation (no entity id or hidden position), preserves the
+movement lease while the shield is held during combat cooldown, and reissues a
+short first-person-certified separation input for at most 40 ticks after a
+legal attack. If the local map cannot certify an adjacent cell, a small
+collision-authoritative backstep is allowed while grounded or outside a fall
+hazard; no position, block, reach, or entity state is written directly. The
+physical gate now measures maximum observed excursion rather than only net
+displacement, so a legal step followed by knockback/teleport cannot be erased
+by returning to the starting cell.
+
+Latest real Forge 65.1.0 evidence, with no model and no test gateway:
+
+- `real_emergency_enderman_defense`: PASS 1/1 after the fix, then PASS on
+  three consecutive independent reruns (3/3).
+- `real_emergency_slime_defense`: PASS 1/1 after the same source rebuild.
+
+Latest package/lifecycle evidence after this source change:
+
+- Gradle package gate: PASS, 983 tests, 0 failures, 0 errors, 2 skipped;
+  `verifyReleaseJar`, `e2eClientJar`, and `e2eOracleJar` passed.
+- Product JAR SHA-256:
+  `0ab57f138c9cefa48cf07bae3ffb49368fbaff354fdc519049243ee6b3a054e6`.
+- Slim audit JAR SHA-256:
+  `4fa0f9a2042abf2cbc1e1bd052b631e5f30c8716350a1c1d61da8d60bc62b18d`.
+- Python E2E: 10/10 PASS.
+- Exact product server smoke:
+  `e2e/results/no-commit-dirty/20260806T130153Z-20260806-offline-emergency-final-jar`;
+  all lifecycle/hash/SQLite checks passed and `functionalAiClaim=false`.
+- Functional preflight at `2026-08-06T13:03:21Z`: `ready=false` on Darwin;
+  Xvfb/Linux worker and model environment are absent. No secret value or
+  secret path was written to the report.
+
+The configured MiMo probe remains a single HTTP 401, and this macOS host
+still lacks Linux/Xvfb Actor+Observer infrastructure. Real model
+chat-to-action, navigation, inventory, mutation, M0--M4, and statistical
+Hardcore gates remain `NOT_RUN`. The physical gates above are local fair
+survival evidence only, not a professional-companion or two-hour completion
+claim.
+
+## 2026-08-06 continuation checkpoint: shared interaction release and attack-cooldown regression
+
+The first corrected no-model Slime run exposed a real production bug rather
+than a test-harness issue: the offline runtime finalizer called
+`ServerOwnedInteractionSkillActuator.quiesceNow()` every tick. That actuator
+shares the same fair player-use path as the emergency shield, so its release
+packet immediately cancelled the shield selected by the local survival lane.
+The test therefore observed a real hostile, but `evidence=27` and
+`maximumShieldTicks=0`. The runtime now releases menu/boat/minecart ownership
+offline, while leaving interaction ownership intact whenever emergency
+survival has intervened; the ownership-change callback still quiesces stale
+interaction state when control actually changes.
+
+The Enderman rerun then exposed a separate vanilla timing race: after a recent
+attack, an Enderman could teleport just outside the current bounded scan before
+the next decision, so the body attacked again instead of holding the shield
+during the sword/axe recharge window. `EmergencySurvivalController` now keeps
+only a bounded recent local attack timestamp and raises the shield for the
+conservative ten-tick recharge floor, including when the hostile temporarily
+leaves the current sample. No entity tracking, hidden coordinates, teleport,
+direct block mutation, or model shortcut was added.
+
+Latest physical evidence (real Forge server GameTests, no model and no test
+gateway):
+
+- `real_emergency_slime_defense`: PASS 1/1 on Forge 65.1.0.
+- `real_emergency_enderman_defense`: PASS 1/1 on Forge 65.1.0 after the
+  shared-use-release and recent-attack cooldown fixes.
+
+Latest package and lifecycle evidence:
+
+- Gradle package gate: PASS, 983 tests, 0 failures, 0 errors, 2 skipped;
+  `verifyReleaseJar`, `e2eClientJar`, and `e2eOracleJar` all passed.
+- Product JAR SHA-256:
+  `6c39604b9ee1da214d513c118b2076cb4bd1489cae10b61732bec40421c69253`.
+- Slim audit JAR SHA-256:
+  `01c24578c6989b6f571ee97b403fa5344316c8c71010c7175a93ce64c424b2b3`.
+- Python E2E harness: 10/10 PASS.
+- Exact product dedicated-server smoke:
+  `e2e/results/no-commit-dirty/20260806T124225Z-20260806-offline-emergency-fix`;
+  clean lifecycle, exact server/Actor/Observer hash equality, Jar-in-Jar
+  SQLite load, join/removal, and graceful exit all passed. This remains
+  `functionalAiClaim=false` and is not a model gameplay run.
+
+The real configured MiMo probe still returned one-request HTTP 401, and this
+macOS host still has no Linux/Xvfb Actor+Observer environment. Therefore real
+model chat-to-action, movement, inventory, mutation, M0--M4, and all
+statistical Hardcore gates remain `NOT_RUN`. These two GameTests are local
+fair-survival evidence only; they do not justify a professional companion or
+two-hour completion claim.
+
+## 2026-08-06 continuation checkpoint: no-model physical emergency regression
+
+The focused Forge GameTest `mcai_companion:real_emergency_slime_defense` was
+rerun without installing a test gateway or model fixture. It passed on Forge
+65.1.0, so the offline lane now has a real server-side physical regression:
+with the high-level gateway unavailable, the body can still use fair owned
+items and local 20 TPS survival control against an actual hostile. This is
+not a model gameplay result and does not prove chat, navigation, or M1--M4.
+
+Verification after the test-only regression change:
+
+- `runGameTestServer -Pforge_compile_version=65.1.0
+  -Plive_model_selector=mcai_companion:real_emergency_slime_defense`: PASS,
+  one required test, Forge 65.1.0, normal real-time server tick.
+- Full JVM/package gate: PASS, 981 tests, 0 failures, 0 errors, 2 skipped;
+  `verifyReleaseJar`, `e2eClientJar`, and `e2eOracleJar` passed.
+- Product JAR SHA-256 remains
+  `2b4eff1c6b8c191a7a6474f4cefa35393a76163c0ad9b8f57968d0eabfe4df60`;
+  slim JAR remains
+  `d1607f6f5d5f19a78970af7173b9d339685dff4de2be38742596d42f6204a4c0`.
+- Python E2E evidence harness: 10/10 PASS.
+
+The real configured MiMo provider still returns one-request HTTP 401, and this
+macOS host still lacks the Linux/Xvfb Actor+Observer infrastructure. Formal
+M0--M4, real chat-to-action, movement, inventory, and Hardcore gates remain
+`NOT_RUN`; the focused GameTest is inner-loop physical evidence only.
+
+## 2026-08-06 continuation checkpoint: offline emergency lane when model is unavailable
+
+The previous runtime returned before behavior arbitration whenever the verified
+model gateway was unavailable. That was too broad: it correctly stopped
+high-level skills and speech, but also prevented the local fair 20 TPS survival
+controller from reacting to a nearby hostile, critical food/health state, fall,
+fire, or water hazard. A rejected credential therefore looked like a body that
+stood still and died.
+
+`CompanionRuntime` now records `modelControlEnabled` once per server tick and
+always runs the emergency survival candidate. When the gateway is unavailable,
+the arbiter admits no active model skill and no idle-equipment lane; emergency
+ownership is forced for hostile/physical-contact threats so a stale skill cannot
+claim a threat while its tick is paused. Menu, boat, and minecart controls are
+released offline. The emergency lane still uses only the body’s owned items and
+the current fair first-person frame, and it never starts a goal, calls the
+model, or emits speech. When the gateway is verified again, the normal three
+lane priority order resumes.
+
+Changed files:
+
+- `src/main/java/dev/mcai/companion/runtime/CompanionRuntime.java`
+- `src/test/java/dev/mcai/companion/runtime/ModelBootstrapSourceContractTest.java`
+
+Verification:
+
+- Focused source/emergency tests: PASS.
+- Full Gradle package gate on Forge 65.1.0: PASS; 981 tests, 0 failures, 0
+  errors, 2 skipped; `verifyReleaseJar` PASS.
+- Product JAR SHA-256: `2b4eff1c6b8c191a7a6474f4cefa35393a76163c0ad9b8f57968d0eabfe4df60`.
+- Exact-JAR dedicated-server smoke:
+  `e2e/results/no-commit-dirty/20260806T121522Z-20260806t2115offline`, PASS
+  for lifecycle/loading only; `functionalAiClaim=false`.
+- Python E2E harness tests: 10/10 PASS.
+
+This does not prove a real provider gameplay run or promote any formal M0–M4
+gate. The configured MiMo credential still returns one-request HTTP 401, and
+the macOS host still lacks the Linux/Xvfb Actor+Observer infrastructure.
+
+## 2026-08-06 continuation checkpoint: MiMo authentication header
+
+The current persisted MiMo credential still fails the real one-request
+capability probe with `AUTHENTICATION` / HTTP 401, so no real gameplay claim is
+made. Before accepting that as only an external credential problem, the
+provider contract was checked against Xiaomi's current official examples:
+MiMo requires `api-key`, whereas the gateway previously sent only
+`Authorization: Bearer`. The production gateway and capability probe now use
+`api-key` for validated `*.xiaomimimo.com` endpoints and preserve Bearer for
+other providers. A focused four-test provider/authentication contract suite
+passes, and the corrected real probe still returns one safe 401 request; this
+indicates the stored credential or Token Plan entitlement itself must be
+replaced/renewed before live gameplay can resume.
+
+Changed files: `src/main/java/dev/mcai/companion/model/ModelApiAuthentication.java`,
+`src/main/java/dev/mcai/companion/model/JdkModelGateway.java`,
+`src/main/java/dev/mcai/companion/model/JdkProviderCapabilityProbe.java`,
+`src/test/java/dev/mcai/companion/model/ModelApiAuthenticationTest.java`, and
+the platform facts/this checkpoint. No credential value was recorded.
+
+Evidence:
+
+- Focused gateway/probe/authentication tests: 4 tests, 0 failures.
+- Real provider capability probe after the fix: 1 request, HTTP 401,
+  `AUTHENTICATION`; formal real-client and M1–M4 gates remain `NOT_RUN`.
+- Xiaomi's official documentation confirms the `api-key` header and the
+  `tp-...` Token Plan credential format.
+
+Recovery command after the user supplies a valid, authorized credential:
+
+```text
+env MCAI_LIVE_CAPABILITY_TEST=true MCAI_LIVE_BASE_URL=https://token-plan-cn.xiaomimimo.com/v1 MCAI_LIVE_MODEL=mimo-v2.5 ./gradlew test --tests dev.mcai.companion.model.LiveCapabilityVerificationTest --no-daemon
+```
+
+## 2026-08-06 continuation checkpoint: local credential-restore retry
+
+The exact server smoke showed the body joining while the model lane stayed
+fail-closed with `startup_model_unavailable_invalid_configuration`. The
+ordinary startup bootstrap now distinguishes that local, no-credential case
+from provider authentication/billing/rate-limit failures. It retries only the
+local Keychain/Secret-Service/environment unlock after a bounded 100-tick
+interval; it never repeats a billable provider probe after a credential is
+present but rejected. This keeps an online body honest and lets a desktop
+keychain that becomes available after world load recover without forcing the
+player to re-enter the key.
+
+Changed files: `src/main/java/dev/mcai/companion/runtime/ModelBootstrapCoordinator.java`
+and `src/test/java/dev/mcai/companion/runtime/ModelBootstrapCoordinatorTest.java`.
+The targeted bootstrap suite passes, including the new local-only retry case.
+Final-source verification then passed `981 tests / 0 failures / 0 errors /
+2 skipped`, `verifyReleaseJar`, Python E2E `10/10`, and exact-JAR server-smoke
+run `20260806T115007Z-e2ee4adb9c882af` on Forge 65.1.0. The installable
+product JAR hash is
+`7e1977ad24aed0809be72bf5c773d2f31b15c44fd25ae50697f529caed5f0eb9`; all
+staged server/Actor/Observer product copies matched it. The smoke verdict is
+still lifecycle-only with `functionalAiClaim=false`.
+The functional model/client gate remains `NOT_RUN` on this macOS host because
+Xvfb/Linux and a valid configured model environment are still unavailable.
+The one-shot opt-in MiMo capability probe was also run through the real
+provider path and returned `AUTHENTICATION`/HTTP 401 after one request; this is
+recorded as a provider failure, not converted into a gameplay result.
+The current source also compiles against Forge 65.0.0, 65.0.8, and 65.0.9;
+this is a compatibility compilation check only, so the formal runtime patch
+matrix remains `NOT_RUN`.
+
+## 2026-08-06 continuation checkpoint: functional E2E preflight boundary
+
+The exact real-client vertical-slice artifacts are now build-verified: the
+production product JAR and the test-only `mcai-e2e-client` and
+`mcai-e2e-oracle` JARs compile against Forge 65.1.0, and the test classes are
+not inputs to the production JAR. The functional orchestrator now has a
+read-only `preflight` command and reuses the same report before launching
+Xvfb, the dedicated server, or either client. It reports missing Linux/Xvfb,
+Java 25, or model credentials without exposing secret values or paths; a
+non-ready report is infrastructure `NOT_RUN`, never gameplay PASS/FAIL.
+
+定向验证：
+
+- `./gradlew e2eClientJar e2eOracleJar -Pforge_compile_version=65.1.0`：PASS。
+- `python3 -m unittest discover -s e2e -p 'test_*.py' -v`：10/10 PASS。
+- 当前 macOS 主机没有 Xvfb，且当前进程没有模型凭据；真实 Actor + Observer
+  功能门禁仍保持 `NOT_RUN`，不能用预检替代它。
+
+已改文件：`e2e/orchestrator.py`、`e2e/test_orchestrator.py`、
+`e2e/README.md`、`.github/workflows/real-client-functional-e2e.yml`、
+`docs/IMPLEMENTATION_STATUS.md`、`docs/progress/GOAL_STATE.json`、
+`changelog.txt`。随后完整 Gradle 门禁为 `tests=980 failures=0 errors=0
+skipped=2`，`verifyReleaseJar` 通过；当前生产 JAR SHA-256 仍为
+`e67bd10048cb65495920cdd91939765703ecb47c01362a2a8367d460bb44dbcc`，
+两个测试 JAR 也均成功生成。下一步是在可用的真实 Linux/Xvfb/有效模型
+凭据上执行 `functional`；在此主机只保存明确的基础设施证据。
+
+## 2026-08-06 continuation checkpoint: Enderman gate failure and directional shield fix
+
+The first final-source `real_emergency_enderman_defense` rerun failed
+honestly at tick 236: the real Enderman encounter killed the headless player
+while the local survival state was `BRACING_FALL`. The Slime comparison gate
+passed, so this was a specific teleport/knockback and shield-facing failure,
+not a lifecycle or packaging failure. The emergency guard now uses the fair
+recent-damage direction to face the attacker directly before falling back to
+the bounded scan; it does not add entity tracking, hidden coordinates,
+teleportation, or direct world writes.
+
+Verification after the fix:
+
+- `EmergencySurvivalControllerTest`: PASS.
+- `real_emergency_enderman_defense`: 5/5 consecutive PASS on Forge 65.1.0.
+- `real_emergency_slime_defense`: PASS on Forge 65.1.0.
+
+The added diagnostic failure context remains in the physical gate so any
+future death reports body position, velocity, ground state, and the fair
+target position. Full JVM/package verification is the next action. Formal
+M0–M4, random Hardcore, and live MiMo gameplay gates remain NOT_RUN.
+
+## 2026-08-06 continuation checkpoint: player input wakes a paused brain
+
+Root cause confirmed: `BrainOrchestrator.prioritizePlayerConversation()` only
+cleared `WAITING_FOR_PLAYER` when a planner request was already in flight. A
+short follow-up such as `走啊` could therefore receive a conversation reply
+while the gameplay brain stayed paused indefinitely. The method now clears the
+pause, resets the no-action streak/backoff, and cancels only the superseded
+planner request; `CompanionConversationCoordinator.submit()` invokes it for
+every new player utterance after the gateway-ready check. This does not choose
+a skill or write the world.
+
+Added regression coverage:
+
+- `BrainOrchestratorTest.playerConversationWakesPlannerAfterAskPlayer`.
+- Targeted `BrainOrchestratorTest` run: PASS, 2 tests, `BUILD SUCCESSFUL`.
+
+The targeted physical follow/combat validation is now complete on the final
+source; the Enderman gate initially exposed the separate shield blind spot
+recorded below. Formal M0–M4 and live MiMo gates remain NOT_RUN; the previously
+stored provider credential still independently returns HTTP 401 `invalid_key`.
+
+The full post-fix JVM/package gate then passed:
+
+- `./gradlew test jar jarJar verifyReleaseJar -Pforge_compile_version=65.1.0`:
+  `tests=980 failures=0 errors=0 skipped=2`, `BUILD SUCCESSFUL`.
+- Installable product JAR SHA-256:
+  `e6e1e33729fdc955dba9e7637d9633fc2a47c0574191190ecea7a1bc87683f0b`.
+- Slim audit JAR SHA-256:
+  `45c506ecfa7d2e921f5b01c63423436194b628b4bd40364a6289c6b6f03d8e59`.
+- Full JAR contains `META-INF/mods.toml` and Jar-in-Jar SQLite; slim contains
+  no mod descriptor. `verifyReleaseJar` passed.
+
+The rebuilt exact packaged-JAR dedicated-server smoke then passed as run
+`20260806T111344Z-e2e0923c2655398` on Forge 65.1.0. Server, Actor, and Observer
+copies all matched the new product SHA-256 above; clean startup, SQLite
+Jar-in-Jar loading, headless join, and graceful lifecycle were verified.
+`functionalAiClaim=false` remains explicit.
+
+After the directional shield fix, the final-source package gate was rebuilt
+again. The current installable product JAR is
+`e67bd10048cb65495920cdd91939765703ecb47c01362a2a8367d460bb44dbcc`, and the
+slim audit JAR is
+`9e8ceade036af59b7c972077fe456edb6f860a345f7c26f1d0a571c2120b2ca3`.
+The exact-JAR dedicated-server smoke
+`20260806T112409Z-e2eae638ec04412` passed on Forge 65.1.0 with exact product
+hash equality, Jar-in-Jar SQLite, headless join and graceful removal;
+`functionalAiClaim=false` remains explicit.
+
+The current post-fix source also compiles successfully with
+`-Pforge_compile_version=65.0.0`, `65.0.8`, and `65.0.9`; the release metadata
+continues to advertise the bounded `[65.0.0,66.0.0)` Forge range.
+
+## 2026-08-06 continuation checkpoint: hostile reacquisition
+
+Root cause confirmed: the emergency survival lane only reacquired nearby
+melee targets and dropped its lease when a hostile moved or naturally
+teleported outside melee reach. That could leave the body standing while the
+model spoke. `EmergencySurvivalController.java` now retains only a bounded
+timestamp from a fair first-person observation (no entity handle or hidden
+position), refreshes it while a nearby hostile remains visible, and continues
+the shield/scan lease through a natural teleport. `EmbodimentGameTests.java`
+defines the honest physical outcome as target defeat or an eight-block
+safe-stand-off with forty ticks of stable target health and no body damage.
+The focused Forge 65.1.0 Enderman and Slime tests now pass 1/1; the post-change
+JVM suite is 979/0/0/2 and `verifyReleaseJar` passes with the installable full
+Jar boundary recorded below. Formal M0-M4 gates remain NOT_RUN.
+
+## 2026-08-06 follow-up verification: physical defense, compatibility, and release artifact
+
+The follow-up source changes were verified without claiming a model response:
+
+- `real_emergency_enderman_defense`: Forge 65.1.0, 1/1 required, 1.493 s;
+  the target was defeated or held at least eight blocks away with stable health
+  and no body damage for forty ticks. This is local survival evidence only.
+- `real_emergency_slime_defense`: Forge 65.1.0, 1/1 required, 1.797 s.
+- Forge compatibility compilation: 65.0.0, 65.0.8, and 65.0.9 all passed;
+  metadata remains `[65.0.0,66.0.0)`.
+- `zero_human_dedicated_server_chunk_and_respawn`: Forge 65.1.0, 1/1
+  required, 1.952 s; no human client or model credential was used.
+- Exact packaged-Jar `server-smoke` run
+  `20260806T110027Z-e2e9c51eea93c54` passed on Forge 65.1.0: clean dedicated
+  startup, identical product SHA-256 in staged copies
+  (`fbfe0c4b2df5f2f93fdcd5fd4c2158b78409ddb557e48824533dc4d340856f67`),
+  SQLite loaded from Jar-in-Jar, headless player joined, and graceful removal;
+  `functionalAiClaim=false`.
+- JVM suite: 979 tests, 0 failures, 0 errors, 2 skipped.
+- `jarJar verifyReleaseJar`: passed.
+- The slim archive is now explicitly non-installable (no
+  `META-INF/mods.toml`); only the unclassified Jar carries the Mod descriptor,
+  preventing an accidental duplicate when a user copies build output.
+- Repeated planner no-action backoff is now capped at 2 seconds (down from
+  10 seconds), while the model remains the only source of ordinary skill
+  selection; the existing repeated-no-action BrainOrchestrator test passes.
+
+The current full product artifact is
+`build/libs/mcai_companion-0.1.4-dev-mc26.2.jar` with SHA-256
+`fbfe0c4b2df5f2f93fdcd5fd4c2158b78409ddb557e48824533dc4d340856f67`;
+the slim audit artifact SHA-256 is
+`38e7eb36f9a186d96d38c02255a70f4d4584e91af811cc67c97643b273b5cf86`.
+The full artifact contains `META-INF/mods.toml` and the slim artifact does
+not; `verifyReleaseJar` passed. The JVM suite is 979 tests, zero failures,
+zero errors, and two skips.
+These are inner-loop and artifact-integrity results only. Formal M0-M4,
+random Hardcore statistics, and live MiMo gameplay remain unpromoted because
+the supplied provider credential independently returns HTTP 401 `invalid_key`.
+
+## 2026-08-06 follow-up: damage refresh and speech-only planner recovery
+
+The remaining field-facing symptoms had two separate causes. A hostile hit
+was recorded as a directional cue, but the fair entity list could remain on
+the previous 4 Hz semantic sample for several ticks; this made a newly
+arrived Zombie look absent to the local combat lane. The server damage event
+now requests one bounded next-tick `SEMANTIC_REFRESH`, while the sampler still
+uses only the companion's own distance/FOV/block-clip view. This does not
+identify an occluded attacker or grant hidden coordinates.
+
+The second cause was a valid model `CONTINUE`/`REPLAN` with optional speech but
+no started skill. After two consecutive no-action decisions the next planner
+request now carries the trusted `planner_no_action` correction, requiring the
+model to choose an admitted actionable skill when one is currently possible;
+it still cannot choose a Java command, teleport, or direct world mutation.
+
+Files changed in this follow-up:
+
+- `src/main/java/dev/mcai/companion/runtime/CompanionRuntime.java`
+  requests a fair semantic refresh after damage.
+- `src/main/java/dev/mcai/companion/brain/BrainOrchestrator.java`
+  preserves the no-action correction for the next request.
+- `src/main/java/dev/mcai/companion/runtime/MinecraftPlannerInputFactory.java`
+  documents the trusted action-required correction.
+
+定向门禁：`BrainOrchestratorTest` and `MinecraftPlannerInputFactoryTest` pass;
+the zero-human dedicated-server chunk/death/respawn GameTest passes 1/1 in
+2.042 seconds on Forge 65.1.0. The provider credential remains externally
+invalid (HTTP 401), so another real MiMo gameplay gate is intentionally not
+claimed until a replacement key is verified.
+
+## 2026-08-06 exact MiMo chat-to-victory rerun: functional PASS, timing invalidated
+
+The second exact configured-`mimo-v2.5` continuous chain completed the full
+single-player chat-to-victory route through the production model gateway and
+the same `ServerPlayer` body. The only human input was the ordinary initial
+player chat; the test player disconnected immediately afterward. The model
+then selected and physically completed:
+
+```text
+craft_recipe (14 Eyes)
+-> return_via_verified_portal
+-> triangulate_stronghold_search_area
+-> reach_observed_stronghold
+-> search_stronghold_portal_room (142 visited stations)
+-> activate_observed_end_portal
+-> find_and_enter_observed_portal
+-> fight_ender_dragon
+-> find_and_enter_observed_portal (return)
+```
+
+Physical evidence in the same run:
+
+```text
+End portal: 12 observed frame insertions, 9 vanilla portal blocks
+End fight: 1 cage bar mined, 3 recorded shots, 46 recorded melee actions
+Advancements: The End?, Take Aim, Monster Hunter, Free the End
+Terminal: dragon return-portal entry and normal AI disconnect
+Forge GameTest: 1 required test passed
+```
+
+The run is `PASS` for this exact functional chain. It is not a formal M2/M4
+or release result. The macOS host suspended twice before the caffeinated
+rerun guard was installed; process wall time was about 44:55 while the
+GameTest's real-time 20-TPS clock reported 14.27 minutes. Therefore this run
+does not provide clean performance or two-hour timing evidence. The next
+live check is a real ordinary-chat combat/defense gate under a host-awake
+guard, followed by a clean exact chain if that gate exposes a new causal
+failure.
+
+## 2026-08-06 real ordinary-chat surprise-defense rerun: FAIL at provider auth
+
+The host-awake real-time rerun used the normal player chat event and the
+production `real_player_chat_to_surprise_zombie_defense` fixture. It did not
+silently pass a talk-only body:
+
+```text
+initial chat acknowledgement: received
+provider request: HTTP 401 / invalid_key
+local damage response: WARNING_REACTING -> COUNTERATTACKING -> RETREATING
+zombie health: 20.0 -> 0.0
+body displacement: 4.393 blocks
+body health: 20.0
+```
+
+The gate correctly returned `FAIL` because `modelResponded=false`; local
+emergency survival is not model evidence. SQLite recorded the causal failure
+as `model_failure.authentication`. A direct endpoint check using the stored
+credential (with the credential withheld from output) independently returned
+HTTP 401 `invalid_key`, so this run is an external credential failure, not a
+request-body or movement no-op. The stored item was present in macOS Keychain,
+but its provider-side authorization is no longer valid.
+
+The runtime correction now applied:
+
+- an authentication failure clears the verified gateway delegate;
+- cached capability metadata is removed while the non-secret URL/model remain;
+- the next world cannot silently restore the stale capability cache;
+- the brain emits an explicit Chinese `[AI]` setup message and enters safe idle;
+- the ordinary conversation path reports the same actionable status instead
+  of saying only “没听清”.
+
+Directed JVM verification after this correction:
+
+```text
+BrainOrchestratorTest: PASS
+SwitchableModelGatewayTest: PASS
+ModelProfileStoreTest: PASS
+```
+
+The provider credential must be replaced before another real-MiMo gameplay
+gate can be honestly run. Formal M0-M4 and all release gates remain `NOT_RUN`.
+
+The focused no-human-server regression was rerun after the cache/auth changes:
+
+```text
+mcai_companion:zero_human_dedicated_server_chunk_and_respawn
+PASS / 1 required / 1.634 s / Forge 65.1.0
+```
+
+It spawned the real headless `ServerPlayer` with no human online, exercised
+the out-of-player simulation window and vanilla death lifecycle, and shut
+down without a forced chunk ticket. This remains an inner-loop body gate,
+not the formal M0 24-hour or dual-client result.
+
+## 2026-08-06 continuous rerun: partial crystal retreat observation
+
+The portal-accounting correction passed the exact configured-`mimo-v2.5`
+continuous chain. The same body had one Eye legitimately recovered from a
+trace throw, and the new evidence correctly proved:
+
+```text
+activationEyesBefore=13
+activationFilledBefore=0
+activationEyesConsumed=12
+activeEndPortalBlocks=9
+```
+
+The run then entered the End and selected `fight_ender_dragon`. Its first
+combat instance normally mined the cage bars but failed with:
+
+```text
+fight_ender_dragon.crystal_standoff_unobserved
+```
+
+The model recovered by starting the combat skill again, but that fresh
+instance no longer retained the observed unsafe crystal retreat. It attacked
+the nearby dragon instead, eventually triggered the vanilla `[Free the End]`
+advancement and the `DRAGON_KILLED` milestone, but left no proof that the
+crystal had been shot. The release-excluded Oracle correctly failed:
+
+```text
+Continuous dragon milestone lacked physical combat evidence
+```
+
+At failure the body was alive in the End, the dragon death process had health
+`1.0`, the skill had completed after 1,528 ticks, and the run had consumed no
+arrow in its second instance. This run is `FAIL`, not completion evidence.
+
+Root cause:
+
+- `EndCrystalStandOffPlanner` required a single current first-person
+  navigation frame to contain a complete safe destination at least 13.25
+  horizontal blocks from the crystal;
+- after looking up to mine the cage, a legitimate narrow semantic frame could
+  expose only the first safe part of the open-floor retreat;
+- twelve repeated looks could therefore fail despite a safe route consisting
+  of multiple progressively observed steps.
+
+Correction:
+
+- prefer a fully observed final firing cell when available;
+- otherwise select the farthest currently observed, supported, dry,
+  low-danger cell that moves strictly away from the crystal;
+- rescan from each reached intermediate cell until the unchanged 12.5-block
+  firing threshold is satisfied;
+- permit only monotonic safety-improving aggregate-risk overrides and increase
+  the bounded movement-attempt allowance;
+- add a unit regression whose observed fan ends before the final firing
+  distance.
+
+Directed evidence:
+
+```text
+EndCrystalStandOffPlannerTest
+FightEnderDragonSkillTest
+ShootObservedEntitySkillTest
+  PASS
+
+mcai_companion:real_end_victory_and_return
+  PASS / 1 required / 1.947 min / real-time 20 TPS
+```
+
+The next command is another exact MiMo continuous chain to prove that the
+formerly partial crystal observation no longer loses the combat handoff.
+
+Formal M0-M4, external exact-JAR Actor/Observer, unseen random Hardcore,
+soak, performance, and two-hour completion gates remain `NOT_RUN`.
+
+## 2026-08-06 continuous rerun: portal evidence false negative
+
+The exact configured-`mimo-v2.5` continuous gate ran for 13 minutes and
+physically completed every autonomous handoff from the one ordinary-player
+chat message through End-portal activation:
+
+```text
+craft_recipe (14 Eyes)
+-> return_via_verified_portal
+-> triangulate_stronghold_search_area
+-> reach_observed_stronghold
+-> search_stronghold_portal_room
+-> activate_observed_end_portal
+```
+
+The same body travelled the diagonal course with `travelRecoveries=0`,
+normally mined into and searched the stronghold, filled all twelve initially
+empty frames, and created all nine vanilla portal blocks. It failed only at
+the release-excluded evidence assertion:
+
+```text
+End portal activated without the observed skill and exact Eye consumption
+```
+
+The failure was an Oracle/accounting defect, not a model or physical-action
+failure:
+
+- the assertion required zero Eyes after activation, although an ordinary
+  trace Eye dropped before the stronghold handoff could later be picked up;
+- `ActivateObservedEndPortalSkill` completed as soon as the final interaction
+  made the portal visible, before its `VERIFYING` phase could validate the
+  final one-item delta and increment `eyesInserted`.
+
+The correction now:
+
+- forces the final successful interaction through `VERIFYING`;
+- captures Eye inventory and filled-frame count when the activation skill is
+  first observed;
+- proves the exact delta equals the number of still-empty frames, so unrelated
+  legitimately recovered Eyes neither cause a false failure nor mask missing
+  consumption;
+- includes the before/after accounting in diagnostics.
+
+Files changed:
+
+- `src/main/java/dev/mcai/companion/skills/portal/ActivateObservedEndPortalSkill.java`
+- `src/main/java/dev/mcai/companion/communication/LiveModelChatGameTests.java`
+- this checkpoint
+
+Last failed gate:
+
+```text
+mcai_companion:real_player_task_to_live_model_nether_materials_to_victory
+FAIL only at the former zero-remaining-Eyes Oracle assertion
+```
+
+Next:
+
+1. compile and run the focused real-time physical End-portal gate;
+2. verify its persisted checkpoint records all twelve insertions;
+3. rerun the exact MiMo chat-to-victory chain and continue from its first new
+   causal boundary.
+
+Focused verification is now complete:
+
+```text
+compileJava: PASS
+ObservedEndPortalGeometryTest + PortalSkillsRegistrationTest: PASS
+mcai_companion:real_end_portal_activation:
+  PASS / 1 required / 34.08 s / real-time 20 TPS
+```
+
+The physical run normally reduced the inventory from twelve Eyes to zero,
+left all twelve frames eyed, and created all nine portal blocks. Its persisted
+terminal checkpoint contains:
+
+```json
+{"phase":"COMPLETED","eyesInserted":12,"stationVisits":3,
+ "interactionRejections":0,"lastInteractionOutcome":"COMPLETED"}
+```
+
+The next command is therefore the exact real-provider continuous chain, not
+another synthetic portal test.
+
+Formal M0-M4, external exact-JAR Actor/Observer, unseen random Hardcore,
+soak, performance, and two-hour completion gates remain `NOT_RUN`.
+
+## 2026-08-06 End-crystal retreat and dragon adaptation: focused PASS
+
+The exact real-provider continuous run described below reached the End but
+died after firing at a crystal from about 7.5 blocks. The causal correction
+is now implemented:
+
+- close clear crystals are inspected for thin cage bars before retreat;
+- an observed-safe local standing cell at least 13.25 horizontal blocks from
+  the crystal is selected and reached through ordinary movement;
+- crystal firing is forbidden below 12.5 blocks;
+- transient dragon-part reach misses trigger a bounded bow fallback, while
+  high reachable parts cause ordinary jump attacks and four completed bow
+  shots reopen melee instead of permanently locking to one ineffective mode;
+- forced-Hardcore physical scopes and the live continuous fixture now treat a
+  dead body as an immediate terminal failure before respawn or another model
+  request.
+
+Directed JVM contracts pass:
+
+```text
+EndCrystalStandOffPlannerTest
+FightEnderDragonSkillTest
+ShootObservedEntitySkillTest
+BUILD SUCCESSFUL
+```
+
+The focused physical gate initially exposed three additional real boundaries:
+
+```text
+1. retreat before a thin aligned bar -> cage_water_bucket_required
+2. repeated vanilla TARGET_OUT_OF_REACH -> skill_stalled
+3. permanent bow fallback -> 21 shots without a full-health kill
+```
+
+After the controller correction it safely killed the full-health dragon, but
+the fixture still failed because its nominal cage rail was outside normal
+block reach and was removed by the crystal explosion. A live SQLite
+checkpoint during the diagnostic run proved:
+
+```json
+{"phase":"TRAVELLING","cageBarsMined":0,
+ "cageStatus":"SAFE_TRAVERSAL_UNAVAILABLE"}
+```
+
+The physical fixture now asserts the cage is within the ordinary 4.5-block
+reach boundary and uses a real two-block iron-bar collider. The passing run's
+mid-fight checkpoint proved normal action:
+
+```json
+{"phase":"SEARCHING","shots":1,"melee":3,
+ "cageBarsMined":2,"cageStatus":"NONE"}
+```
+
+Final focused evidence:
+
+```text
+mcai_companion:real_end_victory_and_return
+PASS / 1 required / 1.945 min / real-time 20 TPS
+```
+
+That gate requires normal pickaxe durability, ordinary ammunition, at least
+12.25 blocks of measured crystal stand-off, survival in ordinary iron armour,
+a credited full-health dragon kill, vanilla death animation, central return
+portal handling, and the same companion UUID back in the Overworld.
+
+Files changed for this correction:
+
+- `src/main/java/dev/mcai/companion/skills/combat/EndCrystalStandOffPlanner.java`
+- `src/main/java/dev/mcai/companion/skills/combat/FightEnderDragonSkill.java`
+- `src/main/java/dev/mcai/companion/skills/combat/RangedCombatSkillPolicy.java`
+- `src/test/java/dev/mcai/companion/skills/combat/EndCrystalStandOffPlannerTest.java`
+- `src/test/java/dev/mcai/companion/skills/combat/FightEnderDragonSkillTest.java`
+- `src/main/java/dev/mcai/companion/embodiment/EmbodimentGameTests.java`
+- `src/main/java/dev/mcai/companion/communication/LiveModelChatGameTests.java`
+
+Next:
+
+1. run the narrow terminal lifecycle contracts;
+2. rerun the exact configured-`mimo-v2.5` autonomous completion chain from
+   the ordinary player chat boundary;
+3. capture only its first new causal boundary if it fails.
+
+Formal M0-M4, external exact-JAR Actor/Observer, unseen random Hardcore,
+soak, performance, and two-hour completion gates remain `NOT_RUN`.
+
+## 2026-08-05 continuous rerun: End-crystal self-explosion FAIL
+
+The diagonal-course correction is now physically and causally verified:
+
+```text
+RollingTravelPlannerTest + TravelToSkillTest: PASS / 19 tests
+mcai_companion:real_travel_diagonal_detour:
+  PASS / 1 required / 40.46 sec / real-time 20 TPS
+```
+
+The exact configured-`mimo-v2.5` continuous chain then passed the former
+failure boundary with ordinary travel and no fixture movement:
+
+```text
+craft_recipe -> return_via_verified_portal
+-> triangulate_stronghold_search_area
+-> reach_observed_stronghold
+-> search_stronghold_portal_room
+-> activate_observed_end_portal
+-> find_and_enter_observed_portal
+-> fight_ender_dragon
+```
+
+Recorded travel checkpoints advanced diagonally from about
+`[-190,-38,-1637]` through `[-237,-38,-1679]` and
+`[-279,-38,-1710]` to the stronghold, with `travelRecoveries=0`.
+The body subsequently explored the stronghold, consumed ordinary food,
+activated the portal, and physically entered the End.
+
+The first new causal failure is End-crystal safety:
+
+```text
+fight_ender_dragon:
+  mined one observed cage bar
+  dispatched one bow shot at a crystal about 7.5 blocks away
+  death message: "MCAI was blown up by MCAI"
+```
+
+The continuous fixture intentionally preserves the route body's iron armour.
+`FightEnderDragonSkill.clearCrystalIndex` and
+`RangedCombatSkillPolicy.defaults` both accept a seven-block crystal
+stand-off. That margin is not Hardcore-safe. Merely rejecting the crystal
+would also deadlock because the coordinator has no travel purpose for
+retreating from an unsafe clear crystal.
+
+The same run exposed a separate evaluation-integrity fault. This controlled
+world forces Hardcore skill policy but is not itself a Hardcore server, so
+`AiPlayerSession` performed its ordinary respawn. The running model then
+repeated `fight_ender_dragon.wrong_dimension` from the Overworld. The run was
+intentionally stopped with exit 130 after the causal boundary was captured;
+it is a FAIL and not release evidence.
+
+Files changed for the now-passing diagonal correction:
+
+- `src/main/java/dev/mcai/companion/skills/core/RollingTravelPlanner.java`
+- `src/main/java/dev/mcai/companion/skills/core/TravelToSkill.java`
+- `src/test/java/dev/mcai/companion/skills/core/RollingTravelPlannerTest.java`
+- `src/main/java/dev/mcai/companion/embodiment/EmbodimentGameTests.java`
+- `src/main/resources/data/mcai_companion/test_environment/exclusive_real_travel_detour.json`
+- `src/main/resources/data/mcai_companion/test_instance/real_travel_diagonal_detour.json`
+
+Next:
+
+1. add an observation-bounded crystal stand-off/retreat phase before firing;
+2. prove its distance with an actual explosion-survival physical gate using
+   the same ordinary combat equipment boundary;
+3. make a locked or forced-Hardcore evaluation treat body death as an
+   immediate permanent terminal failure, with no respawn/model retry;
+4. run only the dragon and death-lifecycle contracts, then rerun the exact
+   real-provider continuous chain.
+
+Formal M0-M4, external exact-JAR Actor/Observer, unseen random Hardcore,
+soak, performance, and two-hour completion gates remain `NOT_RUN`.
+
+## 2026-08-05 continuous rerun: diagonal-course travel FAIL
+
+The corrected stronghold wall-entry gate passes physically:
+
+```text
+mcai_companion:real_stronghold_reach
+PASS / 1 required / 3.420 min / real-time 20 TPS
+```
+
+The subsequent exact configured-`mimo-v2.5` continuous run selected the
+correct production sequence:
+
+```text
+craft_recipe -> return_via_verified_portal
+-> triangulate_stronghold_search_area
+-> reach_observed_stronghold
+```
+
+It then failed before excavation. The model was not the causal boundary.
+`TravelToSkill` moved the same body from the Eye-trace endpoint almost
+entirely along X while Z remained about `-1546.5`, then exhausted fair
+observation at `[-273,-38,-1547]`. The target segment was around
+`[-303,-38,-1725]`. The runtime recorded
+`travel_to.route_unknown` followed by
+`repeated_identical_skill_failure`; the run was intentionally stopped.
+
+Current root cause:
+
+- the controlled course has a perpendicular Eye-triangulation baseline and
+  a diagonal approach corridor; from the measured endpoint, entering that
+  corridor requires a short, normal detour that can temporarily increase
+  Euclidean distance to the target;
+- `RollingTravelPlanner` rejects every non-distance-reducing candidate, so it
+  greedily follows the baseline instead of entering the diagonal corridor;
+- candidate sorting plans only to the single closest candidate and reports
+  `NEEDS_OBSERVATION` if that one candidate is disconnected, even when another
+  observed-safe candidate is reachable;
+- the journey has no course-deviation/backtrack state, so each parent
+  recovery starts another greedy segment from the newly displaced body.
+
+Files already changed in the preceding wall-entry correction:
+
+- `src/main/java/dev/mcai/companion/skills/stronghold/ReachObservedStrongholdSkill.java`
+- `src/test/java/dev/mcai/companion/skills/stronghold/ReachObservedStrongholdSkillTest.java`
+- this checkpoint
+
+Last directed gates:
+
+```text
+focused mining + stronghold contracts: PASS
+real_stronghold_reach: PASS / 3.420 min
+real_player_task_to_live_model_nether_materials_to_victory:
+  FAIL / travel_to.route_unknown before excavation
+```
+
+Next:
+
+1. add a bounded start-to-target course deviation and hysteretic recovery
+   mode to rolling travel, permitting only observed-safe short detours;
+2. try the ordered reachable candidate set instead of treating the first
+   disconnected candidate as global route failure;
+3. add deterministic diagonal/detour and disconnected-candidate contracts;
+4. run only the travel unit contracts and a focused physical diagonal-course
+   gate, then rerun the exact real-provider chain.
+
+Formal M0-M4, external exact-JAR Actor/Observer, random unseen Hardcore,
+soak, performance, and two-hour completion gates remain `NOT_RUN`.
+
+Implementation now in the dirty working tree:
+
+- `RollingTravelPlanner` carries a bounded start-to-target course band,
+  explicit disconnected-candidate retry, and a hysteretic observed-ground
+  recovery path that may briefly move away from the destination.
+- `TravelToSkill` preserves the journey origin, failed recovery side, and
+  recovery hysteresis across local segments instead of restarting greedy
+  Euclidean progress after every scan.
+- `RollingTravelPlannerTest` contains directed contracts for disconnected
+  candidates, course return, and opposite-side retry.
+- `EmbodimentGameTests` plus the dedicated test-environment/test-instance
+  resources contain `real_travel_diagonal_detour`, a physical fixture whose
+  only valid route begins with an away-from-goal movement.
+
+The planner and `TravelToSkill` JVM contracts pass. The new physical gate is
+the next and only immediate command; its result is not yet evidence and must
+not be promoted to M1-M4.
+
+## 2026-08-05 continuous rerun: wall-above-probe FAIL
+
+The next exact real-provider rerun again completed crafting, verified portal
+return, Eye triangulation, and ordinary travel. It entered excavation at
+about `[-301,-47,-1726]`. The first parent ended before handoff; the model
+started the same skill once more. The restart correctly skipped surface
+travel and resumed the new local depth probe:
 
 ```text
 phase=DEPTH_PROBING

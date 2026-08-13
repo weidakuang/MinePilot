@@ -1567,7 +1567,10 @@ public final class CompanionRuntime {
                                             .activeSkillManagesVisibleHostileProximity(),
                                     modelControlEnabled
                                         && runtime.skillSupervisor()
-                                            .activeSkillManagesPhysicalContactThreats()
+                                            .activeSkillManagesPhysicalContactThreats(),
+                                    modelControlEnabled
+                                        && runtime.skillSupervisor()
+                                            .activeSkillManagesVisibleProjectileThreats()
                                 );
                             survival.set(report);
                             if (modelControlEnabled

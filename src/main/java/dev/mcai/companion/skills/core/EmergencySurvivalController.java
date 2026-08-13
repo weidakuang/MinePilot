@@ -253,6 +253,24 @@ public final class EmergencySurvivalController {
             final boolean visibleHostileProximityManaged,
             final boolean physicalContactManaged
     ) {
+        return tick(
+                visibleHostileProximityManaged,
+                physicalContactManaged,
+                false
+        );
+    }
+
+    /**
+     * Executes one bounded intervention while allowing a specialized active
+     * skill to own visible projectile proximity.  Contact, fire, fall, air,
+     * food, health and any projectile that is not covered by that explicit
+     * declaration remain emergency-owned.
+     */
+    public TickReport tick(
+            final boolean visibleHostileProximityManaged,
+            final boolean physicalContactManaged,
+            final boolean visibleProjectileThreatManaged
+    ) {
         Optional<CoreSkillFrame> current = frames.current();
         if (current.isEmpty()
                 || !expectedPlayerId.equals(
@@ -292,7 +310,8 @@ public final class EmergencySurvivalController {
         Optional<DangerSignal> threat = mostSevereThreat(
                 frame,
                 visibleHostileProximityManaged,
-                physicalContactManaged
+                physicalContactManaged,
+                visibleProjectileThreatManaged
         );
         boolean burning = danger(frame, DangerKind.ON_FIRE).isPresent();
         final double healthRatio = frame.health() / frame.maxHealth();
@@ -1627,16 +1646,20 @@ public final class EmergencySurvivalController {
     private static Optional<DangerSignal> mostSevereThreat(
             CoreSkillFrame frame,
             boolean visibleHostileProximityManaged,
-            boolean physicalContactManaged
+        boolean physicalContactManaged,
+            boolean visibleProjectileThreatManaged
     ) {
         return frame.dangerSignals().stream()
-                .filter(signal -> !physicalContactManaged
-                        && signal.kind() == DangerKind.THREAT_CONTACT
-                        || !visibleHostileProximityManaged
-                        && signal.kind()
-                        == DangerKind.HOSTILE_PROXIMITY
-                        || signal.kind()
-                        == DangerKind.PROJECTILE_PROXIMITY)
+                .filter(signal ->
+                        (!physicalContactManaged
+                                && signal.kind()
+                                    == DangerKind.THREAT_CONTACT)
+                        || (!visibleHostileProximityManaged
+                                && signal.kind()
+                                    == DangerKind.HOSTILE_PROXIMITY)
+                        || (!visibleProjectileThreatManaged
+                                && signal.kind()
+                                    == DangerKind.PROJECTILE_PROXIMITY))
                 .filter(signal -> signal.severity() >= IMMEDIATE_DANGER)
                 .max(Comparator.comparingDouble(DangerSignal::severity));
     }

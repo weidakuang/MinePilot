@@ -283,6 +283,22 @@ public final class SkillSupervisor implements AutoCloseable {
     }
 
     /**
+     * Returns whether the active skill owns a bounded visible-projectile
+     * response.  Faulty declarations fail closed to the emergency lane.
+     */
+    public synchronized boolean activeSkillManagesVisibleProjectileThreats() {
+        if (active == null || closed.get()) {
+            return false;
+        }
+        try {
+            return active.registration.skill()
+                    .managesVisibleProjectileThreats();
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    /**
      * Returns whether the active skill explicitly owns a bounded
      * world/dimension transition. A faulty declaration fails closed, just as
      * the other optional skill capabilities do.

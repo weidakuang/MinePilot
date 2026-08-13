@@ -42,6 +42,18 @@ public interface Skill<P> {
     }
 
     /**
+     * Declares ownership of ordinary, first-person-visible projectile
+     * proximity for a narrowly scoped skill.  This is separate from hostile
+     * proximity because arrows, fireballs, and dragon breath must not be
+     * silently ignored by navigation or melee skills.  An implementation
+     * must perform its own bounded dodge/cover checks and keep health, fire,
+     * fall, air, and contact emergencies available to the local supervisor.
+     */
+    default boolean managesVisibleProjectileThreats() {
+        return false;
+    }
+
+    /**
      * Declares that this skill owns a narrowly bounded, server-authoritative
      * world/route transition such as entering a vanilla portal or reaching a
      * server-verified completion milestone.

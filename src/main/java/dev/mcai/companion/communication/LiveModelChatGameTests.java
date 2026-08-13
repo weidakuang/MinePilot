@@ -2127,7 +2127,4120 @@ public final class LiveModelChatGameTests {
                 helper.assertTrue(
                         holdingGateway.requestCount() == 0,
                         "Immediate follow unexpectedly used the holding "
-        …43007 tokens truncated…           return;
+                            + "model gateway at stage " + stage
+                );
+            }
+            if (humanSession != null) {
+                humanSession.tick();
+            }
+            switch (stage) {
+                case BODY -> waitForBody();
+                case PROBE -> waitForProbe();
+                case VISIBLE -> waitForVisibleHuman();
+                case GOAL -> waitForGoal();
+                case SKILL -> waitForFollowSkill();
+                case FOLLOW -> waitForPhysicalFollow();
+                case DONE -> {
+                    // GameTest is already terminal.
+                }
+            }
+        }
+
+        private void waitForBody() {
+            final var status = AiPlayerManager.status(runtime.server());
+            helper.assertTrue(
+                    status.state() != SessionState.FAILED,
+                    "Live-follow companion body failed"
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                        helper.getTick() - createdAt
+                            <= BODY_TIMEOUT_TICKS,
+                        "Live-follow companion body timed out"
+                );
+                return;
+            }
+            final ServerPlayer body = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow();
+            prepareSafeFollowCourse(body);
+            if (!requireModelProbe) {
+                /*
+                 * Ordinary chat is intentionally rejected when no verified
+                 * provider is installed.  This release-excluded physical
+                 * fixture supplies only the readiness precondition, then
+                 * proves the immediate path never invokes the provider.
+                 */
+                holdingGateway = new HoldingModelGateway();
+                runtime.model().gateway().install(holdingGateway);
+                placeHumanInFairView(body);
+                return;
+            }
+            probe = probeOrReuseVerifiedModel(runtime);
+            stage = FollowStage.PROBE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForProbe() {
+            assertWithinModelDeadline(
+                    "Live follow model capability probe timed out"
+            );
+            if (!probe.isDone()) {
+                return;
+            }
+            final CapabilityProbeOutcome outcome = probe.join();
+            helper.assertTrue(
+                    outcome
+                        instanceof CapabilityProbeOutcome.Supported,
+                    "Configured live model probe failed: " + outcome
+            );
+            final ServerPlayer body = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow();
+            placeHumanInFairView(body);
+        }
+
+        private void placeHumanInFairView(final ServerPlayer body) {
+            humanSession = PlacedHuman.create(
+                    helper,
+                    runtime,
+                    body.position().add(INITIAL_LEAD, 0.0, 0.0)
+            );
+            human = humanSession.player();
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    human.getEyePosition()
+            );
+            body.setYHeadRot(body.getYRot());
+            stage = FollowStage.VISIBLE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForVisibleHuman() {
+            assertWithinModelDeadline(
+                    "Human never entered the companion's fair semantic view"
+            );
+            /*
+             * A first human login can legitimately trigger the one-time
+             * initial-anchor remove/relogin while the body is still
+             * unanchored.  PlayerLoggedInEvent is synchronous, but the
+             * replacement ServerPlayer completes on subsequent server
+             * ticks.  Do not turn that bounded lifecycle gap into the
+             * misleading "No value present" failure or submit chat to a
+             * body that is between vanilla login sessions.
+             */
+            final Optional<ServerPlayer> bodyCandidate =
+                    AiPlayerManager.onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            if (!followCourseRepositioned) {
+                /*
+                 * The production first-login anchor intentionally places the
+                 * body at a safe 1--2 block offset from the human.  The
+                 * follow course needs a visible lead before it can measure a
+                 * walk, otherwise the correct "already close" controller
+                 * state would deadlock this fixture's second-leg trigger.
+                 */
+                human.setPos(
+                        body.getX() + INITIAL_LEAD,
+                        body.getY(),
+                        body.getZ()
+                );
+                human.setDeltaMovement(Vec3.ZERO);
+                followCourseRepositioned = true;
+            }
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    human.getEyePosition()
+            );
+            body.setYHeadRot(body.getYRot());
+            if (!latestObservationContainsVisiblePlayer()) {
+                return;
+            }
+            helper.assertTrue(
+                    CompanionCommandAccess.mayAdmin(
+                            human.createCommandSourceStack()
+                    ),
+                    "Logged-in follow test player lacked task permission"
+            );
+            final var priorGoal = runtime.goals().setGoal(
+                    "帮我砍树",
+                    GoalSource.PLAYER_CHAT
+            );
+            helper.assertTrue(
+                    priorGoal.accepted()
+                            && priorGoal.snapshot().status()
+                                == GoalStatus.RUNNING,
+                    "Could not install the pre-existing wood goal"
+            );
+            goalRevisionBefore = priorGoal.snapshot().revision();
+            final Component submitted =
+                    ForgeHooks.onServerChatSubmittedEvent(
+                            human,
+                            Component.literal(
+                                    "跟我来，保持两三格距离，正常走，不要传送。"
+                            )
+                    );
+            helper.assertTrue(
+                    submitted != null,
+                    "Companion cancelled the ordinary follow chat"
+            );
+            bodyStart = body.position();
+            previousBodyPosition = bodyStart;
+            stage = FollowStage.GOAL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForGoal() {
+            assertWithinModelDeadline(
+                    requireModelProbe
+                            ? "Live model did not classify the follow task"
+                            : "Immediate player follow chat did not install "
+                                + "its bound goal"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            if (goal.revision() == goalRevisionBefore) {
+                return;
+            }
+            helper.assertTrue(
+                    goal.revision() > goalRevisionBefore
+                        && goal.status() == GoalStatus.RUNNING
+                        && goal.goal().contains("跟我来"),
+                    "Ordinary follow chat did not become a running goal: "
+                        + goal
+            );
+            followGoalRevision = goal.revision();
+            stage = FollowStage.SKILL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForFollowSkill() {
+            assertWithinModelDeadline(
+                    (requireModelProbe
+                            ? "Live model did not start physical "
+                                + "follow_entity; "
+                            : "Immediate bound follow did not start physical "
+                                + "follow_entity; ")
+                        + followDiagnostics()
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            helper.assertTrue(
+                    goal.revision() == followGoalRevision
+                        && goal.status() == GoalStatus.RUNNING,
+                    "Follow goal terminated before movement: " + goal
+            );
+            final var skill = runtime.skillSupervisor().snapshot();
+            if (!skill.skillName().equals("follow_entity")
+                    || skill.state()
+                        != dev.mcai.companion.skill.SkillSupervisor
+                            .State.RUNNING) {
+                return;
+            }
+            helper.assertTrue(
+                    skill.boundGoalRevision() == followGoalRevision,
+                    "follow_entity bound the wrong goal revision"
+            );
+            if (!continuationNudgeSent) {
+                final Component nudge =
+                        ForgeHooks.onServerChatSubmittedEvent(
+                                human,
+                                Component.literal("走啊")
+                        );
+                helper.assertTrue(
+                        nudge != null,
+                        "Companion cancelled the ordinary follow nudge"
+                );
+                helper.assertTrue(
+                        runtime.goals().snapshot().revision()
+                                == followGoalRevision
+                            && runtime.goals().snapshot().goal()
+                                .contains("跟我来"),
+                        "A short follow nudge replaced the bound follow goal: "
+                                + runtime.goals().snapshot()
+                );
+                final var afterNudge =
+                        runtime.skillSupervisor().snapshot();
+                helper.assertTrue(
+                        afterNudge.state()
+                            == dev.mcai.companion.skill.SkillSupervisor
+                                .State.RUNNING
+                            && afterNudge.skillName().equals(
+                                    "follow_entity"
+                            )
+                            && afterNudge.boundGoalRevision()
+                                == followGoalRevision,
+                        "A short follow nudge cancelled physical follow: "
+                                + afterNudge
+                );
+                continuationNudgeSent = true;
+            }
+            previousBodyPosition = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow()
+                    .position();
+            stage = FollowStage.FOLLOW;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForPhysicalFollow() {
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= PHYSICAL_FOLLOW_TIMEOUT_NANOS,
+                    "Companion did not continuously follow the moving "
+                        + "player; " + followDiagnostics()
+            );
+            final ServerPlayer body = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow();
+            helper.assertTrue(
+                    body.isAlive()
+                        && human.isAlive()
+                        && human.connection != null
+                        && human.connection.isAcceptingMessages(),
+                    "A follow participant left the safe course: "
+                        + "bodyAlive=" + body.isAlive()
+                        + ", humanAlive=" + human.isAlive()
+                        + ", humanRemoved=" + human.isRemoved()
+                        + ", body=" + body.position()
+                        + ", human=" + human.position()
+                        + ", bodyPath=" + bodyPath
+                        + ", distance=" + body.distanceTo(human)
+                        + ", keepAliveSeen="
+                        + humanSession.keepAlivePackets
+                        + ", keepAliveAccepted="
+                        + humanSession.keepAliveAccepted
+            );
+            final var continuousSkill =
+                    runtime.skillSupervisor().snapshot();
+            helper.assertTrue(
+                    continuousSkill.state()
+                        == dev.mcai.companion.skill.SkillSupervisor
+                            .State.RUNNING
+                        && continuousSkill.skillName().equals(
+                                "follow_entity"
+                        )
+                        && continuousSkill.boundGoalRevision()
+                            == followGoalRevision,
+                    "Continuous follow ownership was lost: "
+                        + continuousSkill + "; " + followDiagnostics()
+            );
+            final Vec3 current = body.position();
+            final double tickStep =
+                    current.distanceTo(previousBodyPosition);
+            bodyPath += tickStep;
+            maximumBodyTickStep = Math.max(
+                    maximumBodyTickStep,
+                    tickStep
+            );
+            previousBodyPosition = current;
+            helper.assertTrue(
+                    maximumBodyTickStep <= MAXIMUM_BODY_TICK_STEP,
+                    "Companion followed by a non-vanilla position jump: "
+                        + maximumBodyTickStep
+            );
+
+            runtime.behaviorArbiter().latest()
+                    .filter(resolution ->
+                            resolution.claimedBy(
+                                    BehaviorArbiter.Lane.ACTIVE_SKILL
+                            ))
+                    .ifPresent(ignored ->
+                            sawActiveSkillArbiter = true);
+
+            final double distance = body.distanceTo(human);
+            if (!secondLegStarted
+                    && distance <= FIRST_ARRIVAL
+                    && body.position().distanceTo(bodyStart) >= 2.0D) {
+                secondLegStarted = true;
+                humanSecondLegStartX = human.getX();
+            }
+            if (secondLegStarted
+                    && human.getX() - humanSecondLegStartX
+                        < SECOND_LEG) {
+                human.move(
+                        MoverType.PLAYER,
+                        new Vec3(HUMAN_STEP, 0.0, 0.0)
+                );
+            }
+
+            final double humanSecondLegDistance = secondLegStarted
+                    ? human.getX() - humanSecondLegStartX
+                    : 0.0D;
+            if (humanSecondLegDistance >= SECOND_LEG
+                    && distance <= FINAL_ARRIVAL
+                    && bodyPath >= MINIMUM_BODY_PATH) {
+                helper.assertTrue(
+                        continuousSkill.state()
+                            == dev.mcai.companion.skill.SkillSupervisor
+                                .State.RUNNING
+                            && continuousSkill.skillName().equals(
+                                    "follow_entity"
+                            )
+                            && sawActiveSkillArbiter,
+                        "Follow reached the player without continuous "
+                            + "production skill ownership: "
+                            + continuousSkill
+                );
+                stage = FollowStage.DONE;
+                helper.succeed();
+            }
+        }
+
+        private String followDiagnostics() {
+            final var supervisor =
+                    runtime.skillSupervisor().snapshot();
+            final String frame = runtime.coreFrames().current()
+                    .map(value -> "observation="
+                            + value.observationRevision()
+                            + ", navigation="
+                            + value.navigation().revision()
+                            + ", voxels="
+                            + value.navigation()
+                                    .observedVoxels().size()
+                            + ", feet=" + value.feet()
+                            + ", visibleEntities="
+                            + value.visibleEntities().size()
+                            + ", corridor="
+                            + corridorEvidence(
+                                value.navigation(),
+                                value.feet(),
+                                human
+                            ))
+                    .orElse("frame=unavailable");
+            return "supervisor=" + supervisor + ", " + frame
+                    + ", bodyPath=" + bodyPath
+                    + ", body="
+                    + AiPlayerManager.onlinePlayer(runtime.server())
+                        .map(ServerPlayer::position)
+                        .orElse(Vec3.ZERO)
+                    + ", human="
+                    + (human == null ? "not-created" : human.position())
+                    + ", distance="
+                    + (human == null
+                        ? "unknown"
+                        : AiPlayerManager.onlinePlayer(runtime.server())
+                            .map(body -> body.distanceTo(human))
+                            .map(value -> String.format(
+                                Locale.ROOT,
+                                "%.3f",
+                                value
+                            ))
+                            .orElse("unknown"))
+                    + ", coreLease="
+                    + runtime.coreActions().snapshot()
+                    + ", humanKeepAlive="
+                    + (humanSession == null
+                            ? "not-created"
+                            : humanSession.keepAlivePackets + "/"
+                                + humanSession.keepAliveAccepted);
+        }
+
+        /**
+         * Live-test-only, bounded evidence trace for the straight corridor
+         * between the two test players. It reports only the semantic
+         * navigation snapshot already available to the production skill; it
+         * never reads world blocks and therefore cannot hide a fair-
+         * perception defect behind privileged GameTest state.
+         */
+        private static String corridorEvidence(
+                final LocalNavSnapshot snapshot,
+                final GridPos start,
+                final ServerPlayer target
+        ) {
+            if (target == null) {
+                return "target-not-created";
+            }
+            final GridPos destination = new GridPos(
+                    (int) Math.floor(target.getX()),
+                    (int) Math.floor(target.getY()),
+                    (int) Math.floor(target.getZ())
+            );
+            final int deltaX = Integer.compare(
+                    destination.x(),
+                    start.x()
+            );
+            final int deltaZ = Integer.compare(
+                    destination.z(),
+                    start.z()
+            );
+            final int length = Math.min(
+                    12,
+                    Math.max(
+                        Math.abs(destination.x() - start.x()),
+                        Math.abs(destination.z() - start.z())
+                    )
+            );
+            final StringBuilder trace = new StringBuilder();
+            for (int offset = 0; offset <= length; offset++) {
+                if (offset > 0) {
+                    trace.append(';');
+                }
+                final GridPos feet = start.offset(
+                        deltaX * offset,
+                        0,
+                        deltaZ * offset
+                );
+                trace.append(offset)
+                        .append('@')
+                        .append(feet.x())
+                        .append(',')
+                        .append(feet.z())
+                        .append("[f=")
+                        .append(voxelEvidence(snapshot, feet))
+                        .append(",h=")
+                        .append(voxelEvidence(
+                            snapshot,
+                            feet.above()
+                        ))
+                        .append(",s=")
+                        .append(voxelEvidence(
+                            snapshot,
+                            feet.below()
+                        ))
+                        .append(']');
+            }
+            return trace.toString();
+        }
+
+        private static String voxelEvidence(
+                final LocalNavSnapshot snapshot,
+                final GridPos position
+        ) {
+            return snapshot.voxelAt(position)
+                    .map(voxel -> voxel.kind()
+                        + "/"
+                        + voxel.occupancyEvidence()
+                        + "/"
+                        + voxel.topSupportAffordance()
+                        + "/age"
+                        + (snapshot.revision()
+                            - voxel.observationRevision()))
+                    .orElse("?");
+        }
+
+        private void prepareSafeFollowCourse(
+                final ServerPlayer body
+        ) {
+            final BlockPos start = body.blockPosition();
+            final int floorY = start.getY() - 1;
+            for (int dx = -3; dx <= 22; dx++) {
+                for (int dz = -3; dz <= 3; dz++) {
+                    final BlockPos floor = new BlockPos(
+                            start.getX() + dx,
+                            floorY,
+                            start.getZ() + dz
+                    );
+                    helper.getLevel().setBlockAndUpdate(
+                            floor,
+                            Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int dy = 1; dy <= 3; dy++) {
+                        helper.getLevel().setBlockAndUpdate(
+                                floor.above(dy),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            helper.getLevel().getEntitiesOfClass(
+                    Mob.class,
+                    body.getBoundingBox().inflate(48.0)
+            ).forEach(Mob::discard);
+        }
+
+        private boolean latestObservationContainsVisiblePlayer() {
+            final Optional<String> semantic =
+                    runtime.observations().latestSemanticJson();
+            if (semantic.isEmpty()) {
+                return false;
+            }
+            try {
+                final var entities = JsonParser
+                        .parseString(semantic.orElseThrow())
+                        .getAsJsonObject()
+                        .getAsJsonArray("visibleEntities");
+                if (entities == null) {
+                    return false;
+                }
+                for (var element : entities) {
+                    if ("minecraft:player".equals(
+                            element.getAsJsonObject()
+                                .get("type").getAsString()
+                    )) {
+                        return true;
+                    }
+                }
+                return false;
+            } catch (RuntimeException malformedObservation) {
+                return false;
+            }
+        }
+
+        private void assertWithinModelDeadline(
+                final String message
+        ) {
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= MODEL_TIMEOUT_NANOS,
+                    message
+            );
+        }
+
+        private void cleanup() {
+            finishScenarioGoal(runtime);
+            if (holdingGateway != null) {
+                runtime.model().gateway().clearVerifiedDelegate();
+            }
+            if (humanSession != null) {
+                humanSession.close();
+            }
+            if (AiPlayerManager.status(runtime.server()).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(runtime.server());
+            }
+        }
+    }
+
+    /**
+     * Test-only readiness sentinel. A direct player-bound skill must never
+     * call it; the surrounding scenario asserts that invariant every tick.
+     */
+    private static final class HoldingModelGateway implements ModelGateway {
+        private final CompletableFuture<ModelOutcome> holding =
+                new CompletableFuture<>();
+        private int requestCount;
+        private boolean closed;
+
+        @Override
+        public synchronized java.util.concurrent.CompletionStage<ModelOutcome>
+                decide(final PlannerInput input) {
+            requestCount++;
+            return holding;
+        }
+
+        @Override
+        public void cancelForGoalRevision(final long currentGoalRevision) {
+            // No request is expected; cancellation remains harmless.
+        }
+
+        @Override
+        public synchronized GatewayStatus status() {
+            return closed ? GatewayStatus.CLOSED : GatewayStatus.IDLE;
+        }
+
+        @Override
+        public synchronized boolean configured() {
+            // The fixture must admit chat/goal installation while proving
+            // that the offline direct-follow fallback never calls a model.
+            return !closed;
+        }
+
+        @Override
+        public boolean highLevelDecisionReady() {
+            return false;
+        }
+
+        @Override
+        public synchronized void close() {
+            closed = true;
+            holding.cancel(false);
+        }
+
+        private synchronized int requestCount() {
+            return requestCount;
+        }
+    }
+
+    private enum FollowStage {
+        BODY,
+        PROBE,
+        VISIBLE,
+        GOAL,
+        SKILL,
+        FOLLOW,
+        DONE
+    }
+
+    private static final class LiveItemCollectionScenario {
+        private static final int DROP_COUNT = 3;
+        private static final double DROP_DISTANCE = 8.0D;
+        private static final double MINIMUM_REAL_MOVEMENT = 4.0D;
+        private static final double MAXIMUM_TICK_STEP = 1.25D;
+        private static final long PICKUP_TIMEOUT_NANOS =
+                java.time.Duration.ofSeconds(30).toNanos();
+
+        private final GameTestHelper helper;
+        private final ServerRuntime runtime;
+        private final long createdAt;
+
+        private ItemCollectionStage stage = ItemCollectionStage.BODY;
+        private CompletableFuture<CapabilityProbeOutcome> probe;
+        private PlacedHuman humanSession;
+        private ItemEntity drop;
+        private long stageStartedNanos;
+        private long goalRevisionBefore;
+        private long collectionGoalRevision;
+        private Vec3 bodyStart;
+        private Vec3 previousBody;
+        private ServerPlayer previousBodyInstance;
+        private double bodyPath;
+        private double maximumTickStep;
+
+        private LiveItemCollectionScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime
+        ) {
+            this.helper = helper;
+            this.runtime = runtime;
+            createdAt = helper.getTick();
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void start() {
+            finishScenarioGoal(runtime);
+            final var status = AiPlayerManager.status(runtime.server());
+            if (status.state() == SessionState.ABSENT) {
+                helper.assertTrue(
+                        AiPlayerManager.requestSpawn(
+                                runtime.server()
+                        ).accepted(),
+                        "Item-collection companion spawn was rejected"
+                );
+            }
+        }
+
+        private void tick() {
+            if (humanSession != null) {
+                humanSession.tick();
+            }
+            switch (stage) {
+                case BODY -> waitForBody();
+                case PROBE -> waitForProbe();
+                case VISIBLE -> waitForVisibleDrop();
+                case GOAL -> waitForGoal();
+                case SKILL -> waitForCollectionSkill();
+                case COLLECT -> waitForVanillaPickup();
+                case DONE -> {
+                    // GameTest is already terminal.
+                }
+            }
+        }
+
+        private void waitForBody() {
+            final var status = AiPlayerManager.status(runtime.server());
+            helper.assertTrue(
+                    status.state() != SessionState.FAILED,
+                    "Item-collection companion body failed"
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                        helper.getTick() - createdAt
+                            <= BODY_TIMEOUT_TICKS,
+                        "Item-collection companion body timed out"
+                );
+                return;
+            }
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                helper.assertTrue(
+                        helper.getTick() - createdAt <= BODY_TIMEOUT_TICKS,
+                        "Item-collection companion body timed out while "
+                            + "waiting for its authoritative login"
+                );
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            prepareCourse(body);
+            probe = probeOrReuseVerifiedModel(runtime);
+            stage = ItemCollectionStage.PROBE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForProbe() {
+            assertWithinModelDeadline(
+                    "Item-collection model capability probe timed out"
+            );
+            if (!probe.isDone()) {
+                return;
+            }
+            final CapabilityProbeOutcome outcome = probe.join();
+            helper.assertTrue(
+                    outcome
+                        instanceof CapabilityProbeOutcome.Supported,
+                    "Configured live model probe failed: " + outcome
+            );
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                assertWithinModelDeadline(
+                        "Item-collection body disappeared while the model "
+                            + "probe was completing"
+                );
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            drop = new ItemEntity(
+                    helper.getLevel(),
+                    body.getX() + DROP_DISTANCE,
+                    body.getY(),
+                    body.getZ(),
+                    new ItemStack(Items.OAK_LOG, DROP_COUNT)
+            );
+            drop.setDeltaMovement(Vec3.ZERO);
+            helper.assertTrue(
+                    helper.getLevel().addFreshEntity(drop),
+                    "Could not create the ordinary dropped log stack"
+            );
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    drop.getEyePosition()
+            );
+            body.setYHeadRot(body.getYRot());
+            stage = ItemCollectionStage.VISIBLE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForVisibleDrop() {
+            assertWithinModelDeadline(
+                    "Dropped logs never entered fair semantic view"
+            );
+            if (!latestObservationContainsOakLog()) {
+                return;
+            }
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                assertWithinModelDeadline(
+                        "Item-collection body disappeared while the "
+                            + "visible-drop task was being submitted"
+                );
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            humanSession = PlacedHuman.create(
+                    helper,
+                    runtime,
+                    body.position().add(0.0D, 0.0D, -2.0D)
+            );
+            final ServerPlayer human = humanSession.player();
+            helper.assertTrue(
+                    CompanionCommandAccess.mayAdmin(
+                            human.createCommandSourceStack()
+                    ),
+                    "Logged-in item test player lacked task permission"
+            );
+            goalRevisionBefore = runtime.goals().snapshot().revision();
+            final Component submitted =
+                    ForgeHooks.onServerChatSubmittedEvent(
+                            human,
+                            Component.literal(
+                                    runtime.worldData().displayName()
+                                        + "，请把你面前掉落的橡木原木"
+                                        + "捡进背包。"
+                            )
+                    );
+            helper.assertTrue(
+                    submitted != null,
+                    "Companion cancelled the item pickup chat"
+            );
+            bodyStart = body.position();
+            previousBody = bodyStart;
+            humanSession.close();
+            humanSession = null;
+            stage = ItemCollectionStage.GOAL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForGoal() {
+            assertNoHumanPlayers();
+            assertWithinModelDeadline(
+                    "Live model did not classify the item pickup task"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            if (goal.revision() == goalRevisionBefore) {
+                return;
+            }
+            helper.assertTrue(
+                    goal.revision() > goalRevisionBefore
+                        && goal.status() == GoalStatus.RUNNING
+                        && goal.goal().contains("捡"),
+                    "Item chat did not become a running pickup goal: "
+                        + goal
+            );
+            collectionGoalRevision = goal.revision();
+            stage = ItemCollectionStage.SKILL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForCollectionSkill() {
+            assertNoHumanPlayers();
+            assertWithinModelDeadline(
+                    "Live model did not start collect_observed_item; "
+                        + diagnostics()
+            );
+            final var skill = runtime.skillSupervisor().snapshot();
+            if (!skill.skillName().equals("collect_observed_item")
+                    || skill.state()
+                        != dev.mcai.companion.skill.SkillSupervisor
+                            .State.RUNNING) {
+                return;
+            }
+            helper.assertTrue(
+                    skill.boundGoalRevision() == collectionGoalRevision,
+                    "collect_observed_item bound the wrong goal revision"
+            );
+            stage = ItemCollectionStage.COLLECT;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForVanillaPickup() {
+            assertNoHumanPlayers();
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                helper.assertTrue(
+                        System.nanoTime() - stageStartedNanos
+                            <= PICKUP_TIMEOUT_NANOS,
+                        "Item collection body was offline during pickup"
+                            + ": " + diagnostics()
+                );
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            final Vec3 current = body.position();
+            if (previousBody == null || previousBodyInstance != body) {
+                /*
+                 * The first human login may replace the headless
+                 * ServerPlayer through the ordinary remove/relogin anchor
+                 * transaction.  Do not count that lifecycle relocation as a
+                 * movement-frame delta; all subsequent deltas remain bounded
+                 * by the vanilla actuator check below.
+                 */
+                previousBody = current;
+                previousBodyInstance = body;
+                return;
+            }
+            final double tickStep = current.distanceTo(previousBody);
+            bodyPath += tickStep;
+            maximumTickStep = Math.max(maximumTickStep, tickStep);
+            previousBody = current;
+            previousBodyInstance = body;
+            helper.assertTrue(
+                    maximumTickStep <= MAXIMUM_TICK_STEP,
+                    "Item pickup used a non-vanilla position jump: "
+                        + maximumTickStep
+            );
+            final int owned =
+                    body.getInventory().countItem(Items.OAK_LOG);
+            final boolean dropRemoved =
+                    drop.isRemoved() || !drop.isAlive();
+            if (owned >= DROP_COUNT && dropRemoved) {
+                helper.assertTrue(
+                        body.position().distanceTo(bodyStart)
+                            >= MINIMUM_REAL_MOVEMENT
+                            && bodyPath >= MINIMUM_REAL_MOVEMENT,
+                        "Logs entered inventory without material approach: "
+                            + diagnostics()
+                );
+                stage = ItemCollectionStage.DONE;
+                helper.succeed();
+                return;
+            }
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= PICKUP_TIMEOUT_NANOS,
+                    "Vanilla dropped-item pickup timed out: "
+                        + diagnostics()
+            );
+        }
+
+        private void prepareCourse(final ServerPlayer body) {
+            final BlockPos start = body.blockPosition();
+            final int floorY = start.getY() - 1;
+            for (int dx = -2; dx <= 12; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    final BlockPos floor = new BlockPos(
+                            start.getX() + dx,
+                            floorY,
+                            start.getZ() + dz
+                    );
+                    helper.getLevel().setBlockAndUpdate(
+                            floor,
+                            Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int dy = 1; dy <= 3; dy++) {
+                        helper.getLevel().setBlockAndUpdate(
+                                floor.above(dy),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            helper.getLevel().getEntitiesOfClass(
+                    Mob.class,
+                    body.getBoundingBox().inflate(32.0D)
+            ).forEach(Mob::discard);
+            body.getInventory().clearContent();
+            body.inventoryMenu.broadcastChanges();
+            body.setDeltaMovement(Vec3.ZERO);
+            body.setHealth(body.getMaxHealth());
+            body.getFoodData().setFoodLevel(20);
+        }
+
+        private boolean latestObservationContainsOakLog() {
+            final Optional<String> semantic =
+                    runtime.observations().latestSemanticJson();
+            if (semantic.isEmpty()) {
+                return false;
+            }
+            try {
+                final var visible = JsonParser
+                        .parseString(semantic.orElseThrow())
+                        .getAsJsonObject()
+                        .getAsJsonArray("visibleEntities");
+                if (visible == null) {
+                    return false;
+                }
+                for (var element : visible) {
+                    final var entity = element.getAsJsonObject();
+                    final var properties =
+                            entity.getAsJsonObject("properties");
+                    if ("minecraft:item".equals(
+                            entity.get("type").getAsString()
+                    )
+                            && properties != null
+                            && properties.has("itemId")
+                            && "minecraft:oak_log".equals(
+                                properties.get("itemId").getAsString()
+                            )) {
+                        return true;
+                    }
+                }
+                return false;
+            } catch (RuntimeException malformedObservation) {
+                return false;
+            }
+        }
+
+        private void assertNoHumanPlayers() {
+            final long humans = runtime.server()
+                    .getPlayerList()
+                    .getPlayers()
+                    .stream()
+                    .filter(player -> !player.getUUID().equals(
+                            runtime.worldData().companionUuid()
+                    ))
+                    .count();
+            helper.assertTrue(
+                    humans == 0L,
+                    "Item collection retained " + humans
+                        + " human player(s) after the command"
+            );
+        }
+
+        private void assertWithinModelDeadline(final String message) {
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= MODEL_TIMEOUT_NANOS,
+                    message
+            );
+        }
+
+        private String diagnostics() {
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            final String bodySummary = bodyCandidate
+                    .map(body -> "position=" + body.position()
+                            + ", ownedLogs="
+                            + body.getInventory().countItem(Items.OAK_LOG))
+                    .orElse("offline");
+            return "supervisor=" + runtime.skillSupervisor().snapshot()
+                    + ", body=" + bodySummary
+                    + ", bodyPath=" + bodyPath
+                    + ", maxTickStep=" + maximumTickStep
+                    + ", dropAlive="
+                    + (drop != null && drop.isAlive())
+                    + ", drop="
+                    + (drop == null ? "not-created" : drop.position());
+        }
+
+        private void cleanup() {
+            finishScenarioGoal(runtime);
+            if (humanSession != null) {
+                humanSession.close();
+            }
+            if (drop != null && !drop.isRemoved()) {
+                drop.discard();
+            }
+            if (AiPlayerManager.status(runtime.server()).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(runtime.server());
+            }
+        }
+    }
+
+    private enum ItemCollectionStage {
+        BODY,
+        PROBE,
+        VISIBLE,
+        GOAL,
+        SKILL,
+        COLLECT,
+        DONE
+    }
+
+    private static final class LiveContainerWithdrawalScenario {
+        private static final int FIXTURE_PLANK_COUNT = 5;
+        private static final int REQUESTED_PLANK_COUNT = 3;
+        private static final long TRANSACTION_TIMEOUT_NANOS =
+                java.time.Duration.ofSeconds(45).toNanos();
+
+        private final GameTestHelper helper;
+        private final ServerRuntime runtime;
+        private final long createdAt;
+
+        private ContainerWithdrawalStage stage =
+                ContainerWithdrawalStage.BODY;
+        private CompletableFuture<CapabilityProbeOutcome> probe;
+        private PlacedHuman humanSession;
+        private BlockPos chestPosition;
+        private long stageStartedNanos;
+        private long goalRevisionBefore;
+        private long withdrawalGoalRevision;
+        private boolean sawUseBlockSkill;
+        private boolean sawTransferSkill;
+
+        private LiveContainerWithdrawalScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime
+        ) {
+            this.helper = helper;
+            this.runtime = runtime;
+            createdAt = helper.getTick();
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void start() {
+            finishScenarioGoal(runtime);
+            final var status = AiPlayerManager.status(runtime.server());
+            if (status.state() == SessionState.ABSENT) {
+                helper.assertTrue(
+                        AiPlayerManager.requestSpawn(
+                                runtime.server()
+                        ).accepted(),
+                        "Container companion spawn was rejected"
+                );
+            }
+        }
+
+        private void tick() {
+            if (humanSession != null) {
+                humanSession.tick();
+            }
+            observeActiveSkill();
+            switch (stage) {
+                case BODY -> waitForBody();
+                case PROBE -> waitForProbe();
+                case VISIBLE -> waitForVisibleChest();
+                case GOAL -> waitForGoal();
+                case OPEN -> waitForVanillaMenuOpen();
+                case MENU_VISIBLE -> waitForObservedMenu();
+                case TRANSFER -> waitForVanillaTransfer();
+                case DONE -> {
+                    // GameTest is already terminal.
+                }
+            }
+        }
+
+        private void waitForBody() {
+            final var status = AiPlayerManager.status(runtime.server());
+            helper.assertTrue(
+                    status.state() != SessionState.FAILED,
+                    "Container companion body failed"
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                        helper.getTick() - createdAt
+                            <= BODY_TIMEOUT_TICKS,
+                        "Container companion body timed out"
+                );
+                return;
+            }
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                helper.assertTrue(
+                        helper.getTick() - createdAt <= BODY_TIMEOUT_TICKS,
+                        "Container companion body timed out while waiting "
+                            + "for its authoritative login"
+                );
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            prepareFixture(body);
+            probe = probeOrReuseVerifiedModel(runtime);
+            stage = ContainerWithdrawalStage.PROBE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForProbe() {
+            assertWithinModelDeadline(
+                    "Container model capability probe timed out"
+            );
+            if (!probe.isDone()) {
+                return;
+            }
+            final CapabilityProbeOutcome outcome = probe.join();
+            helper.assertTrue(
+                    outcome
+                        instanceof CapabilityProbeOutcome.Supported,
+                    "Configured live model probe failed: " + outcome
+            );
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                assertWithinModelDeadline(
+                        "Container body disappeared while the model probe "
+                            + "was completing"
+                );
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    Vec3.atCenterOf(chestPosition)
+            );
+            body.setYHeadRot(body.getYRot());
+            stage = ContainerWithdrawalStage.VISIBLE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForVisibleChest() {
+            assertWithinModelDeadline(
+                    "Chest never entered fair semantic view"
+            );
+            if (humanSession == null) {
+                if (!latestObservationContainsClosedChest()) {
+                    return;
+                }
+                final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                        .onlinePlayer(runtime.server());
+                if (bodyCandidate.isEmpty()) {
+                    return;
+                }
+                final ServerPlayer body = bodyCandidate.orElseThrow();
+                /*
+                 * Keep the human online while the production initial-anchor
+                 * remove/relogin finishes.  The task is submitted only after
+                 * the authoritative replacement body has a fresh first-person
+                 * observation of this exact chest.
+                 */
+                humanSession = PlacedHuman.create(
+                        helper,
+                        runtime,
+                        body.position().add(0.0D, 0.0D, -2.0D)
+                );
+                return;
+            }
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    Vec3.atCenterOf(chestPosition)
+            );
+            body.setYHeadRot(body.getYRot());
+            if (!latestObservationContainsClosedChest()) {
+                return;
+            }
+            final ServerPlayer human = humanSession.player();
+            helper.assertTrue(
+                    CompanionCommandAccess.mayAdmin(
+                            human.createCommandSourceStack()
+                    ),
+                    "Logged-in container test player lacked task permission"
+            );
+            goalRevisionBefore = runtime.goals().snapshot().revision();
+            final Component submitted =
+                    ForgeHooks.onServerChatSubmittedEvent(
+                            human,
+                            Component.literal(
+                                    runtime.worldData().displayName()
+                                        + "，请从你面前的箱子里取出3块"
+                                        + "橡木木板，放进自己的背包。"
+                            )
+                    );
+            helper.assertTrue(
+                    submitted != null,
+                    "Companion cancelled the container-withdrawal chat"
+            );
+            humanSession.close();
+            humanSession = null;
+            stage = ContainerWithdrawalStage.GOAL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForGoal() {
+            assertNoHumanPlayers();
+            assertWithinModelDeadline(
+                    "Live model did not classify the container task"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            if (goal.revision() == goalRevisionBefore) {
+                return;
+            }
+            helper.assertTrue(
+                    goal.revision() > goalRevisionBefore
+                        && goal.status() == GoalStatus.RUNNING
+                        && goal.goal().contains("箱子")
+                        && goal.goal().contains("取出"),
+                    "Container chat did not become a running goal: "
+                        + goal
+            );
+            withdrawalGoalRevision = goal.revision();
+            stage = ContainerWithdrawalStage.OPEN;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForVanillaMenuOpen() {
+            assertNoHumanPlayers();
+            assertWithinModelDeadline(
+                    "Model did not open the visible chest; "
+                        + diagnostics()
+            );
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            if (body.containerMenu == body.inventoryMenu) {
+                return;
+            }
+            helper.assertTrue(
+                    sawUseBlockSkill
+                        && body.containerMenu instanceof ChestMenu,
+                    "Chest menu opened without an observed model-selected "
+                        + "use_block skill: " + diagnostics()
+            );
+            stage = ContainerWithdrawalStage.MENU_VISIBLE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForObservedMenu() {
+            assertNoHumanPlayers();
+            assertWithinModelDeadline(
+                    "Opened chest menu never entered fair semantic view"
+            );
+            if (!latestObservationContainsTransferablePlanks()) {
+                return;
+            }
+            stage = ContainerWithdrawalStage.TRANSFER;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForVanillaTransfer() {
+            assertNoHumanPlayers();
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                helper.assertTrue(
+                        System.nanoTime() - stageStartedNanos
+                            <= TRANSACTION_TIMEOUT_NANOS,
+                        "Container body was offline during transfer: "
+                            + diagnostics()
+                );
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            final ChestBlockEntity chest = chest();
+            final int owned =
+                    body.getInventory().countItem(Items.OAK_PLANKS);
+            final int remaining =
+                    chest.countItem(Items.OAK_PLANKS);
+            if (owned == REQUESTED_PLANK_COUNT
+                    && remaining
+                        == FIXTURE_PLANK_COUNT
+                            - REQUESTED_PLANK_COUNT) {
+                helper.assertTrue(
+                        sawTransferSkill
+                            && body.containerMenu instanceof ChestMenu
+                            && body.containerMenu.getCarried().isEmpty(),
+                        "Container inventory changed without the bound "
+                            + "transfer_menu_item transaction: "
+                            + diagnostics()
+                );
+                stage = ContainerWithdrawalStage.DONE;
+                helper.succeed();
+                return;
+            }
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= TRANSACTION_TIMEOUT_NANOS,
+                    "Vanilla container transfer timed out: "
+                        + diagnostics()
+            );
+        }
+
+        private void prepareFixture(final ServerPlayer body) {
+            final BlockPos start = body.blockPosition();
+            final int floorY = start.getY() - 1;
+            for (int dx = -2; dx <= 7; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    final BlockPos floor = new BlockPos(
+                            start.getX() + dx,
+                            floorY,
+                            start.getZ() + dz
+                    );
+                    helper.getLevel().setBlockAndUpdate(
+                            floor,
+                            Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int dy = 1; dy <= 4; dy++) {
+                        helper.getLevel().setBlockAndUpdate(
+                                floor.above(dy),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            helper.getLevel().getEntitiesOfClass(
+                    Mob.class,
+                    body.getBoundingBox().inflate(32.0D)
+            ).forEach(Mob::discard);
+            body.getInventory().clearContent();
+            body.inventoryMenu.broadcastChanges();
+            body.setDeltaMovement(Vec3.ZERO);
+            body.setHealth(body.getMaxHealth());
+            body.getFoodData().setFoodLevel(20);
+
+            chestPosition = start.offset(3, 0, 0);
+            helper.getLevel().setBlockAndUpdate(
+                    chestPosition,
+                    Blocks.CHEST.defaultBlockState()
+            );
+            final ChestBlockEntity chest = chest();
+            chest.clearContent();
+            chest.setItem(
+                    0,
+                    new ItemStack(
+                            Items.OAK_PLANKS,
+                            FIXTURE_PLANK_COUNT
+                    )
+            );
+            chest.setChanged();
+        }
+
+        private boolean latestObservationContainsClosedChest() {
+            final Optional<String> semantic =
+                    runtime.observations().latestSemanticJson();
+            if (semantic.isEmpty()) {
+                return false;
+            }
+            try {
+                final JsonObject root = JsonParser
+                        .parseString(semantic.orElseThrow())
+                        .getAsJsonObject();
+                if (root.has("openMenu")) {
+                    return false;
+                }
+                final var faces =
+                        root.getAsJsonArray("visibleBlockFaces");
+                if (faces == null) {
+                    return false;
+                }
+                for (var element : faces) {
+                    final JsonObject face =
+                            element.getAsJsonObject();
+                    final JsonObject block =
+                            face.getAsJsonObject("block");
+                    if ("minecraft:chest".equals(
+                            face.get("type").getAsString()
+                    )
+                            && block != null
+                            && block.get("x").getAsInt()
+                                == chestPosition.getX()
+                            && block.get("y").getAsInt()
+                                == chestPosition.getY()
+                            && block.get("z").getAsInt()
+                                == chestPosition.getZ()) {
+                        return true;
+                    }
+                }
+                return false;
+            } catch (RuntimeException malformedObservation) {
+                return false;
+            }
+        }
+
+        private boolean latestObservationContainsTransferablePlanks() {
+            final Optional<String> semantic =
+                    runtime.observations().latestSemanticJson();
+            if (semantic.isEmpty()) {
+                return false;
+            }
+            try {
+                final JsonObject root = JsonParser
+                        .parseString(semantic.orElseThrow())
+                        .getAsJsonObject();
+                final JsonObject menu =
+                        root.getAsJsonObject("openMenu");
+                if (menu == null
+                        || !"minecraft:generic_9x3".equals(
+                            menu.get("type").getAsString()
+                        )) {
+                    return false;
+                }
+                boolean source = false;
+                boolean destination = false;
+                for (var element : menu.getAsJsonArray("slots")) {
+                    final JsonObject slot =
+                            element.getAsJsonObject();
+                    final String location =
+                            slot.get("location").getAsString();
+                    final String item =
+                            slot.get("item").getAsString();
+                    final int count =
+                            slot.get("count").getAsInt();
+                    source |= location.equals("MENU")
+                            && item.equals("minecraft:oak_planks")
+                            && count == FIXTURE_PLANK_COUNT;
+                    destination |= location.equals("PLAYER")
+                            && item.equals("minecraft:air")
+                            && count == 0;
+                }
+                return source && destination;
+            } catch (RuntimeException malformedObservation) {
+                return false;
+            }
+        }
+
+        private void observeActiveSkill() {
+            final var skill = runtime.skillSupervisor().snapshot();
+            if (skill.boundGoalRevision() != withdrawalGoalRevision
+                    || skill.state()
+                        != dev.mcai.companion.skill.SkillSupervisor
+                            .State.RUNNING) {
+                return;
+            }
+            sawUseBlockSkill |= skill.skillName().equals("use_block");
+            sawTransferSkill |= skill.skillName().equals(
+                    "transfer_menu_item"
+            );
+        }
+
+        private ChestBlockEntity chest() {
+            return (ChestBlockEntity) Optional.ofNullable(
+                    helper.getLevel().getBlockEntity(chestPosition)
+            ).filter(ChestBlockEntity.class::isInstance)
+                    .orElseThrow(() ->
+                            helper.assertionException(
+                                    "Fixture chest block entity is missing"
+                            )
+                    );
+        }
+
+        private void assertNoHumanPlayers() {
+            final long humans = runtime.server()
+                    .getPlayerList()
+                    .getPlayers()
+                    .stream()
+                    .filter(player -> !player.getUUID().equals(
+                            runtime.worldData().companionUuid()
+                    ))
+                    .count();
+            helper.assertTrue(
+                    humans == 0L,
+                    "Container task retained " + humans
+                        + " human player(s) after the command"
+            );
+        }
+
+        private void assertWithinModelDeadline(final String message) {
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= MODEL_TIMEOUT_NANOS,
+                    message
+            );
+        }
+
+        private String diagnostics() {
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            final String bodySummary = bodyCandidate
+                    .map(body -> "menu="
+                            + body.containerMenu.getClass().getSimpleName()
+                            + ", ownedPlanks="
+                            + body.getInventory().countItem(Items.OAK_PLANKS))
+                    .orElse("offline");
+            return "supervisor=" + runtime.skillSupervisor().snapshot()
+                    + ", goal=" + runtime.goals().snapshot()
+                    + ", body=" + bodySummary
+                    + ", sawUseBlock=" + sawUseBlockSkill
+                    + ", sawTransfer=" + sawTransferSkill
+                    + ", chestPlanks="
+                    + (chestPosition == null
+                        ? "not-created"
+                        : chest().countItem(Items.OAK_PLANKS));
+        }
+
+        private void cleanup() {
+            finishScenarioGoal(runtime);
+            if (humanSession != null) {
+                humanSession.close();
+            }
+            AiPlayerManager.onlinePlayer(runtime.server()).ifPresent(
+                    player -> {
+                        if (player.containerMenu != player.inventoryMenu) {
+                            player.closeContainer();
+                        }
+                    }
+            );
+            if (AiPlayerManager.status(runtime.server()).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(runtime.server());
+            }
+        }
+    }
+
+    private enum ContainerWithdrawalStage {
+        BODY,
+        PROBE,
+        VISIBLE,
+        GOAL,
+        OPEN,
+        MENU_VISIBLE,
+        TRANSFER,
+        DONE
+    }
+
+    private static final class LiveCombatScenario {
+        private static final float ZOMBIE_START_HEALTH = 8.0F;
+
+        private final GameTestHelper helper;
+        private final ServerRuntime runtime;
+        private final long createdAt;
+
+        private CombatStage stage = CombatStage.BODY;
+        private CompletableFuture<CapabilityProbeOutcome> probe;
+        private PlacedHuman humanSession;
+        private Mob zombie;
+        private long stageStartedNanos;
+        private long goalRevisionBefore;
+        private boolean sawCombatSkill;
+        private boolean threatAiActivated;
+
+        private LiveCombatScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime
+        ) {
+            this.helper = helper;
+            this.runtime = runtime;
+            createdAt = helper.getTick();
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void start() {
+            final var status = AiPlayerManager.status(runtime.server());
+            if (status.state() == SessionState.ABSENT) {
+                helper.assertTrue(
+                        AiPlayerManager.requestSpawn(
+                                runtime.server()
+                        ).accepted(),
+                        "Live-combat companion spawn was rejected"
+                );
+            }
+        }
+
+        private void tick() {
+            if (humanSession != null) {
+                humanSession.tick();
+            }
+            switch (stage) {
+                case BODY -> waitForBody();
+                case PROBE -> waitForProbe();
+                case EQUIPMENT -> waitForEquipment();
+                case THREAT_VISIBLE -> waitForThreatVisibility();
+                case GOAL -> waitForGoal();
+                case COMBAT -> waitForCombat();
+                case DONE -> {
+                    // GameTest is already terminal.
+                }
+            }
+        }
+
+        private void waitForBody() {
+            final var status =
+                    AiPlayerManager.status(runtime.server());
+            helper.assertTrue(
+                    status.state() != SessionState.FAILED,
+                    "Live-combat companion body failed"
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                        helper.getTick() - createdAt
+                            <= BODY_TIMEOUT_TICKS,
+                        "Live-combat companion body timed out"
+                );
+                return;
+            }
+            final ServerPlayer body = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow();
+            prepareArenaAndOwnedEquipment(body);
+            probe = probeOrReuseVerifiedModel(runtime);
+            stage = CombatStage.PROBE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForProbe() {
+            assertWithinModelDeadline(
+                    "Live combat model capability probe timed out"
+            );
+            if (!probe.isDone()) {
+                return;
+            }
+            final CapabilityProbeOutcome outcome = probe.join();
+            helper.assertTrue(
+                    outcome
+                        instanceof CapabilityProbeOutcome.Supported,
+                    "Configured live model probe failed: " + outcome
+            );
+            stage = CombatStage.EQUIPMENT;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForEquipment() {
+            final ServerPlayer body = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow();
+            if (!fullyEquipped(body)) {
+                helper.assertTrue(
+                        System.nanoTime() - stageStartedNanos
+                            <= java.time.Duration.ofSeconds(15)
+                                .toNanos(),
+                        "Owned armor, shield and sword were not equipped "
+                            + "through the inventory controller: "
+                            + equipmentDiagnostic(body, runtime)
+                );
+                return;
+            }
+            spawnThreat(body);
+            stage = CombatStage.THREAT_VISIBLE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForThreatVisibility() {
+            final ServerPlayer body = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow();
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    zombie.getEyePosition()
+            );
+            body.setYHeadRot(body.getYRot());
+            if (!latestObservationContainsZombie()) {
+                helper.assertTrue(
+                        System.nanoTime() - stageStartedNanos
+                            <= java.time.Duration.ofSeconds(15)
+                                .toNanos(),
+                        "The companion's fair first-person semantic "
+                            + "observation never exposed the visible Zombie"
+                );
+                return;
+            }
+            humanSession = PlacedHuman.create(helper, runtime);
+            final ServerPlayer human = humanSession.player();
+            helper.assertTrue(
+                    CompanionCommandAccess.mayAdmin(
+                            human.createCommandSourceStack()
+                    ),
+                    "Logged-in combat test player lacked task-write "
+                        + "permission"
+            );
+            goalRevisionBefore = runtime.goals()
+                    .snapshot()
+                    .revision();
+            final String command = """
+                    %s，保护好自己，使用现有装备击败你面前的僵尸。
+                    """.formatted(
+                            runtime.worldData().displayName()
+                    ).strip();
+            final Component submitted =
+                    ForgeHooks.onServerChatSubmittedEvent(
+                            human,
+                            Component.literal(command)
+                    );
+            helper.assertTrue(
+                    submitted != null,
+                    "Companion cancelled the combat chat command"
+            );
+            humanSession.close();
+            stage = CombatStage.GOAL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForGoal() {
+            assertWithinModelDeadline(
+                    "Live model did not classify the combat task"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            if (goal.revision() == goalRevisionBefore) {
+                return;
+            }
+            helper.assertTrue(
+                    goal.revision() > goalRevisionBefore
+                        && goal.goal().contains("僵尸"),
+                    "Authorized combat chat was not preserved as the goal"
+            );
+            stage = CombatStage.COMBAT;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForCombat() {
+            final ServerPlayer body = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow();
+            helper.assertTrue(
+                    body.isAlive(),
+                    "Companion died during the controlled Zombie defense"
+            );
+            final var skill = runtime.skillSupervisor().snapshot();
+            if ("engage_observed_entity".equals(
+                    skill.skillName()
+            )) {
+                sawCombatSkill = true;
+                if (!threatAiActivated) {
+                    zombie.setNoAi(false);
+                    threatAiActivated = true;
+                }
+            }
+            final boolean defeated = zombie == null
+                    || zombie.isRemoved()
+                    || !zombie.isAlive();
+            if (defeated) {
+                helper.assertTrue(
+                        sawCombatSkill,
+                        "Zombie disappeared without the verified combat "
+                            + "controller becoming active"
+                );
+                helper.assertTrue(
+                        fullyEquipped(body),
+                        "Companion discarded equipped protection during "
+                            + "combat"
+                );
+                stage = CombatStage.DONE;
+                helper.succeed();
+                return;
+            }
+            if (System.nanoTime() - stageStartedNanos
+                    <= MODEL_TIMEOUT_NANOS) {
+                final GoalSnapshot goal = runtime.goals().snapshot();
+                if (goal.status() != GoalStatus.RUNNING
+                        && goal.status() != GoalStatus.CANCEL_PENDING
+                        && !defeated) {
+                    helper.assertTrue(
+                            false,
+                            "Live combat goal became terminal before the "
+                                + "Zombie was defeated: goal=" + goal
+                                + ", skill=" + skill.skillName()
+                                + ", lastStartRejection="
+                                + skill.lastStartRejection()
+                    );
+                }
+                return;
+            }
+            helper.assertTrue(
+                    false,
+                    "Live combat did not defeat the Zombie before the "
+                        + "wall-clock deadline: zombieHealth="
+                        + zombie.getHealth()
+                        + ", bodyHealth=" + body.getHealth()
+                        + ", skill=" + skill.skillName()
+                        + ", lastStartRejection="
+                        + skill.lastStartRejection()
+            );
+        }
+
+        private void prepareArenaAndOwnedEquipment(
+                final ServerPlayer body
+        ) {
+            final BlockPos start = body.blockPosition();
+            for (int dx = -6; dx <= 6; dx++) {
+                for (int dz = -6; dz <= 10; dz++) {
+                    final BlockPos floor =
+                            start.offset(dx, -1, dz);
+                    helper.getLevel().setBlockAndUpdate(
+                            floor,
+                            Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int dy = 1; dy <= 4; dy++) {
+                        helper.getLevel().setBlockAndUpdate(
+                                floor.above(dy),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            body.getInventory().clearContent();
+            body.setItemSlot(EquipmentSlot.HEAD, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.CHEST, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.LEGS, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.FEET, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+            body.getInventory().setItem(
+                    9,
+                    new ItemStack(Items.IRON_HELMET)
+            );
+            body.getInventory().setItem(
+                    10,
+                    new ItemStack(Items.IRON_CHESTPLATE)
+            );
+            body.getInventory().setItem(
+                    11,
+                    new ItemStack(Items.IRON_LEGGINGS)
+            );
+            body.getInventory().setItem(
+                    12,
+                    new ItemStack(Items.IRON_BOOTS)
+            );
+            body.getInventory().setItem(
+                    13,
+                    new ItemStack(Items.SHIELD)
+            );
+            body.getInventory().setItem(
+                    14,
+                    new ItemStack(Items.IRON_SWORD)
+            );
+            body.setHealth(body.getMaxHealth());
+            body.getFoodData().setFoodLevel(20);
+            body.getFoodData().setSaturation(5.0F);
+            body.setDeltaMovement(Vec3.ZERO);
+            body.inventoryMenu.broadcastChanges();
+        }
+
+        private void spawnThreat(final ServerPlayer body) {
+            zombie = EntityTypes.ZOMBIE.create(
+                            helper.getLevel(),
+                            EntitySpawnReason.COMMAND
+                    );
+            helper.assertTrue(
+                    zombie != null,
+                    "GameTest could not create a Zombie"
+            );
+            zombie.setPos(body.position().add(0.0, 0.0, 10.0));
+            zombie.setHealth(ZOMBIE_START_HEALTH);
+            // Freeze the threat only while waiting for a model decision.
+            // This keeps it in the NPC's real view without feeding hidden
+            // entity data to the planner. The normal Zombie AI is restored
+            // as soon as the combat controller actually starts.
+            zombie.setNoAi(true);
+            zombie.setItemSlot(
+                    EquipmentSlot.HEAD,
+                    new ItemStack(Items.IRON_HELMET)
+            );
+            zombie.setPersistenceRequired();
+            helper.assertTrue(
+                    helper.getLevel().addFreshEntity(zombie),
+                    "GameTest could not add the Zombie"
+            );
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    zombie.getEyePosition()
+            );
+            body.setYHeadRot(body.getYRot());
+        }
+
+        private boolean latestObservationContainsZombie() {
+            final Optional<String> semanticJson =
+                    runtime.observations().latestSemanticJson();
+            if (semanticJson.isEmpty()) {
+                return false;
+            }
+            try {
+                final var root = JsonParser
+                        .parseString(semanticJson.orElseThrow())
+                        .getAsJsonObject();
+                final var visible =
+                        root.getAsJsonArray("visibleEntities");
+                if (visible == null) {
+                    return false;
+                }
+                for (var element : visible) {
+                    final var entity = element.getAsJsonObject();
+                    if (entity.has("type")
+                            && "minecraft:zombie".equals(
+                                entity.get("type").getAsString()
+                            )) {
+                        return true;
+                    }
+                }
+                return false;
+            } catch (RuntimeException malformedObservation) {
+                return false;
+            }
+        }
+
+        private static boolean fullyEquipped(
+                final ServerPlayer body
+        ) {
+            return body.getItemBySlot(EquipmentSlot.HEAD)
+                        .is(Items.IRON_HELMET)
+                    && body.getItemBySlot(EquipmentSlot.CHEST)
+                        .is(Items.IRON_CHESTPLATE)
+                    && body.getItemBySlot(EquipmentSlot.LEGS)
+                        .is(Items.IRON_LEGGINGS)
+                    && body.getItemBySlot(EquipmentSlot.FEET)
+                        .is(Items.IRON_BOOTS)
+                    && body.getOffhandItem().is(Items.SHIELD)
+                    && body.getMainHandItem().is(Items.IRON_SWORD);
+        }
+
+        private static String equipmentDiagnostic(
+                final ServerPlayer body,
+                final ServerRuntime runtime
+        ) {
+            return "head=" + body.getItemBySlot(EquipmentSlot.HEAD)
+                    + ", chest="
+                    + body.getItemBySlot(EquipmentSlot.CHEST)
+                    + ", legs="
+                    + body.getItemBySlot(EquipmentSlot.LEGS)
+                    + ", feet="
+                    + body.getItemBySlot(EquipmentSlot.FEET)
+                    + ", offhand=" + body.getOffhandItem()
+                    + ", mainhand=" + body.getMainHandItem()
+                    + ", carried="
+                    + body.inventoryMenu.getCarried()
+                    + ", onGround=" + body.onGround()
+                    + ", position=" + body.position()
+                    + ", survival="
+                    + runtime.survival().state()
+                    + ", skill="
+                    + runtime.skillSupervisor().snapshot();
+        }
+
+        private void assertWithinModelDeadline(
+                final String message
+        ) {
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= MODEL_TIMEOUT_NANOS,
+                    message
+            );
+        }
+
+        private void cleanup() {
+            finishScenarioGoal(runtime);
+            if (humanSession != null) {
+                humanSession.close();
+            }
+            if (zombie != null && zombie.isAlive()) {
+                zombie.discard();
+            }
+            if (AiPlayerManager.status(runtime.server()).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(runtime.server());
+            }
+        }
+    }
+
+    private enum CombatStage {
+        BODY,
+        PROBE,
+        EQUIPMENT,
+        THREAT_VISIBLE,
+        GOAL,
+        COMBAT,
+        DONE
+    }
+
+    private static final class SurpriseZombieScenario {
+        private static final int REACTION_DEADLINE_TICKS = 12;
+        private static final double REQUIRED_DISPLACEMENT = 0.35D;
+        private static final float MAXIMUM_YAW_STEP = 30.0F;
+        private static final float MAXIMUM_PITCH_STEP = 22.5F;
+
+        private final GameTestHelper helper;
+        private final ServerRuntime runtime;
+        private final long createdAt;
+        private long stageStartedNanos;
+
+        private SurpriseStage stage = SurpriseStage.BODY;
+        private CompletableFuture<CapabilityProbeOutcome> probe;
+        private CompletableFuture<Optional<MemoryEvent>> usageRead;
+        private PlacedHuman humanSession;
+        private ServerPlayer bodyBeforeHumanLogin;
+        private Mob zombie;
+        private Instant commandAt;
+        private long commandGoalRevision;
+        private long contactTick;
+        private Vec3 startPosition;
+        private float priorYaw;
+        private float priorPitch;
+        private float maximumYawStep;
+        private float maximumPitchStep;
+        private double maximumDisplacement;
+        private boolean reacted;
+        private boolean modelResponded;
+        private long arbiterBaselineTick = -1L;
+        private boolean emergencyLaneClaimed;
+
+        private SurpriseZombieScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime
+        ) {
+            this.helper = helper;
+            this.runtime = runtime;
+            createdAt = helper.getTick();
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void start() {
+            finishScenarioGoal(runtime);
+            final var status = AiPlayerManager.status(runtime.server());
+            if (status.state() == SessionState.ABSENT) {
+                helper.assertTrue(
+                        AiPlayerManager.requestSpawn(
+                                runtime.server()
+                        ).accepted(),
+                        "Surprise-Zombie companion spawn was rejected"
+                );
+            }
+        }
+
+        private void tick() {
+            if (humanSession != null) {
+                humanSession.tick();
+            }
+            switch (stage) {
+                case BODY -> waitForBody();
+                case PROBE -> waitForProbe();
+                case COMBAT -> waitForCombat();
+                case DONE -> {
+                    // GameTest is already terminal.
+                }
+            }
+        }
+
+        private void waitForBody() {
+            final var status = AiPlayerManager.status(runtime.server());
+            helper.assertTrue(
+                    status.state() != SessionState.FAILED,
+                    "Surprise-Zombie companion body failed"
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                        helper.getTick() - createdAt
+                                <= BODY_TIMEOUT_TICKS,
+                        "Surprise-Zombie companion body timed out"
+                );
+                return;
+            }
+            final ServerPlayer body = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow();
+            prepareArena(body);
+            probe = probeOrReuseVerifiedModel(runtime);
+            stage = SurpriseStage.PROBE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForProbe() {
+            if (!probe.isDone()) {
+                return;
+            }
+            final CapabilityProbeOutcome outcome = probe.join();
+            helper.assertTrue(
+                    outcome
+                            instanceof CapabilityProbeOutcome.Supported,
+                    "Configured live model probe failed: " + outcome
+            );
+            if (humanSession == null) {
+                final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                        .onlinePlayer(runtime.server());
+                if (bodyCandidate.isEmpty()) {
+                    assertWithinModelDeadline(
+                            "Surprise-Zombie body disappeared before human "
+                                + "warning"
+                    );
+                    return;
+                }
+                bodyBeforeHumanLogin = bodyCandidate.orElseThrow();
+                humanSession = PlacedHuman.create(
+                        helper,
+                        runtime,
+                        bodyBeforeHumanLogin.position()
+                                .add(2.0D, 0.0D, 0.0D)
+                );
+                return;
+            }
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                assertWithinModelDeadline(
+                        "Surprise-Zombie body disappeared during initial "
+                            + "anchor reconciliation"
+                );
+                return;
+            }
+            /*
+             * The first real human login may replace the zero-human body
+             * through the normal PlayerList remove/relogin anchor
+             * transaction. Never spawn the hostile or retain observation
+             * state against that stale ServerPlayer reference.
+             */
+            if (bodyBeforeHumanLogin != null
+                    && runtime.worldData().bodyNeedsInitialAnchor()
+                    && bodyCandidate.orElseThrow() == bodyBeforeHumanLogin) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            final long before = runtime.goals().snapshot().revision();
+            commandAt = Instant.now();
+            final Component submitted =
+                    ForgeHooks.onServerChatSubmittedEvent(
+                            humanSession.player(),
+                            Component.literal(
+                                    "小心，你后面有僵尸，保护好自己！"
+                            )
+                    );
+            helper.assertTrue(
+                    submitted != null,
+                    "Companion cancelled the surprise warning"
+            );
+            final GoalSnapshot installed = runtime.goals().snapshot();
+            helper.assertTrue(
+                    installed.revision() > before
+                            && installed.goal().contains("僵尸"),
+                    "Obvious threat warning was not installed in the "
+                            + "same chat tick"
+            );
+            commandGoalRevision = installed.revision();
+            humanSession.close();
+            humanSession = null;
+            arbiterBaselineTick = runtime.behaviorArbiter()
+                    .latest()
+                    .map(BehaviorArbiter.Resolution::serverTick)
+                    .orElse(-1L);
+            spawnThreatBehind(body);
+            startPosition = body.position();
+            priorYaw = body.getYRot();
+            priorPitch = body.getXRot();
+            contactTick = helper.getTick();
+            stage = SurpriseStage.COMBAT;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void assertWithinModelDeadline(final String message) {
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= MODEL_TIMEOUT_NANOS,
+                    message
+            );
+        }
+
+        private void waitForCombat() {
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                assertWithinModelDeadline(
+                        "Surprise-Zombie body disappeared during defense"
+                );
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            helper.assertTrue(
+                    body.isAlive() && !body.isDeadOrDying(),
+                    "Companion stared at the surprise Zombie until death"
+            );
+            final float yawStep = wrappedDegrees(
+                    body.getYRot() - priorYaw
+            );
+            final float pitchStep = Math.abs(
+                    body.getXRot() - priorPitch
+            );
+            maximumYawStep = Math.max(maximumYawStep, yawStep);
+            maximumPitchStep = Math.max(
+                    maximumPitchStep,
+                    pitchStep
+            );
+            priorYaw = body.getYRot();
+            priorPitch = body.getXRot();
+
+            final double displacement = Math.sqrt(
+                    body.position().distanceToSqr(startPosition)
+            );
+            maximumDisplacement = Math.max(
+                    maximumDisplacement,
+                    displacement
+            );
+            final boolean attacked = zombie == null
+                    || zombie.isRemoved()
+                    || zombie.getHealth() < zombie.getMaxHealth();
+            final boolean turned = wrappedDegrees(
+                    body.getYRot()
+            ) >= 8.0F;
+            reacted |= displacement >= 0.10D
+                    || attacked
+                    || turned
+                    || body.isUsingItem();
+            runtime.behaviorArbiter().latest()
+                    .filter(resolution ->
+                            resolution.serverTick()
+                                    > arbiterBaselineTick)
+                    .filter(resolution ->
+                            resolution.claimedBy(
+                                BehaviorArbiter.Lane
+                                    .EMERGENCY_SURVIVAL
+                            ))
+                    .ifPresent(resolution -> {
+                        helper.assertTrue(
+                                resolution.attempted().equals(
+                                    List.of(
+                                        BehaviorArbiter.Lane
+                                            .EMERGENCY_SURVIVAL
+                                    )
+                                ),
+                                "A lower body-authoring lane ran after "
+                                    + "emergency ownership: "
+                                    + resolution
+                        );
+                        emergencyLaneClaimed = true;
+                    });
+            if (!reacted
+                    && helper.getTick() - contactTick
+                            > REACTION_DEADLINE_TICKS) {
+                helper.assertTrue(
+                        false,
+                        "No physical defense, retreat, turn or attack "
+                                + "occurred within "
+                                + REACTION_DEADLINE_TICKS
+                                + " ticks of a rear hostile; survival="
+                                + runtime.survival().state()
+                                + ", modelReady="
+                                + runtime.model()
+                                    .snapshot().gatewayReady()
+                                + ", skill="
+                                + runtime.skillSupervisor().snapshot()
+                                + ", coreFrame="
+                                + runtime.coreFrames().current()
+                                    .map(frame -> "dangers="
+                                        + frame.dangerSignals()
+                                        + ", position="
+                                        + frame.position()
+                                        + ", look="
+                                        + frame.lookDirection())
+                                    .orElse("unavailable")
+                                + ", coreLease="
+                                + runtime.coreActions().snapshot()
+                                + ", arbiter="
+                                + runtime.behaviorArbiter().latest()
+                );
+            }
+            pollModelUsage();
+
+            final boolean defeated = zombie == null
+                    || zombie.isRemoved()
+                    || !zombie.isAlive();
+            if (defeated && modelResponded) {
+                helper.assertTrue(
+                        emergencyLaneClaimed,
+                        "The hostile was defeated without proving that "
+                                + "the production emergency lane owned "
+                                + "the body after contact; latest="
+                                + runtime.behaviorArbiter().latest()
+                );
+                helper.assertTrue(
+                        maximumDisplacement >= REQUIRED_DISPLACEMENT,
+                        "The open-arena defense never used meaningful "
+                                + "movement: displacement="
+                                + maximumDisplacement
+                );
+                helper.assertTrue(
+                        maximumYawStep <= MAXIMUM_YAW_STEP,
+                        "Head yaw snapped unnaturally by "
+                                + maximumYawStep + " degrees in one tick"
+                );
+                helper.assertTrue(
+                        maximumPitchStep <= MAXIMUM_PITCH_STEP,
+                        "Head pitch snapped/nodded unnaturally by "
+                                + maximumPitchStep
+                                + " degrees in one tick"
+                );
+                stage = SurpriseStage.DONE;
+                helper.succeed();
+                return;
+            }
+            helper.assertTrue(
+                    java.time.Duration.between(
+                            commandAt,
+                            Instant.now()
+                    ).compareTo(
+                            java.time.Duration.ofSeconds(45)
+                    ) <= 0,
+                    "Surprise-Zombie defense timed out: zombieHealth="
+                            + (zombie == null
+                                ? "removed"
+                                : zombie.getHealth())
+                            + ", zombieTickCount="
+                            + (zombie == null
+                                ? "removed"
+                                : zombie.tickCount)
+                            + ", zombieInvulnerableTicks="
+                            + (zombie == null
+                                ? "removed"
+                                : zombie.invulnerableTime)
+                            + ", bodyHealth=" + body.getHealth()
+                            + ", bodyTickCount=" + body.tickCount
+                            + ", displacement="
+                            + maximumDisplacement
+                            + ", modelResponded=" + modelResponded
+                            + ", emergencyLaneClaimed="
+                            + emergencyLaneClaimed
+                            + ", arbiter="
+                            + runtime.behaviorArbiter().latest()
+                            + ", survival="
+                            + runtime.survival().state()
+                            + ", skill="
+                            + runtime.skillSupervisor().snapshot()
+            );
+        }
+
+        private void pollModelUsage() {
+            if (modelResponded) {
+                return;
+            }
+            if (usageRead == null) {
+                usageRead = runtime.memory().latestEvent(
+                        "brain_model_usage"
+                );
+                return;
+            }
+            if (!usageRead.isDone()) {
+                return;
+            }
+            final Optional<MemoryEvent> found = usageRead.join();
+            usageRead = null;
+            modelResponded = found
+                    .filter(event -> isGameplayPlannerUsage(
+                            event,
+                            commandAt,
+                            commandGoalRevision
+                    ))
+                    .isPresent();
+        }
+
+        private void prepareArena(final ServerPlayer body) {
+            final BlockPos start = body.blockPosition();
+            for (int dx = -10; dx <= 10; dx++) {
+                for (int dz = -10; dz <= 10; dz++) {
+                    final BlockPos floor = start.offset(dx, -1, dz);
+                    helper.getLevel().setBlockAndUpdate(
+                            floor,
+                            Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int dy = 0; dy <= 4; dy++) {
+                        helper.getLevel().setBlockAndUpdate(
+                                floor.above(dy + 1),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            body.getInventory().clearContent();
+            body.setGameMode(GameType.SURVIVAL);
+            body.setItemSlot(
+                    EquipmentSlot.MAINHAND,
+                    new ItemStack(Items.IRON_SWORD)
+            );
+            body.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
+            body.setHealth(body.getMaxHealth());
+            body.getFoodData().setFoodLevel(20);
+            body.getFoodData().setSaturation(5.0F);
+            body.setDeltaMovement(Vec3.ZERO);
+            body.setYRot(0.0F);
+            body.setYHeadRot(0.0F);
+            body.setXRot(0.0F);
+            body.inventoryMenu.broadcastChanges();
+        }
+
+        private void spawnThreatBehind(final ServerPlayer body) {
+            zombie = EntityTypes.ZOMBIE.create(
+                    helper.getLevel(),
+                    EntitySpawnReason.COMMAND
+            );
+            helper.assertTrue(
+                    zombie != null,
+                    "GameTest could not create the surprise Zombie"
+            );
+            zombie.setPos(body.position().add(0.0D, 0.0D, -1.55D));
+            zombie.setItemSlot(
+                    EquipmentSlot.HEAD,
+                    new ItemStack(Items.IRON_HELMET)
+            );
+            zombie.setPersistenceRequired();
+            zombie.setTarget(body);
+            helper.assertTrue(
+                    helper.getLevel().addFreshEntity(zombie),
+                    "GameTest could not add the surprise Zombie"
+            );
+        }
+
+        private static float wrappedDegrees(final float value) {
+            return Math.abs((float) Math.IEEEremainder(value, 360.0D));
+        }
+
+        private void cleanup() {
+            finishScenarioGoal(runtime);
+            if (humanSession != null) {
+                humanSession.close();
+            }
+            if (zombie != null && !zombie.isRemoved()) {
+                zombie.discard();
+            }
+            if (AiPlayerManager.status(runtime.server()).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(runtime.server());
+            }
+        }
+    }
+
+    private enum SurpriseStage {
+        BODY,
+        PROBE,
+        COMBAT,
+        DONE
+    }
+
+    private static final class CriticalGoldenAppleScenario {
+        private static final int USE_START_DEADLINE_TICKS = 12;
+
+        private final GameTestHelper helper;
+        private final ServerRuntime runtime;
+        private final long createdAt;
+
+        private GoldenAppleStage stage = GoldenAppleStage.BODY;
+        private CompletableFuture<CapabilityProbeOutcome> probe;
+        private CompletableFuture<Optional<MemoryEvent>> usageRead;
+        private CompletableFuture<Optional<MemoryEvent>> speechRead;
+        private PlacedHuman humanSession;
+        private ServerPlayer bodyBeforeHumanLogin;
+        private ItemEntity gift;
+        private Instant commandAt;
+        private long commandGoalRevision;
+        private long commandTick;
+        private int baselineUseStat;
+        private boolean sawUseStart;
+        private boolean consumed;
+        private boolean modelResponded;
+        private boolean speechChecked;
+        private long arbiterBaselineTick = -1L;
+        private boolean emergencyLaneClaimed;
+
+        private CriticalGoldenAppleScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime
+        ) {
+            this.helper = helper;
+            this.runtime = runtime;
+            createdAt = helper.getTick();
+        }
+
+        private void start() {
+            finishScenarioGoal(runtime);
+            final var status = AiPlayerManager.status(runtime.server());
+            if (status.state() == SessionState.ABSENT) {
+                helper.assertTrue(
+                        AiPlayerManager.requestSpawn(
+                                runtime.server()
+                        ).accepted(),
+                        "Golden-apple companion spawn was rejected"
+                );
+            }
+        }
+
+        private void tick() {
+            if (humanSession != null) {
+                humanSession.tick();
+            }
+            switch (stage) {
+                case BODY -> waitForBody();
+                case PROBE -> waitForProbe();
+                case CONSUME -> waitForConsumption();
+                case DONE -> {
+                    // GameTest is already terminal.
+                }
+            }
+        }
+
+        private void waitForBody() {
+            final var status = AiPlayerManager.status(runtime.server());
+            helper.assertTrue(
+                    status.state() != SessionState.FAILED,
+                    "Golden-apple companion body failed"
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                        helper.getTick() - createdAt
+                                <= BODY_TIMEOUT_TICKS,
+                        "Golden-apple companion body timed out"
+                );
+                return;
+            }
+            final ServerPlayer body = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow();
+            prepareBody(body);
+            probe = probeOrReuseVerifiedModel(runtime);
+            stage = GoldenAppleStage.PROBE;
+        }
+
+        private void waitForProbe() {
+            if (!probe.isDone()) {
+                return;
+            }
+            final CapabilityProbeOutcome outcome = probe.join();
+            helper.assertTrue(
+                    outcome
+                            instanceof CapabilityProbeOutcome.Supported,
+                    "Configured live model probe failed: " + outcome
+            );
+            if (humanSession == null) {
+                final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                        .onlinePlayer(runtime.server());
+                if (bodyCandidate.isEmpty()) {
+                    return;
+                }
+                bodyBeforeHumanLogin = bodyCandidate.orElseThrow();
+                humanSession = PlacedHuman.create(
+                        helper,
+                        runtime,
+                        bodyBeforeHumanLogin.position().add(1.5D, 0.0D, 0.0D)
+                );
+                return;
+            }
+            final Optional<ServerPlayer> currentBody = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (currentBody.isEmpty()) {
+                return;
+            }
+            /*
+             * A zero-human startup body is reconciled through a normal
+             * remove/relogin when this first human appears.  Do not drop the
+             * gift onto the stale object that is still referenced by the
+             * previous tick; wait for the authoritative replacement before
+             * touching inventory or issuing chat.
+             */
+            if (runtime.worldData().bodyNeedsInitialAnchor()
+                    && currentBody.orElseThrow() == bodyBeforeHumanLogin) {
+                return;
+            }
+            final ServerPlayer body = currentBody.orElseThrow();
+            physicallyGiveApple(body, humanSession.player());
+            helper.assertTrue(
+                    body.getInventory().countItem(
+                            Items.GOLDEN_APPLE
+                    ) == 1,
+                    "The companion did not acquire the player's dropped "
+                            + "golden apple through vanilla pickup"
+            );
+            arbiterBaselineTick = runtime.behaviorArbiter()
+                    .latest()
+                    .map(BehaviorArbiter.Resolution::serverTick)
+                    .orElse(-1L);
+            body.setHealth(4.0F);
+            baselineUseStat = body.getStats().getValue(
+                    Stats.ITEM_USED.get(Items.GOLDEN_APPLE)
+            );
+            final long before = runtime.goals().snapshot().revision();
+            commandAt = Instant.now();
+            commandTick = helper.getTick();
+            final Component submitted =
+                    ForgeHooks.onServerChatSubmittedEvent(
+                            humanSession.player(),
+                            Component.literal("给你了，快吃吧！")
+                    );
+            helper.assertTrue(
+                    submitted != null,
+                    "Companion cancelled the golden-apple chat command"
+            );
+            final GoalSnapshot installed = runtime.goals().snapshot();
+            helper.assertTrue(
+                    installed.revision() > before
+                            && installed.goal().contains("吃"),
+                    "The direct eat command was not installed in the "
+                            + "same chat tick"
+            );
+            commandGoalRevision = installed.revision();
+            humanSession.close();
+            humanSession = null;
+            stage = GoldenAppleStage.CONSUME;
+        }
+
+        private void waitForConsumption() {
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                helper.assertTrue(
+                        java.time.Duration.between(
+                                commandAt,
+                                Instant.now()
+                        ).compareTo(
+                                java.time.Duration.ofSeconds(30)
+                        ) <= 0,
+                        "Companion body disappeared during the golden-apple "
+                            + "transaction"
+                );
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            helper.assertTrue(
+                    body.isAlive() && !body.isDeadOrDying(),
+                    "Companion died instead of using its critical "
+                            + "golden apple"
+            );
+            sawUseStart |= body.isUsingItem()
+                    && body.getUseItem().is(Items.GOLDEN_APPLE);
+            runtime.behaviorArbiter().latest()
+                    .filter(resolution ->
+                            resolution.serverTick()
+                                    > arbiterBaselineTick)
+                    .filter(resolution ->
+                            resolution.claimedBy(
+                                BehaviorArbiter.Lane
+                                    .EMERGENCY_SURVIVAL
+                            ))
+                    .ifPresent(resolution -> {
+                        helper.assertTrue(
+                                resolution.attempted().equals(
+                                    List.of(
+                                        BehaviorArbiter.Lane
+                                            .EMERGENCY_SURVIVAL
+                                    )
+                                ),
+                                "A lower body-authoring lane ran while "
+                                    + "the critical-health lane owned the "
+                                    + "body: " + resolution
+                        );
+                        emergencyLaneClaimed = true;
+                    });
+            if (!sawUseStart
+                    && helper.getTick() - commandTick
+                            > USE_START_DEADLINE_TICKS) {
+                helper.assertTrue(
+                        false,
+                        "Companion did not begin the real golden-apple "
+                                + "use action within "
+                                + USE_START_DEADLINE_TICKS + " ticks"
+                );
+            }
+            consumed |= body.getStats().getValue(
+                    Stats.ITEM_USED.get(Items.GOLDEN_APPLE)
+            ) > baselineUseStat
+                    && body.getInventory().countItem(
+                            Items.GOLDEN_APPLE
+                    ) == 0
+                    && body.getAbsorptionAmount() > 0.0F;
+            pollModelUsage();
+            pollSpeech();
+            if (consumed && modelResponded && speechChecked) {
+                helper.assertTrue(
+                        emergencyLaneClaimed,
+                        "The golden apple was consumed without proving "
+                            + "production emergency-lane ownership; "
+                            + "latest="
+                            + runtime.behaviorArbiter().latest()
+                );
+                stage = GoldenAppleStage.DONE;
+                helper.succeed();
+                return;
+            }
+            helper.assertTrue(
+                    java.time.Duration.between(
+                            commandAt,
+                            Instant.now()
+                    ).compareTo(
+                            java.time.Duration.ofSeconds(30)
+                    ) <= 0,
+                    "Critical golden-apple transaction timed out: "
+                            + "using=" + body.isUsingItem()
+                            + ", appleCount="
+                            + body.getInventory().countItem(
+                                Items.GOLDEN_APPLE
+                            )
+                            + ", useStat="
+                            + body.getStats().getValue(
+                                Stats.ITEM_USED.get(
+                                    Items.GOLDEN_APPLE
+                                )
+                            )
+                            + ", absorption="
+                            + body.getAbsorptionAmount()
+                            + ", modelResponded=" + modelResponded
+                            + ", emergencyLaneClaimed="
+                            + emergencyLaneClaimed
+                            + ", arbiter="
+                            + runtime.behaviorArbiter().latest()
+            );
+        }
+
+        private void physicallyGiveApple(
+                final ServerPlayer body,
+                final ServerPlayer human
+        ) {
+            human.setItemSlot(
+                    EquipmentSlot.MAINHAND,
+                    new ItemStack(Items.GOLDEN_APPLE)
+            );
+            final ItemStack transferred =
+                    human.getMainHandItem().copy();
+            human.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+            gift = human.drop(transferred, true);
+            helper.assertTrue(
+                    gift != null,
+                    "Logged-in player could not drop the golden apple"
+            );
+            gift.setNoPickUpDelay();
+            gift.setPos(body.position());
+            gift.playerTouch(body);
+            body.inventoryMenu.broadcastChanges();
+            helper.assertTrue(
+                    human.getInventory().countItem(
+                            Items.GOLDEN_APPLE
+                    ) == 0,
+                    "The player retained a duplicate golden apple"
+            );
+        }
+
+        private void pollModelUsage() {
+            if (modelResponded) {
+                return;
+            }
+            if (usageRead == null) {
+                usageRead = runtime.memory().latestEvent(
+                        "brain_model_usage"
+                );
+                return;
+            }
+            if (!usageRead.isDone()) {
+                return;
+            }
+            final Optional<MemoryEvent> found = usageRead.join();
+            usageRead = null;
+            modelResponded = found
+                    .filter(event -> isGameplayPlannerUsage(
+                            event,
+                            commandAt,
+                            commandGoalRevision
+                    ))
+                    .isPresent();
+        }
+
+        private void pollSpeech() {
+            if (speechChecked) {
+                return;
+            }
+            if (speechRead == null) {
+                speechRead = runtime.memory().latestEvent(
+                        "brain_speech"
+                );
+                return;
+            }
+            if (!speechRead.isDone()) {
+                return;
+            }
+            final Optional<MemoryEvent> found = speechRead.join();
+            speechRead = null;
+            if (found.isEmpty()
+                    || found.orElseThrow().occurredAt()
+                        .isBefore(commandAt)) {
+                return;
+            }
+            final JsonObject payload = JsonParser.parseString(
+                    found.orElseThrow().payloadJson()
+            ).getAsJsonObject();
+            final String speech = payload.get("message").getAsString();
+            helper.assertTrue(
+                    !speech.contains("浪费")
+                            && !speech.contains("再低")
+                            && !speech.contains("留着")
+                            && !speech.toLowerCase(Locale.ROOT)
+                                .contains("wait until"),
+                    "Companion repeated the unsafe golden-apple advice: "
+                            + speech
+            );
+            speechChecked = true;
+        }
+
+        private void prepareBody(final ServerPlayer body) {
+            final BlockPos start = body.blockPosition();
+            for (int dx = -4; dx <= 4; dx++) {
+                for (int dz = -4; dz <= 4; dz++) {
+                    final BlockPos floor = start.offset(dx, -1, dz);
+                    helper.getLevel().setBlockAndUpdate(
+                            floor,
+                            Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    helper.getLevel().setBlockAndUpdate(
+                            floor.above(),
+                            Blocks.AIR.defaultBlockState()
+                    );
+                    helper.getLevel().setBlockAndUpdate(
+                            floor.above(2),
+                            Blocks.AIR.defaultBlockState()
+                    );
+                }
+            }
+            /*
+             * GameTest players default to creative. A creative player gains
+             * the golden-apple effects and ITEM_USED statistic but retains
+             * the stack, which made this supposedly survival transaction
+             * wait forever for a count decrease after the real use had
+             * already completed.
+             */
+            body.setGameMode(GameType.SURVIVAL);
+            helper.assertTrue(
+                    body.gameMode.getGameModeForPlayer()
+                            == GameType.SURVIVAL
+                        && !body.getAbilities().instabuild
+                        && !body.getAbilities().invulnerable,
+                    "Golden-apple fixture did not enter genuine "
+                        + "survival mode"
+            );
+            body.getInventory().clearContent();
+            body.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
+            body.setHealth(body.getMaxHealth());
+            body.getFoodData().setFoodLevel(20);
+            body.getFoodData().setSaturation(5.0F);
+            body.setDeltaMovement(Vec3.ZERO);
+            body.inventoryMenu.broadcastChanges();
+        }
+
+        private void cleanup() {
+            finishScenarioGoal(runtime);
+            if (humanSession != null) {
+                humanSession.close();
+            }
+            if (gift != null && !gift.isRemoved()) {
+                gift.discard();
+            }
+            if (AiPlayerManager.status(runtime.server()).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(runtime.server());
+            }
+        }
+    }
+
+    private enum GoldenAppleStage {
+        BODY,
+        PROBE,
+        CONSUME,
+        DONE
+    }
+
+    private static final class LiveParkourScenario {
+        private final GameTestHelper helper;
+        private final ServerRuntime runtime;
+        private final long createdAt;
+
+        private ParkourStage stage = ParkourStage.BODY;
+        private CompletableFuture<CapabilityProbeOutcome> probe;
+        private PlacedHuman humanSession;
+        private BlockPos course;
+        private long stageStartedNanos;
+        private long goalRevisionBefore;
+        private int stableTicks;
+        private int initialJumpStat;
+        private boolean sawParkourSkill;
+
+        private LiveParkourScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime
+        ) {
+            this.helper = helper;
+            this.runtime = runtime;
+            createdAt = helper.getTick();
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void start() {
+            final var status = AiPlayerManager.status(runtime.server());
+            if (status.state() == SessionState.ABSENT) {
+                helper.assertTrue(
+                        AiPlayerManager.requestSpawn(
+                                runtime.server()
+                        ).accepted(),
+                        "Live-parkour companion spawn was rejected"
+                );
+            }
+        }
+
+        private void tick() {
+            if (humanSession != null) {
+                humanSession.tick();
+            }
+            switch (stage) {
+                case BODY -> waitForBody();
+                case PROBE -> waitForProbe();
+                case SETTLE -> waitForSettlement();
+                case GOAL -> waitForGoal();
+                case RUN -> waitForRun();
+                case DONE -> {
+                    // GameTest is already terminal.
+                }
+            }
+        }
+
+        private void waitForBody() {
+            final var status =
+                    AiPlayerManager.status(runtime.server());
+            helper.assertTrue(
+                    status.state() != SessionState.FAILED,
+                    "Live-parkour companion body failed"
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                        helper.getTick() - createdAt
+                            <= BODY_TIMEOUT_TICKS,
+                        "Live-parkour companion body timed out"
+                );
+                return;
+            }
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                // The first human login can legitimately create a short
+                // remove/relogin window while the initial anchor is moved.
+                // Do not turn that lifecycle gap into a model failure.
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.get();
+            prepareCourse(body);
+            probe = probeOrReuseVerifiedModel(runtime);
+            stage = ParkourStage.PROBE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForProbe() {
+            assertWithinModelDeadline(
+                    "Live parkour model capability probe timed out"
+            );
+            if (!probe.isDone()) {
+                return;
+            }
+            final CapabilityProbeOutcome outcome = probe.join();
+            helper.assertTrue(
+                    outcome
+                        instanceof CapabilityProbeOutcome.Supported,
+                    "Configured live model probe failed: " + outcome
+            );
+            stage = ParkourStage.SETTLE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForSettlement() {
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.get();
+            final double expectedY = course.getY() + 1.0;
+            if (!body.onGround()
+                    || Math.abs(body.getY() - expectedY) > 0.08) {
+                stableTicks = 0;
+                helper.assertTrue(
+                        System.nanoTime() - stageStartedNanos
+                            <= java.time.Duration.ofSeconds(15)
+                                .toNanos(),
+                        "Live parkour body did not settle on its real "
+                            + "starting platform"
+                );
+                return;
+            }
+            final Vec3 destination = new Vec3(
+                    course.getX() + 0.5,
+                    expectedY,
+                    course.getZ() + 7.5
+            );
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    destination
+            );
+            body.setYHeadRot(body.getYRot());
+            if (++stableTicks < 8
+                    || !latestObservationMatchesBody(body)) {
+                return;
+            }
+            initialJumpStat = body.getStats().getValue(
+                    Stats.CUSTOM.get(Stats.JUMP)
+            );
+            humanSession = PlacedHuman.create(helper, runtime);
+            final ServerPlayer human = humanSession.player();
+            helper.assertTrue(
+                    CompanionCommandAccess.mayAdmin(
+                            human.createCommandSourceStack()
+                    ),
+                    "Logged-in parkour test player lacked task-write "
+                        + "permission"
+            );
+            goalRevisionBefore = runtime.goals()
+                    .snapshot()
+                    .revision();
+            final String command = """
+                    %s，跑过你正前方连续三个一格宽的缺口，到最远端平台。
+                    目标平台中心是 %.1f %.1f %.1f；不要搭方块，直接跑酷过去。
+                    """.formatted(
+                            runtime.worldData().displayName(),
+                            course.getX() + 0.5,
+                            course.getY() + 1.0,
+                            course.getZ() + 7.5
+                    ).strip();
+            final Component submitted =
+                    ForgeHooks.onServerChatSubmittedEvent(
+                            human,
+                            Component.literal(command)
+                    );
+            helper.assertTrue(
+                    submitted != null,
+                    "Companion cancelled the parkour chat command"
+            );
+            humanSession.close();
+            stage = ParkourStage.GOAL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForGoal() {
+            assertWithinModelDeadline(
+                    "Live model did not classify the parkour task"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            if (goal.revision() == goalRevisionBefore) {
+                return;
+            }
+            helper.assertTrue(
+                    goal.revision() > goalRevisionBefore
+                        && goal.goal().contains("跑酷"),
+                    "Authorized parkour chat was not preserved as the goal"
+            );
+            stage = ParkourStage.RUN;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForRun() {
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                // A pending initial-anchor relogin is server-authoritative;
+                // wait for the replacement entity instead of failing before
+                // the live model has received a usable observation.
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.get();
+            helper.assertTrue(
+                    body.isAlive(),
+                    "Companion died on the controlled parkour course"
+            );
+            final var skill = runtime.skillSupervisor().snapshot();
+            if ("parkour_to".equals(skill.skillName())) {
+                sawParkourSkill = true;
+            }
+            final boolean arrived = body.getZ()
+                    >= course.getZ() + 6.15
+                    && body.onGround();
+            if (arrived) {
+                final int jumps = body.getStats().getValue(
+                        Stats.CUSTOM.get(Stats.JUMP)
+                    ) - initialJumpStat;
+                helper.assertTrue(
+                        sawParkourSkill,
+                        "Course was crossed without the live-model-selected "
+                            + "parkour controller"
+                );
+                helper.assertTrue(
+                        jumps >= 3,
+                        "Live parkour completed without three vanilla "
+                            + "jumps: " + jumps
+                );
+                helper.assertTrue(
+                        body.getHealth() == body.getMaxHealth(),
+                        "Live parkour took avoidable fall damage"
+                );
+                for (int gap : new int[]{1, 3, 5}) {
+                    helper.assertTrue(
+                            helper.getLevel().getBlockState(
+                                course.offset(0, 0, gap)
+                            ).isAir(),
+                            "Live parkour modified a gap instead of jumping"
+                    );
+                }
+                stage = ParkourStage.DONE;
+                helper.succeed();
+                return;
+            }
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            if (goal.status() != GoalStatus.RUNNING
+                    && goal.status() != GoalStatus.CANCEL_PENDING) {
+                helper.assertTrue(
+                        false,
+                        "Live parkour goal became terminal before arrival: "
+                            + goal + ", skill=" + skill.skillName()
+                            + ", rejection="
+                            + skill.lastStartRejection()
+                );
+            }
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= MODEL_TIMEOUT_NANOS,
+                    "Live parkour did not reach the final platform: "
+                        + "position=" + body.position()
+                        + ", skill=" + skill.skillName()
+                        + ", rejection="
+                        + skill.lastStartRejection()
+            );
+        }
+
+        private void prepareCourse(final ServerPlayer body) {
+            course = body.blockPosition().below();
+            final var level = helper.getLevel();
+            /*
+             * The GameTest superflat can be a slime chunk. Natural mobs are
+             * not part of this controller contract and can physically push a
+             * body across a gap before the test begins. The environment also
+             * disables subsequent natural spawning; remove only pre-existing
+             * nearby mobs as deterministic test isolation.
+             */
+            level.getEntitiesOfClass(
+                    Mob.class,
+                    body.getBoundingBox().inflate(48.0)
+            ).forEach(Mob::discard);
+            for (int x = -2; x <= 2; x++) {
+                for (int z = -3; z <= 9; z++) {
+                    final boolean platform = z <= 0
+                            || z == 2
+                            || z == 4
+                            || z >= 6;
+                    level.setBlockAndUpdate(
+                            course.offset(x, 0, z),
+                            platform
+                                    ? Blocks.SMOOTH_STONE
+                                        .defaultBlockState()
+                                    : Blocks.AIR.defaultBlockState()
+                    );
+                    for (int y = 1; y <= 5; y++) {
+                        level.setBlockAndUpdate(
+                                course.offset(x, y, z),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                    level.setBlockAndUpdate(
+                            course.offset(x, -4, z),
+                            Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                }
+            }
+            body.teleportTo(
+                    course.getX() + 0.5,
+                    course.getY() + 1.0,
+                    course.getZ() - 1.5
+            );
+            body.setDeltaMovement(Vec3.ZERO);
+            body.fallDistance = 0.0F;
+            body.setHealth(body.getMaxHealth());
+            body.getFoodData().setFoodLevel(20);
+        }
+
+        private boolean latestObservationMatchesBody(
+                final ServerPlayer body
+        ) {
+            final Optional<String> semantic =
+                    runtime.observations().latestSemanticJson();
+            if (semantic.isEmpty()) {
+                return false;
+            }
+            try {
+                final var self = JsonParser
+                        .parseString(semantic.orElseThrow())
+                        .getAsJsonObject()
+                        .getAsJsonObject("self");
+                if (self == null
+                        || !self.get("onGround").getAsBoolean()) {
+                    return false;
+                }
+                final var position =
+                        self.getAsJsonObject("position");
+                return Math.abs(
+                            position.get("x").getAsDouble()
+                                - body.getX()
+                        ) <= 0.35
+                        && Math.abs(
+                            position.get("y").getAsDouble()
+                                - body.getY()
+                        ) <= 0.20
+                        && Math.abs(
+                            position.get("z").getAsDouble()
+                                - body.getZ()
+                        ) <= 0.35;
+            } catch (RuntimeException malformedObservation) {
+                return false;
+            }
+        }
+
+        private void assertWithinModelDeadline(
+                final String message
+        ) {
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= MODEL_TIMEOUT_NANOS,
+                    message
+            );
+        }
+
+        private void cleanup() {
+            finishScenarioGoal(runtime);
+            if (humanSession != null) {
+                humanSession.close();
+            }
+            if (AiPlayerManager.status(runtime.server()).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(runtime.server());
+            }
+        }
+    }
+
+    private enum ParkourStage {
+        BODY,
+        PROBE,
+        SETTLE,
+        GOAL,
+        RUN,
+        DONE
+    }
+
+    private static final class LiveWaterClutchScenario {
+        private static final int MAXIMUM_FALL_TICKS = 180;
+
+        private final GameTestHelper helper;
+        private final ServerRuntime runtime;
+        private final long createdAt;
+
+        private WaterClutchStage stage = WaterClutchStage.BODY;
+        private CompletableFuture<CapabilityProbeOutcome> probe;
+        private CompletableFuture<Optional<MemoryEvent>> usageRead;
+        private PlacedHuman humanSession;
+        private BlockPos landing;
+        private long stageStartedNanos;
+        private long goalRevisionBefore;
+        private long waterClutchGoalRevision;
+        private long fallStartedAt;
+        private long arbiterBaselineTick = -1L;
+        private int waterBucketUseStart;
+        private double maximumFallDistance;
+        private boolean observedDescent;
+        private boolean modelResponded;
+        private boolean sawEmergencyController;
+        private boolean sawEmergencyArbiter;
+        private boolean sawWaterBucketInMainHand;
+        private int stableTicks;
+        private Instant commandAt;
+
+        private LiveWaterClutchScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime
+        ) {
+            this.helper = helper;
+            this.runtime = runtime;
+            createdAt = helper.getTick();
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void start() {
+            final var status = AiPlayerManager.status(runtime.server());
+            if (status.state() == SessionState.ABSENT) {
+                helper.assertTrue(
+                        AiPlayerManager.requestSpawn(
+                                runtime.server()
+                        ).accepted(),
+                        "Live-water-clutch companion spawn was rejected"
+                );
+            }
+        }
+
+        private void tick() {
+            if (humanSession != null) {
+                humanSession.tick();
+            }
+            switch (stage) {
+                case BODY -> waitForBody();
+                case PROBE -> waitForProbe();
+                case SETTLE -> waitForSettlement();
+                case GOAL -> waitForGoal();
+                case MODEL -> waitForModelDecision();
+                case FALL -> waitForFall();
+                case DONE -> {
+                    // GameTest is already terminal.
+                }
+            }
+        }
+
+        private void waitForBody() {
+            final var status =
+                    AiPlayerManager.status(runtime.server());
+            helper.assertTrue(
+                    status.state() != SessionState.FAILED,
+                    "Live-water-clutch companion body failed"
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                        helper.getTick() - createdAt
+                            <= BODY_TIMEOUT_TICKS,
+                        "Live-water-clutch companion body timed out"
+                );
+                return;
+            }
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                // Initial-anchor relogin is a normal server lifecycle window.
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.get();
+            prepareFixture(body);
+            probe = probeOrReuseVerifiedModel(runtime);
+            stage = WaterClutchStage.PROBE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForProbe() {
+            assertWithinModelDeadline(
+                    "Live water-clutch model capability probe timed out"
+            );
+            if (!probe.isDone()) {
+                return;
+            }
+            final CapabilityProbeOutcome outcome = probe.join();
+            helper.assertTrue(
+                    outcome
+                        instanceof CapabilityProbeOutcome.Supported,
+                    "Configured live model probe failed: " + outcome
+            );
+            stage = WaterClutchStage.SETTLE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForSettlement() {
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.get();
+            final double expectedY = landing.getY() + 1.0;
+            if (!body.onGround()
+                    || Math.abs(body.getY() - expectedY) > 0.08) {
+                stableTicks = 0;
+                helper.assertTrue(
+                        System.nanoTime() - stageStartedNanos
+                            <= java.time.Duration.ofSeconds(15)
+                                .toNanos(),
+                        "Live water-clutch body did not settle"
+                );
+                return;
+            }
+            if (++stableTicks < 8
+                    || !latestObservationMatchesBody(body)) {
+                return;
+            }
+            // Keep the sender on the prepared solid landing platform. The
+            // default (0,0,0) login position can fall in the flat test world
+            // while the async model conversation is in flight, which would
+            // remove the anchor and strand the AI relogin.
+            humanSession = PlacedHuman.create(
+                    helper,
+                    runtime,
+                    new Vec3(
+                            landing.getX() + 0.5,
+                            landing.getY() + 1.0,
+                            landing.getZ() + 0.5
+                    )
+            );
+            final ServerPlayer human = humanSession.player();
+            helper.assertTrue(
+                    CompanionCommandAccess.mayAdmin(
+                            human.createCommandSourceStack()
+                    ),
+                    "Logged-in water-clutch test player lacked "
+                        + "task-write permission"
+            );
+            goalRevisionBefore = runtime.goals()
+                    .snapshot()
+                    .revision();
+            final String command = """
+                    %s，做一次落地水自救训练。我把你放到高处后，
+                    测试装置会自动让你下落；请用背包里的水桶在落地前
+                    放水保命。无需我再次确认，不要使用命令。
+                    """.formatted(
+                            runtime.worldData().displayName()
+                    ).strip();
+            commandAt = Instant.now();
+            final Component submitted =
+                    ForgeHooks.onServerChatSubmittedEvent(
+                            human,
+                            Component.literal(command)
+                    );
+            helper.assertTrue(
+                    submitted != null,
+                    "Companion cancelled the water-clutch chat command"
+            );
+            stage = WaterClutchStage.GOAL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForGoal() {
+            assertWithinModelDeadline(
+                    "Live model did not classify the water-clutch task"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            if (goal.revision() == goalRevisionBefore) {
+                return;
+            }
+            helper.assertTrue(
+                    goal.revision() > goalRevisionBefore
+                        && goal.goal().contains("落地水"),
+                    "Authorized water-clutch chat was not preserved "
+                        + "as the goal"
+            );
+            // Keep the physical sender online until the asynchronous
+            // conversation coordinator has committed the goal. Closing the
+            // embedded connection in the same tick as chat can otherwise
+            // discard the model request before it is accepted.
+            if (humanSession != null) {
+                humanSession.close();
+                humanSession = null;
+            }
+            waterClutchGoalRevision = goal.revision();
+            stage = WaterClutchStage.MODEL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForModelDecision() {
+            assertWithinModelDeadline(
+                    "Live model did not answer the water-clutch goal"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            helper.assertTrue(
+                    goal.revision() == waterClutchGoalRevision,
+                    "Water-clutch goal revision changed before the live "
+                        + "model response: " + goal
+            );
+            if (usageRead == null) {
+                usageRead = runtime.memory().latestEvent(
+                        "brain_model_usage"
+                );
+                return;
+            }
+            if (!usageRead.isDone()) {
+                return;
+            }
+            final Optional<MemoryEvent> found = usageRead.join();
+            usageRead = null;
+            modelResponded = found
+                    .filter(event -> isGameplayPlannerUsage(
+                            event,
+                            commandAt,
+                            waterClutchGoalRevision
+                    ))
+                    .isPresent();
+            if (!modelResponded) {
+                return;
+            }
+            beginFall();
+        }
+
+        private void beginFall() {
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.get();
+            helper.assertTrue(
+                    body.getInventory().countItem(
+                            Items.WATER_BUCKET
+                    ) == 1,
+                    "Water bucket disappeared before the fall began"
+            );
+            helper.assertTrue(
+                    body.getMainHandItem().isEmpty(),
+                    "Water bucket was already equipped before the "
+                        + "emergency test"
+            );
+            waterBucketUseStart = body.getStats().getValue(
+                    Stats.ITEM_USED.get(Items.WATER_BUCKET)
+            );
+            maximumFallDistance = 0.0;
+            observedDescent = false;
+            sawEmergencyController = false;
+            sawEmergencyArbiter = false;
+            sawWaterBucketInMainHand = false;
+            arbiterBaselineTick = runtime.behaviorArbiter()
+                    .latest()
+                    .map(BehaviorArbiter.Resolution::serverTick)
+                    .orElse(-1L);
+            body.teleportTo(
+                    landing.getX() + 0.5,
+                    landing.getY() + 12.0,
+                    landing.getZ() + 0.5
+            );
+            body.setDeltaMovement(Vec3.ZERO);
+            body.fallDistance = 0.0F;
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    Vec3.atCenterOf(landing).add(0.0, 0.5, 0.0)
+            );
+            body.setYHeadRot(body.getYRot());
+            fallStartedAt = helper.getTick();
+            stage = WaterClutchStage.FALL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForFall() {
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.get();
+            helper.assertTrue(
+                    body.isAlive(),
+                    "Companion died before completing the water clutch"
+            );
+            maximumFallDistance = Math.max(
+                    maximumFallDistance,
+                    body.fallDistance
+            );
+            observedDescent |=
+                    body.getDeltaMovement().y() < -0.08;
+            sawEmergencyController |=
+                    runtime.survival().state()
+                        != EmergencySurvivalController.State.CLEAR;
+            runtime.behaviorArbiter().latest()
+                    .filter(resolution ->
+                            resolution.serverTick()
+                                    > arbiterBaselineTick)
+                    .filter(resolution ->
+                            resolution.claimedBy(
+                                BehaviorArbiter.Lane
+                                    .EMERGENCY_SURVIVAL
+                            ))
+                    .ifPresent(resolution -> {
+                        helper.assertTrue(
+                                resolution.attempted().equals(
+                                    List.of(
+                                        BehaviorArbiter.Lane
+                                            .EMERGENCY_SURVIVAL
+                                    )
+                                ),
+                                "A lower body-authoring lane ran during "
+                                    + "the water-clutch emergency: "
+                                    + resolution
+                        );
+                        sawEmergencyArbiter = true;
+                    });
+            sawWaterBucketInMainHand |=
+                    body.getMainHandItem().is(Items.WATER_BUCKET);
+
+            final boolean waterPlaced = helper.getLevel()
+                    .getBlockState(landing.above())
+                    .is(Blocks.WATER);
+            final boolean bucketEmptied =
+                    body.getInventory().countItem(
+                            Items.WATER_BUCKET
+                    ) == 0
+                    && body.getInventory().countItem(Items.BUCKET) == 1;
+            if (waterPlaced
+                    && bucketEmptied
+                    && body.getY() <= landing.getY() + 2.25) {
+                helper.assertTrue(
+                        body.getHealth() == body.getMaxHealth(),
+                        "Live-model water clutch took vanilla fall "
+                            + "damage: " + body.getHealth()
+                );
+                helper.assertTrue(
+                        observedDescent
+                            && maximumFallDistance >= 7.0F,
+                        "Water clutch completed without a material "
+                            + "twelve-block fall"
+                );
+                helper.assertTrue(
+                        sawEmergencyController,
+                        "Water placement did not pass through the "
+                            + "production emergency controller"
+                );
+                helper.assertTrue(
+                        modelResponded && sawEmergencyArbiter,
+                        "Water clutch lacked a verified live-model "
+                            + "response or exclusive emergency body "
+                            + "ownership: modelResponded="
+                            + modelResponded + ", arbiter="
+                            + runtime.behaviorArbiter().latest()
+                );
+                helper.assertTrue(
+                        sawWaterBucketInMainHand,
+                        "Emergency controller did not visibly equip the "
+                            + "owned water bucket"
+                );
+                helper.assertTrue(
+                        body.getStats().getValue(
+                                Stats.ITEM_USED.get(
+                                        Items.WATER_BUCKET
+                                )
+                        ) - waterBucketUseStart == 1,
+                        "Water clutch did not record exactly one "
+                            + "vanilla bucket use"
+                );
+                stage = WaterClutchStage.DONE;
+                helper.succeed();
+                return;
+            }
+            helper.assertTrue(
+                    helper.getTick() - fallStartedAt
+                        <= MAXIMUM_FALL_TICKS,
+                    "Production emergency controller failed the "
+                        + "live-model water clutch: position="
+                        + body.position()
+                        + ", velocity=" + body.getDeltaMovement()
+                        + ", fallDistance=" + body.fallDistance
+                        + ", maximumFallDistance="
+                        + maximumFallDistance
+                        + ", health=" + body.getHealth()
+                        + ", sawEmergency="
+                        + sawEmergencyController
+                        + ", sawEmergencyArbiter="
+                        + sawEmergencyArbiter
+                        + ", modelResponded="
+                        + modelResponded
+                        + ", sawWaterMainHand="
+                        + sawWaterBucketInMainHand
+                        + ", waterBuckets="
+                        + body.getInventory().countItem(
+                                Items.WATER_BUCKET
+                        )
+                        + ", emptyBuckets="
+                        + body.getInventory().countItem(Items.BUCKET)
+                        + ", survival="
+                        + runtime.survival().state()
+            );
+        }
+
+        private void prepareFixture(final ServerPlayer body) {
+            final var level = helper.getLevel();
+            landing = body.blockPosition().below()
+                    .offset(0, 0, 8);
+            /*
+             * The dedicated GameTest server normally spawns test players in
+             * creative mode. A creative water bucket is not transformed into
+             * an empty bucket and creative players do not take ordinary fall
+             * damage, so leaving that default in place would make this a
+             * false survival test. Exercise the same physics and inventory
+             * semantics as the promised survival companion.
+             */
+            body.setGameMode(GameType.SURVIVAL);
+            helper.assertTrue(
+                    body.gameMode.getGameModeForPlayer()
+                            == GameType.SURVIVAL
+                        && !body.getAbilities().instabuild
+                        && !body.getAbilities().flying
+                        && !body.getAbilities().mayfly
+                        && !body.getAbilities().invulnerable,
+                    "Live water-clutch fixture did not enter genuine "
+                        + "survival mode"
+            );
+            level.getEntitiesOfClass(
+                    Mob.class,
+                    body.getBoundingBox().inflate(48.0)
+            ).forEach(Mob::discard);
+            for (int x = -2; x <= 2; x++) {
+                for (int z = -2; z <= 2; z++) {
+                    level.setBlockAndUpdate(
+                            landing.offset(x, 0, z),
+                            Blocks.SMOOTH_STONE
+                                .defaultBlockState()
+                    );
+                    for (int y = 1; y <= 14; y++) {
+                        level.setBlockAndUpdate(
+                                landing.offset(x, y, z),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            body.getInventory().clearContent();
+            body.getInventory().setItem(
+                    8,
+                    new ItemStack(Items.WATER_BUCKET)
+            );
+            body.getInventory().setSelectedSlot(0);
+            body.setHealth(body.getMaxHealth());
+            body.getFoodData().setFoodLevel(20);
+            body.fallDistance = 0.0F;
+            body.teleportTo(
+                    landing.getX() + 0.5,
+                    landing.getY() + 1.0,
+                    landing.getZ() + 0.5
+            );
+            body.setDeltaMovement(Vec3.ZERO);
+        }
+
+        private boolean latestObservationMatchesBody(
+                final ServerPlayer body
+        ) {
+            final Optional<String> semantic =
+                    runtime.observations().latestSemanticJson();
+            if (semantic.isEmpty()) {
+                return false;
+            }
+            try {
+                final var self = JsonParser
+                        .parseString(semantic.orElseThrow())
+                        .getAsJsonObject()
+                        .getAsJsonObject("self");
+                return self != null
+                        && self.get("onGround").getAsBoolean()
+                        && Math.abs(
+                            self.getAsJsonObject("position")
+                                .get("z").getAsDouble()
+                                - body.getZ()
+                        ) <= 0.2;
+            } catch (RuntimeException malformedObservation) {
+                return false;
+            }
+        }
+
+        private void assertWithinModelDeadline(
+                final String message
+        ) {
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= MODEL_TIMEOUT_NANOS,
+                    message
+            );
+        }
+
+        private void cleanup() {
+            finishScenarioGoal(runtime);
+            if (humanSession != null) {
+                humanSession.close();
+            }
+            if (AiPlayerManager.status(runtime.server()).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(runtime.server());
+            }
+        }
+    }
+
+    private enum WaterClutchStage {
+        BODY,
+        PROBE,
+        SETTLE,
+        GOAL,
+        MODEL,
+        FALL,
+        DONE
+    }
+
+    private static final class LiveFoundationBootstrapScenario {
+        private static final int REQUIRED_LOGS = 5;
+        private static final int REQUIRED_COBBLESTONE = 3;
+        private static final double AUTONOMOUS_WORK_RADIUS = 24.0D;
+
+        private final GameTestHelper helper;
+        private final ServerRuntime runtime;
+        private final long createdAt;
+        private final boolean zeroHumanFromStart;
+
+        private FoundationBootstrapStage stage =
+                FoundationBootstrapStage.BODY;
+        private CompletableFuture<CapabilityProbeOutcome> probe;
+        private PlacedHuman humanSession;
+        private List<BlockPos> logs = List.of();
+        private List<BlockPos> reserveLogs = List.of();
+        private List<BlockPos> stoneBlocks = List.of();
+        private List<BlockPos> coalBlocks = List.of();
+        private List<BlockPos> ironBlocks = List.of();
+        private List<Cow> foodAnimals = List.of();
+        private long stageStartedNanos;
+        private long goalRevisionBefore;
+        private long foundationGoalRevision;
+        private int stableTicks;
+        private int initialMinedLogs;
+        private int initialPickedUpLogs;
+        private int initialCraftedTables;
+        private int initialCraftedWoodenPickaxes;
+        private int initialMinedStone;
+        private int initialPickedUpCobblestone;
+        private int initialCraftedStonePickaxes;
+        private int initialMinedCoal;
+        private int initialPickedUpCoal;
+        private int initialCraftedCharcoal;
+        private int initialMinedIron;
+        private int initialPickedUpRawIron;
+        private int initialCraftedFurnaces;
+        private int initialCraftedIronPickaxes;
+        private int initialCraftedBuckets;
+        private int initialCraftedShields;
+        private int initialCraftedChests;
+        private int initialCraftedDoors;
+        private int initialCraftedTorches;
+        private boolean sawClusterGatherer;
+        private boolean sawCraftRecipe;
+        private boolean sawStoneGatherer;
+        private boolean sawStoneCraftRecipe;
+        private boolean sawFoodHunt;
+        private boolean sawIronToolkit;
+        private BlockPos autonomousWorkCenter;
+        private ChunkPos autonomousAnchorChunk;
+
+        private LiveFoundationBootstrapScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime
+        ) {
+            this(helper, runtime, false);
+        }
+
+        private LiveFoundationBootstrapScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime,
+                final boolean zeroHumanFromStart
+        ) {
+            this.helper = helper;
+            this.runtime = runtime;
+            this.zeroHumanFromStart = zeroHumanFromStart;
+            createdAt = helper.getTick();
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void start() {
+            if (zeroHumanFromStart) {
+                assertNoHumanPlayers(
+                        "before unattended companion startup"
+                );
+            }
+            final var status = AiPlayerManager.status(runtime.server());
+            if (status.state() == SessionState.ABSENT) {
+                helper.assertTrue(
+                        AiPlayerManager.requestSpawn(runtime.server())
+                                .accepted(),
+                        "Live-foundation companion spawn was rejected"
+                );
+            }
+        }
+
+        private void tick() {
+            if (zeroHumanFromStart) {
+                assertNoHumanPlayers(
+                        "during unattended live-model execution"
+                );
+            }
+            if (humanSession != null) {
+                humanSession.tick();
+            }
+            switch (stage) {
+                case BODY -> waitForBody();
+                case PROBE -> waitForProbe();
+                case SETTLE -> waitForSettlement();
+                case GOAL -> waitForGoal();
+                case GATHER -> waitForGathering();
+                case BASIC_CRAFTING -> waitForBasicCrafting();
+                case STONE_GATHERING -> waitForStoneGathering();
+                case STONE_CRAFTING -> waitForStoneCrafting();
+                case FOOD -> waitForFood();
+                case IRON_TOOLKIT -> waitForIronToolkit();
+                case WORKSTATIONS -> waitForWorkstations();
+                case STORAGE -> waitForStorage();
+                case SHELTER_MATERIALS ->
+                        waitForShelterMaterials();
+                case SHELTER -> waitForShelter();
+                case FIRST_NIGHT -> waitForFirstNight();
+                case DONE -> {
+                    // GameTest is already terminal.
+                }
+            }
+        }
+
+        private void waitForBody() {
+            final var status = AiPlayerManager.status(runtime.server());
+            helper.assertTrue(
+                    status.state() != SessionState.FAILED,
+                    "Live-foundation companion body failed"
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                        helper.getTick() - createdAt
+                            <= BODY_TIMEOUT_TICKS,
+                        "Live-foundation companion body timed out"
+                );
+                return;
+            }
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.get();
+            prepareFixture(body);
+            probe = probeOrReuseVerifiedModel(runtime);
+            stage = FoundationBootstrapStage.PROBE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForProbe() {
+            assertWithinModelDeadline(
+                    "Live foundation model capability probe timed out"
+            );
+            if (!probe.isDone()) {
+                return;
+            }
+            final CapabilityProbeOutcome outcome = probe.join();
+            helper.assertTrue(
+                    outcome
+                        instanceof CapabilityProbeOutcome.Supported,
+                    "Configured live model probe failed: " + outcome
+            );
+            stage = FoundationBootstrapStage.SETTLE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForSettlement() {
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.get();
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    Vec3.atCenterOf(logs.get(1))
+            );
+            body.setYHeadRot(body.getYRot());
+            if (!body.onGround()) {
+                stableTicks = 0;
+                return;
+            }
+            if (++stableTicks < 8
+                    || !latestObservationSeesOakLog()) {
+                helper.assertTrue(
+                        System.nanoTime() - stageStartedNanos
+                            <= java.time.Duration.ofSeconds(15)
+                                .toNanos(),
+                        "Live-foundation semantic view never exposed "
+                            + "the oak cluster"
+                );
+                return;
+            }
+            initialMinedLogs = body.getStats().getValue(
+                    Stats.BLOCK_MINED.get(Blocks.OAK_LOG)
+            );
+            initialPickedUpLogs = body.getStats().getValue(
+                    Stats.ITEM_PICKED_UP.get(Items.OAK_LOG)
+            );
+            initialCraftedTables = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(Items.CRAFTING_TABLE)
+            );
+            initialCraftedWoodenPickaxes = body.getStats().getValue(
+                Stats.ITEM_CRAFTED.get(Items.WOODEN_PICKAXE)
+            );
+            initialMinedStone = body.getStats().getValue(
+                    Stats.BLOCK_MINED.get(Blocks.STONE)
+            );
+            initialPickedUpCobblestone = body.getStats().getValue(
+                    Stats.ITEM_PICKED_UP.get(Items.COBBLESTONE)
+            );
+            initialCraftedStonePickaxes = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(Items.STONE_PICKAXE)
+            );
+            initialMinedCoal = body.getStats().getValue(
+                    Stats.BLOCK_MINED.get(Blocks.COAL_ORE)
+            );
+            initialPickedUpCoal = body.getStats().getValue(
+                    Stats.ITEM_PICKED_UP.get(Items.COAL)
+            );
+            initialCraftedCharcoal = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(Items.CHARCOAL)
+            );
+            initialMinedIron = body.getStats().getValue(
+                    Stats.BLOCK_MINED.get(Blocks.IRON_ORE)
+            );
+            initialPickedUpRawIron = body.getStats().getValue(
+                    Stats.ITEM_PICKED_UP.get(Items.RAW_IRON)
+            );
+            initialCraftedFurnaces = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(Items.FURNACE)
+            );
+            initialCraftedIronPickaxes = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(Items.IRON_PICKAXE)
+            );
+            initialCraftedBuckets = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(Items.BUCKET)
+            );
+            initialCraftedShields = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(Items.SHIELD)
+            );
+            initialCraftedChests = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(Items.CHEST)
+            );
+            initialCraftedDoors = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(Items.OAK_DOOR)
+            );
+            initialCraftedTorches = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(Items.TORCH)
+            );
+            goalRevisionBefore = runtime.goals()
+                    .snapshot()
+                    .revision();
+            if (zeroHumanFromStart) {
+                final JsonObject arguments = new JsonObject();
+                arguments.addProperty(
+                        "goal",
+                        "从空背包开始建立安全据点并生存到第二天。"
+                            + "先把眼前相连的橡木原木全部砍下并捡进"
+                            + "背包，然后继续基础生存；不要使用命令。"
+                );
+                final JsonObject response = new MinecraftMcpBackend(
+                        runtime.server(),
+                        runtime.worldData(),
+                        runtime.memory(),
+                        runtime.goals(),
+                        runtime.observations()::latestDecisionEpoch,
+                        runtime.tickMetrics()
+                ).call("set_goal", arguments)
+                        .join()
+                        .getAsJsonObject();
+                helper.assertTrue(
+                        response.get("accepted").getAsBoolean(),
+                        "Production MCP rejected the unattended foundation "
+                            + "goal: " + response
+                );
+                stage = FoundationBootstrapStage.GOAL;
+                stageStartedNanos = System.nanoTime();
+                return;
             }
             humanSession = PlacedHuman.create(
                     helper,

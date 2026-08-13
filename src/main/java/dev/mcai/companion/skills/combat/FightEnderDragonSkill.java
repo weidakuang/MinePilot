@@ -8,7 +8,9 @@ import dev.mcai.companion.action.LookIntent;
 import dev.mcai.companion.action.MovementIntent;
 import dev.mcai.companion.navigation.GridPos;
 import dev.mcai.companion.perception.InventoryItemSummary;
+import dev.mcai.companion.perception.DangerKind;
 import dev.mcai.companion.perception.PerceptionVec3;
+import dev.mcai.companion.perception.PerceptionProvenance;
 import dev.mcai.companion.perception.VisibleBlockFace;
 import dev.mcai.companion.perception.VisibleEntity;
 import dev.mcai.companion.skill.Skill;
@@ -88,6 +90,8 @@ public final class FightEnderDragonSkill
     private static final double MELEE_DRAGON_DISTANCE = 5.75;
     private static final double MELEE_ALIGNMENT_DEGREES = 5.0;
     private static final double MELEE_ATTACK_STRENGTH = 0.90;
+    private static final int DEFENSIVE_DODGE_COOLDOWN_TICKS = 6;
+    private static final double IMMEDIATE_DRAGON_DISTANCE = 8.75;
     private static final int MELEE_REACH_MISSES_BEFORE_RANGED = 3;
     private static final int RANGED_SHOTS_BEFORE_MELEE_RETRY = 4;
     private static final List<String> MELEE_WEAPONS = List.of(
@@ -129,6 +133,7 @@ public final class FightEnderDragonSkill
     private SkillFailure failure;
     private long startedAtTick = -1;
     private long nextActionTick = -1;
+    private long lastDefensiveDodgeTick = -1;
     private long lastObservationRevision = -1;
     private long boundSessionGeneration = -1;
     private int shotsDispatched;
@@ -241,6 +246,24 @@ public final class FightEnderDragonSkill
     }
 
     @Override
+    public boolean managesVisibleProjectileThreats() {
+        return phase != Phase.IDLE
+                && phase != Phase.COMPLETED
+                && phase != Phase.CANCELLED
+                && phase != Phase.FAILED
+                && !recoveringSafetyReserve;
+    }
+
+    @Override
+    public boolean managesPhysicalContactThreats() {
+        return phase != Phase.IDLE
+                && phase != Phase.COMPLETED
+                && phase != Phase.CANCELLED
+                && phase != Phase.FAILED
+                && !recoveringSafetyReserve;
+    }
+
+    @Override
     public OptionalDouble hardcoreRiskThresholdOverride(
             final SkillContext context,
             final FightEnderDragonParameters parameters
@@ -318,6 +341,7 @@ public final class FightEnderDragonSkill
         failure = null;
         startedAtTick = context.gameTick();
         nextActionTick = context.gameTick();
+        lastDefensiveDodgeTick = -1;
         lastObservationRevision = -1;
         boundSessionGeneration =
                 snapshot.interaction().sessionGeneration();
@@ -490,6 +514,23 @@ public final class FightEnderDragonSkill
                 lastObservationRevision,
                 frame.observationRevision()
         );
+        final Optional<SkillTickResult> projectileResponse =
+                evadeVisibleProjectile(context, frame, fresh);
+        if (projectileResponse.isPresent()) {
+            return projectileResponse.orElseThrow();
+        }
+        final Optional<SkillTickResult> damageResponse =
+                evadeRecentDamage(context, frame);
+        if (damageResponse.isPresent()) {
+            return damageResponse.orElseThrow();
+        }
+        if (phase == Phase.OPENING_CAGE
+                && immediateDragonIndex(frame).isPresent()) {
+            abortCageBreak(context);
+            phase = Phase.SEARCHING;
+            cageStatus = CageStatus.SEEKING_VISIBLE_BAR;
+            nextActionTick = context.gameTick();
+        }
         if (healthTooLow(context, frame)
                 || frame.foodLevel()
                     < (context.hardcore() ? 6 : 2)) {
@@ -556,6 +597,203 @@ public final class FightEnderDragonSkill
         };
     }
 
+    /**
+     * Dragon fireballs are fair first-person projectile observations, not a
+     * reason for the emergency lane to freeze the entire fight.  On a fresh
+     * visible projectile signal, turn away and issue one bounded sprint/strafe
+     * input.  If the projectile is not in the current semantic list, the
+     * directionless danger signal still triggers a short alternating strafe;
+     * no hidden projectile position or world scan is used.
+     */
+    private Optional<SkillTickResult> evadeVisibleProjectile(
+            final SkillContext context,
+            final CoreSkillFrame frame,
+            final boolean fresh
+    ) {
+        final Optional<VisibleEntity> projectile = frame.visibleEntities()
+                .stream()
+                .filter(VisibleEntity::projectile)
+                .min(Comparator.comparingDouble(VisibleEntity::distance));
+        final boolean danger = frame.dangerSignals().stream().anyMatch(
+                signal -> signal.kind()
+                        == dev.mcai.companion.perception.DangerKind
+                            .PROJECTILE_PROXIMITY
+                    && signal.severity() >= 0.35
+        );
+        if (projectile.isEmpty() && !danger) {
+            return Optional.empty();
+        }
+        if (lastDefensiveDodgeTick >= 0
+                && context.gameTick() - lastDefensiveDodgeTick
+                    < DEFENSIVE_DODGE_COOLDOWN_TICKS) {
+            return Optional.empty();
+        }
+        final PerceptionVec3 away = projectile
+                .map(entity -> frame.position().subtract(entity.position()))
+                .filter(vector -> vector.lengthSquared() > 1.0E-12)
+                .orElseGet(() -> new PerceptionVec3(
+                        ((frame.gameTime() / 6L) & 1L) == 0L ? 1.0 : -1.0,
+                        0.0,
+                        0.35
+                ));
+        final LookIntent look = lookAt(
+                frame.eyePosition(),
+                frame.eyePosition().add(away)
+        );
+        if (!core.look(look).accepted()) {
+            return Optional.of(fail(
+                    context,
+                    NAME + ".projectile_dodge_look_rejected"
+            ));
+        }
+        final PerceptionVec3 horizontal = new PerceptionVec3(
+                away.x(),
+                0.0,
+                away.z()
+        );
+        final PerceptionVec3 desired = horizontal.lengthSquared() > 1.0E-12
+                ? horizontal.normalized()
+                : new PerceptionVec3(1.0, 0.0, 0.0);
+        final PerceptionVec3 horizontalForward = new PerceptionVec3(
+                frame.lookDirection().x(),
+                0.0,
+                frame.lookDirection().z()
+        );
+        final PerceptionVec3 forward = horizontalForward.lengthSquared()
+                > 1.0E-12
+                ? horizontalForward.normalized()
+                : new PerceptionVec3(0.0, 0.0, 1.0);
+        final PerceptionVec3 left = new PerceptionVec3(
+                forward.z(),
+                0.0,
+                -forward.x()
+        );
+        final ActionOutcome moved = core.move(new MovementIntent(
+                desired.dot(forward),
+                desired.dot(left),
+                true,
+                false
+        ));
+        if (!moved.accepted()) {
+            return Optional.of(fail(
+                    context,
+                    NAME + ".projectile_dodge_move_rejected"
+            ));
+        }
+        lastDefensiveDodgeTick = context.gameTick();
+        nextActionTick = context.gameTick() + 1;
+        return Optional.of(SkillTickResult.running(true, true));
+    }
+
+    /**
+     * Dragon breath and multipart contact can arrive as a fair recent-damage
+     * cue without a projectile entity in the current semantic sample.  Keep
+     * the fight alive with one bounded first-person side/back step, then let
+     * the ordinary combat phase resume; this never selects an unseen target
+     * or edits the world.
+     */
+    private Optional<SkillTickResult> evadeRecentDamage(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        final Optional<dev.mcai.companion.perception.DangerSignal> damage =
+                frame.dangerSignals().stream()
+                        .filter(signal ->
+                                signal.kind() == DangerKind.THREAT_CONTACT)
+                        .filter(signal ->
+                                signal.provenance()
+                                        == PerceptionProvenance
+                                                .RECENT_DAMAGE_EVENT
+                                || signal.provenance()
+                                        == PerceptionProvenance
+                                                .PHYSICAL_CONTACT)
+                        .filter(signal -> signal.severity() >= 0.35)
+                        .max(Comparator.comparingDouble(
+                                dev.mcai.companion.perception.DangerSignal
+                                        ::severity
+                        ));
+        if (damage.isEmpty()) {
+            return Optional.empty();
+        }
+        if (lastDefensiveDodgeTick >= 0
+                && context.gameTick() - lastDefensiveDodgeTick
+                    < DEFENSIVE_DODGE_COOLDOWN_TICKS) {
+            return Optional.empty();
+        }
+        final PerceptionVec3 toward = damage.orElseThrow()
+                .contactDirection()
+                .filter(vector -> vector.lengthSquared() > 1.0E-12)
+                .orElseGet(() -> new PerceptionVec3(
+                        ((context.gameTick() / DEFENSIVE_DODGE_COOLDOWN_TICKS)
+                                & 1L) == 0L ? 1.0 : -1.0,
+                        0.0,
+                        0.35
+                ));
+        final PerceptionVec3 horizontalAway = new PerceptionVec3(
+                -toward.x(),
+                0.0,
+                -toward.z()
+        );
+        final PerceptionVec3 away = horizontalAway.lengthSquared() > 1.0E-12
+                ? horizontalAway.normalized()
+                : new PerceptionVec3(
+                        ((context.gameTick() / DEFENSIVE_DODGE_COOLDOWN_TICKS)
+                                & 1L) == 0L ? 1.0 : -1.0,
+                        0.0,
+                        0.0
+                );
+        final PerceptionVec3 horizontalForward = new PerceptionVec3(
+                frame.lookDirection().x(),
+                0.0,
+                frame.lookDirection().z()
+        );
+        final PerceptionVec3 forward = horizontalForward.lengthSquared()
+                > 1.0E-12
+                ? horizontalForward.normalized()
+                : new PerceptionVec3(0.0, 0.0, 1.0);
+        final PerceptionVec3 left = new PerceptionVec3(
+                forward.z(),
+                0.0,
+                -forward.x()
+        );
+        if (!core.look(lookAt(
+                frame.eyePosition(),
+                frame.eyePosition().add(away)
+        )).accepted()) {
+            return Optional.of(fail(
+                    context,
+                    NAME + ".damage_dodge_look_rejected"
+            ));
+        }
+        final ActionOutcome moved = core.move(new MovementIntent(
+                away.dot(forward),
+                away.dot(left),
+                true,
+                false
+        ));
+        if (!moved.accepted()) {
+            return Optional.of(fail(
+                    context,
+                    NAME + ".damage_dodge_move_rejected"
+            ));
+        }
+        lastDefensiveDodgeTick = context.gameTick();
+        nextActionTick = context.gameTick() + 1;
+        return Optional.of(SkillTickResult.running(true, true));
+    }
+
+    private void abortCageBreak(final SkillContext context) {
+        if (cageBreak != null && cageBreakParameters != null) {
+            try {
+                cageBreak.cancel(context, cageBreakParameters);
+            } catch (RuntimeException ignored) {
+                interactions.abortMining();
+            }
+        }
+        cageBreak = null;
+        cageBreakParameters = null;
+    }
+
     private SkillTickResult search(
             final SkillContext context,
             final FightEnderDragonParameters parameters,
@@ -575,10 +813,13 @@ public final class FightEnderDragonSkill
                     fresh
             );
         }
-        if (closestCrystalWithAlignedCageBar(frame).isPresent()
+        final Optional<Integer> immediateDragon =
+                immediateDragonIndex(frame);
+        if (immediateDragon.isEmpty()
+                && (closestCrystalWithAlignedCageBar(frame).isPresent()
                 || boundBlockedCrystal(frame).isPresent()
                 || clearCrystalIndex(frame).isEmpty()
-                    && hasBlockedCrystal(frame)) {
+                    && hasBlockedCrystal(frame))) {
             return handleBlockedCrystal(
                     context,
                     parameters,
@@ -602,7 +843,7 @@ public final class FightEnderDragonSkill
         cageStatus = CageStatus.NONE;
         sawCageBarBeyondReach = false;
         final Optional<Integer> targetIndex =
-                selectTargetIndex(frame);
+                immediateDragon.or(() -> selectTargetIndex(frame));
         if (targetIndex.isEmpty()) {
             return scan(
                     context,
@@ -1976,6 +2217,34 @@ public final class FightEnderDragonSkill
                         frame.visibleEntities()
                             .get(index)
                             .distance()
+                ));
+    }
+
+    private static Optional<Integer> immediateDragonIndex(
+            final CoreSkillFrame frame
+    ) {
+        final boolean damageNearby = frame.dangerSignals().stream()
+                .anyMatch(signal ->
+                        (signal.kind() == DangerKind.THREAT_CONTACT
+                                || signal.kind()
+                                        == DangerKind.PROJECTILE_PROXIMITY)
+                                && signal.severity() >= 0.35);
+        return java.util.stream.IntStream.range(
+                        0,
+                        frame.visibleEntities().size()
+                )
+                .boxed()
+                .filter(index -> ENDER_DRAGON.equals(
+                        frame.visibleEntities().get(index).entityTypeId()
+                ))
+                .filter(index ->
+                        damageNearby
+                                || frame.visibleEntities().get(index)
+                                        .distance()
+                                    <= IMMEDIATE_DRAGON_DISTANCE
+                )
+                .min(Comparator.comparingDouble(index ->
+                        frame.visibleEntities().get(index).distance()
                 ));
     }
 

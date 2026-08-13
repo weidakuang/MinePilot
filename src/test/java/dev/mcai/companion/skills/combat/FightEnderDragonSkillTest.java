@@ -14,6 +14,8 @@ import dev.mcai.companion.navigation.LocalNavSnapshot;
 import dev.mcai.companion.navigation.ObservedVoxel;
 import dev.mcai.companion.navigation.VoxelKind;
 import dev.mcai.companion.perception.BlockCoordinate;
+import dev.mcai.companion.perception.DangerKind;
+import dev.mcai.companion.perception.DangerSignal;
 import dev.mcai.companion.perception.HeldItemSummary;
 import dev.mcai.companion.perception.InventoryItemSummary;
 import dev.mcai.companion.perception.PerceptionProvenance;
@@ -55,6 +57,115 @@ final class FightEnderDragonSkillTest {
             "minecraft:diamond_pickaxe";
     private static final String DIAMOND_SWORD =
             "minecraft:diamond_sword";
+
+    @Test
+    void dragonFightClaimsProjectileLaneOnlyWhileActive() {
+        final MutableFrames frames = new MutableFrames(
+                frame(12, dragon(8.0), List.of(), BOW)
+        );
+        final FightEnderDragonSkill skill = skill(
+                frames,
+                new RecordingCore(),
+                new RecordingInteractions(),
+                new RecordingInventory()
+        );
+        final FightEnderDragonParameters parameters = parameters();
+
+        assertFalse(skill.managesVisibleProjectileThreats());
+        skill.start(context(1), parameters);
+        assertTrue(skill.managesVisibleProjectileThreats());
+        skill.cancel(context(2), parameters);
+        assertFalse(skill.managesVisibleProjectileThreats());
+    }
+
+    @Test
+    void dragonFightClaimsPhysicalContactLaneOnlyWhileActive() {
+        final MutableFrames frames = new MutableFrames(
+                frame(12, dragon(8.0), List.of(), BOW)
+        );
+        final FightEnderDragonSkill skill = skill(
+                frames,
+                new RecordingCore(),
+                new RecordingInteractions(),
+                new RecordingInventory()
+        );
+        final FightEnderDragonParameters parameters = parameters();
+
+        assertFalse(skill.managesPhysicalContactThreats());
+        skill.start(context(1), parameters);
+        assertTrue(skill.managesPhysicalContactThreats());
+        skill.cancel(context(2), parameters);
+        assertFalse(skill.managesPhysicalContactThreats());
+    }
+
+    @Test
+    void recentDragonDamageProducesBoundedFirstPersonDodge() {
+        final RecordingCore core = new RecordingCore();
+        final MutableFrames frames = new MutableFrames(
+                frameWithEntities(
+                        12,
+                        List.of(dragon(4.0)),
+                        List.of(),
+                        BOW,
+                        List.of(new DangerSignal(
+                                DangerKind.THREAT_CONTACT,
+                                0.90,
+                                0.0,
+                                Optional.of(new PerceptionVec3(
+                                        0.0,
+                                        0.0,
+                                        1.0
+                                )),
+                                PerceptionProvenance.RECENT_DAMAGE_EVENT
+                        ))
+                )
+        );
+        final FightEnderDragonSkill skill = skill(
+                frames,
+                core,
+                new RecordingInteractions(),
+                new RecordingInventory()
+        );
+
+        skill.start(context(1), parameters());
+        assertEquals(
+                SkillTickResult.Status.RUNNING,
+                skill.tick(context(2), parameters()).status()
+        );
+        assertTrue(core.moves > 0);
+    }
+
+    @Test
+    void nearbyDragonTakesPriorityOverCageBarWhenUnderThreat() {
+        final VisibleEntity blocked = crystal(14.0, false);
+        final VisibleBlockFace bar = ironBar(
+                4,
+                65,
+                0,
+                new PerceptionVec3(4.0, 65.0, 0.5),
+                3.7
+        );
+        final RecordingInventory inventory = new RecordingInventory();
+        final MutableFrames frames = new MutableFrames(
+                frameWithEntities(
+                        12,
+                        List.of(blocked, dragon(4.0)),
+                        List.of(bar),
+                        BOW,
+                        List.of()
+                )
+        );
+        final FightEnderDragonSkill skill = skill(
+                frames,
+                new RecordingCore(),
+                new RecordingInteractions(),
+                inventory
+        );
+
+        skill.start(context(1), parameters());
+        skill.tick(context(2), parameters());
+        assertEquals(List.of(DIAMOND_SWORD), inventory.equipped);
+    }
 
     @Test
     void minesOnlyAnObservedReachableCageBarThenSelectsCrystal() {
@@ -864,7 +975,9 @@ final class FightEnderDragonSkillTest {
                 faces,
                 mainHandItem,
                 inventory,
-                crystal.position()
+                crystal.position(),
+                List.of(crystal),
+                List.of()
         );
     }
 
@@ -890,6 +1003,26 @@ final class FightEnderDragonSkillTest {
             final VisibleEntity crystal,
             final List<VisibleBlockFace> faces,
             final String mainHandItem,
+            final List<InventoryItemSummary> inventory,
+            final PerceptionVec3 lookTarget
+    ) {
+        return frame(
+                revision,
+                crystal,
+                faces,
+                mainHandItem,
+                inventory,
+                lookTarget,
+                List.of(crystal),
+                List.of()
+        );
+    }
+
+    private static Snapshot frame(
+            final long revision,
+            final VisibleEntity crystal,
+            final List<VisibleBlockFace> faces,
+            final String mainHandItem,
             final PerceptionVec3 lookTarget
     ) {
         return frame(
@@ -902,7 +1035,36 @@ final class FightEnderDragonSkillTest {
                     new InventoryItemSummary("minecraft:arrow", 32),
                     new InventoryItemSummary(PICKAXE, 1)
                 ),
-                lookTarget
+                lookTarget,
+                List.of(crystal),
+                List.of()
+        );
+    }
+
+    private static Snapshot frameWithEntities(
+            final long revision,
+            final List<VisibleEntity> visibleEntities,
+            final List<VisibleBlockFace> faces,
+            final String mainHandItem,
+            final List<DangerSignal> dangerSignals
+    ) {
+        final List<InventoryItemSummary> inventory = List.of(
+                new InventoryItemSummary(BOW, 1),
+                new InventoryItemSummary("minecraft:arrow", 32),
+                new InventoryItemSummary(PICKAXE, 1),
+                new InventoryItemSummary(DIAMOND_SWORD, 1)
+        );
+        final PerceptionVec3 lookTarget = visibleEntities.getFirst()
+                .position();
+        return frame(
+                revision,
+                visibleEntities.getFirst(),
+                faces,
+                mainHandItem,
+                inventory,
+                lookTarget,
+                visibleEntities,
+                dangerSignals
         );
     }
 
@@ -912,7 +1074,9 @@ final class FightEnderDragonSkillTest {
             final List<VisibleBlockFace> faces,
             final String mainHandItem,
             final List<InventoryItemSummary> inventory,
-            final PerceptionVec3 lookTarget
+            final PerceptionVec3 lookTarget,
+            final List<VisibleEntity> visibleEntities,
+            final List<DangerSignal> dangerSignals
     ) {
         final HeldItemSummary mainHand = held(mainHandItem);
         final PerceptionVec3 position =
@@ -940,8 +1104,8 @@ final class FightEnderDragonSkillTest {
                 inventory,
                 mainHand,
                 HeldItemSummary.empty(),
-                List.of(crystal),
-                List.of()
+                visibleEntities,
+                dangerSignals
         );
         final InteractionSkillFrame interaction =
                 new InteractionSkillFrame(
@@ -953,7 +1117,7 @@ final class FightEnderDragonSkillTest {
                         SESSION,
                         mainHand,
                         HeldItemSummary.empty(),
-                        List.of(crystal),
+                        visibleEntities,
                         faces,
                         inventory
                 );
@@ -1047,12 +1211,14 @@ final class FightEnderDragonSkillTest {
             implements CoreSkillActuator {
         private final List<LookIntent> looks =
                 new ArrayList<>();
+        private int moves;
         private int jumps;
 
         @Override
         public ActionOutcome move(
                 final MovementIntent intent
         ) {
+            moves++;
             return ActionOutcome.DISPATCHED;
         }
 

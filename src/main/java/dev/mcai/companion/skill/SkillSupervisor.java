@@ -112,6 +112,8 @@ public final class SkillSupervisor implements AutoCloseable {
     private boolean activeSkillEndedHandoff;
     private SkillResult terminalResult;
     private SkillFailure lastStartRejection;
+    /** Last fair checkpoint payload retained for bounded diagnostics only. */
+    private String lastCheckpointPayload;
 
     public SkillSupervisor(
             SkillRegistry registry,
@@ -231,6 +233,16 @@ public final class SkillSupervisor implements AutoCloseable {
     }
 
     /**
+     * Returns the most recent checkpoint emitted by the active skill.  This
+     * is intentionally diagnostic-only: callers cannot mutate or replay it,
+     * and it is cleared whenever a new skill starts or the supervisor is
+     * detached from its body session.
+     */
+    public synchronized Optional<String> lastCheckpointPayload() {
+        return Optional.ofNullable(lastCheckpointPayload);
+    }
+
+    /**
      * Consumes the edge produced when an active skill leaves the supervisor.
      * The method is deliberately separate from {@link #snapshot()} so a
      * replayed status cannot clear an emergency cue twice.
@@ -330,6 +342,7 @@ public final class SkillSupervisor implements AutoCloseable {
         if (active != null) {
             finish(SkillResult.safeIdle(BODY_SESSION_ENDED));
         }
+        lastCheckpointPayload = null;
         return snapshot();
     }
 
@@ -355,6 +368,7 @@ public final class SkillSupervisor implements AutoCloseable {
         if (active != null) {
             finish(SkillResult.safeIdle(MODEL_DISCONNECTED));
         }
+        lastCheckpointPayload = null;
         return snapshot();
     }
 
@@ -473,6 +487,7 @@ public final class SkillSupervisor implements AutoCloseable {
         terminalResult = null;
         lastStartRejection = null;
         checkpointPersistenceFailure.set(null);
+        lastCheckpointPayload = null;
         return new StartOutcome(true, Optional.empty(), snapshot());
     }
 
@@ -590,6 +605,7 @@ public final class SkillSupervisor implements AutoCloseable {
 
         if (checkpoint != null) {
             checkpointSequence++;
+            lastCheckpointPayload = checkpoint.payload();
             dispatchCheckpoint(new CheckpointSubmission(
                     skillName,
                     boundGoalRevision,

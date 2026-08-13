@@ -93,5 +93,35 @@ final class FairPerceptionSupportSourceContractTest {
         assertTrue(source.contains(
                 "visibleEntityProperties("
         ));
+        assertTrue(source.contains("projectileThreat"));
+        assertTrue(source.contains("isCurrentThreat(player, entity)"));
+    }
+
+    @Test
+    void dragonPartAimStartsInsideItsColliderBeforeEyeFallback()
+            throws Exception {
+        final String source = Files.readString(Path.of(
+                "src/main/java/dev/mcai/companion/perception/"
+                    + "FairPerceptionSampler.java"
+        ));
+        final int dragonPartBranch = source.indexOf(
+                "if (entity instanceof EnderDragonPart)"
+        );
+        final int centerPoint = source.indexOf(
+                "new Vec3(centerX, centerY, centerZ)",
+                dragonPartBranch
+        );
+        final int eyeFallback = source.indexOf(
+                "entity.getEyePosition()",
+                dragonPartBranch
+        );
+
+        assertTrue(dragonPartBranch >= 0);
+        assertTrue(centerPoint > dragonPartBranch);
+        assertTrue(
+                eyeFallback > centerPoint,
+                "Dragon-part eye position must remain a fallback; "
+                    + "a collider-center point is the first legal aim hint"
+        );
     }
 }

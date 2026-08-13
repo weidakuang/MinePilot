@@ -568,6 +568,7 @@ public final class FairPerceptionSampler {
             Vec3 candidatePosition = perceived.position();
             final Map<String, String> visibleProperties =
                     new TreeMap<>(visibleEntityProperties(
+                            player,
                             perceived,
                             interactionLineClear
                     ));
@@ -643,6 +644,43 @@ public final class FairPerceptionSampler {
                 0.04,
                 box.getZsize() * 0.32
         );
+        if (entity instanceof EnderDragonPart) {
+            /*
+             * EnderDragonPart#getEyePosition() is an entity-wide eye
+             * offset, not a point guaranteed to remain inside the small
+             * tail/wing collider.  Publishing that point as the first
+             * interaction aim can leave a real player looking just above a
+             * visible part: the semantic dragon is present, but the vanilla
+             * crosshair ray never selects a part to attack.  Start with the
+             * part's collision-box center and bounded horizontal samples;
+             * every point still passes the ordinary first-person LOS clip
+             * below, and keep the eye only as a fair fallback for occlusion.
+             */
+            return List.of(
+                    new Vec3(centerX, centerY, centerZ),
+                    new Vec3(
+                            centerX + offsetX,
+                            centerY,
+                            centerZ
+                    ),
+                    new Vec3(
+                            centerX - offsetX,
+                            centerY,
+                            centerZ
+                    ),
+                    new Vec3(
+                            centerX,
+                            centerY,
+                            centerZ + offsetZ
+                    ),
+                    new Vec3(
+                            centerX,
+                            centerY,
+                            centerZ - offsetZ
+                    ),
+                    entity.getEyePosition()
+            );
+        }
         if (entity instanceof net.minecraft.world.entity.monster.EnderMan) {
             /*
              * Endermen teleport when a nearby player looks at their eyes.
@@ -705,6 +743,7 @@ public final class FairPerceptionSampler {
     }
 
     private static Map<String, String> visibleEntityProperties(
+            final ServerPlayer player,
             final Entity entity,
             final boolean interactionLineClear
     ) {
@@ -718,6 +757,20 @@ public final class FairPerceptionSampler {
                 "customNamed",
                 Boolean.toString(entity.hasCustomName())
         );
+        if (entity instanceof Projectile) {
+            /*
+             * The local emergency lane must not dodge arrows fired by the
+             * companion itself.  They remain ordinary visible entities, but
+             * vanilla arrows cannot damage their owner and are not a threat
+             * signal.  Preserve that distinction as semantic provenance so a
+             * combat skill does not mistake its own projectile for hostile
+             * fire while still using only the visible entity list.
+             */
+            properties.put(
+                    "projectileThreat",
+                    Boolean.toString(isCurrentThreat(player, entity))
+            );
+        }
         if (entity instanceof AgeableMob ageable) {
             properties.put(
                     "baby",

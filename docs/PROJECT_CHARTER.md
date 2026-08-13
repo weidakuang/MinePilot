@@ -1,129 +1,113 @@
-# MinePilot 项目规范与行为准则
+# MinePilot Project Charter and Behavior Standard
 
-## 1. 项目身份
+## Identity
 
-MinePilot 是本仓库的项目名，生产 Mod 的 Mod ID 仍为 `mcai_companion`。它为
-Minecraft Java 提供一个可见的 AI 队友：AI 使用世界内的原版 `ServerPlayer` 身体，
-通过正常玩家路径观察、移动、交互、战斗、管理背包并和真人交流。
+MinePilot is the repository and product name. The Forge mod id remains
+`mcai_companion`. The mod creates a visible AI teammate for Minecraft Java
+26.2 using a normal server-side `ServerPlayer` body and one high-level model.
 
-本仓库当前是 `0.1.9-dev-mc26.2` 开发线：
+The current line is `0.1.9-dev-mc26.2`:
 
-- Minecraft Java 26.2；Forge 65.0.0（含）至 66.0.0（不含）；Java 25。
-- 这是一个 Forge 65.x 工件，不声称兼容 Forge 64.x、Minecraft 26.1.x 或 Forge 66.x。
-- 26.1.2/Forge 64.x 需要单独的映射、依赖和发布工件，不能靠放宽版本号解决。
-- 当前 M0–M4 正式门禁仍是 `NOT_RUN`。受控 GameTest 或单次模型夹具不能替代
-  隐藏随机种子、真实客户端和长时间稳定性验收。
+- Minecraft Java 26.2;
+- Forge 65.0.0 inclusive through 66.0.0 exclusive;
+- Java 25;
+- one account-free companion per active world, with data structures reserved
+  for future multi-agent support.
 
-项目目标不是制造一个“看起来会说话”的 NPC，而是逐步交付一个可审计、可降级、
-公平操作的游戏技术陪玩。任何版本说明都必须区分“代码已实现”“受控测试通过”和
-“正式产品门禁通过”。
+This is a Forge 65.x artifact. It does not claim Forge 64.x/Minecraft 26.1.x
+or Forge 66.x compatibility. A different major line requires its own mapped
+artifact and adapter tests.
 
-## 2. 背景与问题定义
+## Product promise
 
-普通聊天机器人缺少持续的游戏身体、空间记忆、背包状态和危险反应；传统脚本又容易
-直接改方块、读隐藏信息或把玩家操作硬编码成固定蓝图。MinePilot 采用分层方案：
+The long-term objective is an auditable game-technology companion that can
+cooperate with a player, survive, explore, build, fight, manage resources,
+remember locations, and complete a full vanilla progression route. The product
+must feel responsive, but it must not fake success or hide its identity.
 
-1. 原版 `ServerPlayer` 是唯一权威身体，位置、生命、背包、主副手、护甲、维度和
-   死亡均由服务端保存。
-2. 高层模型只产生经过 schema 校验的目标/技能决策，不能生成 Java、数据包或直接
-   修改世界。
-3. 20 TPS 的本地技能和生存监督器负责移动、格挡、进食、撤退、落地和冷却等低延迟
-   行为；模型等待时身体不能被冻结。
-4. 感知只来自 AI 自己的视线、听觉和已验证记忆。结构定位器、种子反推、洞穴图、
-   实体雷达和观察者摄像机不得进入生产感知。
-5. SQLite 记忆、世界 `SavedData`、审计事件和模型请求带版本、来源和核验时间，
-   避免旧结论覆盖新世界状态。
+The project distinguishes four evidence levels:
 
-## 3. 交付范围
+1. **Implemented:** source and a meaningful automated test exist.
+2. **Controlled physical:** a vanilla server/GameTest proves a bounded behavior
+   without a model or rendered client.
+3. **Live slice:** an authorized model, real server, and normal client prove a
+   causal chat/observation/decision/skill/action chain.
+4. **Formal gate:** a frozen artifact passes the required randomized, rendered,
+   long-running, or statistical protocol.
 
-### 已纳入设计边界
+Only level 4 may be marketed as an M0–M4 product result.
 
-- 单模型配置、温度 `0.0–1.0`、系统偏好、皮肤、聊天和原版菜单。
-- 公平的采集、合成、箱炉、庇护所、移动、跟随、交通、战斗、维度和记忆技能。
-- Xaero 共享标点适配、回环 MCP、审计摘要和跨平台密钥恢复。
-- 可扩展的模组适配 SPI；只有通过精确版本契约测试的模组才启用专用技能。
-- 单人世界和多人服务器中的明确 `[AI]` 身份；允许管理员配置普通玩家任务白名单。
+## Fair play
 
-### 明确不承诺
+The authoritative body is a vanilla `ServerPlayer` with a stable UUID. It
+enters and leaves through the normal player-list lifecycle. Mining, placement,
+attacks, item use, menus, crafting, equipment, movement, collision, hunger,
+effects, damage, drops, experience, death, respawn, portals, and statistics use
+the same server rules as a player.
 
-- 不承诺任意随机种子必定在两小时内通关，也不把一次成功描述为速通率。
-- 不承诺所有 Forge、所有 Minecraft 版本或所有第三方模组兼容。
-- 不伪造微软/Mojang账号、安全聊天签名、真人身份或玩家权限。
-- 不复制 Baritone、Mineflayer、作弊客户端或其他项目的受限实现、资产或蓝图。
-- 不在极限评测中使用命令、传送、隐藏区块扫描、直接物品生成或人工中途干预。
-- 不把“能回复聊天”当作“已经执行任务”；必须有 `skill_started` 和可观察的游戏结果。
+The model may return only a versioned high-level `DecisionEnvelope`. It may not
+return Java, packets, commands, teleport destinations, hidden coordinates,
+direct inventory edits, direct block edits, or generated results. The skill
+supervisor rechecks observations, permissions, revisions, reach, line of sight,
+collision, cooldown, durability, and menu state before every action.
 
-## 4. 不可妥协的行为准则
+Emergency movement, food, shielding, fall recovery, projectile evasion, and
+danger stops run locally at server tick rate. They continue safely during model
+latency, malformed output, rate limits, or disconnection. A safe fallback may
+pause or ask the player; it may never claim that an unexecuted goal succeeded.
 
-### 公平与可观察性
+## Communication and identity
 
-所有破坏、放置、攻击、装备、合成、容器和传送门事务走原版玩家路径。模型不能
-绕过冷却、触及距离、耐久、碰撞、视线、方块更新或掉落规则。每项正式结论必须
-能由独立观察者复核，且记录源代码提交、工件 SHA-256、版本、模型、种子策略和退出码。
+The companion observes the normal server chat stream and can answer in the
+player's language. In single-player it does not require an `@` prefix; in
+multiplayer a name or configured allowlist determines which player may issue
+game goals. Administrative `/mcai` commands remain separate from ordinary
+gameplay permissions.
 
-### 诚实的 AI 身份
+Messages are labeled `[AI]` and the mod does not forge secure player signatures,
+accounts, or a human identity. A live model may use a screenshot only when the
+model capability was verified and the task explicitly requests it; the
+observer's third-person camera is never the companion's perception.
 
-聊天使用明确的 `[AI] 名称：内容` 格式；没有安全聊天签名时不能伪装成真人。多人
-服务器默认公开 AI 身份，管理员不能通过配置把它伪装成玩家账号。
+## UI, skin, and credentials
 
-### 安全优先
+The pause menu opens a vanilla-style MinePilot screen with an agent list,
+validated name (3–16 ASCII letters, digits, or underscore), color, temperature
+slider (`0.0–1.0`), 64×64 local PNG skin import, classic/slim arm choice, API
+key, HTTPS base URL, model name, system preference, and a first-run tutorial.
+The form is scrollable and keeps Save/Validate and Back outside the text fields.
 
-断网、超时、非法 JSON、危险生命、悬崖、岩浆或模型拒绝时，先完成当前低风险原子
-技能，然后举盾、进食、撤退或前往已知安全区。不能为了“看起来在做事”继续执行过期
-决策。极限模式死亡即该次任务终止。
+Keys are stored only in a platform secure store or the current process. They
+never enter TOML, SavedData, SQLite, logs, screenshots, or Git. macOS Keychain,
+Windows DPAPI, Linux Secret Service, and explicit next-process environment/file
+injection are supported status paths; unavailable secure storage is reported
+honestly rather than silently weakening the boundary.
 
-### 隐私与凭据
+## Memory and navigation
 
-API Key、Cookie、Bearer 值和用户皮肤不得进入 Git、世界、TOML、SQLite、日志、崩溃
-报告、截图或测试产物。远程 Base URL 必须 HTTPS；HTTP 只允许本机测试。真实凭据
-只能通过系统密钥环、DPAPI、Secret Service 或只读 Secret 文件注入。
+Immediate observations, a rolling navigation graph, regional metrics, semantic
+topology, waypoints, portal edges, asset records, and task checkpoints are
+stored with provenance, dimension, revision, and verification time. SQLite WAL,
+FTS5, and R*Tree queries are bounded and do not grow the model context without
+limit. Cross-dimension routes use only portals that the companion has actually
+verified; Nether coordinate scaling is a hint, not a teleport or a hidden map.
 
-### 用户所有权与授权
+## Scope and release gates
 
-陪玩模式尊重玩家建筑、仓库和保护区。大面积拆除、危险实验、丢弃稀有物品或修改
-村庄前必须获得明确授权。服务器任务权限与管理命令权限分离；白名单只授予目标入口，
-不授予作弊或评测命令。
+M0 covers the headless player lifecycle and fair action boundary. M1 covers
+basic survival and a safe shelter. M2 covers the vanilla progression and End
+return. M3 covers long-term companion scenarios, construction, farming,
+transport, PVE/PVP, memory, and supported workstation adapters. M4 covers
+random Hardcore speed optimization.
 
-### 证据优先
+The current repository records these formal milestones as `NOT_RUN` until the
+exact frozen artifact passes their protocols. A controlled arena, an offline
+skill baseline, or a model acknowledgement is never substituted for a random
+seed, rendered-client, or long-soak result.
 
-状态只允许使用以下标签：
+## Licensing and references
 
-- `PASS`：精确门禁已完成，且工件和审计证据已核验。
-- `FAIL`：产品运行了，但没有满足门禁。
-- `NOT_RUN`：当前源代码/工件尚未完成该门禁。
-- `BLOCKED_CREDENTIAL`、`BLOCKED_INFRA`、`BLOCKED_BUDGET`：外部前置条件明确缺失。
-
-禁止把计划、代码存在、单元测试、受控夹具或旧版本记录改写成正式 `PASS`。
-
-## 5. 架构责任边界
-
-| 层 | 责任 | 禁止事项 |
-| --- | --- | --- |
-| 观测 | 过滤视锥、遮挡、距离、听觉、背包和已验证记忆 | 读取隐藏矿物、结构 API、观察者画面 |
-| 模型网关 | 单 flight、超时、schema、温度和错误脱敏 | 第二模型、Embedding 偷换、密钥日志 |
-| 规划器 | 将目标转为有版本的技能决策 | 直接写世界、无条件接受过期回复 |
-| 技能/监督器 | 原子动作、20 TPS 安全反应、检查点 | 传送、刷物、跳过原版事务 |
-| 身体 | `ServerPlayer` 生命周期、背包、物理和网络 | 普通生物实体冒充完整玩家 |
-| 记忆/审计 | SQLite WAL、SavedData、来源和版本 | 无限上下文、跨世界污染 |
-| UI/MCP | 配置、观察、目标和状态 | 绕过权限或极限锁定 |
-
-## 6. 版本、发布和路线
-
-每条 Minecraft/Forge 主版本线拥有自己的映射、依赖和 JAR。兼容范围只能由真实
-构建与门禁证明；不能声明“所有 Forge 都可以用”。发布前必须使用干净工作树，
-重新构建并把所有适用门禁绑定到同一个 JAR SHA-256。
-
-M0 是身体、保存、重启、跨维度、菜单和 24 小时稳定性；M1 是基础生存；M2 是
-下界/要塞/末地通关；M3 是长期陪玩、生电、交通、战斗和原版功能方块；M4 是
-隐藏随机种子统计。完整目标只有在各自退出标准均满足后才可宣布。
-
-## 7. 许可证和第三方边界
-
-本项目原创代码和原创文档按 [Apache License 2.0](../LICENSE) 发布。贡献者提交
-代码即表示其有权按 Apache-2.0 授权。Forge、Minecraft/Mojang、SQLite、Gson、
-Xaero 等依赖保留各自条款，详见 [NOTICE](../NOTICE) 和
-[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。Apache-2.0 不改变 Minecraft
-最终用户许可、服务器规则或第三方模组条款。
-
-提交纪律和检查命令见 [CONTRIBUTING.md](../CONTRIBUTING.md)；安装和日常使用见
-[USAGE.md](USAGE.md)。
+Original code is Apache-2.0. The Numen review in `docs/NUMEN_REVIEW.md` records
+architecture lessons without copying code, prompts, textures, or assets. Create,
+MTR, Farmer's Delight, and other complex mod adapters are SPI placeholders until
+their exact Forge 65.x contracts pass independent compatibility tests.

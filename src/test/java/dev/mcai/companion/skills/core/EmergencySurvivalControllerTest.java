@@ -1885,6 +1885,62 @@ final class EmergencySurvivalControllerTest {
         assertEquals(1, actuator.blockUses.size());
     }
 
+    @Test
+    void usesAnOwnedHayBaleInsteadOfIllegalWaterInTheEnd() {
+        final DangerSignal falling = new DangerSignal(
+                DangerKind.FALLING,
+                0.8,
+                0.0,
+                Optional.empty(),
+                PerceptionProvenance.BODY_HAZARD
+        );
+        final CoreSkillTestFixtures.MutableFrames frames =
+                new CoreSkillTestFixtures.MutableFrames(
+                        frameWithInventory(
+                                1,
+                                20,
+                                HeldItemSummary.empty(),
+                                HeldItemSummary.empty(),
+                                List.of(
+                                        new InventoryItemSummary(
+                                                "minecraft:water_bucket",
+                                                1
+                                        ),
+                                        new InventoryItemSummary(
+                                                "minecraft:hay_block",
+                                                1
+                                        )
+                                ),
+                                List.of(),
+                                List.of(falling),
+                                List.of(),
+                                false,
+                                DimensionRef.END,
+                                EAST
+                        )
+                );
+        final CoreSkillTestFixtures.RecordingActuator actuator =
+                new CoreSkillTestFixtures.RecordingActuator();
+        final RecordingEquipment equipment = new RecordingEquipment();
+        final EmergencySurvivalController controller =
+                new EmergencySurvivalController(
+                        PLAYER_ID,
+                        actuator,
+                        frames,
+                        equipment
+                );
+
+        final var equipped = controller.tick();
+        assertEquals(
+                EmergencySurvivalController.State.EQUIPPING_FALL_CLUTCH,
+                equipped.state()
+        );
+        assertEquals(
+                List.of("MAIN_HAND=minecraft:hay_block"),
+                equipment.requests
+        );
+    }
+
     private static CoreSkillFrame frame(
             long revision,
             double x,

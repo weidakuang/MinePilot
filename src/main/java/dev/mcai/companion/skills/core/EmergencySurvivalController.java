@@ -1987,9 +1987,16 @@ public final class EmergencySurvivalController {
     }
 
     private static boolean waterAllowed(final CoreSkillFrame frame) {
+        /* Water evaporates in both Nether and End.  Treating the End as
+         * water-safe made the fall reflex equip a bucket, stare at the void,
+         * and keep moving instead of choosing a legal solid landing or
+         * stopping.  The player-visible dimension is the only fact used. */
         return !frame.dimension().equals(
-                dev.mcai.companion.waypoint.DimensionRef.NETHER
-        );
+                    dev.mcai.companion.waypoint.DimensionRef.NETHER
+                )
+                && !frame.dimension().equals(
+                    dev.mcai.companion.waypoint.DimensionRef.END
+                );
     }
 
     private static Optional<VisibleBlockFace> waterSurface(

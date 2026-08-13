@@ -1,73 +1,106 @@
 # Architecture
 
-## Authority
-
 ```mermaid
 flowchart LR
-    U["玩家聊天 / Codex MCP"] --> G["GoalCoordinator"]
-    G --> M["单一高层模型"]
-    P["公平语义感知"] --> M
-    M --> S["本地 SkillSupervisor"]
-    S --> B["原版 ServerPlayer 身体"]
-    B <--> W["Forge 服务端世界"]
+    U["Player chat / Codex MCP"] --> G["Goal coordinator"]
+    G <--> M["Single high-level model"]
+    P["Fair first-person perception"] --> M
+    M --> S["Local skill supervisor"]
+    S --> B["Vanilla ServerPlayer"]
+    B <--> W["Forge server world"]
     W --> P
-    S --> D["SQLite checkpoint / 空间记忆"]
+    S --> D["SQLite memory and checkpoints"]
 ```
 
-模型只能产生版本化的高层 `DecisionEnvelope`。模型不能发 Java、数据包、命令、传送或直接方块修改。移动、碰撞、盾牌、进食、危险停止和其他实时动作由本地 20 TPS 层负责。
+## Authority boundary
 
-## 为什么身体不是 ServerPlayer 子类
+`AiServerPlayer` is a `ServerPlayer` with a stable local profile and UUID. It
+uses the normal `PlayerList` login/removal path and an embedded connection pump
+that consumes keepalive, teleport-confirmation, and outbound packets. The body
+is the only authority for position, inventory, hands, armor, hunger, effects,
+statistics, death, respawn, and dimension state.
 
-26.x 的原版加载和重生路径会直接构造新的 `ServerPlayer`。如果把 AI 身份绑在子类上，正常重生后子类语义会丢失。
+Mining, placing, using, attacking, equipping, crafting, and menus go through
+the vanilla player game mode and menu slot transactions. No model or skill may
+write a block, item stack, container NBT, or teleport result directly.
 
-本项目因此让原版 `ServerPlayer` 保持唯一身体，以稳定 UUID 外挂 `AiPlayerSession` 控制器。登录使用 Forge 官方测试路径同类的 `PrepareSpawnTask + Connection + EmbeddedChannel`；重生后控制器重新解析同 UUID 的原版替代对象。
+## Planning and skills
 
-## 公平边界
+The model returns a versioned `DecisionEnvelope` containing a request id,
+observed world revision, goal revision, decision, optional skill name and typed
+arguments, requested observation, optional speech, and confidence. A stale,
+malformed, unauthorized, or impossible envelope is discarded.
 
-允许：
+`SkillSupervisor` owns one active skill and its checkpoint. A skill defines
+preconditions, `start`, per-tick behavior, checkpoint, cancel, and result. The
+supervisor rechecks the current first-person observation, permission, reach,
+line of sight, collision, cooldown, durability, and menu state before every
+low-level action. Success requires an observed server-side result.
 
-- AI 身体自身坐标、生命、背包与状态；
-- 已加载且经过距离、视锥与遮挡过滤的观察；
-- 正常打开后看到的容器内容；
-- 明确共享的玩家/Xaero/MCP 标点；
-- 已经实际穿越并核验的传送门边。
+The model gateway is Java 25 `HttpClient` based. It supports Responses and
+OpenAI-compatible Chat Completions, structured-output fallback, one request at
+a time, a five-second connection timeout, a configurable soft deadline, and a
+hard deadline. It does not retry a request after 401, 429, or a provider 5xx in
+a way that can duplicate charges. Secrets are supplied for one request and
+redacted from all audit records.
 
-禁止：
+## Local real-time lane
 
-- seed、结构定位 API、隐藏矿物扫描；
-- 未打开容器内容；
-- 小地图洞穴图、实体雷达或观察者相机；
-- 直接传送、直接设置方块、生成物品；
-- 伪造真人签名聊天。
+At 20 TPS, the local layer handles movement, collision, jump/step, doors,
+food, shield, fall and water clutch, projectile evasion, emergency retreat,
+and bounded combat reacquisition. Model latency cannot freeze the body in a
+known danger. If the gateway is unavailable, the current atomic operation is
+finished when safe, then the companion guards, eats, retreats, or returns to a
+known safe area.
 
-## Persistence
+## Fair perception
 
-主世界 `CompanionWorldData` 保存稳定 UUID、名称、配色、0.0–1.0
-模型采样温度、
-有界系统偏好、新手引导状态、已见玩家名称、完整活动目标/goal
-revision、极限死亡、永久评测写锁、外部导航污染标记与 schema 版本。
-展示字段使用一个扁平 `AgentPresentationState` map codec，保持旧
-`display_name` 字段兼容且不突破 DataFixerUpper 单组16字段上限。
-大量事件、checkpoint 和标点保存在：
+The perception sampler uses only the companion's eye position, look direction,
+loaded chunks, distance/FOV, and ordinary visual/collider ray clips. Entity and
+block observations carry provenance, sample sequence, observation age, and
+world/goal revision. Multipart entities, including the Ender Dragon, publish a
+stable parent id but retain a collider point that passed the same first-person
+line-of-sight checks used by the action layer.
 
-```text
-<world>/data/mcai_companion/memory.db
-```
+Semantic text is sampled at 2–5 Hz and body/danger state at 20 Hz. Screenshots
+are task-triggered for unfamiliar GUIs, visual questions, or aesthetic work;
+they are HUD-cleaned and never a continuous observer video. A third-person
+camera is not an input to the model.
 
-SQLite 使用有界队列单 writer、WAL、参数化 SQL、FTS5 与 R*Tree。所有 JDBC 工作在专用虚拟线程，不阻塞服务器 tick；队列饱和时 fail-fast 并进入审计计数。
+## Memory and navigation
 
-当前运行时仍按原计划首发边界拥有一个活动 Agent。多 Agent 不能只
-复制设置行；后续目录必须以 Agent UUID 分片身体生命周期、玩家存档、
-目标 revision、模型凭据/网关、SQLite 记忆、技能监督器、皮肤和性能
-预算，完成前界面不会宣称多个 Agent 已可同时游玩。
+SQLite uses WAL, FTS5, and R*Tree. Records cover immediate scenes, a rolling
+navigation graph, regional corridors, semantic topology, assets, waypoints,
+verified portal edges, and task checkpoints. Every record stores source,
+dimension, revision, confidence, and last verification time. Global routing
+chooses a verified transport edge; local 3D movement uses observed corridors,
+collision, jump, swim, climb, bridge, door, and safe-standing checks.
 
-## Revisions
+Nether coordinate scaling is only a heuristic. A cross-dimensional route is
+usable only after the companion has physically crossed and verified the portal
+edge. Local changes trigger incremental replanning rather than a hidden-world
+rescan.
 
-每个模型响应同时绑定：
+## UI, MCP, and adapters
 
-- request ID；
-- decision/observation epoch；
-- goal revision；
-- 当前可用 skill schema。
+The client uses vanilla widgets for the agent list, setup form, skin import,
+temperature, system preference, tutorial, and validation status. The server is
+authoritative for names, permissions, goals, and credentials.
 
-身体所在维度、方块位置、生命与关键危险状态变化会推进 decision epoch；活动技能期间只允许其绑定的 epoch。任一版本变化都会使旧响应失效。MCP `observe` 分别返回 goal revision 与 decision epoch；写响应未知时，客户端必须先回读，不能盲目重放。
+The loopback MCP endpoint exposes only high-level observation, goal, speech,
+waypoint, screenshot, and audit operations. Xaero integration consumes
+structured shared waypoints only. `ModAdapter` is the compatibility SPI for
+recipes, menus, affordances, and skills; a complex mod is enabled only after a
+version-specific contract test passes.
+
+## Persistence and recovery
+
+World `SavedData` stores the stable companion identity, database version, task
+recovery point, and one-time initial-anchor state. The companion may be
+re-anchored near the first human login only while idle and safe; emergency
+survival defers and retries on a server tick. This is lifecycle restoration,
+not gameplay teleportation.
+
+On restart, the body, inventory, dimension, hunger, experience, ender chest,
+goal revision, and checkpoints are restored. If the model is not configured,
+the body remains visible and safe but does not fabricate speech or actions.

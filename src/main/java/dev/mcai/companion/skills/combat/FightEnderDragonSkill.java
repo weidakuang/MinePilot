@@ -76,7 +76,10 @@ public final class FightEnderDragonSkill
     private static final int SCAN_INTERVAL_TICKS = 3;
     private static final int SCANS_BEFORE_RALLY = 48;
     private static final int MAXIMUM_RALLY_ATTEMPTS = 4;
-    private static final int PROJECTILE_SETTLE_TICKS = 16;
+    /* A full bow flight at the maximum observed dragon distance is shorter
+     * than this; leave enough time for the vanilla projectile to advance
+     * before reacquiring a target without idling a whole second. */
+    private static final int PROJECTILE_SETTLE_TICKS = 8;
     private static final int CAGE_SCANS_BEFORE_RALLY = 12;
     private static final int CAGE_DESCENT_SCAN_LIMIT = 12;
     private static final int MAXIMUM_CAGE_APPROACH_ATTEMPTS = 2;
@@ -84,13 +87,36 @@ public final class FightEnderDragonSkill
     private static final int CRYSTAL_CAGE_INSPECTION_SCANS = 12;
     private static final int MAXIMUM_CRYSTAL_STANDOFF_SCANS = 12;
     private static final int MAXIMUM_CRYSTAL_STANDOFF_ATTEMPTS = 8;
+    private static final int MAXIMUM_CRYSTAL_LANE_ATTEMPTS = 3;
+    private static final int MAXIMUM_CRYSTAL_LANE_SCANS = 8;
     private static final double CAGE_LINE_RADIUS = 1.15;
     private static final double CAGE_BREAK_REACH = 4.5;
     private static final double CAGE_MINING_ALIGNMENT_DEGREES = 1.5;
     private static final double MELEE_DRAGON_DISTANCE = 5.75;
     private static final double MELEE_ALIGNMENT_DEGREES = 5.0;
     private static final double MELEE_ATTACK_STRENGTH = 0.90;
+    /*
+     * A vanilla player can land many swings on a dragon part while the
+     * attack cooldown and the dragon's damage immunity are out of phase.
+     * Staying pressed against one tail/wing indefinitely is nevertheless a
+     * poor recovery strategy: it leaves no room for the ordinary bow path
+     * and makes a multipart target look like a frozen conversation.  After
+     * this bounded local melee burst, keep using the currently visible
+     * dragon and normal arrows until it is dead.  This is a combat policy,
+     * not a health/world shortcut; every shot still goes through the
+     * first-person crosshair and vanilla projectile interaction checks.
+     */
+    private static final int MELEE_ATTACKS_BEFORE_RANGED = 24;
     private static final int DEFENSIVE_DODGE_COOLDOWN_TICKS = 6;
+    /*
+     * Keep the first-person retreat inside the observed dragon arena.  The
+     * movement actuator advances roughly 1.2 blocks per tick; twenty-four
+     * ticks therefore sent the body almost thirty blocks away, where the
+     * dragon could occlude every crystal lane and heal indefinitely.  Eight
+     * ticks gives a normal melee-to-bow separation of about ten blocks while
+     * retaining vanilla collision and hazard handling.
+     */
+    private static final int DRAGON_RANGED_RETREAT_TICKS = 8;
     private static final double IMMEDIATE_DRAGON_DISTANCE = 8.75;
     private static final int MELEE_REACH_MISSES_BEFORE_RANGED = 3;
     private static final int RANGED_SHOTS_BEFORE_MELEE_RETRY = 4;
@@ -140,6 +166,7 @@ public final class FightEnderDragonSkill
     private int meleeAttacks;
     private int meleeReachMisses;
     private int rangedDragonShotsSinceMeleeRetry;
+    private int dragonRetreatTicksRemaining;
     private int scanTurns;
     private int rallyAttempts;
     private int cageScanTurns;
@@ -150,6 +177,8 @@ public final class FightEnderDragonSkill
     private float scanBaseYaw;
     private PerceptionVec3 localRallyPoint;
     private boolean recoveringSafetyReserve;
+    private boolean dragonRangedMode;
+    private PerceptionVec3 dragonRetreatDirection;
     private boolean sawCageBarBeyondReach;
     private boolean cageTowered;
     private boolean cageLandingVerified;
@@ -157,6 +186,8 @@ public final class FightEnderDragonSkill
     private int crystalStandOffScans;
     private int crystalStandOffAttempts;
     private int crystalCageInspectionTurns;
+    private int crystalLaneAttempts;
+    private int crystalLaneScanTurns;
     private CageStatus cageStatus = CageStatus.NONE;
     private TravelPurpose travelPurpose = TravelPurpose.NONE;
     private UUID cageCrystalId;
@@ -170,6 +201,8 @@ public final class FightEnderDragonSkill
     private TravelToParameters travelParameters;
     private MoveToSkill crystalStandOff;
     private MoveToParameters crystalStandOffParameters;
+    private MoveToSkill crystalLane;
+    private MoveToParameters crystalLaneParameters;
     private BreakBlockSkill cageBreak;
     private BreakBlockParameters cageBreakParameters;
     private TowerUpSkill cageTower;
@@ -349,6 +382,7 @@ public final class FightEnderDragonSkill
         meleeAttacks = 0;
         meleeReachMisses = 0;
         rangedDragonShotsSinceMeleeRetry = 0;
+        dragonRetreatTicksRemaining = 0;
         scanTurns = 0;
         rallyAttempts = 0;
         cageScanTurns = 0;
@@ -364,6 +398,8 @@ public final class FightEnderDragonSkill
          */
         localRallyPoint = snapshot.core().position();
         recoveringSafetyReserve = false;
+        dragonRangedMode = false;
+        dragonRetreatDirection = null;
         sawCageBarBeyondReach = false;
         cageTowered = false;
         cageLandingVerified = false;
@@ -371,6 +407,8 @@ public final class FightEnderDragonSkill
         crystalStandOffScans = 0;
         crystalStandOffAttempts = 0;
         crystalCageInspectionTurns = 0;
+        crystalLaneAttempts = 0;
+        crystalLaneScanTurns = 0;
         cageStatus = CageStatus.NONE;
         travelPurpose = TravelPurpose.NONE;
         cageCrystalId = null;
@@ -384,6 +422,8 @@ public final class FightEnderDragonSkill
         travelParameters = null;
         crystalStandOff = null;
         crystalStandOffParameters = null;
+        crystalLane = null;
+        crystalLaneParameters = null;
         cageBreak = null;
         cageBreakParameters = null;
         cageTower = null;
@@ -419,6 +459,8 @@ public final class FightEnderDragonSkill
                         "{\"phase\":\"%s\",\"shots\":%d,\"melee\":%d,"
                             + "\"meleeReachMisses\":%d,"
                             + "\"rangedDragonShotsSinceMeleeRetry\":%d,"
+                            + "\"dragonRangedMode\":%s,"
+                            + "\"dragonRetreatTicksRemaining\":%d,"
                             + "\"scanTurns\":%d,\"rallyAttempts\":%d,"
                             + "\"cageBarsMined\":%d,"
                             + "\"cageApproaches\":%d,"
@@ -428,6 +470,8 @@ public final class FightEnderDragonSkill
                             + "\"crystalStandOffScans\":%d,"
                             + "\"crystalStandOffAttempts\":%d,"
                             + "\"crystalCageInspectionTurns\":%d,"
+                            + "\"crystalLaneAttempts\":%d,"
+                            + "\"crystalLaneScanTurns\":%d,"
                             + "\"recoveringSafetyReserve\":%s,"
                             + "\"cageStatus\":\"%s\"}",
                         phase.name(),
@@ -435,6 +479,8 @@ public final class FightEnderDragonSkill
                         meleeAttacks,
                         meleeReachMisses,
                         rangedDragonShotsSinceMeleeRetry,
+                        dragonRangedMode,
+                        dragonRetreatTicksRemaining,
                         scanTurns,
                         rallyAttempts,
                         cageBarsMined,
@@ -447,6 +493,8 @@ public final class FightEnderDragonSkill
                         crystalStandOffScans,
                         crystalStandOffAttempts,
                         crystalCageInspectionTurns,
+                        crystalLaneAttempts,
+                        crystalLaneScanTurns,
                         recoveringSafetyReserve,
                         cageStatus.name()
                 )
@@ -558,12 +606,19 @@ public final class FightEnderDragonSkill
                     fresh
             );
             case SHOOTING -> tickShot(context, fresh);
+            case RETREATING_DRAGON -> tickDragonRangedRetreat(
+                    context,
+                    frame,
+                    fresh
+            );
             case REPOSITIONING_CRYSTAL ->
                     tickCrystalStandOff(
                             context,
                             parameters,
                             fresh
                     );
+            case REPOSITIONING_CRYSTAL_LANE ->
+                    tickCrystalLane(context, fresh);
             case TRAVELLING -> tickTravel(context, fresh);
             case OPENING_CAGE -> tickCageBreak(
                     context,
@@ -613,6 +668,7 @@ public final class FightEnderDragonSkill
         final Optional<VisibleEntity> projectile = frame.visibleEntities()
                 .stream()
                 .filter(VisibleEntity::projectile)
+                .filter(FightEnderDragonSkill::projectileThreatensBody)
                 .min(Comparator.comparingDouble(VisibleEntity::distance));
         final boolean danger = frame.dangerSignals().stream().anyMatch(
                 signal -> signal.kind()
@@ -842,8 +898,113 @@ public final class FightEnderDragonSkill
         cageScanTurns = 0;
         cageStatus = CageStatus.NONE;
         sawCageBarBeyondReach = false;
+        final Optional<Integer> clearCrystal = clearCrystalIndex(frame);
+        final boolean activeDragonThreat = frame.dangerSignals().stream()
+                .anyMatch(signal ->
+                        (signal.kind() == DangerKind.THREAT_CONTACT
+                                || signal.kind()
+                                        == DangerKind.PROJECTILE_PROXIMITY)
+                                && signal.severity() >= 0.35
+                );
+        boolean crystalLaneBlocked = false;
+        if (!activeDragonThreat && clearCrystal.isPresent()) {
+            final VisibleEntity crystal = frame.visibleEntities()
+                    .get(clearCrystal.orElseThrow());
+            crystalLaneBlocked = EndCrystalStandOffPlanner.dragonBlocksFiringLane(
+                    frame,
+                    crystal
+            );
+            if (!crystalLaneBlocked) {
+                crystalLaneAttempts = 0;
+                crystalLaneScanTurns = 0;
+            } else if (crystalLaneAttempts
+                    < MAXIMUM_CRYSTAL_LANE_ATTEMPTS) {
+                final Optional<GridPos> lane =
+                        EndCrystalStandOffPlanner.selectFiringLane(
+                                frame,
+                                crystal.position(),
+                                context.hardcore()
+                        ).filter(candidate ->
+                                !candidate.equals(frame.feet())
+                        );
+                if (lane.isPresent()) {
+                    return startCrystalLane(
+                            context,
+                            parameters,
+                            lane.orElseThrow(),
+                            fresh
+                    );
+                }
+                if (crystalLaneScanTurns
+                        < MAXIMUM_CRYSTAL_LANE_SCANS) {
+                    final PerceptionVec3 toCrystal = crystal.position()
+                            .subtract(frame.position());
+                    final PerceptionVec3 horizontal = new PerceptionVec3(
+                            toCrystal.x(),
+                            0.0,
+                            toCrystal.z()
+                    );
+                    final PerceptionVec3 forward = horizontal.lengthSquared()
+                            > 1.0E-12
+                            ? horizontal.normalized()
+                            : new PerceptionVec3(0.0, 0.0, 1.0);
+                    final PerceptionVec3 side = new PerceptionVec3(
+                            forward.z(),
+                            0.0,
+                            -forward.x()
+                    );
+                    final double sign =
+                            (crystalLaneScanTurns & 1) == 0 ? 0.85 : -0.85;
+                    if (!core.move(MovementIntent.STOPPED).accepted()
+                            || !core.look(lookAt(
+                                    frame.eyePosition(),
+                                    frame.eyePosition().add(
+                                            forward.add(side.scale(sign))
+                                    )
+                            )).accepted()) {
+                        return fail(
+                                context,
+                                NAME + ".crystal_lane_scan_rejected"
+                        );
+                    }
+                    if (fresh) {
+                        crystalLaneScanTurns++;
+                    }
+                    nextActionTick = context.gameTick()
+                            + SCAN_INTERVAL_TICKS;
+                    return SkillTickResult.running(true, true);
+                }
+            }
+        }
+        /*
+         * A nearby dragon is not sufficient reason to ignore an exposed
+         * crystal. Vanilla crystals continuously heal the dragon, so a
+         * clear crystal must be removed first whenever the body is not
+         * currently under contact or projectile pressure. During an active
+         * threat, keep the dragon as the immediate target so emergency
+         * melee/ranged handling can take over without pausing for a crystal.
+         */
+        /*
+         * A dragon can hover directly between the body and an exposed
+         * crystal. After the bounded lane observations above, there may be no
+         * fair standing cell from which the crystal ray is clear at all. Do
+         * not stare at that crystal forever: choose the nearest observed
+         * dragon part and use the ordinary ranged path until the dragon moves
+         * or its health changes. This is still a normal first-person target;
+         * it never reads hidden entity state or fabricates a projectile hit.
+         */
+        final boolean useDragonFallback = crystalLaneBlocked
+                && crystalLaneScanTurns >= MAXIMUM_CRYSTAL_LANE_SCANS;
         final Optional<Integer> targetIndex =
-                immediateDragon.or(() -> selectTargetIndex(frame));
+                !activeDragonThreat
+                        && clearCrystal.isPresent()
+                        && !useDragonFallback
+                        ? clearCrystal
+                        : immediateDragon.or(() ->
+                                useDragonFallback
+                                        ? nearestDragonIndex(frame)
+                                        : selectTargetIndex(frame)
+                        );
         if (targetIndex.isEmpty()) {
             return scan(
                     context,
@@ -858,8 +1019,24 @@ public final class FightEnderDragonSkill
         final PerceptionVec3 meleeAim =
                 meleeAimPoint(target);
         if (ENDER_DRAGON.equals(target.entityTypeId())
+                && meleeAttacks >= MELEE_ATTACKS_BEFORE_RANGED
+                && !dragonRangedMode) {
+            dragonRangedMode = true;
+            dragonRetreatDirection = horizontalAwayDirection(
+                    meleeAim,
+                    frame.position()
+            );
+            dragonRetreatTicksRemaining =
+                    DRAGON_RANGED_RETREAT_TICKS;
+            phase = Phase.RETREATING_DRAGON;
+            nextActionTick = context.gameTick();
+            return SkillTickResult.running(true, true);
+        }
+        if (ENDER_DRAGON.equals(target.entityTypeId())
                 && meleeReachMisses
                     < MELEE_REACH_MISSES_BEFORE_RANGED
+                && !dragonRangedMode
+                && meleeAttacks < MELEE_ATTACKS_BEFORE_RANGED
                 && meleeAim.subtract(frame.eyePosition()).length()
                     <= MELEE_DRAGON_DISTANCE
                 && interactionLineClear(target)) {
@@ -1819,6 +1996,71 @@ public final class FightEnderDragonSkill
         return SkillTickResult.running(true, true);
     }
 
+    /**
+     * Move out of a close multipart hitbox before switching to the bow.  A
+     * normal player backs away from a dragon tail instead of continuing to
+     * swing at the same small part from inside its collider.  The destination
+     * is deliberately not teleported or path-injected: this is only a
+     * bounded forward input after a first-person look, so vanilla collision,
+     * void and emergency-survival rules still decide the result.
+     */
+    private SkillTickResult tickDragonRangedRetreat(
+            final SkillContext context,
+            final CoreSkillFrame frame,
+            final boolean fresh
+    ) {
+        if (dragonRetreatTicksRemaining <= 0
+                || dragonRetreatDirection == null) {
+            dragonRetreatDirection = null;
+            phase = Phase.SEARCHING;
+            nextActionTick = context.gameTick();
+            return SkillTickResult.running(true, true);
+        }
+        final PerceptionVec3 away = dragonRetreatDirection.lengthSquared()
+                > 1.0E-12
+                ? dragonRetreatDirection.normalized()
+                : new PerceptionVec3(
+                        ((context.gameTick() / 6L) & 1L) == 0L
+                                ? 1.0
+                                : -1.0,
+                        0.0,
+                        0.0
+                );
+        final PerceptionVec3 horizontalForward = new PerceptionVec3(
+                frame.lookDirection().x(),
+                0.0,
+                frame.lookDirection().z()
+        );
+        final PerceptionVec3 forward = horizontalForward.lengthSquared()
+                > 1.0E-12
+                ? horizontalForward.normalized()
+                : new PerceptionVec3(0.0, 0.0, 1.0);
+        final PerceptionVec3 left = new PerceptionVec3(
+                forward.z(),
+                0.0,
+                -forward.x()
+        );
+        if (!core.look(lookAt(
+                frame.eyePosition(),
+                frame.eyePosition().add(away)
+        )).accepted()) {
+            return fail(context, NAME + ".ranged_retreat_look_rejected");
+        }
+        if (!core.move(new MovementIntent(
+                away.dot(forward),
+                away.dot(left),
+                true,
+                false
+        )).accepted()) {
+            return fail(context, NAME + ".ranged_retreat_move_rejected");
+        }
+        if (fresh) {
+            dragonRetreatTicksRemaining--;
+        }
+        nextActionTick = context.gameTick() + 1;
+        return SkillTickResult.running(true, true);
+    }
+
     private void rememberUnsafeClearCrystal(
             final CoreSkillFrame frame
     ) {
@@ -2017,6 +2259,77 @@ public final class FightEnderDragonSkill
             }
             phase = Phase.SEARCHING;
             crystalStandOffScans = 0;
+            nextActionTick = context.gameTick()
+                    + SCAN_INTERVAL_TICKS;
+            return SkillTickResult.running(true, true);
+        }
+        return SkillTickResult.running(
+                result.madeProgress() || fresh,
+                result.safeCheckpoint()
+        );
+    }
+
+    private SkillTickResult startCrystalLane(
+            final SkillContext context,
+            final FightEnderDragonParameters parameters,
+            final GridPos destination,
+            final boolean fresh
+    ) {
+        crystalLaneParameters = new MoveToParameters(
+                parameters.dimension(),
+                destination.x() + 0.5,
+                destination.y(),
+                destination.z() + 0.5,
+                0.35
+        );
+        crystalLane = new MoveToSkill(
+                expectedPlayerId,
+                core,
+                coreFrames
+        );
+        final Optional<SkillFailure> precondition =
+                crystalLane.preconditions(
+                        context,
+                        crystalLaneParameters
+                );
+        if (precondition.isPresent()) {
+            crystalLane = null;
+            crystalLaneParameters = null;
+            crystalLaneAttempts++;
+            return SkillTickResult.running(fresh, true);
+        }
+        crystalLane.start(context, crystalLaneParameters);
+        crystalLaneAttempts++;
+        crystalLaneScanTurns = 0;
+        phase = Phase.REPOSITIONING_CRYSTAL_LANE;
+        return SkillTickResult.running(true, true);
+    }
+
+    private SkillTickResult tickCrystalLane(
+            final SkillContext context,
+            final boolean fresh
+    ) {
+        if (crystalLane == null || crystalLaneParameters == null) {
+            phase = Phase.SEARCHING;
+            return SkillTickResult.running(true, true);
+        }
+        final SkillTickResult result = crystalLane.tick(
+                context,
+                crystalLaneParameters
+        );
+        if (result.status() == SkillTickResult.Status.COMPLETED) {
+            crystalLane = null;
+            crystalLaneParameters = null;
+            phase = Phase.SEARCHING;
+            scanTurns = 0;
+            crystalLaneScanTurns = 0;
+            nextActionTick = context.gameTick();
+            return SkillTickResult.running(true, true);
+        }
+        if (result.status() == SkillTickResult.Status.FAILED) {
+            crystalLane = null;
+            crystalLaneParameters = null;
+            phase = Phase.SEARCHING;
             nextActionTick = context.gameTick()
                     + SCAN_INTERVAL_TICKS;
             return SkillTickResult.running(true, true);
@@ -2243,6 +2556,22 @@ public final class FightEnderDragonSkill
                                         .distance()
                                     <= IMMEDIATE_DRAGON_DISTANCE
                 )
+                .min(Comparator.comparingDouble(index ->
+                        frame.visibleEntities().get(index).distance()
+                ));
+    }
+
+    private static Optional<Integer> nearestDragonIndex(
+            final CoreSkillFrame frame
+    ) {
+        return java.util.stream.IntStream.range(
+                        0,
+                        frame.visibleEntities().size()
+                )
+                .boxed()
+                .filter(index -> ENDER_DRAGON.equals(
+                        frame.visibleEntities().get(index).entityTypeId()
+                ))
                 .min(Comparator.comparingDouble(index ->
                         frame.visibleEntities().get(index).distance()
                 ));
@@ -2479,6 +2808,19 @@ public final class FightEnderDragonSkill
         );
     }
 
+    private static boolean projectileThreatensBody(
+            final VisibleEntity projectile
+    ) {
+        /*
+         * The fair sampler marks the companion's own arrows as visible but
+         * non-threatening. Older fixtures without this property remain
+         * conservative and are treated as threats.
+         */
+        return !"false".equals(
+                projectile.visibleProperties().get("projectileThreat")
+        );
+    }
+
     private static Optional<String> preferredMeleeWeapon(
             final CoreSkillFrame frame
     ) {
@@ -2665,7 +3007,30 @@ public final class FightEnderDragonSkill
                  */
                 || code.endsWith(".weapon_changed")
                 || code.endsWith(".crystal_too_close")
-                || code.endsWith(".target_out_of_reach");
+                || code.endsWith(".target_out_of_reach")
+                /*
+                 * A dragon part can move between the sampled observation
+                 * and the vanilla use packet.  Alignment, line-of-sight,
+                 * and use-start failures are therefore ordinary retryable
+                 * first-person races, not reasons to hand the whole fight
+                 * back to the language model.  Releasing the child below
+                 * always returns the skill to SEARCHING, where a fresh
+                 * observation must prove the next shot.
+                 */
+                || code.endsWith(".interaction_line_blocked")
+                || code.endsWith(".look_rejected")
+                || code.endsWith(".stop_rejected")
+                || code.endsWith(".use_start_rejected")
+                || code.endsWith(".use_interrupted")
+                || code.endsWith(".release_rejected")
+                /*
+                 * A dragon wing/contact pulse can raise the sampled danger
+                 * after the child has already begun aiming.  The emergency
+                 * supervisor owns the immediate retreat/guard response; the
+                 * dragon skill must reobserve and retry instead of ending
+                 * the entire victory goal on that one fair safety rejection.
+                 */
+                || code.endsWith(".danger_too_high");
     }
 
     private static boolean transientCageBreakFailure(
@@ -2713,6 +3078,15 @@ public final class FightEnderDragonSkill
             }
         }
         clearCrystalStandOffChild();
+        if (crystalLane != null && crystalLaneParameters != null) {
+            try {
+                crystalLane.cancel(context, crystalLaneParameters);
+            } catch (RuntimeException ignored) {
+                core.stop();
+            }
+        }
+        crystalLane = null;
+        crystalLaneParameters = null;
         if (cageBreak != null
                 && cageBreakParameters != null) {
             try {
@@ -2782,7 +3156,9 @@ public final class FightEnderDragonSkill
         IDLE,
         SEARCHING,
         SHOOTING,
+        RETREATING_DRAGON,
         REPOSITIONING_CRYSTAL,
+        REPOSITIONING_CRYSTAL_LANE,
         TRAVELLING,
         OPENING_CAGE,
         PREPARING_CAGE_TOWER,
@@ -2796,7 +3172,9 @@ public final class FightEnderDragonSkill
         private boolean active() {
             return this == SEARCHING
                     || this == SHOOTING
+                    || this == RETREATING_DRAGON
                     || this == REPOSITIONING_CRYSTAL
+                    || this == REPOSITIONING_CRYSTAL_LANE
                     || this == TRAVELLING
                     || this == OPENING_CAGE
                     || this == PREPARING_CAGE_TOWER

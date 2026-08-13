@@ -136,6 +136,90 @@ final class FightEnderDragonSkillTest {
     }
 
     @Test
+    void rangedTransitionRetreatIsBoundedToEightFreshInputs() {
+        final RecordingCore core = new RecordingCore();
+        final MutableFrames frames = new MutableFrames(
+                frameWithEntities(
+                        12,
+                        List.of(dragon(4.0)),
+                        List.of(),
+                        DIAMOND_SWORD,
+                        List.of()
+                )
+        );
+        final FightEnderDragonSkill skill = skill(
+                frames,
+                core,
+                new RecordingInteractions(),
+                new RecordingInventory()
+        );
+        final FightEnderDragonParameters parameters = parameters();
+
+        skill.start(context(1), parameters);
+        for (int attack = 0; attack < 24; attack++) {
+            final long tick = 2L + attack * 2L;
+            frames.set(frameWithEntities(
+                    13L + attack,
+                    List.of(dragon(4.0)),
+                    List.of(),
+                    DIAMOND_SWORD,
+                    List.of()
+            ));
+            skill.tick(context(tick), parameters);
+        }
+
+        /* The next search tick enters the first-person ranged retreat. */
+        frames.set(frameWithEntities(
+                40,
+                List.of(dragon(4.0)),
+                List.of(),
+                DIAMOND_SWORD,
+                List.of()
+        ));
+        skill.tick(context(50), parameters);
+        final int movesBeforeRetreat = core.moves;
+        for (int retreat = 0; retreat < 8; retreat++) {
+            frames.set(frameWithEntities(
+                    41L + retreat,
+                    List.of(dragon(4.0)),
+                    List.of(),
+                    DIAMOND_SWORD,
+                    List.of()
+            ));
+            skill.tick(context(51L + retreat), parameters);
+        }
+
+        assertEquals(
+                8,
+                core.movementIntents.stream()
+                        .skip(movesBeforeRetreat)
+                        .filter(intent -> intent.sprint()
+                                && (Math.abs(intent.forward()) > 1.0E-9
+                                || Math.abs(intent.strafeLeft()) > 1.0E-9))
+                        .count(),
+                () -> "movesBefore=" + movesBeforeRetreat
+                        + " intents=" + core.movementIntents
+        );
+        frames.set(frameWithEntities(
+                50,
+                List.of(dragon(4.0)),
+                List.of(),
+                DIAMOND_SWORD,
+                List.of()
+        ));
+        skill.tick(context(59), parameters);
+        assertEquals(
+                8,
+                core.movementIntents.stream()
+                        .skip(movesBeforeRetreat)
+                        .filter(intent -> intent.sprint()
+                                && (Math.abs(intent.forward()) > 1.0E-9
+                                || Math.abs(intent.strafeLeft()) > 1.0E-9))
+                        .count()
+        );
+    }
+
+    @Test
     void nearbyDragonTakesPriorityOverCageBarWhenUnderThreat() {
         final VisibleEntity blocked = crystal(14.0, false);
         final VisibleBlockFace bar = ironBar(
@@ -165,6 +249,38 @@ final class FightEnderDragonSkillTest {
         skill.start(context(1), parameters());
         skill.tick(context(2), parameters());
         assertEquals(List.of(DIAMOND_SWORD), inventory.equipped);
+    }
+
+    @Test
+    void clearCrystalTakesPriorityOverNearbyDragonWhenNoThreat() {
+        final VisibleEntity clear = crystal(14.0, true);
+        final RecordingCore core = new RecordingCore();
+        final RecordingInteractions interactions =
+                new RecordingInteractions();
+        final RecordingInventory inventory = new RecordingInventory();
+        final MutableFrames frames = new MutableFrames(
+                frameWithEntities(
+                        12,
+                        List.of(dragon(4.0), clear),
+                        List.of(),
+                        BOW,
+                        List.of()
+                )
+        );
+        final FightEnderDragonSkill skill = skill(
+                frames,
+                core,
+                interactions,
+                inventory
+        );
+
+        skill.start(context(1), parameters());
+        assertEquals(
+                SkillTickResult.Status.RUNNING,
+                skill.tick(context(2), parameters()).status()
+        );
+        assertEquals(0, interactions.attackCalls);
+        assertFalse(inventory.equipped.contains(DIAMOND_SWORD));
     }
 
     @Test
@@ -784,10 +900,64 @@ final class FightEnderDragonSkillTest {
                 null,
                 "shoot_observed_entity.weapon_changed"
         ));
+        assertTrue((boolean) method.invoke(
+                null,
+                "shoot_observed_entity.interaction_line_blocked"
+        ));
+        assertTrue((boolean) method.invoke(
+                null,
+                "shoot_observed_entity.use_start_rejected"
+        ));
+        assertTrue((boolean) method.invoke(
+                null,
+                "shoot_observed_entity.danger_too_high"
+        ));
         assertFalse((boolean) method.invoke(
                 null,
                 "shoot_observed_entity.item_unavailable"
         ));
+    }
+
+    @Test
+    void ownVisibleArrowDoesNotTriggerEmergencyDodge() throws Exception {
+        final var method = FightEnderDragonSkill.class
+                .getDeclaredMethod(
+                        "projectileThreatensBody",
+                        VisibleEntity.class
+                );
+        method.setAccessible(true);
+        final VisibleEntity ownArrow = new VisibleEntity(
+                UUID.fromString(
+                        "77000000-0000-0000-0000-000000000004"
+                ),
+                "minecraft:arrow",
+                new PerceptionVec3(0.5, 64.0, 1.0),
+                new PerceptionVec3(0.0, 0.0, 0.5),
+                0.5,
+                false,
+                true,
+                PerceptionProvenance.ENTITY_DISTANCE_FOV_AND_BLOCK_CLIP,
+                Map.of(
+                        "interactionLineClear", "true",
+                        "projectileThreat", "false"
+                )
+        );
+        final VisibleEntity legacyProjectile = new VisibleEntity(
+                UUID.fromString(
+                        "77000000-0000-0000-0000-000000000005"
+                ),
+                "minecraft:arrow",
+                new PerceptionVec3(0.5, 64.0, 1.0),
+                new PerceptionVec3(0.0, 0.0, 0.5),
+                0.5,
+                false,
+                true,
+                PerceptionProvenance.ENTITY_DISTANCE_FOV_AND_BLOCK_CLIP,
+                Map.of("interactionLineClear", "true")
+        );
+
+        assertFalse((boolean) method.invoke(null, ownArrow));
+        assertTrue((boolean) method.invoke(null, legacyProjectile));
     }
 
     private static FightEnderDragonSkill skill(
@@ -1054,11 +1224,16 @@ final class FightEnderDragonSkillTest {
                 new InventoryItemSummary(PICKAXE, 1),
                 new InventoryItemSummary(DIAMOND_SWORD, 1)
         );
-        final PerceptionVec3 lookTarget = visibleEntities.getFirst()
-                .position();
+        final VisibleEntity first = visibleEntities.getFirst();
+        final PerceptionVec3 lookTarget =
+                "minecraft:ender_dragon".equals(first.entityTypeId())
+                        ? first.position().add(
+                                new PerceptionVec3(0.0, 2.0, 0.0)
+                        )
+                        : first.position();
         return frame(
                 revision,
-                visibleEntities.getFirst(),
+                first,
                 faces,
                 mainHandItem,
                 inventory,
@@ -1211,6 +1386,8 @@ final class FightEnderDragonSkillTest {
             implements CoreSkillActuator {
         private final List<LookIntent> looks =
                 new ArrayList<>();
+        private final List<MovementIntent> movementIntents =
+                new ArrayList<>();
         private int moves;
         private int jumps;
 
@@ -1219,6 +1396,7 @@ final class FightEnderDragonSkillTest {
                 final MovementIntent intent
         ) {
             moves++;
+            movementIntents.add(intent);
             return ActionOutcome.DISPATCHED;
         }
 

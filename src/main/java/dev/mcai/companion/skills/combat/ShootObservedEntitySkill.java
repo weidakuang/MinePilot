@@ -243,7 +243,7 @@ public final class ShootObservedEntitySkill
                         "{\"phase\":\"%s\",\"sampleSequence\":%d,"
                                 + "\"observationId\":\"%s\","
                                 + "\"hand\":\"%s\",\"shots\":%d,"
-                                + "\"shotsDispatched\":%d,"
+                        + "\"shotsDispatched\":%d,"
                                 + "\"weapon\":\"%s\"}",
                         phase.name(),
                         parameters.sampleSequence(),
@@ -665,6 +665,12 @@ public final class ShootObservedEntitySkill
             }
             predicted = base.add(lead);
         }
+        /*
+         * The authored point is a fair collider point, but a bow still loses
+         * height under vanilla gravity before it reaches that point. Keep the
+         * bounded ballistic correction for multipart dragons as well; without
+         * it arrows consistently pass below the small tail/wing colliders.
+         */
         final double compensation = 0.5
                 * weapon.gravityPerTick()
                 * flightTicks

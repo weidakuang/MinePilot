@@ -4,6 +4,7 @@ import dev.mcai.companion.navigation.GridPos;
 import dev.mcai.companion.navigation.ObservedVoxel;
 import dev.mcai.companion.navigation.VoxelKind;
 import dev.mcai.companion.perception.PerceptionVec3;
+import dev.mcai.companion.perception.VisibleEntity;
 import dev.mcai.companion.skills.core.CoreSkillFrame;
 import dev.mcai.companion.skills.core.MoveToParameters;
 import java.util.Comparator;
@@ -24,7 +25,16 @@ final class EndCrystalStandOffPlanner {
     static final double MINIMUM_DESTINATION_DISTANCE = 13.25;
 
     private static final double MAXIMUM_RETREAT_DISTANCE = 10.0;
+    /*
+     * A dragon can occupy the whole direct ray to a crystal.  The ordinary
+     * explosion stand-off only needs a short retreat, but clearing a
+     * multipart body sometimes requires a wider lateral move.  Keep this
+     * bounded by the already observed navigation graph; it is not a world
+     * scan or a teleport.
+     */
+    private static final double MAXIMUM_FIRING_LANE_DISTANCE = 20.0;
     private static final double MINIMUM_DISTANCE_IMPROVEMENT = 0.75;
+    private static final double DRAGON_SHOT_OCCLUSION_RADIUS = 4.0;
 
     private EndCrystalStandOffPlanner() {
     }
@@ -133,6 +143,185 @@ final class EndCrystalStandOffPlanner {
                                 )
                         )
                         .thenComparing(Comparator.naturalOrder()));
+    }
+
+    /**
+     * Selects a nearby observed standing cell from which the crystal has a
+     * fair first-person firing lane. A crystal can be visually clear of
+     * blocks while a visible dragon body is physically between the bow and
+     * the crystal; normal arrows then strike the dragon first. This bounded
+     * planner moves only through already observed safe voxels and never
+     * searches the world for an unseen route.
+     */
+    static Optional<GridPos> selectFiringLane(
+            final CoreSkillFrame frame,
+            final PerceptionVec3 crystal,
+            final boolean hardcore
+    ) {
+        final GridPos current = frame.feet();
+        final PerceptionVec3 origin = frame.eyePosition();
+        final PerceptionVec3 aim = crystal.add(
+                new PerceptionVec3(0.0, 1.0, 0.0)
+        );
+        final double maximumDanger = hardcore ? 0.10 : 0.25;
+        return frame.navigation().observedVoxels().keySet().stream()
+                .filter(candidate ->
+                        Math.abs(candidate.y() - current.y()) <= 1
+                )
+                .filter(candidate ->
+                        horizontalDistance(
+                                center(current),
+                                center(candidate)
+                        ) <= MAXIMUM_FIRING_LANE_DISTANCE
+                )
+                .filter(candidate ->
+                        horizontalDistance(center(candidate), crystal)
+                                >= MINIMUM_FIRE_DISTANCE
+                )
+                .filter(candidate -> safeDryStanding(
+                        frame,
+                        candidate,
+                        maximumDanger
+                ))
+                .filter(candidate ->
+                        firingLaneClear(
+                                center(candidate).add(
+                                        new PerceptionVec3(0.0, 1.62, 0.0)
+                                ),
+                                aim,
+                                frame.visibleEntities(),
+                                crystal
+                        )
+                )
+                .min(Comparator
+                        .<GridPos>comparingDouble(candidate ->
+                                horizontalDistance(
+                                        center(current),
+                                        center(candidate)
+                                )
+                        )
+                        .thenComparing(Comparator
+                                .<GridPos>comparingDouble(candidate ->
+                                        horizontalDistance(
+                                                center(candidate),
+                                                crystal
+                                        )
+                                ).reversed()
+                        )
+                        .thenComparing(Comparator.naturalOrder())
+                );
+    }
+
+    static boolean dragonBlocksFiringLane(
+            final CoreSkillFrame frame,
+            final VisibleEntity crystal
+    ) {
+        final PerceptionVec3 origin = frame.eyePosition();
+        final PerceptionVec3 target = firingAimPoint(crystal);
+        return frame.visibleEntities().stream()
+                .filter(entity ->
+                        "minecraft:ender_dragon".equals(
+                                entity.entityTypeId()
+                        )
+                )
+                .anyMatch(entity ->
+                        segmentProjection(
+                                origin,
+                                target,
+                                entity.position()
+                        ) > 0.0
+                                && segmentProjection(
+                                        origin,
+                                        target,
+                                        entity.position()
+                                ) < 1.0
+                                && distanceToSegment(
+                                        origin,
+                                        target,
+                                        entity.position()
+                                ) <= DRAGON_SHOT_OCCLUSION_RADIUS
+                );
+    }
+
+    private static boolean firingLaneClear(
+            final PerceptionVec3 origin,
+            final PerceptionVec3 target,
+            final List<VisibleEntity> visible,
+            final PerceptionVec3 crystal
+    ) {
+        return visible.stream()
+                .filter(entity ->
+                        "minecraft:ender_dragon".equals(
+                                entity.entityTypeId()
+                        )
+                )
+                .filter(entity ->
+                        segmentProjection(origin, target, entity.position())
+                                > 0.0
+                                && segmentProjection(
+                                        origin,
+                                        target,
+                                        entity.position()
+                                ) < 1.0
+                )
+                .noneMatch(entity ->
+                        distanceToSegment(
+                                origin,
+                                target,
+                                entity.position()
+                        ) <= DRAGON_SHOT_OCCLUSION_RADIUS
+                );
+    }
+
+    private static PerceptionVec3 firingAimPoint(
+            final VisibleEntity crystal
+    ) {
+        try {
+            final double x = Double.parseDouble(
+                    crystal.visibleProperties().get("interactionAimX")
+            );
+            final double y = Double.parseDouble(
+                    crystal.visibleProperties().get("interactionAimY")
+            );
+            final double z = Double.parseDouble(
+                    crystal.visibleProperties().get("interactionAimZ")
+            );
+            if (Double.isFinite(x) && Double.isFinite(y)
+                    && Double.isFinite(z)) {
+                return new PerceptionVec3(x, y, z);
+            }
+        } catch (RuntimeException ignored) {
+            // Older observations may not carry an authored aim point.
+        }
+        return crystal.position().add(new PerceptionVec3(0.0, 1.0, 0.0));
+    }
+
+    private static double segmentProjection(
+            final PerceptionVec3 start,
+            final PerceptionVec3 end,
+            final PerceptionVec3 point
+    ) {
+        final PerceptionVec3 segment = end.subtract(start);
+        final double lengthSquared = segment.lengthSquared();
+        return lengthSquared <= 1.0E-12
+                ? 0.0
+                : point.subtract(start).dot(segment) / lengthSquared;
+    }
+
+    private static double distanceToSegment(
+            final PerceptionVec3 start,
+            final PerceptionVec3 end,
+            final PerceptionVec3 point
+    ) {
+        final PerceptionVec3 segment = end.subtract(start);
+        final double lengthSquared = segment.lengthSquared();
+        if (lengthSquared <= 1.0E-12) {
+            return point.subtract(start).length();
+        }
+        final double projection = point.subtract(start).dot(segment)
+                / lengthSquared;
+        final double clamped = Math.max(0.0, Math.min(1.0, projection));
+        return point.subtract(start.add(segment.scale(clamped))).length();
     }
 
     static boolean authorizesAggregateRisk(

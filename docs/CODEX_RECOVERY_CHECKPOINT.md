@@ -134,7 +134,9 @@ seed statistic.
 - Public repository: `https://github.com/weidakuang/MinePilot`.
 - Main backup commit before this work: `8ba8a554aa461f0ce2c09c3924d996cbe0854d82`.
 - Forge 65.x backup branch: `mc26.2-forge65`.
-- Local branch: `agent/minecraft-companion-0.1.9`.
-- Worktree: source and evidence changes are pending the preflight-before-commit
-  check; generated run directories remain ignored or disposable.
+- Local branch: `main`.
+- Local commit: `885d7c898461c829cc52683780c579e6817bd140`.
+- Public `main` was updated through the authorized GitHub connector at commit
+  `0a35efeec519cd0fa1a7bda1c25980d6973b0b16`; generated run directories remain
+  ignored or disposable.
 - API keys are process-only during live tests and are never written here.

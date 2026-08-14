@@ -21,8 +21,10 @@ Hardcore world or the rendered Actor/Observer protocol.
 
 All runs used Forge `65.1.1`, Minecraft `26.2`, and Java `25`. Each test ran
 one case and exited cleanly with `All 1 required tests passed`; the newest
-stronghold entry result is bound to the current dirty-worktree fixes and is
-not a release artifact until the commit and jar hash are frozen.
+stronghold entry result is frozen in local commit
+`885d7c898461c829cc52683780c579e6817bd140` and public `main` commit
+`0a35efeec519cd0fa1a7bda1c25980d6973b0b16`. It remains controlled evidence,
+not a release artifact.
 
 | Scenario | Model decision evidence | Vanilla-world evidence | Result |
 | --- | --- | --- | --- |

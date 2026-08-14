@@ -21,7 +21,7 @@ Hardcore world or the rendered Actor/Observer protocol.
 
 All runs used Forge `65.1.1`, Minecraft `26.2`, and Java `25`. Each passing
 test ran one case and exited cleanly with `All 1 required tests passed`; the
-newest movement, follow, defense, food, and delayed-login results are frozen
+newest movement, follow, defense, food, combat, and delayed-login results are frozen
 in the current validation commit and are being backed up to public `main`.
 They remain controlled evidence, not release artifacts.
 
@@ -30,6 +30,7 @@ They remain controlled evidence, not release artifacts.
 | `real_player_task_to_live_model_movement` | `START_SKILL(travel_to)` | The body walked from the fixture start to the requested point; no teleport or command was used. | PASS (controlled live slice) |
 | `real_player_task_to_live_model_follow` | `START_SKILL(follow_entity)` with an observed player target | The body survived the initial-anchor relogin and followed the moving course through ordinary player movement. | PASS (controlled live slice) |
 | `real_player_chat_to_surprise_zombie_defense` | `START_SKILL(engage_observed_entity)` after local damage/hostile observations | The emergency lane reacted before model completion and the body killed the visible zombie with normal combat actions. | PASS (controlled live slice) |
+| `real_player_task_to_live_model_zombie_defense` (fresh rerun) | The Chinese chat reached the server, the model returned `START_SKILL(engage_observed_entity)`, and SQLite recorded schema validation, revision acceptance, and skill start. | The body rejoined through the normal first-human anchor lifecycle, used its owned iron equipment, moved/attacked through the vanilla combat lane, and triggered `Monster Hunter`; the exact event chain ended in `low_level_actions_issued`. | PASS (18.80-second controlled live slice) |
 | `real_player_chat_to_critical_golden_apple` | `START_SKILL(consume_owned_food)` for `golden_apple` | The body consumed the owned item through the ordinary use path; the scenario also verified the follow-up food-decision integrity. | PASS (controlled live slice) |
 | `delayed_human_login_after_zero_human_active` | No model request; production zero-human startup and login lifecycle | The body became active before any human joined, then rejoined through the bounded initial-anchor lifecycle beside the later human without a gameplay teleport. | PASS (controlled physical GameTest) |
 | `real_player_task_to_live_model_end_victory_and_return` | `START_SKILL(fight_ender_dragon)` followed by `find_and_enter_observed_portal` | The body destroyed the observed End crystal/dragon, then entered the activated return portal with the same UUID after a first-human cross-dimension anchor guard. | PASS (2.183-minute controlled live slice) |

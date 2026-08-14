@@ -120,6 +120,17 @@ the model is waiting. A separate production zero-human startup GameTest passed
 the delayed first-human anchor lifecycle. These are controlled slices, not
 random-seed or rendered-client gates.
 
+A fresh real-model combat rerun also passed after the test fixture was corrected
+to log its embedded human beside the companion through the safe login path. The
+first attempt had placed that player at the world origin; the legitimate
+initial-anchor lifecycle removed the body before chat delivery, so that attempt
+was stopped and is retained as a failure. The corrected 18.80-second run used a
+Chinese chat command and recorded `conversation_task_accepted`, model HTTP 200,
+schema/revision acceptance, `skill_started` for
+`engage_observed_entity`, `low_level_actions_issued`, vanilla movement/attacks,
+and the `Monster Hunter` advancement. It remains a one-zombie controlled slice,
+not evidence for PVP, a hostile horde, Hardcore survival, or a random seed.
+
 ## Formal gate status
 
 ```text

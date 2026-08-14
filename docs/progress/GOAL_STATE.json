@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-14T05:34:51Z",
+  "updatedAtUtc": "2026-08-14T05:54:00Z",
   "sourceState": "COMMITTED_MAIN",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -92,6 +92,18 @@
       "runRoot": "run-live-zombie-defense-20260814",
       "formalGate": "NOT_RUN"
     },
+    "latestLiveCombat": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL engage_observed_entity",
+      "actions": "A Chinese player chat reached the server; the live model response was schema/revision accepted; the body rejoined through the initial-anchor lifecycle, used owned iron equipment, moved and attacked through the vanilla combat lane, and triggered Monster Hunter. SQLite recorded the causal chain through low_level_actions_issued.",
+      "runtimeSeconds": 18.80,
+      "fixtureConstraint": "One visible controlled Zombie and owned equipment; not a PVP, horde, Hardcore, random-seed, or M4 statistic.",
+      "runRoot": "run-live-zombie-20260814d",
+      "supersededFailure": "run-live-zombie-20260814c placed the embedded human at the world origin and was stopped before chat delivery; it is retained as a fixture failure, not a product pass.",
+      "formalGate": "NOT_RUN"
+    },
     "latestLiveGoldenApple": {
       "status": "PASS_CONTROLLED_LIVE_MODEL",
       "providerModel": "mimo-v2.5",
@@ -109,6 +121,14 @@
       "details": "With production zero-human auto-spawn enabled, the body became ACTIVE before any human joined and then completed the bounded initial-anchor remove/relogin beside the later human without a gameplay teleport.",
       "fixtureConstraint": "Embedded GameTest player and controlled world; no rendered client or Linux/Xvfb claim.",
       "runRoot": "run-delayed-login-20260814b",
+      "formalGate": "NOT_RUN"
+    },
+    "latestDelayedEmergencyAnchor": {
+      "status": "PASS_CONTROLLED_REAL_SERVER",
+      "forge": "65.1.1",
+      "details": "A first human joined while the unanchored body held emergency-survival ownership; the body stayed authoritative, deferred the initial anchor, and completed the normal relogin after the survival lane cleared.",
+      "fixtureConstraint": "Embedded GameTest lifecycle fixture; no rendered client or model claim.",
+      "runRoot": "run-delayed-emergency-20260814",
       "formalGate": "NOT_RUN"
     },
     "initialAnchorNoSafePlacementGuard": {
@@ -205,7 +225,7 @@
     }
   },
   "nextActions": [
-    "Preserve the live movement, follow, defense, food, and delayed-anchor evidence while extending the causal chain into End combat and return.",
+    "Preserve the live movement, follow, defense, food, combat, and delayed-anchor evidence while extending the causal chain into multi-hostile combat and End survival.",
     "Run the formal Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker.",
     "Keep missing infrastructure and unexecuted statistical gates explicitly marked NOT_RUN."
   ],

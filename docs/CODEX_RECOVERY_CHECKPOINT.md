@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-14T05:34:51Z
+Last updated: 2026-08-14T05:54:00Z
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -96,6 +96,19 @@ and golden-apple slices also pass on the patched line. The first movement run
 before this guard remains recorded as a genuine failure (`body did not return
 after initial-anchor relogin`), not silently upgraded.
 
+The first fresh live combat rerun exposed a test-fixture defect rather than a
+model or production combat result: the embedded test player was logged in at
+the vanilla world origin. That invalid login anchor caused the legitimate
+first-human lifecycle to remove the body before the chat packet reached the
+model, so the run was stopped and recorded as a failure. The combat fixture
+now logs the player in two blocks beside the live body through the normal
+`ServerPlayer` login path. The rerun passed with the supplied `mimo-v2.5`
+gateway in 18.80 seconds: Chinese chat acceptance, model response, schema and
+revision audit, `engage_observed_entity`, `skill_started`, low-level movement
+and attacks, and the vanilla `Monster Hunter` advancement were all observed.
+This remains a controlled one-zombie live slice, not a PVP, horde, Hardcore,
+random-seed, or M4 result.
+
 ## Changes in the current worktree
 
 - `FairPerceptionSampler`: multipart Ender Dragon samples begin at a collider
@@ -120,6 +133,9 @@ after initial-anchor relogin`), not silently upgraded.
 - `AiPlayerManager`: first-human initial anchoring preserves an active body
   across dimensions and retains a validated same-tick retry anchor; it never
   turns a gameplay portal transition into a hidden teleport.
+- `LiveModelChatGameTests`: the live combat fixture now creates its embedded
+  human at a safe position beside the companion, matching a real client login
+  and preventing the test from fabricating an invalid origin anchor.
 - `PortalSkillPolicy`: the default observed-portal approach distance now uses
   the full fair 16-block perception budget, while entry still requires a
   current first-person visible face and vanilla reach.
@@ -168,7 +184,9 @@ Live MiMo movement causal chain                  PASS (12.26-second real-time sl
 Live MiMo follow causal chain                    PASS (18.17-second real-time slice; START_SKILL follow_entity and vanilla move)
 Live MiMo surprise-zombie defense                PASS (14.27-second real-time slice; emergency combat before model completion)
 Live MiMo golden-apple consumption               PASS (15.26-second real-time slice; vanilla item-use consumption)
+Live MiMo Chinese combat task                    PASS (18.80-second real-time slice; engage_observed_entity, vanilla attack, Monster Hunter)
 Delayed first-human anchor lifecycle             PASS (production zero-human startup GameTest; no rendered-client claim)
+Delayed first-human anchor during emergency      PASS (Forge 65.1.1 production GameTest; deferred relogin after survival clears)
 Initial-anchor no-safe-placement guard           PASS (focused source contract and patched live movement slice)
 Live MiMo directionless-damage shield regression PASS (offline JUnit; real stronghold effectiveness NOT_PROVEN)
 Roof-jump physical recovery contract             PASS (no-model GameTest)
@@ -194,9 +212,10 @@ seed statistic.
    remaining production gate is fair dragon reacquisition plus survival under
    vanilla magic damage; the isolated End slice passes, but the full route
    still lacks a stronghold-to-return PASS.
-3. Run formal Actor/Observer and hidden-seed gates only on an authorized
-   Linux/Xvfb worker with the exact frozen jar. Keep missing infrastructure as
-   `NOT_RUN`.
+3. Add a bounded live multi-hostile combat slice after the single-zombie
+   chain is stable, then run formal Actor/Observer and hidden-seed gates only
+   on an authorized Linux/Xvfb worker with the exact frozen jar. Keep missing
+   infrastructure as `NOT_RUN`.
 
 ## Repository and release state
 

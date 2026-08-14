@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-14T06:04:00Z
+Last updated: 2026-08-14T06:18:00Z
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -123,6 +123,30 @@ test ended. The model lane returned a replan during the pressure window; the
 survival result is therefore evidence for emergency recovery plus a real
 model request, not a claim that the model alone cleared the encounter.
 
+The first bounded multi-hostile fixture exposed a harness anchoring defect:
+`run-live-horde-20260814j` left the six targets at their pre-login positions
+while the normal first-human anchor transaction moved the body, so the model
+correctly reported that no hostile was visible and selected a survey replan.
+The fixture now repositions those same entities around the authoritative body
+after the anchor transaction. `run-live-horde-20260814k` passed in 38.71
+seconds with the real `mimo-v2.5` gateway: the Chinese team request produced
+HTTP-200 `START_SKILL(engage_observed_entity)`, schema/revision acceptance,
+`skill_started`, and `low_level_actions_issued` in SQLite; the body moved,
+survived, and damaged at least three of six visible Zombies/Skeletons. This is
+a bounded six-mob live slice, not the formal ten-plus-ten PVP/horde, Hardcore,
+random-seed, or M4 protocol.
+
+The new live iron-golem duel was then attempted three times with the same
+real gateway. The first reached the bounded GameTest failure; the next two
+were stopped after reproducing the same causal symptom. All are retained as
+negative evidence: the model returned
+`START_SKILL(engage_observed_entity)` and SQLite recorded a vanilla
+`attack_entity` dispatch that damaged the golem, but the neutral golem did not
+complete a fair counterattack before the skill lost its target and the model
+entered repeated `REPLAN`. The fixture now records the NeutralMob anger target
+explicitly, but the live duel is still `NOT_PROVEN`; the existing no-model
+`real_emergency_iron_golem_duel` remains only a physical component baseline.
+
 ## Changes in the current worktree
 
 - `FairPerceptionSampler`: multipart Ender Dragon samples begin at a collider
@@ -157,6 +181,9 @@ model request, not a claim that the model alone cleared the encounter.
 - `EmergencySurvivalControllerTest`: regression coverage verifies the
   directional damage separation is issued on the second 20-TPS tick and uses
   a cautious vanilla movement input.
+- `LiveModelChatGameTests`: the bounded horde fixture now reanchors its six
+  existing hostile entities after the normal first-human login transaction, so
+  fair semantic visibility and damage assertions refer to the same body.
 - `PortalSkillPolicy`: the default observed-portal approach distance now uses
   the full fair 16-block perception budget, while entry still requires a
   current first-person visible face and vanilla reach.
@@ -212,6 +239,8 @@ Delayed first-human anchor during emergency      PASS (Forge 65.1.1 production G
 Initial-anchor no-safe-placement guard           PASS (focused source contract and patched live movement slice)
 Live MiMo directionless-damage shield regression PASS (offline JUnit; real stronghold effectiveness NOT_PROVEN)
 Live MiMo directional-damage separation         PASS (real 15.27-second slice; model request plus emergency recovery)
+Live MiMo bounded hostile group                  PASS (38.71-second slice; six visible mobs, model engage, >=3 damaged, body moved/alive)
+Live MiMo iron-golem duel attempts               FAIL (three bounded attempts; model attack/golem damage observed, no verified golem counterattack)
 Roof-jump physical recovery contract             PASS (no-model GameTest)
 Focused shelter-material/building JUnit tests    PASS
 Exact Forge 65.1.1 dedicated lifecycle smoke      PASS (real dedicated server; no functional claim)
@@ -235,10 +264,10 @@ seed statistic.
    remaining production gate is fair dragon reacquisition plus survival under
    vanilla magic damage; the isolated End slice passes, but the full route
    still lacks a stronghold-to-return PASS.
-3. Add a bounded live multi-hostile combat slice after the directional-damage
-   fix, then run formal Actor/Observer and hidden-seed gates only on an
-   authorized Linux/Xvfb worker with the exact frozen jar. Keep missing
-   infrastructure as `NOT_RUN`.
+3. Fix the neutral-golem retaliation/target-loss path, rerun the live duel,
+   then extend the protocol to ten Zombies plus ten Skeletons. Run formal
+   Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker
+   with the exact frozen jar. Keep missing infrastructure as `NOT_RUN`.
 
 ## Repository and release state
 
@@ -247,6 +276,6 @@ seed statistic.
 - Forge 65.x backup branch: `mc26.2-forge65`.
 - Local branch: `main`.
 - The previous validated combat-fixture commit is backed up to public `main`;
-  the directional-damage fix and its fresh evidence are the next backup.
+  the directional-damage fix and bounded horde evidence are the next backup.
   Generated run directories remain disposable and must not be staged.
 - API keys are process-only during live tests and are never written here.

@@ -3575,6 +3575,36 @@ public final class EmbodimentGameTests {
     }
 
     @GameTest(
+        name = "real_player_task_to_live_model_horde_defense",
+        environment = "exclusive_live_model_horde_combat",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 16
+    )
+    public static void realPlayerTaskToLiveModelHordeDefense(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelHordeDefense(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_iron_golem_duel",
+        environment = "exclusive_live_model_iron_golem_duel",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 16
+    )
+    public static void realPlayerTaskToLiveModelIronGolemDuel(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelIronGolemDuel(helper);
+    }
+
+    @GameTest(
         name = "real_player_chat_to_surprise_zombie_defense",
         environment = "exclusive_live_model_surprise_combat",
         structure = FOCUSED_TEST_STRUCTURE,

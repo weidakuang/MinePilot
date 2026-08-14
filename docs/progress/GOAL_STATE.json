@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-14T06:05:00Z",
+  "updatedAtUtc": "2026-08-14T06:20:00Z",
   "sourceState": "COMMITTED_MAIN",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -114,6 +114,29 @@
       "fixtureConstraint": "One visible controlled Zombie and owned equipment; not a PVP, horde, Hardcore, random-seed, or M4 statistic.",
       "runRoot": "run-live-zombie-20260814d",
       "supersededFailure": "run-live-zombie-20260814c placed the embedded human at the world origin and was stopped before chat delivery; it is retained as a fixture failure, not a product pass.",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveHordeDefense": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL engage_observed_entity",
+      "actions": "A Chinese team chat reached the server; HTTP-200 model response was schema/revision accepted; SQLite recorded skill_started and low_level_actions_issued; after the normal first-human anchor transaction, the body moved and stayed alive while at least three of six visible Zombies/Skeletons were damaged.",
+      "runtimeSeconds": 38.71,
+      "fixtureConstraint": "Six controlled visible mobs (three Zombies, three Skeletons), not the formal ten-plus-ten PVP/horde, Hardcore, random-seed, or M4 statistic.",
+      "runRoot": "run-live-horde-20260814k",
+      "supersededFailure": "run-live-horde-20260814j retained: stale target positions after first-human anchoring made the model correctly select survey; earlier g/i were missing test-resource registrations.",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveIronGolemDuel": {
+      "status": "NOT_PROVEN_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL engage_observed_entity",
+      "actions": "Three real-model attempts recorded schema/revision acceptance and an ordinary attack_entity dispatch that damaged the iron golem. The body moved, but no attempt recorded a verified incoming golem attack before target loss and repeated REPLAN.",
+      "attempts": 3,
+      "fixtureConstraint": "Controlled single iron golem; neutral-target retaliation and target-loss behavior remain under investigation. The no-model physical duel baseline is separate.",
+      "runRoot": "run/gametestserver (three bounded attempts)",
       "formalGate": "NOT_RUN"
     },
     "latestLiveGoldenApple": {
@@ -230,14 +253,14 @@
     },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
-      "details": "Full offline Gradle clean build, JUnit suite, verifyReleaseJar, compatibility checker, 61 Python E2E tests, public documentation English-only scan, and staged preflight passed after the directional-damage recovery fix. Real movement, follow, combat, food, surprise-defense, and delayed-login slices also passed; formal gates remain NOT_RUN.",
+      "details": "Full offline Gradle clean build, JUnit suite, verifyReleaseJar, compatibility checker, 61 Python E2E tests, public documentation English-only scan, and staged preflight passed after the bounded horde fixture and directional-damage recovery fixes. Real movement, follow, combat, food, surprise-defense, delayed-login, and six-mob horde slices also passed; formal gates remain NOT_RUN.",
       "artifact": "build/libs/mcai_companion-0.1.10-dev-mc26.2.jar",
       "sha256": "f1de2fae25281dff7f55b8f65893b545f6bb13b61458f88877210508ebdddb01",
       "formalGate": "NOT_RUN"
     }
   },
   "nextActions": [
-    "Preserve the live movement, follow, defense, food, combat, directional-damage, and delayed-anchor evidence while extending the causal chain into multi-hostile combat and End survival.",
+    "Preserve the live movement, follow, defense, food, combat, directional-damage, delayed-anchor, six-mob horde, and iron-golem negative evidence while repairing neutral retaliation and extending the causal chain into ten-plus-ten combat and End survival.",
     "Run the formal Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker.",
     "Keep missing infrastructure and unexecuted statistical gates explicitly marked NOT_RUN."
   ],

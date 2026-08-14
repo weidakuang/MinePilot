@@ -144,6 +144,24 @@ body survived, reacquired and attacked the Zombie through vanilla, and earned
 this is evidence for model request plus local emergency recovery, not a claim
 that the model alone cleared a hostile encounter.
 
+The bounded multi-hostile rerun `run-live-horde-20260814k` passed in 38.71
+seconds with real `mimo-v2.5` on Forge 65.1.1. After the normal first-human
+anchor transaction, the fixture reanchored the same three Zombies and three
+Skeletons around the authoritative body. A Chinese team request produced
+HTTP-200 `START_SKILL(engage_observed_entity)` and the full SQLite causal chain;
+the body moved, stayed alive, and damaged at least three of six targets through
+vanilla combat. The earlier `run-live-horde-20260814j` stale-target placement
+failure remains recorded. This is bounded evidence, not the formal ten-plus-ten
+PVP/horde, Hardcore, random-seed, or M4 result.
+
+The first live iron-golem duel attempts are retained as negative evidence.
+Three real-model attempts returned HTTP-200 `START_SKILL(engage_observed_entity)`
+and SQLite recorded an ordinary `attack_entity` dispatch that damaged the
+golem, but no run recorded a golem counterattack before target loss and
+repeated `REPLAN`. The fixture now assigns the vanilla NeutralMob persistent
+anger target explicitly; this remains an open retaliation/target-loss issue,
+not a passing duel or a professional-PVP claim.
+
 ## Formal gate status
 
 ```text
@@ -173,8 +191,8 @@ does not satisfy the causal audit.
 2. Keep regression coverage for observed target points, portal reach limits,
    projectile lead, dragon-part reacquisition, and bounded retry behavior
    without direct world mutation.
-3. Extend the controlled live causal chain to natural-world progression and
-   add a multi-hostile live combat slice after the directional-damage fix.
+3. Repair the neutral-golem retaliation/target-loss path, rerun the live duel,
+   and then add the ten-Zombie/ten-Skeleton combat protocol.
 4. Run the formal Actor/Observer and hidden-seed protocols only on an authorized
    Linux/Xvfb worker with the exact frozen jar; retain `NOT_RUN` when unavailable.
 

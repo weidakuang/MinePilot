@@ -28,6 +28,8 @@ e2e/results
 run-debug*/
 run-debug*.log
 run-live-*/
+run-delayed-*/
+run-offline-*/
 run-patch-matrix/
 
 # Local credentials and generated companion state

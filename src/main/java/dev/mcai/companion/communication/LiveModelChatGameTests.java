@@ -4439,6 +4439,13 @@ public final class LiveModelChatGameTests {
                             && iron.getAttackAnimationTick() > 0)) {
                 bodyWasHit = true;
             }
+            if (golemActivated && golem.isAlive()) {
+                // Keep the authored vanilla duel target stable while the
+                // body reacquires the target through ordinary perception.
+                golem.setTarget(body);
+                golem.setLastHurtByMob(body);
+                golem.setAggressive(true);
+            }
             final boolean damaged = golem != null
                     && (golem.isRemoved()
                             || !golem.isAlive()

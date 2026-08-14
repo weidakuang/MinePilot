@@ -146,6 +146,9 @@ complete a fair counterattack before the skill lost its target and the model
 entered repeated `REPLAN`. The fixture now records the NeutralMob anger target
 explicitly, but the live duel is still `NOT_PROVEN`; the existing no-model
 `real_emergency_iron_golem_duel` remains only a physical component baseline.
+The latest fixture refinement also reasserts that same vanilla target each
+server tick; it still needs a fresh authorized live run before any status can
+change.
 
 ## Changes in the current worktree
 
@@ -184,6 +187,9 @@ explicitly, but the live duel is still `NOT_PROVEN`; the existing no-model
 - `LiveModelChatGameTests`: the bounded horde fixture now reanchors its six
   existing hostile entities after the normal first-human login transaction, so
   fair semantic visibility and damage assertions refer to the same body.
+- `LiveModelChatGameTests`: the live golem diagnostic keeps the explicitly
+  authorized NeutralMob target bound during the duel window; this is a
+  test-only diagnostic refinement and has not been promoted to a pass.
 - `PortalSkillPolicy`: the default observed-portal approach distance now uses
   the full fair 16-block perception budget, while entry still requires a
   current first-person visible face and vanilla reach.

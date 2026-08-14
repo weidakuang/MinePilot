@@ -160,7 +160,9 @@ and SQLite recorded an ordinary `attack_entity` dispatch that damaged the
 golem, but no run recorded a golem counterattack before target loss and
 repeated `REPLAN`. The fixture now assigns the vanilla NeutralMob persistent
 anger target explicitly; this remains an open retaliation/target-loss issue,
-not a passing duel or a professional-PVP claim.
+not a passing duel or a professional-PVP claim. The diagnostic fixture now
+reasserts that target each server tick; it still requires a fresh authorized
+live run after this refinement.
 
 ## Formal gate status
 

@@ -92,7 +92,9 @@ prove the model can select the explicit golem combat skill and dispatch a
 vanilla attack, but they do not prove a duel: the neutral target moved out of
 the bounded observation/skill window without a recorded counterattack. The
 fixture's explicit persistent-anger target assignment is not yet sufficient;
-the target-loss and retaliation path remains an open production investigation.
+the latest test-only refinement reasserts that same target each server tick,
+but the target-loss and retaliation path remains an open production
+investigation and needs a fresh authorized live run.
 
 ## What this proves
 

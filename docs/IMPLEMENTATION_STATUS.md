@@ -144,25 +144,36 @@ body survived, reacquired and attacked the Zombie through vanilla, and earned
 this is evidence for model request plus local emergency recovery, not a claim
 that the model alone cleared a hostile encounter.
 
-The bounded multi-hostile rerun `run-live-horde-20260814k` passed in 38.71
-seconds with real `mimo-v2.5` on Forge 65.1.1. After the normal first-human
-anchor transaction, the fixture reanchored the same three Zombies and three
-Skeletons around the authoritative body. A Chinese team request produced
-HTTP-200 `START_SKILL(engage_observed_entity)` and the full SQLite causal chain;
-the body moved, stayed alive, and damaged at least three of six targets through
-vanilla combat. The earlier `run-live-horde-20260814j` stale-target placement
-failure remains recorded. This is bounded evidence, not the formal ten-plus-ten
-PVP/horde, Hardcore, random-seed, or M4 result.
+The clean bounded multi-hostile rerun passed in 40.14 seconds with real
+`mimo-v2.5` on Forge 65.1.1. After the normal first-human anchor transaction,
+the fixture recreated the same three Zombies and three Skeletons around the
+authoritative body and began damage attribution only when the model-selected
+skill was genuinely `RUNNING`. The Chinese team request first caused a model
+replan, then produced HTTP-200 `START_SKILL(engage_observed_entity)` and the
+full SQLite causal chain; four of six authored targets were damaged, the body
+moved, and body health remained full. Earlier stale-target, ambient-mob, and
+pre-start attribution runs remain superseded evidence. This is bounded
+evidence, not the formal Hardcore, random-seed, or M4 result.
 
-The first live iron-golem duel attempts are retained as negative evidence.
-Three real-model attempts returned HTTP-200 `START_SKILL(engage_observed_entity)`
-and SQLite recorded an ordinary `attack_entity` dispatch that damaged the
-golem, but no run recorded a golem counterattack before target loss and
-repeated `REPLAN`. The fixture now assigns the vanilla NeutralMob persistent
-anger target explicitly; this remains an open retaliation/target-loss issue,
-not a passing duel or a professional-PVP claim. The diagnostic fixture now
-reasserts that target each server tick; it still requires a fresh authorized
-live run after this refinement.
+The requested ten-Zombie/ten-Skeleton extension now also passes as a real
+MiMo causal slice in 39.19 seconds. The fixture recreates twenty authored
+targets after the body relogin, requires `engage_observed_entity` to enter
+`RUNNING`, and counts only target health loss against a post-start baseline.
+SQLite recorded `skill_started` and `low_level_actions_issued`; sixteen of
+twenty targets were damaged after the skill entered `RUNNING` (the fixture
+threshold is ten), the body moved, and body health remained full. This is
+controlled multi-hostile evidence, not human PVP, Hardcore, random-seed, or
+M4 evidence.
+
+The first three live iron-golem duel attempts remain negative evidence: the
+real model selected `START_SKILL(engage_observed_entity)` and damaged the golem,
+but the body did not receive a verified incoming attack. The root cause was in
+the fixture, which inherited stale creative/invulnerability abilities. The
+latest authorized MiMo run (12.21 seconds) now clears those abilities and
+asserts genuine survival before chat; it passed model response validation,
+vanilla attack dispatch, body movement, golem damage, a real golem attack, and
+body survival. This is a controlled neutral-mob slice, not a human PVP or
+Hardcore claim.
 
 ## Formal gate status
 
@@ -193,8 +204,8 @@ does not satisfy the causal audit.
 2. Keep regression coverage for observed target points, portal reach limits,
    projectile lead, dragon-part reacquisition, and bounded retry behavior
    without direct world mutation.
-3. Repair the neutral-golem retaliation/target-loss path, rerun the live duel,
-   and then add the ten-Zombie/ten-Skeleton combat protocol.
+3. Preserve the six-mob and ten-plus-ten causal fixtures while extending the
+   same fair evidence into full End survival and recovery scenarios.
 4. Run the formal Actor/Observer and hidden-seed protocols only on an authorized
    Linux/Xvfb worker with the exact frozen jar; retain `NOT_RUN` when unavailable.
 

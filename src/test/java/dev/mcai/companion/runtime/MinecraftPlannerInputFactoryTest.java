@@ -2609,6 +2609,53 @@ final class MinecraftPlannerInputFactoryTest {
         ));
     }
 
+    @Test
+    void explicitCombatGoalReceivesHostileOnlyTargetPlaybook() {
+        final var input = new MinecraftPlannerInputFactory(
+                new SkillRegistry().register(
+                        "engage_observed_entity",
+                        noArgumentSkill()
+                ),
+                "guide"
+        ).create(
+                "request-combat-playbook",
+                new GoalSnapshot(
+                        Optional.empty(),
+                        4L,
+                        GoalStatus.RUNNING,
+                        GoalSource.PLAYER_CHAT,
+                        "请保护我，击退面前的僵尸和骷髅",
+                        "",
+                        java.time.Instant.EPOCH,
+                        false
+                ),
+                new BrainObservation(
+                        9L,
+                        new SkillContext(4L, 9L, 20L, false, true, 0.0),
+                        "{}",
+                        """
+                        {
+                          "sampleSequence": 7,
+                          "visibleEntities": [
+                            {"observationId":"visible-0", "type":"minecraft:item", "hostile":false},
+                            {"observationId":"visible-1", "type":"minecraft:zombie", "hostile":true}
+                          ]
+                        }
+                        """
+                )
+        );
+
+        assertTrue(input.systemPrompt().contains(
+                "TRUSTED_IMMEDIATE_COMBAT_PLAYBOOK"
+        ));
+        assertTrue(input.systemPrompt().contains(
+                "Never select minecraft:item"
+        ));
+        assertTrue(input.systemPrompt().contains(
+                "return START_SKILL immediately"
+        ));
+    }
+
     private static String completionRuntime(final String objective) {
         final String objectives = objective.isEmpty()
                 ? "[]"

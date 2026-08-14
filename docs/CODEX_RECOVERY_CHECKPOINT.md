@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-14T06:18:00Z
+Last updated: 2026-08-14T07:55:00Z
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -128,27 +128,40 @@ The first bounded multi-hostile fixture exposed a harness anchoring defect:
 while the normal first-human anchor transaction moved the body, so the model
 correctly reported that no hostile was visible and selected a survey replan.
 The fixture now repositions those same entities around the authoritative body
-after the anchor transaction. `run-live-horde-20260814k` passed in 38.71
-seconds with the real `mimo-v2.5` gateway: the Chinese team request produced
-HTTP-200 `START_SKILL(engage_observed_entity)`, schema/revision acceptance,
-`skill_started`, and `low_level_actions_issued` in SQLite; the body moved,
-survived, and damaged at least three of six visible Zombies/Skeletons. This is
-a bounded six-mob live slice, not the formal ten-plus-ten PVP/horde, Hardcore,
+after the anchor transaction. The latest rerun recreates the authored targets
+after the replacement body is stable, discards ambient entities, requires the
+model skill to be genuinely `RUNNING`, and starts target-health attribution at
+that causal edge. The Chinese team request first produced a bounded model
+replan, then HTTP-200 `START_SKILL(engage_observed_entity)`,
+schema/revision acceptance, `skill_started`, and
+`low_level_actions_issued` in SQLite; the server log recorded four of six
+authored targets damaged, body movement, and full body health. The latest
+clean run passed in 40.14 seconds. This is not a human PVP, Hardcore,
 random-seed, or M4 protocol.
 
-The new live iron-golem duel was then attempted three times with the same
-real gateway. The first reached the bounded GameTest failure; the next two
-were stopped after reproducing the same causal symptom. All are retained as
-negative evidence: the model returned
-`START_SKILL(engage_observed_entity)` and SQLite recorded a vanilla
-`attack_entity` dispatch that damaged the golem, but the neutral golem did not
-complete a fair counterattack before the skill lost its target and the model
-entered repeated `REPLAN`. The fixture now records the NeutralMob anger target
-explicitly, but the live duel is still `NOT_PROVEN`; the existing no-model
-`real_emergency_iron_golem_duel` remains only a physical component baseline.
-The latest fixture refinement also reasserts that same vanilla target each
-server tick; it still needs a fresh authorized live run before any status can
-change.
+The ten-plus-ten extension initially exposed two test-only attribution defects:
+target death flags and local/ambient damage were counted before a model skill
+started, and the first-human relogin could unload the authored mobs. The
+fixture now recreates ten Zombies and ten Skeletons after the body relogin,
+requires `engage_observed_entity` to enter `RUNNING`, and compares health only
+against a post-start baseline. The latest real `mimo-v2.5` run passed in 39.19
+seconds: SQLite recorded the full model-to-skill-to-action chain, sixteen of
+twenty authored targets were damaged (the fixture threshold is ten), the body
+moved, and body health stayed full. A previous 38.28-second run damaged all
+twenty and remains retained controlled evidence.
+This remains a controlled multi-hostile slice, not human PVP, Hardcore,
+random-seed, or M4 evidence.
+
+The first three live iron-golem attempts remain negative evidence: the model
+returned `START_SKILL(engage_observed_entity)` and SQLite recorded a vanilla
+`attack_entity` dispatch that damaged the golem, but the body did not receive
+a verified incoming attack. The root cause was stale creative/invulnerability
+state inherited by the test body, not a model decision. The latest authorized
+run clears those abilities and asserts genuine survival before chat. It
+passed in 12.21 seconds: HTTP-200 schema/revision acceptance, skill start,
+vanilla attack dispatch, body movement, golem damage, a real golem attack, and
+body survival. This is a controlled neutral-mob slice, not a human PVP or
+Hardcore result.
 
 ## Changes in the current worktree
 
@@ -187,9 +200,26 @@ change.
 - `LiveModelChatGameTests`: the bounded horde fixture now reanchors its six
   existing hostile entities after the normal first-human login transaction, so
   fair semantic visibility and damage assertions refer to the same body.
-- `LiveModelChatGameTests`: the live golem diagnostic keeps the explicitly
-  authorized NeutralMob target bound during the duel window; this is a
-  test-only diagnostic refinement and has not been promoted to a pass.
+- `LiveModelChatGameTests`: the live golem and horde fixtures now force
+  survival mode, clear invulnerability and stale creative abilities, and fail
+  closed unless the body is genuinely damageable before the model request.
+- `LiveModelChatGameTests`: the multi-hostile fixtures recreate authored
+  targets after the normal first-human body relogin, require the combat skill
+  to be `RUNNING`, and attribute damage only against a post-start health
+  baseline. This prevents speech-only, ambient, and target-death flags from
+  becoming false combat passes.
+- `MinecraftPlannerInputFactory`: explicit combat goals now receive a compact
+  hostile-only target playbook that forbids selecting dropped items or passive
+  entities and requires immediate `START_SKILL` when a legal hostile is in the
+  current fair frame.
+- `EngageObservedEntitySkill`: the fair target gate accepts canonical vanilla
+  hostile types even when a derived hostile bit is absent, while continuing to
+  reject passive mobs, projectiles, and dropped items.
+- `LiveModelHordeFixtureSourceContractTest` and planner/combat unit tests:
+  regression coverage for the ten-plus-ten registration, hostile-only prompt,
+  canonical hostile validation, and post-start damage attribution.
+- `EmbodimentGameTests`: the physical neutral-golem regression now exercises
+  the same delayed `NoAI` to vanilla-AI target activation lifecycle.
 - `PortalSkillPolicy`: the default observed-portal approach distance now uses
   the full fair 16-block perception budget, while entry still requires a
   current first-person visible face and vanilla reach.
@@ -245,8 +275,9 @@ Delayed first-human anchor during emergency      PASS (Forge 65.1.1 production G
 Initial-anchor no-safe-placement guard           PASS (focused source contract and patched live movement slice)
 Live MiMo directionless-damage shield regression PASS (offline JUnit; real stronghold effectiveness NOT_PROVEN)
 Live MiMo directional-damage separation         PASS (real 15.27-second slice; model request plus emergency recovery)
-Live MiMo bounded hostile group                  PASS (38.71-second slice; six visible mobs, model engage, >=3 damaged, body moved/alive)
-Live MiMo iron-golem duel attempts               FAIL (three bounded attempts; model attack/golem damage observed, no verified golem counterattack)
+Live MiMo bounded hostile group                  PASS (40.14-second slice; six visible mobs, model engage RUNNING, 4 damaged, body moved/alive)
+Live MiMo ten-plus-ten hostile group             PASS (39.19-second slice; 20 visible mobs, model engage RUNNING, 16 damaged, body moved/alive; threshold 10)
+Live MiMo iron-golem duel                         PASS (12.21-second bounded slice; model engage, vanilla attack, golem damage, verified incoming golem attack, body survival)
 Roof-jump physical recovery contract             PASS (no-model GameTest)
 Focused shelter-material/building JUnit tests    PASS
 Exact Forge 65.1.1 dedicated lifecycle smoke      PASS (real dedicated server; no functional claim)
@@ -270,8 +301,8 @@ seed statistic.
    remaining production gate is fair dragon reacquisition plus survival under
    vanilla magic damage; the isolated End slice passes, but the full route
    still lacks a stronghold-to-return PASS.
-3. Fix the neutral-golem retaliation/target-loss path, rerun the live duel,
-   then extend the protocol to ten Zombies plus ten Skeletons. Run formal
+3. Preserve the six-mob and ten-plus-ten causal protocols while extending the
+   same fair evidence into full End survival and recovery. Run formal
    Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker
    with the exact frozen jar. Keep missing infrastructure as `NOT_RUN`.
 

@@ -87,6 +87,7 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
@@ -1209,6 +1210,7 @@ public final class EmbodimentGameTests {
         final AtomicReference<Float> targetInitialHealth =
                 new AtomicReference<>();
         final AtomicInteger evidence = new AtomicInteger();
+        final AtomicBoolean targetActivated = new AtomicBoolean();
 
         helper.addCleanup(ignored -> {
             final Mob current = target.get();
@@ -1354,11 +1356,15 @@ public final class EmbodimentGameTests {
                                 center.getZ() + 0.5D
                         );
                         golem.setPersistenceRequired();
+                        // Match the live-model fixture lifecycle: the mob is
+                        // staged without AI, then receives an ordinary
+                        // vanilla target on the following server tick.
+                        golem.setNoAi(true);
                         helper.assertTrue(
                                 level.addFreshEntity(golem),
                                 "Could not add physical iron golem"
                         );
-                        golem.setTarget(body);
+                        golem.setTarget(null);
                         target.set(golem);
                         targetInitialHealth.set(golem.getHealth());
                         body.lookAt(
@@ -1378,6 +1384,19 @@ public final class EmbodimentGameTests {
                             .onlinePlayer(server)
                             .orElseThrow();
                     final Mob golem = target.get();
+                    if (!targetActivated.get()) {
+                        golem.setNoAi(false);
+                        golem.setTarget(body);
+                        golem.setLastHurtByMob(body);
+                        golem.setAggressive(true);
+                        if (golem instanceof net.minecraft.world.entity.NeutralMob neutral) {
+                            neutral.setPersistentAngerTarget(
+                                    net.minecraft.world.entity.EntityReference.of(body)
+                            );
+                            neutral.startPersistentAngerTimer();
+                        }
+                        targetActivated.set(true);
+                    }
                     helper.assertTrue(
                             body.isAlive() && !body.isDeadOrDying(),
                             "Iron-golem duel killed the companion: health="
@@ -3587,6 +3606,21 @@ public final class EmbodimentGameTests {
     ) {
         LiveModelChatGameTests
                 .realPlayerTaskToLiveModelHordeDefense(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_ten_plus_ten_horde",
+        environment = "exclusive_live_model_ten_plus_ten_horde",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 900_000,
+        skyAccess = true,
+        padding = 20
+    )
+    public static void realPlayerTaskToLiveModelTenPlusTenHorde(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelTenPlusTenHorde(helper);
     }
 
     @GameTest(

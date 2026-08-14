@@ -2322,6 +2322,29 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                 TRUSTED_IMMEDIATE_FOLLOW_PLAYBOOK_END
                 """;
         }
+        if (isExplicitCombatGoal(goal.goal())) {
+            return """
+                TRUSTED_IMMEDIATE_COMBAT_PLAYBOOK
+                This is an explicit physical combat request, not a request
+                for a verbal acknowledgement. Use only the current
+                first-person semantic visibleEntities list. To start
+                engage_observed_entity, copy the exact observationId and
+                sampleSequence from an entry whose hostile field is true, or
+                whose type is a canonical hostile such as
+                minecraft:zombie, minecraft:skeleton, minecraft:iron_golem
+                for an explicit duel, or minecraft:player for an explicit
+                player fight. Never select minecraft:item, an item property,
+                a dropped stack, a passive animal, a projectile, or an entry
+                that is not currently visible. If a hostile entry is present,
+                return START_SKILL immediately with complete arguments and no
+                speech-only CONTINUE/REPLAN. If no legal hostile entry is in
+                the current frame, request one SEMANTIC_REFRESH; do not claim
+                that guarding, moving, blocking, or attacking has happened.
+                The local skill owns vanilla reach, cooldown, shield timing,
+                retreat, and fair target revalidation.
+                TRUSTED_IMMEDIATE_COMBAT_PLAYBOOK_END
+                """;
+        }
         if (isImmediateXaeroWaypointGoal(goal.goal())) {
             return """
                 TRUSTED_IMMEDIATE_XAERO_WAYPOINT_PLAYBOOK
@@ -2683,6 +2706,28 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
             request SEMANTIC_REFRESH or survey/explore instead of guessing.
             TRUSTED_FOUNDATION_ROUTE_PLAYBOOK_END
             """;
+    }
+
+    private static boolean isExplicitCombatGoal(final String goal) {
+        final String text = Objects.requireNonNullElse(goal, "")
+                .toLowerCase(Locale.ROOT);
+        return text.contains("protect")
+                || text.contains("attack")
+                || text.contains("fight")
+                || text.contains("kill")
+                || text.contains("defend")
+                || text.contains("combat")
+                || text.contains("zombie")
+                || text.contains("skeleton")
+                || text.contains("golem")
+                || text.contains("僵尸")
+                || text.contains("骷髅")
+                || text.contains("铁傀儡")
+                || text.contains("保护")
+                || text.contains("攻击")
+                || text.contains("战斗")
+                || text.contains("击退")
+                || text.contains("击杀");
     }
 
     private static String completionRoutePlaybook(

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-14T06:20:00Z",
+  "updatedAtUtc": "2026-08-14T07:52:00Z",
   "sourceState": "COMMITTED_MAIN",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -121,22 +121,40 @@
       "providerModel": "mimo-v2.5",
       "forge": "65.1.1",
       "decision": "START_SKILL engage_observed_entity",
-      "actions": "A Chinese team chat reached the server; HTTP-200 model response was schema/revision accepted; SQLite recorded skill_started and low_level_actions_issued; after the normal first-human anchor transaction, the body moved and stayed alive while at least three of six visible Zombies/Skeletons were damaged.",
-      "runtimeSeconds": 38.71,
+      "actions": "A Chinese team chat reached the server; the first model response replanned, then HTTP-200 START_SKILL output passed schema/revision validation; SQLite recorded skill_started and low_level_actions_issued. After the normal first-human anchor transaction, the clean authored six-target arena produced four damaged Zombies/Skeletons, body movement, and full body health.",
+      "runtimeSeconds": 40.14,
       "fixtureConstraint": "Six controlled visible mobs (three Zombies, three Skeletons), not the formal ten-plus-ten PVP/horde, Hardcore, random-seed, or M4 statistic.",
-      "runRoot": "run-live-horde-20260814k",
-      "supersededFailure": "run-live-horde-20260814j retained: stale target positions after first-human anchoring made the model correctly select survey; earlier g/i were missing test-resource registrations.",
+      "runRoot": "run/gametestserver (latest authorized live run)",
+      "supersededFailure": "The earlier 45.39-second clean run is retained; the latest rerun uses the same causal attribution after the target recreation fix and passed with four of six targets damaged. Earlier ambient/slime and stale-anchor runs remain negative evidence.",
       "formalGate": "NOT_RUN"
     },
-    "latestLiveIronGolemDuel": {
-      "status": "NOT_PROVEN_CONTROLLED_LIVE_MODEL",
+    "latestLiveTenPlusTenHorde": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
       "providerModel": "mimo-v2.5",
       "forge": "65.1.1",
       "decision": "START_SKILL engage_observed_entity",
-      "actions": "Three real-model attempts recorded schema/revision acceptance and an ordinary attack_entity dispatch that damaged the iron golem. The body moved, but no attempt recorded a verified incoming golem attack before target loss and repeated REPLAN.",
-      "attempts": 3,
-      "fixtureConstraint": "Controlled single iron golem; neutral-target retaliation and target-loss behavior remain under investigation. The no-model physical duel baseline is separate.",
-      "runRoot": "run/gametestserver (three bounded attempts)",
+      "actions": "A Chinese request to protect the player from ten Zombies and ten Skeletons reached the real model; HTTP-200 output passed schema/revision validation, SQLite recorded skill_started and low_level_actions_issued, and the causal evidence counted 16 of 20 authored targets damaged after the skill entered RUNNING. The body moved and remained at full health; the fixture threshold is 10 damaged targets.",
+      "runtimeSeconds": 39.19,
+      "fixtureConstraint": "Twenty controlled visible mobs (ten Zombies, ten Skeletons), owned iron equipment, and a bounded arena; not human PVP, Hardcore, random-seed, or M4 evidence.",
+      "runRoot": "run/gametestserver (latest authorized live run)",
+      "supersededFailures": [
+        "The previous 38.28-second rerun counted all 20 authored targets and remains valid controlled evidence, but it is not the latest measurement.",
+        "Earlier runs counted target death flags or ambient damage before model skill start and are explicitly superseded.",
+        "A pre-recreation run lost all authored targets during the first-human body relogin and correctly failed with no visible hostile evidence."
+      ],
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveIronGolemDuel": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL engage_observed_entity",
+      "actions": "A Chinese player request reached the real model; HTTP-200 output passed schema and revision validation, selected engage_observed_entity, and started the vanilla skill. SQLite recorded low_level_actions_issued attack_entity. The fixture enforced genuine survival abilities; the body moved, damaged the golem, received a real golem attack while surviving, and the GameTest passed.",
+      "runtimeSeconds": 12.21,
+      "attempts": 1,
+      "fixtureConstraint": "One controlled visible iron golem with owned iron equipment; not PVP against a human, Hardcore, random-seed, ten-plus-ten horde, or M4 statistic.",
+      "runRoot": "run/gametestserver (latest authorized live run)",
+      "supersededFailure": "Three earlier authorized attempts remain negative evidence: the body moved and damaged the golem but no incoming golem attack was observed. The root fixture defect was stale creative/invulnerability state, not a model success.",
       "formalGate": "NOT_RUN"
     },
     "latestLiveGoldenApple": {
@@ -255,12 +273,12 @@
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "Full offline Gradle clean build, JUnit suite, verifyReleaseJar, compatibility checker, 61 Python E2E tests, public documentation English-only scan, and staged preflight passed after the bounded horde fixture and directional-damage recovery fixes. Real movement, follow, combat, food, surprise-defense, delayed-login, and six-mob horde slices also passed; formal gates remain NOT_RUN.",
       "artifact": "build/libs/mcai_companion-0.1.10-dev-mc26.2.jar",
-      "sha256": "f1de2fae25281dff7f55b8f65893b545f6bb13b61458f88877210508ebdddb01",
+      "sha256": "c62a9db20f5d864179f48e501d26f0a4cf505fdfeac28d4963964552123a60af",
       "formalGate": "NOT_RUN"
     }
   },
   "nextActions": [
-    "Preserve the live movement, follow, defense, food, combat, directional-damage, delayed-anchor, six-mob horde, and iron-golem negative evidence while repairing neutral retaliation and extending the causal chain into ten-plus-ten combat and End survival.",
+    "Preserve the live movement, follow, defense, food, combat, directional-damage, delayed-anchor, clean six-mob horde, verified iron-golem, and ten-plus-ten evidence while extending the causal chain into End survival.",
     "Run the formal Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker.",
     "Keep missing infrastructure and unexecuted statistical gates explicitly marked NOT_RUN."
   ],

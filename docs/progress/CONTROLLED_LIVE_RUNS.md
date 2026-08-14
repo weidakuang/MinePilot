@@ -32,8 +32,9 @@ They remain controlled evidence, not release artifacts.
 | `real_player_chat_to_surprise_zombie_defense` | `START_SKILL(engage_observed_entity)` after local damage/hostile observations | The emergency lane reacted before model completion and the body killed the visible zombie with normal combat actions. | PASS (controlled live slice) |
 | `real_player_chat_to_surprise_zombie_defense` (directional-damage regression) | The real model issued a gameplay replan while the local survival lane remained active. | The first run killed the body while it only scanned; after the fix, a fair directional damage cue caused a bounded sneak separation, the body reacquired the Zombie, attacked through vanilla, survived, and triggered `Monster Hunter`. | PASS after fix (15.27-second controlled live slice; first run retained as FAIL) |
 | `real_player_task_to_live_model_zombie_defense` (fresh rerun) | The Chinese chat reached the server, the model returned `START_SKILL(engage_observed_entity)`, and SQLite recorded schema validation, revision acceptance, and skill start. | The body rejoined through the normal first-human anchor lifecycle, used its owned iron equipment, moved/attacked through the vanilla combat lane, and triggered `Monster Hunter`; the exact event chain ended in `low_level_actions_issued`. | PASS (18.80-second controlled live slice) |
-| `real_player_task_to_live_model_horde_defense` | The Chinese team request reached the real `mimo-v2.5` gateway and returned HTTP-200 `START_SKILL(engage_observed_entity)`; SQLite recorded schema validation, revision acceptance, skill start, and low-level action issuance. | After the normal first-human anchor transaction, the fixture reanchored the same six visible targets around the authoritative body; the body moved, stayed alive, and damaged at least three Zombies/Skeletons through vanilla combat. | PASS (38.71-second bounded six-mob live slice; first stale-anchor fixture failure retained) |
-| `real_player_task_to_live_model_iron_golem_duel` | Three real-model attempts returned HTTP-200 `START_SKILL(engage_observed_entity)`; SQLite recorded schema/revision acceptance and an ordinary `attack_entity` dispatch that damaged the golem. | The body moved, but the neutral golem did not produce a verified counterattack before the skill lost its target and subsequent model rounds returned `REPLAN`. | NOT_PROVEN (first attempt reached GameTest failure; two reproductions stopped after the same symptom) |
+| `real_player_task_to_live_model_horde_defense` | The Chinese team request reached the real `mimo-v2.5` gateway; the first response replanned, then HTTP-200 `START_SKILL(engage_observed_entity)` passed schema/revision validation. SQLite recorded skill start and low-level action issuance. | After the normal first-human anchor transaction, the fixture recreated the authored targets after the body relogin and counted only health loss after the skill entered `RUNNING`; four of six Zombies/Skeletons were damaged, the body moved, and body health remained full. | PASS (40.14-second bounded six-mob live slice; earlier stale-anchor, ambient-mob, and target-attribution runs retained) |
+| `real_player_task_to_live_model_ten_plus_ten_horde` | The Chinese request to protect the player from ten Zombies and ten Skeletons reached the real gateway; HTTP-200 `START_SKILL(engage_observed_entity)` passed schema/revision validation. SQLite recorded `skill_started` and `low_level_actions_issued(action=move)`. | The bounded arena recreated twenty authored targets after the body relogin; only damage after the model skill entered `RUNNING` counted. Sixteen of twenty targets were damaged, exceeding the fixture threshold of ten; the body moved and body health remained full. | PASS (39.19-second bounded twenty-mob live slice; not human PVP, Hardcore, random-seed, or M4 evidence) |
+| `real_player_task_to_live_model_iron_golem_duel` | The latest authorized run returned HTTP-200 `START_SKILL(engage_observed_entity)`; SQLite recorded schema/revision acceptance, `skill_started`, and `low_level_actions_issued(action=attack_entity)`. | The fixture explicitly enforced survival abilities and cleared stale invulnerability; the body moved, damaged the golem, received a real golem attack, and remained alive. | PASS (12.21-second controlled live slice; three earlier stale-ability attempts retained as negative evidence) |
 | `real_player_chat_to_critical_golden_apple` | `START_SKILL(consume_owned_food)` for `golden_apple` | The body consumed the owned item through the ordinary use path; the scenario also verified the follow-up food-decision integrity. | PASS (controlled live slice) |
 | `delayed_human_login_after_zero_human_active` | No model request; production zero-human startup and login lifecycle | The body became active before any human joined, then rejoined through the bounded initial-anchor lifecycle beside the later human without a gameplay teleport. | PASS (controlled physical GameTest) |
 | `real_player_task_to_live_model_end_victory_and_return` | `START_SKILL(fight_ender_dragon)` followed by `find_and_enter_observed_portal` | The body destroyed the observed End crystal/dragon, then entered the activated return portal with the same UUID after a first-human cross-dimension anchor guard. | PASS (2.183-minute controlled live slice) |
@@ -82,19 +83,34 @@ The first horde fixture (`run-live-horde-20260814j`) is retained as a harness
 failure: the initial-anchor relogin moved the body but the six targets remained
 at their old coordinates, so the model correctly selected a survey replan.
 The corrected `run-live-horde-20260814k` repositions those same entities after
-the login transaction and passes the bounded six-mob assertion. Earlier
+the login transaction and passes the bounded six-mob assertion, but its model
+speech referenced an unrelated ambient slime. The latest rerun recreates the
+authored targets after the body relogin and starts damage attribution only at
+the accepted `RUNNING` skill edge. It records four of six target entities
+damaged, body movement, and full body health, passing in 40.14 seconds. Earlier
 `run-live-horde-20260814g` and `run-live-horde-20260814i` stopped before a test
 could run because the new Forge test-instance/environment resources had not
 yet been registered; they are registration failures, not product evidence.
 
-The live iron-golem attempts are also retained as negative evidence. They
-prove the model can select the explicit golem combat skill and dispatch a
-vanilla attack, but they do not prove a duel: the neutral target moved out of
-the bounded observation/skill window without a recorded counterattack. The
-fixture's explicit persistent-anger target assignment is not yet sufficient;
-the latest test-only refinement reasserts that same target each server tick,
-but the target-loss and retaliation path remains an open production
-investigation and needs a fresh authorized live run.
+The ten-plus-ten fixture initially exposed two false-positive paths: target
+death flags and ambient/local damage were counted before a model skill had
+started, and the first-human relogin could unload the authored mob instances.
+The fixture now recreates the twenty targets before chat submission, requires
+`engage_observed_entity` to be genuinely `RUNNING`, and compares target health
+against a post-start baseline. A previous real MiMo run passed in 38.28 seconds
+with all twenty authored Zombies/Skeletons damaged. The latest authorized rerun
+passed in 39.19 seconds with sixteen of twenty targets damaged, body movement,
+and full health; the fixture requires at least ten damaged targets. This is a
+controlled twenty-mob causal slice, not a human PVP or random-world statistic.
+
+The first three live iron-golem attempts are retained as negative evidence.
+They proved that the model could select the explicit golem combat skill and
+dispatch a vanilla attack, but the body was not receiving a verified incoming
+attack because the fixture inherited stale creative/invulnerability state.
+The latest run clears those abilities, asserts genuine survival before chat,
+and passes the full bounded duel assertion: model-selected skill, body
+movement, golem damage, a real golem attack, and body survival. This is still
+one controlled neutral-mob slice, not a human PVP or Hardcore result.
 
 ## What this proves
 
@@ -106,11 +122,13 @@ separation before another model round trip. They prove that the
 current implementation can carry a real model decision through the local
 safety/skill lanes into observable vanilla actions in bounded fixtures. The
 delayed-login result is a production lifecycle check, not a model claim.
-The horde result adds one bounded multi-hostile causal slice: six visible mobs,
-one model-selected combat skill, at least three damaged targets, body movement,
-and survival. It is not a ten-plus-ten PVP test or a random-world statistic.
-The iron-golem attempts are deliberately excluded from the passing set because
-they lacked a verified incoming golem attack.
+The horde results add two bounded multi-hostile causal slices: six visible mobs
+with four damaged targets, and twenty visible mobs with sixteen damaged targets
+in the latest rerun (a previous run damaged all twenty), each after a
+model-selected combat skill entered `RUNNING`; both include body movement and
+survival. They are not human PVP tests or random-world statistics.
+The passing iron-golem slice adds one neutral-mob exchange with verified
+incoming damage; it is not a human PVP claim.
 
 The stronghold run specifically proves that portal activation is not treated
 as a hidden state mutation: every eye is selected from a current first-person

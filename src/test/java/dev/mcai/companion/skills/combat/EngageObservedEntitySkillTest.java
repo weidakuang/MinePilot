@@ -624,6 +624,43 @@ final class EngageObservedEntitySkillTest {
                         )
                 ).orElseThrow().code()
         );
+
+        VisibleEntity canonicalZombie = CombatSkillTestFixtures.entity(
+                TARGET_ID,
+                "minecraft:zombie",
+                2.5,
+                false,
+                false
+        );
+        var zombieCoreFrames =
+                new CombatSkillTestFixtures.MutableCoreFrames(
+                        coreFrame(
+                                SEQUENCE,
+                                20.0F,
+                                lookToward(canonicalZombie),
+                                List.of(canonicalZombie),
+                                false
+                        )
+                );
+        var zombieInteractionFrames =
+                new CombatSkillTestFixtures.MutableInteractionFrames(
+                        interactionFrame(
+                                SEQUENCE,
+                                List.of(canonicalZombie),
+                                false
+                        )
+                );
+        EngageObservedEntitySkill canonicalZombieSkill = skill(
+                new CombatSkillTestFixtures.RecordingCoreActuator(),
+                zombieCoreFrames,
+                new CombatSkillTestFixtures.RecordingInteractionActuator(),
+                zombieInteractionFrames,
+                CombatSkillPolicy.defaults()
+        );
+        assertTrue(canonicalZombieSkill.preconditions(
+                context(1, false),
+                parameters()
+        ).isEmpty());
     }
 
     private static EngageObservedEntitySkill skill(

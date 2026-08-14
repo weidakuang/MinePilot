@@ -791,6 +791,14 @@ public final class EngageObservedEntitySkill
         final VisibleEntity originallyObserved =
                 observedInteraction.visibleEntities().get(index);
         if (!authorizedTarget(originallyObserved)) {
+            dev.mcai.companion.MinecraftAiCompanion.LOGGER.info(
+                    "Fair combat target rejected: type={}, hostile={}, "
+                            + "projectile={}, provenance={}",
+                    originallyObserved.entityTypeId(),
+                    originallyObserved.hostile(),
+                    originallyObserved.projectile(),
+                    originallyObserved.provenance()
+            );
             return Resolution.failed(NAME + ".unsafe_target");
         }
 
@@ -1015,6 +1023,7 @@ public final class EngageObservedEntitySkill
         Objects.requireNonNull(target, "target");
         return !target.projectile()
                 && (target.hostile()
+                || knownVanillaHostileType(target.entityTypeId())
                 || "minecraft:player".equals(target.entityTypeId())
                 /*
                  * Iron golems are neutral until provoked, so they do not
@@ -1025,6 +1034,54 @@ public final class EngageObservedEntitySkill
                  * turn a village guardian into an automatic target.
                  */
                 || "minecraft:iron_golem".equals(target.entityTypeId()));
+    }
+
+    /**
+     * Keep the fair target gate resilient to a sampler that omits the derived
+     * hostile bit for a canonical vanilla monster. The type is already part
+     * of the first-person sample; this bounded allow-list does not enumerate
+     * entities or broaden the target to arbitrary neutral/passive mobs.
+     */
+    private static boolean knownVanillaHostileType(
+            final String entityTypeId
+    ) {
+        return switch (entityTypeId) {
+            case "minecraft:blaze",
+                    "minecraft:cave_spider",
+                    "minecraft:creeper",
+                    "minecraft:drowned",
+                    "minecraft:elder_guardian",
+                    "minecraft:ender_dragon",
+                    "minecraft:enderman",
+                    "minecraft:endermite",
+                    "minecraft:evoker",
+                    "minecraft:ghast",
+                    "minecraft:guardian",
+                    "minecraft:hoglin",
+                    "minecraft:husk",
+                    "minecraft:magma_cube",
+                    "minecraft:phantom",
+                    "minecraft:piglin_brute",
+                    "minecraft:pillager",
+                    "minecraft:ravager",
+                    "minecraft:shulker",
+                    "minecraft:silverfish",
+                    "minecraft:skeleton",
+                    "minecraft:slime",
+                    "minecraft:spider",
+                    "minecraft:stray",
+                    "minecraft:vex",
+                    "minecraft:vindicator",
+                    "minecraft:warden",
+                    "minecraft:witch",
+                    "minecraft:wither",
+                    "minecraft:wither_skeleton",
+                    "minecraft:zoglin",
+                    "minecraft:zombie",
+                    "minecraft:zombie_villager",
+                    "minecraft:zombified_piglin" -> true;
+            default -> false;
+        };
     }
 
     private boolean authorizedTarget(final VisibleEntity target) {

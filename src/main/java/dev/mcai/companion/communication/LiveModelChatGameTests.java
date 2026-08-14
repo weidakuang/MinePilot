@@ -48,9 +48,14 @@ import dev.mcai.companion.waypoint.DimensionRef;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -111,6 +116,8 @@ public final class LiveModelChatGameTests {
     private static final int BODY_TIMEOUT_TICKS = 3_000;
     private static final long MODEL_TIMEOUT_NANOS =
             java.time.Duration.ofSeconds(120).toNanos();
+    private static final long HORDE_MODEL_TIMEOUT_NANOS =
+            java.time.Duration.ofSeconds(45).toNanos();
     private static final long FOUNDATION_TOOLKIT_TIMEOUT_NANOS =
             java.time.Duration.ofMinutes(6).toNanos();
 
@@ -480,6 +487,41 @@ public final class LiveModelChatGameTests {
                 ));
         final LiveHordeCombatScenario scenario =
                 new LiveHordeCombatScenario(helper, runtime);
+        helper.addCleanup(ignored -> scenario.cleanup());
+        scenario.start();
+        helper.onEachTick(scenario::tick);
+    }
+
+    /**
+     * Extends the same fair live-model combat path to the requested ten
+     * Zombies plus ten Skeletons.  The assertion is intentionally bounded to
+     * target damage, movement and survival; it is not a claim that one
+     * unenchanted body clears every twenty-mob encounter in a natural world.
+     */
+    public static void realPlayerTaskToLiveModelTenPlusTenHorde(
+            final GameTestHelper helper
+    ) {
+        if (!Boolean.getBoolean("mcai.liveModelTest")) {
+            helper.succeed();
+            return;
+        }
+        final ServerRuntime runtime = CompanionRuntime.active()
+                .filter(candidate ->
+                        candidate.server()
+                                == helper.getLevel().getServer())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Companion runtime is unavailable"
+                ));
+        final LiveHordeCombatScenario scenario =
+                new LiveHordeCombatScenario(
+                        helper,
+                        runtime,
+                        20,
+                        10,
+                        7.0D,
+                        "请马上保护我，击退面前的十个僵尸和十个骷髅，"
+                                + "不要只回复，要移动、格挡并攻击。"
+                );
         helper.addCleanup(ignored -> scenario.cleanup());
         scenario.start();
         helper.onEachTick(scenario::tick);
@@ -4418,7 +4460,8 @@ public final class LiveModelChatGameTests {
                 bodyWasHit = true;
             }
             final var skill = runtime.skillSupervisor().snapshot();
-            if ("engage_observed_entity".equals(skill.skillName())) {
+            if ("engage_observed_entity".equals(skill.skillName())
+                    && skill.state() == SkillSupervisor.State.RUNNING) {
                 sawCombatSkill = true;
                 if (!golemActivated) {
                     golemActivated = true;
@@ -4455,6 +4498,21 @@ public final class LiveModelChatGameTests {
             if (sawCombatSkill && golemActivated && damaged && moved
                     && bodyWasHit
                     && helper.getTick() - stageStartedTick >= 120L) {
+                dev.mcai.companion.MinecraftAiCompanion.LOGGER.info(
+                        "Live iron-golem duel evidence: modelSkill={}, "
+                                + "bodyHealth={}, golemHealth={}, "
+                                + "golemAttackAnimationTick={}, moved={}, "
+                                + "bodyWasHit={}, damaged={}",
+                        skill.skillName(),
+                        body.getHealth(),
+                        golem.getHealth(),
+                        golem instanceof net.minecraft.world.entity.animal.golem.IronGolem iron
+                                ? iron.getAttackAnimationTick()
+                                : -1,
+                        moved,
+                        bodyWasHit,
+                        damaged
+                );
                 stage = GolemStage.DONE;
                 helper.succeed();
                 return;
@@ -4488,6 +4546,23 @@ public final class LiveModelChatGameTests {
                     }
                 }
             }
+            // GameTest servers may default newly logged-in players to
+            // creative, and persisted player abilities can outlive an older
+            // fixture.  A live combat claim is invalid unless the body is a
+            // genuine vanilla survival player that can take and deal damage.
+            body.setGameMode(GameType.SURVIVAL);
+            body.getAbilities().invulnerable = false;
+            body.setInvulnerable(false);
+            body.invulnerableTime = 0;
+            helper.assertTrue(
+                    body.gameMode.getGameModeForPlayer()
+                            == GameType.SURVIVAL
+                        && !body.getAbilities().instabuild
+                        && !body.getAbilities().flying
+                        && !body.getAbilities().mayfly
+                        && !body.getAbilities().invulnerable,
+                    "Live-golem fixture did not enter genuine survival mode"
+            );
             body.getInventory().clearContent();
             body.setItemSlot(EquipmentSlot.HEAD, ItemStack.EMPTY);
             body.setItemSlot(EquipmentSlot.CHEST, ItemStack.EMPTY);
@@ -4624,7 +4699,6 @@ public final class LiveModelChatGameTests {
     }
 
     private static final class LiveHordeCombatScenario {
-        private static final int TARGET_COUNT = 6;
         private static final long EQUIPMENT_TIMEOUT_NANOS =
                 java.time.Duration.ofSeconds(15).toNanos();
         private static final long OBSERVATION_TIMEOUT_NANOS =
@@ -4632,8 +4706,14 @@ public final class LiveModelChatGameTests {
 
         private final GameTestHelper helper;
         private final ServerRuntime runtime;
+        private final int targetCount;
+        private final int minimumDamagedTargets;
+        private final double targetRadius;
+        private final String requestMessage;
         private final long createdAt;
         private final List<Mob> targets = new ArrayList<>();
+        private final Map<UUID, Float> targetBaselineHealth = new HashMap<>();
+        private final Set<UUID> damagedTargetIds = new HashSet<>();
         private HordeStage stage = HordeStage.BODY;
         private CompletableFuture<CapabilityProbeOutcome> probe;
         private PlacedHuman humanSession;
@@ -4643,6 +4723,10 @@ public final class LiveModelChatGameTests {
         private long stageStartedNanos;
         private boolean hostilesActivated;
         private boolean sawCombatSkill;
+        private long modelCombatStartTick = -1L;
+        private String lastModelCombatSkill = "";
+        private final Map<UUID, Float> combatStartHealth = new HashMap<>();
+        private boolean combatObservationLogged;
         private boolean targetsReanchored;
         private Vec3 bodyStart;
 
@@ -4650,8 +4734,51 @@ public final class LiveModelChatGameTests {
                 final GameTestHelper helper,
                 final ServerRuntime runtime
         ) {
+            this(
+                    helper,
+                    runtime,
+                    6,
+                    3,
+                    4.5D,
+                    "请马上保护我，击退你面前所有的僵尸和骷髅，"
+                            + "不要只回复，要移动、格挡并攻击。"
+            );
+        }
+
+        private LiveHordeCombatScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime,
+                final int targetCount,
+                final int minimumDamagedTargets,
+                final double targetRadius,
+                final String requestMessage
+        ) {
             this.helper = helper;
             this.runtime = runtime;
+            if (targetCount < 2 || targetCount % 2 != 0) {
+                throw new IllegalArgumentException(
+                        "targetCount must be a positive even number"
+                );
+            }
+            if (minimumDamagedTargets < 1
+                    || minimumDamagedTargets > targetCount) {
+                throw new IllegalArgumentException(
+                        "minimumDamagedTargets must be in target range"
+                );
+            }
+            if (!(targetRadius > 0.0D)
+                    || !Double.isFinite(targetRadius)) {
+                throw new IllegalArgumentException(
+                        "targetRadius must be finite and positive"
+                );
+            }
+            this.targetCount = targetCount;
+            this.minimumDamagedTargets = minimumDamagedTargets;
+            this.targetRadius = targetRadius;
+            this.requestMessage = Objects.requireNonNull(
+                    requestMessage,
+                    "requestMessage"
+            );
             createdAt = helper.getTick();
             stageStartedTick = createdAt;
             stageStartedNanos = System.nanoTime();
@@ -4758,6 +4885,14 @@ public final class LiveModelChatGameTests {
                 );
                 return;
             }
+            captureTargetBaseline();
+            dev.mcai.companion.MinecraftAiCompanion.LOGGER.info(
+                    "Live horde authored target baseline: targetCount={}, "
+                            + "health={}, visibleEntities={}",
+                    targets.size(),
+                    targetBaselineHealth,
+                    visibleEntityTypes()
+            );
             bodyBeforeHumanLogin = body;
             humanSession = PlacedHuman.create(
                     helper,
@@ -4782,7 +4917,31 @@ public final class LiveModelChatGameTests {
                 return;
             }
             if (!targetsReanchored) {
+                /*
+                 * A real PlayerList login can force the headless body through
+                 * its remove/relogin lifecycle.  On a GameTest server that
+                 * transition may unload the authored mob instances together
+                 * with the old player ticket.  Recreate the bounded authored
+                 * group only after the replacement body is stable, still
+                 * before the chat command is submitted.  This keeps the
+                 * causal test honest without relying on a hidden target or a
+                 * post-command world mutation.
+                 */
+                targets.forEach(target -> {
+                    if (target != null && !target.isRemoved()) {
+                        target.discard();
+                    }
+                });
+                targets.clear();
+                spawnTargets(current.orElseThrow());
                 reanchorTargets(current.orElseThrow());
+                captureTargetBaseline();
+                runtime.observations().requestObservation(
+                        new RequestedObservation(
+                                ObservationKind.SEMANTIC_REFRESH,
+                                "horde_reanchor"
+                        )
+                );
                 targetsReanchored = true;
             }
             bodyStart = current.orElseThrow().position();
@@ -4798,8 +4957,7 @@ public final class LiveModelChatGameTests {
                     .onServerChatSubmittedEvent(
                             human,
                             Component.literal(
-                                    "请马上保护我，击退你面前所有的僵尸和骷髅，"
-                                        + "不要只回复，要移动、格挡并攻击。"
+                                    requestMessage
                             )
                     );
             helper.assertTrue(
@@ -4822,10 +4980,40 @@ public final class LiveModelChatGameTests {
                             + ", survival=" + runtime.survival().state()
             );
             final var skill = runtime.skillSupervisor().snapshot();
-            if ("engage_observed_entity".equals(skill.skillName())) {
+            if (!combatObservationLogged) {
+                combatObservationLogged = true;
+                dev.mcai.companion.MinecraftAiCompanion.LOGGER.info(
+                        "Live horde combat observation after chat: "
+                                + "visibleEntities={}, targets={}, supervisor={}",
+                        visibleEntityTypes(),
+                        targetDiagnostic(body),
+                        skill
+                );
+            }
+            /*
+             * A requested skill name is not evidence that the local skill
+             * actually started: a stale/invalid observation can be rejected
+             * before the supervisor enters RUNNING.  Keep the authored
+             * hostile AI frozen until the accepted RUNNING edge, otherwise
+             * vanilla target damage can make a speech-only model response
+             * look like combat.
+             */
+            if ("engage_observed_entity".equals(skill.skillName())
+                    && skill.state() == SkillSupervisor.State.RUNNING) {
                 sawCombatSkill = true;
+                lastModelCombatSkill = skill.skillName();
                 if (!hostilesActivated) {
                     hostilesActivated = true;
+                    modelCombatStartTick = helper.getTick();
+                    combatStartHealth.clear();
+                    for (Mob target : targets) {
+                        if (!target.isRemoved() && target.isAlive()) {
+                            combatStartHealth.put(
+                                    target.getUUID(),
+                                    target.getHealth()
+                            );
+                        }
+                    }
                     for (Mob target : targets) {
                         if (!target.isRemoved() && target.isAlive()) {
                             target.setNoAi(false);
@@ -4834,19 +5022,25 @@ public final class LiveModelChatGameTests {
                     }
                 }
             }
-            final long damagedTargets = targets.stream()
-                    .filter(target -> target.isRemoved()
-                            || !target.isAlive()
-                            || target.getHealth()
-                                < target.getMaxHealth() - 0.1F)
-                    .count();
+            updateDamageEvidence();
+            final long damagedTargets = damagedTargetIds.size();
             final boolean moved = bodyStart != null
                     && body.position().distanceTo(bodyStart) >= 0.25D;
             if (sawCombatSkill
                     && hostilesActivated
-                    && damagedTargets >= 3
+                    && damagedTargets >= minimumDamagedTargets
                     && moved
                     && helper.getTick() - stageStartedTick >= 120L) {
+                dev.mcai.companion.MinecraftAiCompanion.LOGGER.info(
+                        "Live horde evidence: modelSkill={}, "
+                                + "damagedTargets={}, targetCount={}, "
+                                + "moved={}, bodyHealth={}",
+                        lastModelCombatSkill,
+                        damagedTargets,
+                        targets.size(),
+                        moved,
+                        body.getHealth()
+                );
                 stage = HordeStage.DONE;
                 helper.succeed();
                 return;
@@ -4855,11 +5049,92 @@ public final class LiveModelChatGameTests {
                     "Live-horde combat produced insufficient evidence: "
                             + "damagedTargets=" + damagedTargets
                             + ", moved=" + moved
-                            + ", modelSkill=" + skill.skillName()
+                            + ", modelSkill=" + lastModelCombatSkill
+                            + ", modelCombatStartTick="
+                            + modelCombatStartTick
                             + ", lastStartRejection="
-                            + skill.lastStartRejection(),
-                    MODEL_TIMEOUT_NANOS
+                            + skill.lastStartRejection()
+                            + ", targetBaseline=" + targetBaselineHealth
+                            + ", damagedTargetIds=" + damagedTargetIds,
+                    HORDE_MODEL_TIMEOUT_NANOS
             );
+        }
+
+        private void captureTargetBaseline() {
+            targetBaselineHealth.clear();
+            damagedTargetIds.clear();
+            for (Mob target : targets) {
+                if (!target.isRemoved() && target.isAlive()) {
+                    target.setHealth(target.getMaxHealth());
+                    targetBaselineHealth.put(
+                            target.getUUID(),
+                            target.getMaxHealth()
+                    );
+                }
+            }
+            helper.assertTrue(
+                    targetBaselineHealth.size() == targets.size(),
+                    "Live-horde target baseline was not fully initialized: "
+                            + targetBaselineHealth
+            );
+        }
+
+        private void updateDamageEvidence() {
+            if (!hostilesActivated) {
+                return;
+            }
+            for (Mob target : targets) {
+                Float baseline = combatStartHealth.get(target.getUUID());
+                if (baseline == null) {
+                    continue;
+                }
+                if (target.getHealth() < baseline - 0.1F) {
+                    damagedTargetIds.add(target.getUUID());
+                }
+            }
+        }
+
+        private String visibleEntityTypes() {
+            Optional<String> semantic = runtime.observations()
+                    .latestSemanticJson();
+            if (semantic.isEmpty()) {
+                return "unavailable";
+            }
+            try {
+                var visible = JsonParser.parseString(semantic.orElseThrow())
+                        .getAsJsonObject()
+                        .getAsJsonArray("visibleEntities");
+                if (visible == null) {
+                    return "none";
+                }
+                List<String> types = new ArrayList<>();
+                visible.forEach(element -> {
+                    JsonObject entity = element.getAsJsonObject();
+                    types.add(
+                            entity.get("observationId").getAsString()
+                                    + "="
+                                    + entity.get("type").getAsString()
+                    );
+                });
+                return types.toString();
+            } catch (RuntimeException malformed) {
+                return "malformed";
+            }
+        }
+
+        private String targetDiagnostic(final ServerPlayer body) {
+            return targets.stream()
+                    .map(target -> target.getType().toString()
+                            + ":alive=" + target.isAlive()
+                            + ":removed=" + target.isRemoved()
+                            + ":distance=" + String.format(
+                                    Locale.ROOT,
+                                    "%.2f",
+                                    target.distanceTo(body)
+                            )
+                            + ":pos=" + target.blockPosition())
+                    .toList()
+                    .toString();
         }
 
         private void prepareArenaAndEquipment(final ServerPlayer body) {
@@ -4879,6 +5154,47 @@ public final class LiveModelChatGameTests {
                     }
                 }
             }
+            // A persistent GameTest world may contain an ambient mob outside
+            // this fixture's authored target list. Remove those entities so
+            // the model cannot legally select an unrelated hostile and still
+            // satisfy a target-damage assertion for this scenario.
+            helper.getLevel().getEntitiesOfClass(
+                    Entity.class,
+                    body.getBoundingBox().inflate(48.0D)
+            ).forEach(entity -> {
+                if (entity != body) {
+                    entity.discard();
+                }
+            });
+            // Freeze natural spawning for the bounded pressure arena. The
+            // authored Zombies/Skeletons still use their ordinary AI after
+            // activation; an ambient spawn must not become a hidden third
+            // target class during the model observation window.
+            helper.getLevel().getGameRules().set(
+                    GameRules.SPAWN_MOBS,
+                    false,
+                    runtime.server()
+            );
+            helper.getLevel().getGameRules().set(
+                    GameRules.SPAWN_MONSTERS,
+                    false,
+                    runtime.server()
+            );
+            // Do not let a creative default or stale fixture ability turn a
+            // hostile-pressure run into a damage-free movement demo.
+            body.setGameMode(GameType.SURVIVAL);
+            body.getAbilities().invulnerable = false;
+            body.setInvulnerable(false);
+            body.invulnerableTime = 0;
+            helper.assertTrue(
+                    body.gameMode.getGameModeForPlayer()
+                            == GameType.SURVIVAL
+                        && !body.getAbilities().instabuild
+                        && !body.getAbilities().flying
+                        && !body.getAbilities().mayfly
+                        && !body.getAbilities().invulnerable,
+                    "Live-horde fixture did not enter genuine survival mode"
+            );
             body.getInventory().clearContent();
             body.setItemSlot(EquipmentSlot.HEAD, ItemStack.EMPTY);
             body.setItemSlot(EquipmentSlot.CHEST, ItemStack.EMPTY);
@@ -4910,9 +5226,9 @@ public final class LiveModelChatGameTests {
 
         private void spawnTargets(final ServerPlayer body) {
             final Level level = helper.getLevel();
-            final double radius = 4.5D;
-            for (int index = 0; index < TARGET_COUNT; index++) {
-                final boolean skeleton = index >= TARGET_COUNT / 2;
+            final double radius = targetRadius;
+            for (int index = 0; index < targetCount; index++) {
+                final boolean skeleton = index >= targetCount / 2;
                 final Mob target = (skeleton
                         ? EntityTypes.SKELETON
                         : EntityTypes.ZOMBIE).create(
@@ -4940,7 +5256,7 @@ public final class LiveModelChatGameTests {
         }
 
         private void reanchorTargets(final ServerPlayer body) {
-            final double radius = 4.5D;
+            final double radius = targetRadius;
             for (int index = 0; index < targets.size(); index++) {
                 final double angle = Math.toRadians(-50.0D + index * 20.0D);
                 final Mob target = targets.get(index);

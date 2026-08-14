@@ -30,6 +30,7 @@ They remain controlled evidence, not release artifacts.
 | `real_player_task_to_live_model_movement` | `START_SKILL(travel_to)` | The body walked from the fixture start to the requested point; no teleport or command was used. | PASS (controlled live slice) |
 | `real_player_task_to_live_model_follow` | `START_SKILL(follow_entity)` with an observed player target | The body survived the initial-anchor relogin and followed the moving course through ordinary player movement. | PASS (controlled live slice) |
 | `real_player_chat_to_surprise_zombie_defense` | `START_SKILL(engage_observed_entity)` after local damage/hostile observations | The emergency lane reacted before model completion and the body killed the visible zombie with normal combat actions. | PASS (controlled live slice) |
+| `real_player_chat_to_surprise_zombie_defense` (directional-damage regression) | The real model issued a gameplay replan while the local survival lane remained active. | The first run killed the body while it only scanned; after the fix, a fair directional damage cue caused a bounded sneak separation, the body reacquired the Zombie, attacked through vanilla, survived, and triggered `Monster Hunter`. | PASS after fix (15.27-second controlled live slice; first run retained as FAIL) |
 | `real_player_task_to_live_model_zombie_defense` (fresh rerun) | The Chinese chat reached the server, the model returned `START_SKILL(engage_observed_entity)`, and SQLite recorded schema validation, revision acceptance, and skill start. | The body rejoined through the normal first-human anchor lifecycle, used its owned iron equipment, moved/attacked through the vanilla combat lane, and triggered `Monster Hunter`; the exact event chain ended in `low_level_actions_issued`. | PASS (18.80-second controlled live slice) |
 | `real_player_chat_to_critical_golden_apple` | `START_SKILL(consume_owned_food)` for `golden_apple` | The body consumed the owned item through the ordinary use path; the scenario also verified the follow-up food-decision integrity. | PASS (controlled live slice) |
 | `delayed_human_login_after_zero_human_active` | No model request; production zero-human startup and login lifecycle | The body became active before any human joined, then rejoined through the bounded initial-anchor lifecycle beside the later human without a gameplay teleport. | PASS (controlled physical GameTest) |
@@ -79,7 +80,9 @@ is the only one counted as a passing controlled foundation result.
 
 These runs close concrete regressions such as speech-only movement, passive
 follow promises, staring at a nearby hostile, refusing to use an owned food
-item, and losing the body during first-human anchoring. They prove that the
+item, and losing the body during first-human anchoring. The directional-damage
+rerun additionally proves that a fair rear-hit cue produces a physical
+separation before another model round trip. They prove that the
 current implementation can carry a real model decision through the local
 safety/skill lanes into observable vanilla actions in bounded fixtures. The
 delayed-login result is a production lifecycle check, not a model claim.

@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-14T05:54:00Z
+Last updated: 2026-08-14T06:04:00Z
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -109,6 +109,20 @@ and attacks, and the vanilla `Monster Hunter` advancement were all observed.
 This remains a controlled one-zombie live slice, not a PVP, horde, Hardcore,
 random-seed, or M4 result.
 
+The next real-model surprise-defense rerun then exposed a production safety
+gap: a rear Zombie could deliver a fair, directional damage cue while the
+emergency lane only swept its view and waited for the planner. The first run
+(`run-live-surprise-20260814e`) killed the body at tick 251 and is retained as
+a genuine failure. `EmergencySurvivalController` now takes one bounded,
+sneak-protected step away from a recent damage direction after the first scan
+tick, using only the fair source vector and freshly observed adjacent-cell
+evidence. The same real `mimo-v2.5` scenario then passed in
+`run-live-surprise-20260814f`: the body reacquired the Zombie, dispatched
+ordinary vanilla attacks, survived, and triggered `Monster Hunter` before the
+test ended. The model lane returned a replan during the pressure window; the
+survival result is therefore evidence for emergency recovery plus a real
+model request, not a claim that the model alone cleared the encounter.
+
 ## Changes in the current worktree
 
 - `FairPerceptionSampler`: multipart Ender Dragon samples begin at a collider
@@ -136,6 +150,13 @@ random-seed, or M4 result.
 - `LiveModelChatGameTests`: the live combat fixture now creates its embedded
   human at a safe position beside the companion, matching a real client login
   and preventing the test from fabricating an invalid origin anchor.
+- `EmergencySurvivalController`: a recent directional damage cue now permits
+  one bounded observed-cell separation before the next model round trip,
+  closing the rear-hostile "look but do not move" death path without granting
+  hidden target coordinates or direct world mutation.
+- `EmergencySurvivalControllerTest`: regression coverage verifies the
+  directional damage separation is issued on the second 20-TPS tick and uses
+  a cautious vanilla movement input.
 - `PortalSkillPolicy`: the default observed-portal approach distance now uses
   the full fair 16-block perception budget, while entry still requires a
   current first-person visible face and vanilla reach.
@@ -182,13 +203,15 @@ Live MiMo stronghold-to-End dragon victory       FAIL (full route still lacks a 
 Live MiMo End return after anchor/portal fixes   PASS (model fight, vanilla return portal, stable UUID; bounded fixture)
 Live MiMo movement causal chain                  PASS (12.26-second real-time slice; START_SKILL travel_to and vanilla move)
 Live MiMo follow causal chain                    PASS (18.17-second real-time slice; START_SKILL follow_entity and vanilla move)
-Live MiMo surprise-zombie defense                PASS (14.27-second real-time slice; emergency combat before model completion)
+Live MiMo surprise-zombie defense (pre-fix)     FAIL (12.69-second slice; rear hostile killed body while scanning)
+Live MiMo surprise-zombie defense (patched)     PASS (15.27-second real-time slice; bounded damage separation and vanilla counterattack)
 Live MiMo golden-apple consumption               PASS (15.26-second real-time slice; vanilla item-use consumption)
 Live MiMo Chinese combat task                    PASS (18.80-second real-time slice; engage_observed_entity, vanilla attack, Monster Hunter)
 Delayed first-human anchor lifecycle             PASS (production zero-human startup GameTest; no rendered-client claim)
 Delayed first-human anchor during emergency      PASS (Forge 65.1.1 production GameTest; deferred relogin after survival clears)
 Initial-anchor no-safe-placement guard           PASS (focused source contract and patched live movement slice)
 Live MiMo directionless-damage shield regression PASS (offline JUnit; real stronghold effectiveness NOT_PROVEN)
+Live MiMo directional-damage separation         PASS (real 15.27-second slice; model request plus emergency recovery)
 Roof-jump physical recovery contract             PASS (no-model GameTest)
 Focused shelter-material/building JUnit tests    PASS
 Exact Forge 65.1.1 dedicated lifecycle smoke      PASS (real dedicated server; no functional claim)
@@ -212,17 +235,18 @@ seed statistic.
    remaining production gate is fair dragon reacquisition plus survival under
    vanilla magic damage; the isolated End slice passes, but the full route
    still lacks a stronghold-to-return PASS.
-3. Add a bounded live multi-hostile combat slice after the single-zombie
-   chain is stable, then run formal Actor/Observer and hidden-seed gates only
-   on an authorized Linux/Xvfb worker with the exact frozen jar. Keep missing
+3. Add a bounded live multi-hostile combat slice after the directional-damage
+   fix, then run formal Actor/Observer and hidden-seed gates only on an
+   authorized Linux/Xvfb worker with the exact frozen jar. Keep missing
    infrastructure as `NOT_RUN`.
 
 ## Repository and release state
 
 - Public repository: `https://github.com/weidakuang/MinePilot`.
-- Main backup commit before this work: `8ba8a554aa461f0ce2c09c3924d996cbe0854d82`.
+- Main backup commit before this work: `2158b9a722b593d5d6d66087402384c934d86d80`.
 - Forge 65.x backup branch: `mc26.2-forge65`.
 - Local branch: `main`.
-- The current validated commit is ready to back up to public `main`. Generated
-  run directories remain disposable and must not be staged.
+- The previous validated combat-fixture commit is backed up to public `main`;
+  the directional-damage fix and its fresh evidence are the next backup.
+  Generated run directories remain disposable and must not be staged.
 - API keys are process-only during live tests and are never written here.

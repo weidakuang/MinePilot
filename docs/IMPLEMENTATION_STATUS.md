@@ -69,7 +69,7 @@ or speedrun claim.
   JUnit suite, the release build and jar verification, the compatibility
   checker, and the 61-case Python audit after this change. The artifact is
   `build/libs/mcai_companion-0.1.10-dev-mc26.2.jar` with SHA-256
-  `5f656e8c0131a0491e0e200030390b41e120f0e1fb8662232673459c4da7e94c`.
+  `f1de2fae25281dff7f55b8f65893b545f6bb13b61458f88877210508ebdddb01`.
 
 ### Live MiMo result (latest)
 
@@ -131,6 +131,19 @@ schema/revision acceptance, `skill_started` for
 and the `Monster Hunter` advancement. It remains a one-zombie controlled slice,
 not evidence for PVP, a hostile horde, Hardcore survival, or a random seed.
 
+The next real-model surprise-defense run deliberately placed a Zombie behind
+the body and exposed a genuine safety regression: the body could receive a
+fair directional damage cue yet spend the whole bounded scan window looking
+instead of separating. The first run (`run-live-surprise-20260814e`) killed
+the body and is retained as a failure. The emergency controller now uses one
+bounded sneak-protected step away from that recent damage direction, based
+only on the first-person damage cue and observed adjacent-cell evidence. The
+patched rerun (`run-live-surprise-20260814f`) passed in 15.27 seconds: the
+body survived, reacquired and attacked the Zombie through vanilla, and earned
+`Monster Hunter`. The live model issued a replan during the pressure window;
+this is evidence for model request plus local emergency recovery, not a claim
+that the model alone cleared a hostile encounter.
+
 ## Formal gate status
 
 ```text
@@ -161,7 +174,7 @@ does not satisfy the causal audit.
    projectile lead, dragon-part reacquisition, and bounded retry behavior
    without direct world mutation.
 3. Extend the controlled live causal chain to natural-world progression and
-   add fresh combat regression coverage as observations expose new cases.
+   add a multi-hostile live combat slice after the directional-damage fix.
 4. Run the formal Actor/Observer and hidden-seed protocols only on an authorized
    Linux/Xvfb worker with the exact frozen jar; retain `NOT_RUN` when unavailable.
 

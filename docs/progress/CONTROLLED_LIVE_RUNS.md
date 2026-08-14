@@ -19,11 +19,11 @@ Hardcore world or the rendered Actor/Observer protocol.
 
 ## Results
 
-All runs used Forge `65.1.1`, Minecraft `26.2`, and Java `25`. Each test ran
-one case and exited cleanly with `All 1 required tests passed`; the newest
-stronghold entry result is frozen in the current validation commit and is
-being backed up to public `main`. It remains controlled evidence,
-not a release artifact.
+All runs used Forge `65.1.1`, Minecraft `26.2`, and Java `25`. Each passing
+test ran one case and exited cleanly with `All 1 required tests passed`; the
+newest movement, follow, defense, food, and delayed-login results are frozen
+in the current validation commit and are being backed up to public `main`.
+They remain controlled evidence, not release artifacts.
 
 | Scenario | Model decision evidence | Vanilla-world evidence | Result |
 | --- | --- | --- | --- |
@@ -31,6 +31,7 @@ not a release artifact.
 | `real_player_task_to_live_model_follow` | `START_SKILL(follow_entity)` with an observed player target | The body survived the initial-anchor relogin and followed the moving course through ordinary player movement. | PASS (controlled live slice) |
 | `real_player_chat_to_surprise_zombie_defense` | `START_SKILL(engage_observed_entity)` after local damage/hostile observations | The emergency lane reacted before model completion and the body killed the visible zombie with normal combat actions. | PASS (controlled live slice) |
 | `real_player_chat_to_critical_golden_apple` | `START_SKILL(consume_owned_food)` for `golden_apple` | The body consumed the owned item through the ordinary use path; the scenario also verified the follow-up food-decision integrity. | PASS (controlled live slice) |
+| `delayed_human_login_after_zero_human_active` | No model request; production zero-human startup and login lifecycle | The body became active before any human joined, then rejoined through the bounded initial-anchor lifecycle beside the later human without a gameplay teleport. | PASS (controlled physical GameTest) |
 | `real_player_task_to_live_model_end_victory_and_return` | `START_SKILL(fight_ender_dragon)` followed by `find_and_enter_observed_portal` | The body destroyed the observed End crystal/dragon, then entered the activated return portal with the same UUID after a first-human cross-dimension anchor guard. | PASS (2.183-minute controlled live slice) |
 | `real_player_task_to_live_model_container_withdrawal` | An initial malformed `use_block` was rejected by local argument validation; the model then selected `use_block` and `transfer_menu_item`. | The body opened the real chest menu and transferred three oak planks through the vanilla menu path. | PASS (14.41-second controlled live slice) |
 | `real_player_task_to_live_model_item_collection` | `START_SKILL(collect_observed_item)` for an observed item entity. | The body used the normal pickup path and the scenario verified the resulting inventory/stat delta. | PASS (16.86-second controlled live slice) |
@@ -76,10 +77,11 @@ is the only one counted as a passing controlled foundation result.
 ## What this proves
 
 These runs close concrete regressions such as speech-only movement, passive
-follow promises, staring at a nearby hostile, and refusing to use an owned
-food item. They prove that the current implementation can carry a real model
-decision through the local safety/skill lanes into observable vanilla actions
-in bounded fixtures.
+follow promises, staring at a nearby hostile, refusing to use an owned food
+item, and losing the body during first-human anchoring. They prove that the
+current implementation can carry a real model decision through the local
+safety/skill lanes into observable vanilla actions in bounded fixtures. The
+delayed-login result is a production lifecycle check, not a model claim.
 
 The stronghold run specifically proves that portal activation is not treated
 as a hidden state mutation: every eye is selected from a current first-person

@@ -71,5 +71,16 @@ final class AiPlayerManagerInitialAnchorSourceContractTest {
                 "a first human in another dimension must not move an active "
                     + "body across dimensions"
         );
+        final int remove = source.indexOf(
+                "final OperationResult removed = requestRemove()"
+        );
+        final int safePlacementCheck = source.indexOf(
+                "SafeCompanionSpawnLocator.locate(validatedAnchor)"
+        );
+        assertTrue(
+                safePlacementCheck >= 0 && safePlacementCheck < remove,
+                "the body must be retained when the login anchor has no "
+                    + "bounded vanilla-safe placement"
+        );
     }
 }

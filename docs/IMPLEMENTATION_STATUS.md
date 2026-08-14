@@ -69,7 +69,7 @@ or speedrun claim.
   JUnit suite, the release build and jar verification, the compatibility
   checker, and the 61-case Python audit after this change. The artifact is
   `build/libs/mcai_companion-0.1.10-dev-mc26.2.jar` with SHA-256
-  `efede34c86e6825a4f3016990aaf785bf6c343e5329abc79738f5a811ca804bc`.
+  `5f656e8c0131a0491e0e200030390b41e120f0e1fb8662232673459c4da7e94c`.
 
 ### Live MiMo result (latest)
 
@@ -109,6 +109,16 @@ transactions, nine active portal blocks, End entry, and the vanilla `The End?`
 advancement. SQLite recorded the complete model request/response, decision
 acceptance, skill-start, and low-level action chain. This is a bounded fixture
 and does not upgrade M2, M4, or the formal Actor/Observer gate.
+
+The latest live regression set also passed on the same real gateway: ordinary
+movement (`travel_to`, 12.26 seconds), follow (`follow_entity`, 18.17 seconds),
+surprise-zombie defense (14.27 seconds), and owned golden-apple consumption
+(15.26 seconds). The movement and follow runs recorded the complete causal
+sequence through `skill_started` and `low_level_actions_issued`; the defense
+and food runs additionally prove that the local 20-TPS survival lane acts while
+the model is waiting. A separate production zero-human startup GameTest passed
+the delayed first-human anchor lifecycle. These are controlled slices, not
+random-seed or rendered-client gates.
 
 ## Formal gate status
 

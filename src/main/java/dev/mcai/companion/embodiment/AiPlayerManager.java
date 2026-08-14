@@ -266,6 +266,24 @@ public final class AiPlayerManager {
             deferredInitialAnchor = SafeCompanionSpawnLocator.capture(anchor);
             return OperationResult.accepted("initial_anchor_deferred_busy");
         }
+        final SafeCompanionSpawnLocator.Anchor validatedAnchor =
+                SafeCompanionSpawnLocator.capture(anchor);
+        /*
+         * Never remove the only authoritative body before proving that the
+         * bounded vanilla dismount search can produce a complete player
+         * placement.  A GameTest void, a transiently unloaded login area, or
+         * a protected/occupied edge can have no valid adjacent feet position.
+         * Keeping the current body and claiming the one-time provenance is
+         * safer than turning a visible companion into an absent one.
+         */
+        if (SafeCompanionSpawnLocator.locate(validatedAnchor).isEmpty()) {
+            CompanionWorldData.get(server).markBodyAnchored();
+            deferredInitialAnchorPlayer = null;
+            deferredInitialAnchor = null;
+            return OperationResult.accepted(
+                    "initial_anchor_kept_current_body_no_safe_placement"
+            );
+        }
         /*
          * The normal disconnect callback removes the old ServerPlayer from
          * PlayerList as part of closing its headless connection.  That
@@ -276,7 +294,7 @@ public final class AiPlayerManager {
          * after the old authoritative entry has disappeared.
          */
         deferredInitialAnchorPlayer = anchor.getUUID();
-        deferredInitialAnchor = SafeCompanionSpawnLocator.capture(anchor);
+        deferredInitialAnchor = validatedAnchor;
         final OperationResult removed = requestRemove();
         if (!removed.accepted()) {
             return OperationResult.rejected("initial_anchor_remove_failed");

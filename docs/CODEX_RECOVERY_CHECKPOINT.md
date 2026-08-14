@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-14T05:13:03Z
+Last updated: 2026-08-14T05:34:51Z
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -84,6 +84,18 @@ instead of remaining shield-only. This is covered by a regression test, but a
 new full stronghold real-model run is still required before calling it an
 effective dragon survival fix.
 
+The latest live debugging found one concrete first-human lifecycle failure:
+the body could be removed before a malformed or void-like test anchor had a
+vanilla-safe placement, leaving no visible AI. `AiPlayerManager` now validates
+the bounded `SafeCompanionSpawnLocator` result before removing the current
+body; if no safe placement exists it keeps the authoritative body and claims
+the one-time startup provenance. The production zero-human delayed-login
+GameTest now passes with the body active before human login and safely present
+after the login. Real `mimo-v2.5` movement, follow, surprise-zombie defense,
+and golden-apple slices also pass on the patched line. The first movement run
+before this guard remains recorded as a genuine failure (`body did not return
+after initial-anchor relogin`), not silently upgraded.
+
 ## Changes in the current worktree
 
 - `FairPerceptionSampler`: multipart Ender Dragon samples begin at a collider
@@ -152,6 +164,12 @@ Live MiMo Nether portal build and entry          PASS (52.17-second controlled s
 Live MiMo stronghold search, portal activation, End entry PASS (controlled real-model prefix)
 Live MiMo stronghold-to-End dragon victory       FAIL (full route still lacks a stronghold-to-return PASS; isolated End chain now passes)
 Live MiMo End return after anchor/portal fixes   PASS (model fight, vanilla return portal, stable UUID; bounded fixture)
+Live MiMo movement causal chain                  PASS (12.26-second real-time slice; START_SKILL travel_to and vanilla move)
+Live MiMo follow causal chain                    PASS (18.17-second real-time slice; START_SKILL follow_entity and vanilla move)
+Live MiMo surprise-zombie defense                PASS (14.27-second real-time slice; emergency combat before model completion)
+Live MiMo golden-apple consumption               PASS (15.26-second real-time slice; vanilla item-use consumption)
+Delayed first-human anchor lifecycle             PASS (production zero-human startup GameTest; no rendered-client claim)
+Initial-anchor no-safe-placement guard           PASS (focused source contract and patched live movement slice)
 Live MiMo directionless-damage shield regression PASS (offline JUnit; real stronghold effectiveness NOT_PROVEN)
 Roof-jump physical recovery contract             PASS (no-model GameTest)
 Focused shelter-material/building JUnit tests    PASS

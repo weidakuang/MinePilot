@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-14T01:29:08Z",
+  "updatedAtUtc": "2026-08-14T05:34:51Z",
   "sourceState": "COMMITTED_MAIN",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -67,6 +67,7 @@
       "actions": "The body walked to the requested point through ordinary movement; no teleport or command was used.",
       "runtimeSeconds": 12.26,
       "fixtureConstraint": "Bounded straight safe course with an embedded GameTest player; not a rendered client or random world.",
+      "runRoot": "run-live-task-fix-20260814",
       "formalGate": "NOT_RUN"
     },
     "latestLiveFollow": {
@@ -77,6 +78,7 @@
       "actions": "The body rejoined through the initial-anchor lifecycle and followed the moving course with vanilla movement.",
       "runtimeSeconds": 18.17,
       "fixtureConstraint": "Bounded follow course with an embedded GameTest player; not the formal Actor/Observer gate.",
+      "runRoot": "run-live-follow-20260814",
       "formalGate": "NOT_RUN"
     },
     "latestLiveSurpriseDefense": {
@@ -87,6 +89,7 @@
       "actions": "Local emergency survival reacted to contact and the body killed the visible zombie with ordinary combat actions.",
       "runtimeSeconds": 14.27,
       "fixtureConstraint": "One visible fixture zombie; no random hostile population or Hardcore statistic.",
+      "runRoot": "run-live-zombie-defense-20260814",
       "formalGate": "NOT_RUN"
     },
     "latestLiveGoldenApple": {
@@ -97,6 +100,20 @@
       "actions": "The body consumed the owned golden apple through the vanilla item-use path and passed the food-consumption integrity checks.",
       "runtimeSeconds": 15.26,
       "fixtureConstraint": "Owned fixture inventory and bounded food goal; not a general inventory policy claim.",
+      "runRoot": "run-live-golden-apple-20260814",
+      "formalGate": "NOT_RUN"
+    },
+    "latestDelayedFirstHumanAnchor": {
+      "status": "PASS_CONTROLLED_REAL_SERVER",
+      "forge": "65.1.1",
+      "details": "With production zero-human auto-spawn enabled, the body became ACTIVE before any human joined and then completed the bounded initial-anchor remove/relogin beside the later human without a gameplay teleport.",
+      "fixtureConstraint": "Embedded GameTest player and controlled world; no rendered client or Linux/Xvfb claim.",
+      "runRoot": "run-delayed-login-20260814b",
+      "formalGate": "NOT_RUN"
+    },
+    "initialAnchorNoSafePlacementGuard": {
+      "status": "PASS_CONTROLLED_SOURCE_AND_LIVE",
+      "details": "AiPlayerManager validates SafeCompanionSpawnLocator before removing the only body and keeps the current authoritative body when no safe anchor exists. The focused source contract and patched live movement slice passed.",
       "formalGate": "NOT_RUN"
     },
     "latestLiveContainerWithdrawal": {
@@ -181,14 +198,14 @@
     },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
-      "details": "Full offline Gradle clean build, JUnit suite, verifyReleaseJar, compatibility checker, 61 Python E2E tests, public documentation English-only scan, and staged preflight passed after the live stronghold fixes. The result was committed locally and published to public main; formal gates remain NOT_RUN.",
+      "details": "Full offline Gradle clean build, JUnit suite, verifyReleaseJar, compatibility checker, 61 Python E2E tests, public documentation English-only scan, and staged preflight passed after the initial-anchor guard. Real movement, follow, defense, food, and delayed-login slices also passed; formal gates remain NOT_RUN.",
       "artifact": "build/libs/mcai_companion-0.1.10-dev-mc26.2.jar",
-      "sha256": "0d5934905ce4a2381a56eb2eb443bcad63876e6aca73e7e86f9fb47e622b2d9c",
+      "sha256": "5f656e8c0131a0491e0e200030390b41e120f0e1fb8662232673459c4da7e94c",
       "formalGate": "NOT_RUN"
     }
   },
   "nextActions": [
-    "Preserve the live stronghold-entry evidence and extend the causal chain into End combat and return.",
+    "Preserve the live movement, follow, defense, food, and delayed-anchor evidence while extending the causal chain into End combat and return.",
     "Run the formal Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker.",
     "Keep missing infrastructure and unexecuted statistical gates explicitly marked NOT_RUN."
   ],

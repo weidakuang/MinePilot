@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-14T01:29:08Z",
-  "sourceState": "COMMITTED_MAIN",
+  "updatedAtUtc": "2026-08-14T01:18:03Z",
+  "sourceState": "DIRTY_PENDING_COMMIT",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.10-dev-mc26.2",
@@ -181,7 +181,7 @@
     },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
-      "details": "Full offline Gradle clean build, JUnit suite, verifyReleaseJar, compatibility checker, 61 Python E2E tests, public documentation English-only scan, and staged preflight passed after the live stronghold fixes. The result was committed locally and published to public main; formal gates remain NOT_RUN.",
+      "details": "Full offline Gradle clean build, JUnit suite, verifyReleaseJar, compatibility checker, and 61 Python E2E tests passed after the live stronghold fixes. Public documentation English-only scan and staged preflight remain required before commit.",
       "artifact": "build/libs/mcai_companion-0.1.10-dev-mc26.2.jar",
       "sha256": "0d5934905ce4a2381a56eb2eb443bcad63876e6aca73e7e86f9fb47e622b2d9c",
       "formalGate": "NOT_RUN"
@@ -189,8 +189,8 @@
   },
   "nextActions": [
     "Preserve the live stronghold-entry evidence and extend the causal chain into End combat and return.",
-    "Run the formal Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker.",
-    "Keep missing infrastructure and unexecuted statistical gates explicitly marked NOT_RUN."
+    "Run the full offline regression, release build, English documentation scan, and preflight-before-commit.",
+    "Run formal Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker."
   ],
   "evidencePolicy": "No controlled test, model acknowledgement, historical run, or no-model arena may be promoted to a formal M0-M4 PASS."
 }

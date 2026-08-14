@@ -9,8 +9,7 @@ Last reviewed: 2026-08-14
   Java 25.
 - Development version: `0.1.10-dev-mc26.2`.
 - Public backup: `https://github.com/weidakuang/MinePilot`.
-- Local development branch: `main`.
-- Latest local commit: `885d7c898461c829cc52683780c579e6817bd140`.
+- Local development branch: `agent/minecraft-companion-0.1.9`.
 - Forge 65.x major-line backup branch: `mc26.2-forge65`.
 - Artifact status: `NON_RELEASE` until all formal gates pass.
 

@@ -21,8 +21,9 @@ Hardcore world or the rendered Actor/Observer protocol.
 
 All runs used Forge `65.1.1`, Minecraft `26.2`, and Java `25`. Each test ran
 one case and exited cleanly with `All 1 required tests passed`; the newest
-stronghold entry result is bound to the current dirty-worktree fixes and is
-not a release artifact until the commit and jar hash are frozen.
+stronghold entry result is frozen in the current validation commit and is
+being backed up to public `main`. It remains controlled evidence,
+not a release artifact.
 
 | Scenario | Model decision evidence | Vanilla-world evidence | Result |
 | --- | --- | --- | --- |
@@ -30,7 +31,7 @@ not a release artifact until the commit and jar hash are frozen.
 | `real_player_task_to_live_model_follow` | `START_SKILL(follow_entity)` with an observed player target | The body survived the initial-anchor relogin and followed the moving course through ordinary player movement. | PASS (controlled live slice) |
 | `real_player_chat_to_surprise_zombie_defense` | `START_SKILL(engage_observed_entity)` after local damage/hostile observations | The emergency lane reacted before model completion and the body killed the visible zombie with normal combat actions. | PASS (controlled live slice) |
 | `real_player_chat_to_critical_golden_apple` | `START_SKILL(consume_owned_food)` for `golden_apple` | The body consumed the owned item through the ordinary use path; the scenario also verified the follow-up food-decision integrity. | PASS (controlled live slice) |
-| `real_player_task_to_live_model_end_victory_and_return` | `START_SKILL(fight_ender_dragon)` followed by `find_and_enter_observed_portal` | The body destroyed the observed End crystal/dragon and entered the return portal with the same UUID. | PASS (controlled live slice) |
+| `real_player_task_to_live_model_end_victory_and_return` | `START_SKILL(fight_ender_dragon)` followed by `find_and_enter_observed_portal` | The body destroyed the observed End crystal/dragon, then entered the activated return portal with the same UUID after a first-human cross-dimension anchor guard. | PASS (2.183-minute controlled live slice) |
 | `real_player_task_to_live_model_container_withdrawal` | An initial malformed `use_block` was rejected by local argument validation; the model then selected `use_block` and `transfer_menu_item`. | The body opened the real chest menu and transferred three oak planks through the vanilla menu path. | PASS (14.41-second controlled live slice) |
 | `real_player_task_to_live_model_item_collection` | `START_SKILL(collect_observed_item)` for an observed item entity. | The body used the normal pickup path and the scenario verified the resulting inventory/stat delta. | PASS (16.86-second controlled live slice) |
 | `real_player_task_to_live_model_foundation_bootstrap` | Multiple accepted foundation skills, ending with `build_shelter_step`; the model re-planned roof placement after observed occlusion. | The body mined/crafted/organized the M1 materials, physically built the dynamic shelter, survived the configured night, and the SQLite audit recorded `skill_completed.build_shelter_step`, `low_level_actions_issued`, `server_verified_auto_complete`, and `goalStatus=COMPLETED`. | PASS (8.912-minute controlled live slice) |

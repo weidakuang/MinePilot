@@ -760,10 +760,11 @@ public final class EmergencySurvivalController {
             final boolean preserveCombatFootwork =
                     recentAttackFootwork(frame.gameTime())
                         || directionalRecentDamage(frame)
-                            && away.isPresent();
+                            && away.isPresent()
+                        || directionlessRecentDamage(frame);
             final TickReport guarded = guard(
-                    frame,
-                    shield.orElseThrow(),
+                frame,
+                shield.orElseThrow(),
                     away,
                     shouldScanForHostile(
                             frame,
@@ -774,7 +775,20 @@ public final class EmergencySurvivalController {
             if (preserveCombatFootwork && lastEmergencyAway != null) {
                 emergencyFootwork(frame, lastEmergencyAway);
             } else if (preserveCombatFootwork) {
-                away.ifPresent(direction -> emergencyFootwork(frame, direction));
+                if (away.isPresent()) {
+                    emergencyFootwork(frame, away.orElseThrow());
+                } else {
+                    /*
+                     * Some vanilla magic damage sources intentionally carry
+                     * no source position. A shield-only response can then
+                     * leave the body on the same cell while repeated breath
+                     * damage lands. Use one bounded side-step in the current
+                     * first-person frame. This is a normal player input, not
+                     * a guessed target position; collision, gravity, and
+                     * loaded-world rules remain authoritative.
+                     */
+                    directionlessDamageFootwork(frame);
+                }
             }
             return guarded;
         }
@@ -1039,6 +1053,31 @@ public final class EmergencySurvivalController {
             return;
         }
         actuator.move(movement);
+    }
+
+    /**
+     * Separates from a recent damage cue when vanilla did not expose a fair
+     * source direction (for example an indirect magic effect). The alternating
+     * strafe is deliberately short and sneak-protected; it is only called
+     * during the bounded recent-damage window and never creates an entity
+     * target or an exact world route.
+     */
+    private void directionlessDamageFootwork(
+            final CoreSkillFrame frame
+    ) {
+        if (frame.inWater()
+                || danger(frame, DangerKind.FALLING).isPresent()) {
+            return;
+        }
+        final double side = ((frame.gameTime() / 6L) & 1L) == 0L
+                ? 0.70
+                : -0.70;
+        actuator.move(new MovementIntent(
+                0.0,
+                side,
+                false,
+                true
+        ));
     }
 
     private Optional<VisibleEntity> nearestEmergencyMeleeTarget(

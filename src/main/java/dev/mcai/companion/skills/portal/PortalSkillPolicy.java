@@ -59,7 +59,7 @@ public record PortalSkillPolicy(
     public static PortalSkillPolicy defaults() {
         return new PortalSkillPolicy(
                 30,
-                8.0,
+                16.0,
                 0.75,
                 0.45,
                 10,

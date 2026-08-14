@@ -404,7 +404,9 @@ public final class FairPerceptionSampler {
     private CandidateBatch collectEntityCandidates(ServerPlayer player, ServerLevel level) {
         double range = Math.max(budget.entityRange(), budget.dangerRange());
         AABB searchBox = player.getBoundingBox().inflate(range);
-        List<Entity> candidates = new ArrayList<>(budget.maxEntityCandidates());
+        List<Entity> candidates = new ArrayList<>(
+                budget.maxEntityCandidates()
+        );
         level.getEntities(
                 EntityTypeTest.forClass(Entity.class),
                 searchBox,
@@ -416,11 +418,127 @@ public final class FairPerceptionSampler {
                 candidates,
                 budget.maxEntityCandidates()
         );
-        candidates.sort(Comparator.comparingDouble(player::distanceToSqr));
+        /*
+         * The EntityTypeTest overload above intentionally stays on the
+         * bounded entity index, but Minecraft's generic Level#getEntities
+         * path does not append multipart entities. EnderDragon parts are
+         * exposed only by the Entity/predicate overload, so without this
+         * explicit bounded merge a dragon can disappear from fair perception
+         * as soon as its root hitbox is outside the current view cone. The
+         * loaded/range gates are applied immediately before publication, and
+         * the existing FOV and block-clip checks decide whether a part is
+         * actually visible.
+         */
+        for (EnderDragonPart part : level.dragonParts()) {
+            if (part.isAlive()) {
+                candidates.add(part);
+            }
+        }
+        /*
+         * A dragon can be recreated by EnderDragonFight while its root is
+         * already in the loaded entity getter but before the level's
+         * auxiliary dragonParts map has been repopulated. This occurs during
+         * a legitimate dimension-entry/relogin transition and made a live
+         * companion report zero entity candidates despite eight loaded
+         * colliders. Enumerate only the server's currently loaded dragon
+         * roots as a bounded fallback. The index is deliberately broad during
+         * a dimension handoff; range, loaded, FOV, and block-clip checks remain
+         * in sampleVisibleEntities before any fact is published.
+         */
+        for (EnderDragon dragon : level.getDragons()) {
+            mergeCurrentDragonParts(candidates, dragon);
+        }
+        /*
+         * EnderDragonFight can own a live root before the convenience
+         * getDragons() collection is refreshed. Query the ordinary loaded
+         * entity index as a second bounded root source. This is still a
+         * normal server-side entity query inside the companion's range; it
+         * does not inspect the fight manager's hidden target state.
+         */
+        final List<Entity> loadedDragonRoots = new ArrayList<>();
+        level.getEntities(
+                EntityTypeTest.forClass(EnderDragon.class),
+                searchBox,
+                entity -> entity.isAlive() && !entity.isSpectator(),
+                loadedDragonRoots,
+                budget.maxEntityCandidates()
+        );
+        for (Entity root : loadedDragonRoots) {
+            if (root instanceof EnderDragon dragon) {
+                mergeCurrentDragonParts(candidates, dragon);
+            }
+        }
+        if (level.getDragonFight() != null) {
+            final java.util.UUID dragonId =
+                    level.getDragonFight().dragonUUID();
+            if (dragonId != null) {
+                final Entity trackedDragon = level.getEntity(dragonId);
+                if (trackedDragon instanceof EnderDragon dragon) {
+                    mergeCurrentDragonParts(candidates, dragon);
+                }
+            }
+        }
+        /*
+         * Keep the bounded first-person budget useful during a dragon fight.
+         * Ender-dragon breath leaves several short-lived AreaEffectCloud
+         * entities around the body.  A pure distance sort lets those neutral
+         * clouds consume all LOS checks before the dragon's multipart
+         * colliders are reached, producing the false "no target" failure seen
+         * in the live stronghold chain.  Threats stay in the same loaded,
+         * distance-bounded candidate set; this only orders the finite work so
+         * a hostile boss is not starved by its own visual aftermath.
+         */
+        candidates.sort(
+                Comparator
+                        .comparingInt((Entity entity) ->
+                                isCurrentThreat(player, entity) ? 0 : 1)
+                        .thenComparingInt(entity ->
+                                canonicalPerceivedEntity(entity)
+                                        instanceof EnderDragon ? 0 : 1)
+                        .thenComparingDouble(player::distanceToSqr)
+        );
+        boolean truncated = candidates.size() >= budget.maxEntityCandidates();
+        if (candidates.size() > budget.maxEntityCandidates()) {
+            candidates.subList(
+                    budget.maxEntityCandidates(),
+                    candidates.size()
+            ).clear();
+        }
         return new CandidateBatch(
                 List.copyOf(candidates),
-                candidates.size() == budget.maxEntityCandidates()
+                truncated
         );
+    }
+
+    private static void mergeCurrentDragonParts(
+            final List<Entity> candidates,
+            final EnderDragon dragon
+    ) {
+        /* Keep the canonical root in the same bounded candidate set.  The
+         * multipart colliders are still preferred when one is the first
+         * visible hit, but the root's own body box is a legitimate first-
+         * person visual target when every narrow tail/wing ray is occluded. */
+        candidates.removeIf(existing ->
+                existing.getUUID().equals(dragon.getUUID())
+        );
+        candidates.add(dragon);
+        for (EnderDragonPart part : dragon.getSubEntities()) {
+            if (!part.isAlive()) {
+                continue;
+            }
+            /*
+             * The level multipart index can retain an old collider instance
+             * across dimension entry while the authoritative dragon root
+             * already owns freshly positioned parts. Replace by UUID instead
+             * of keeping the stale index entry: otherwise the semantic
+             * candidate can be 90+ blocks from the visible dragon even though
+             * both objects report the same identity.
+             */
+            candidates.removeIf(existing ->
+                    existing.getUUID().equals(part.getUUID())
+            );
+            candidates.add(part);
+        }
     }
 
     private EntitySample sampleVisibleEntities(
@@ -441,8 +559,24 @@ public final class FairPerceptionSampler {
                 truncated = true;
                 break;
             }
+            /*
+             * Multipart entities are indexed as physical colliders but are
+             * published as one semantic parent. Once one dragon part has
+             * passed the ordinary FOV/LOS gate, do not spend the remaining
+             * finite ray budget rechecking its sibling colliders before
+             * other visible entities such as end crystals. A part that has
+             * not yet passed the gate is still evaluated normally, so this
+             * cannot make an unseen dragon appear.
+             */
+            if (candidate instanceof EnderDragonPart part
+                    && part.parentMob != null
+                    && emittedEntityIds.contains(part.parentMob.getUUID())) {
+                continue;
+            }
             double distanceSquared = player.distanceToSqr(candidate);
-            if (distanceSquared > budget.entityRange() * budget.entityRange()
+            if (!level.isLoaded(candidate.blockPosition())
+                    || distanceSquared > budget.entityRange()
+                        * budget.entityRange()
                     || candidate.isInvisibleTo(player)) {
                 continue;
             }
@@ -466,13 +600,23 @@ public final class FairPerceptionSampler {
                     && player.getBoundingBox()
                         .inflate(0.1D)
                         .intersects(candidate.getBoundingBox());
-            final Vec3 target = candidate.getEyePosition();
-            PerceptionVec3 toTarget = vector(target.subtract(eye));
-            if (!physicalContact && !PerceptionGeometry.isInsideViewCone(
-                    look,
-                    toTarget,
-                    budget.entityFieldOfViewDegrees()
-            )) {
+            final List<Vec3> visualSamplePoints =
+                    entityVisualSamplePoints(candidate);
+            final boolean anyVisualPointInView = visualSamplePoints.stream()
+                    .map(point -> vector(point.subtract(eye)))
+                    .anyMatch(toTarget -> PerceptionGeometry.isInsideViewCone(
+                            look,
+                            toTarget,
+                            budget.entityFieldOfViewDegrees()
+                    ));
+            /*
+             * A player's view cone intersects a collider, not an abstract
+             * entity eye. Tall mobs and dragon parts can have their eye above
+             * the fovea while their torso is plainly on screen. Requiring the
+             * eye alone caused a nearby dragon to disappear even when every
+             * bounded center/offset ray was an unobstructed MISS.
+             */
+            if (!physicalContact && !anyVisualPointInView) {
                 continue;
             }
             if (losChecks + 1
@@ -489,12 +633,11 @@ public final class FairPerceptionSampler {
                  * will perform the real crosshair/clip check immediately
                  * before any entity interaction or attack packet.
                  */
-                visiblePoint = entityVisualSamplePoints(candidate).stream()
+                visiblePoint = visualSamplePoints.stream()
                         .findFirst()
                         .orElse(candidate.getEyePosition());
             } else {
-                for (Vec3 candidatePoint :
-                        entityVisualSamplePoints(candidate)) {
+                for (Vec3 candidatePoint : visualSamplePoints) {
                     if (losChecks + 1
                             >= budget.maxEntityLosChecks()) {
                         truncated = true;
@@ -605,7 +748,7 @@ public final class FairPerceptionSampler {
                     vector(candidatePosition),
                     vector(candidatePosition.subtract(player.position())),
                     Math.sqrt(perceivedDistanceSquared),
-                    perceived instanceof Enemy,
+                    isHostilePerceivedEntity(perceived),
                     perceived instanceof Projectile,
                     physicalContact
                             ? PerceptionProvenance.PHYSICAL_CONTACT
@@ -620,9 +763,11 @@ public final class FairPerceptionSampler {
     private static Entity canonicalPerceivedEntity(
             final Entity candidate
     ) {
-        return candidate instanceof EnderDragonPart part
-                ? part.parentMob
-                : candidate;
+        if (candidate instanceof EnderDragonPart part
+                && part.parentMob != null) {
+            return part.parentMob;
+        }
+        return candidate;
     }
 
     private static String fairCoordinate(final double value) {
@@ -1290,7 +1435,18 @@ public final class FairPerceptionSampler {
              * Physical contact remains fair without sight and was handled
              * above.
              */
-            if (!fairlyVisibleEntityIds.contains(candidate.getUUID())) {
+            /*
+             * Multipart entities publish one semantic parent UUID in the
+             * visible-entity list.  The danger pass still iterates the
+             * bounded physical part candidates, so comparing the raw part
+             * UUID here silently discarded every dragon proximity cue.  Use
+             * the same parent identity that the public observation exposes;
+             * distance, contact, and direction remain measured from the
+             * actual loaded collider below.
+             */
+            if (!fairlyVisibleEntityIds.contains(
+                    canonicalPerceivedEntity(candidate).getUUID()
+            )) {
                 continue;
             }
             DangerKind kind = candidate instanceof Projectile
@@ -1321,8 +1477,30 @@ public final class FairPerceptionSampler {
             final ServerPlayer player,
             final Entity candidate
     ) {
+        if (candidate instanceof EnderDragon dragon) {
+            /*
+             * The dragon root is not an Enemy marker in vanilla, but it is
+             * the authoritative hostile boss represented by every
+             * EnderDragonPart. Treating the root as a threat keeps it ahead
+             * of neutral aftermath entities in the bounded candidate budget
+             * and lets the emergency lane publish a fair proximity signal
+             * when the narrow multipart colliders are between samples.
+             */
+            return dragon.isAlive() && !dragon.isRemoved();
+        }
         if (candidate instanceof Enemy) {
             return true;
+        }
+        if (candidate instanceof EnderDragonPart part) {
+            /*
+             * EnderDragonPart is a dedicated vanilla damage collider rather
+             * than a Mob and its parent marker can be stale across a
+             * dimension handoff. The part is hostile iff its live parent is
+             * still alive; no world lookup or hidden target scan is needed.
+             */
+            return part.parentMob != null
+                    && part.parentMob.isAlive()
+                    && !part.parentMob.isRemoved();
         }
         if (!(candidate instanceof Projectile projectile)
                 || projectile.getOwner() == player) {
@@ -1330,6 +1508,13 @@ public final class FairPerceptionSampler {
         }
         return !(projectile instanceof AbstractArrow arrow)
                 || arrow.isPickable();
+    }
+
+    private static boolean isHostilePerceivedEntity(
+            final Entity entity
+    ) {
+        return entity instanceof Enemy
+                || entity instanceof EnderDragon;
     }
 
     /**

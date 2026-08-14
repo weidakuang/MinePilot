@@ -669,6 +669,60 @@ final class EmergencySurvivalControllerTest {
     }
 
     @Test
+    void directionlessRecentDamageDoesNotRemainShieldOnly() {
+        final DangerSignal damage = new DangerSignal(
+                DangerKind.THREAT_CONTACT,
+                1.0,
+                0.0,
+                Optional.empty(),
+                PerceptionProvenance.RECENT_DAMAGE_EVENT
+        );
+        final HeldItemSummary shield = new HeldItemSummary(
+                "minecraft:shield",
+                1,
+                0,
+                336
+        );
+        final CoreSkillTestFixtures.RecordingActuator actuator =
+                new CoreSkillTestFixtures.RecordingActuator();
+        final EmergencySurvivalController controller =
+                new EmergencySurvivalController(
+                        PLAYER_ID,
+                        actuator,
+                        new CoreSkillTestFixtures.MutableFrames(
+                                frameWithInventory(
+                                        1,
+                                        20,
+                                        HeldItemSummary.empty(),
+                                        shield,
+                                        List.of(),
+                                        List.of(),
+                                        List.of(damage),
+                                        List.of(),
+                                        true,
+                                        DimensionRef.END,
+                                        EAST
+                                )
+                        )
+                );
+
+        final var report = controller.tick();
+
+        assertEquals(
+                EmergencySurvivalController.State.GUARDING,
+                report.state()
+        );
+        assertEquals(List.of(ActionHand.OFF_HAND), actuator.itemUses);
+        assertFalse(
+                actuator.movements.isEmpty(),
+                "A directionless magic hit must trigger bounded side-step "
+                    + "even while the shield is held"
+        );
+        assertTrue(actuator.movements.getLast().sneak());
+        assertEquals(0.0, actuator.movements.getLast().forward(), 0.001);
+    }
+
+    @Test
     void continuousGuardKeepsOneUninterruptedShieldUse() {
         final DangerSignal danger = new DangerSignal(
                 DangerKind.PROJECTILE_PROXIMITY,

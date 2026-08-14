@@ -8864,7 +8864,8 @@ public final class LiveModelChatGameTests {
         }
 
         private String diagnostics() {
-            final ServerPlayer body = body();
+            final Optional<ServerPlayer> body = AiPlayerManager
+                    .onlinePlayer(runtime.server());
             final String perception = runtime.coreFrames().current()
                     .map(frame -> "visibleEntities="
                         + frame.visibleEntities()
@@ -8882,8 +8883,11 @@ public final class LiveModelChatGameTests {
                     + runtime.skillSupervisor().snapshot()
                     + ", goal=" + runtime.goals().snapshot()
                     + ", dimension="
-                    + body.level().dimension().identifier()
-                    + ", body=" + body.position()
+                    + body.map(player -> player.level().dimension()
+                            .identifier().toString())
+                        .orElse("offline")
+                    + ", body=" + body.map(ServerPlayer::position)
+                        .orElse(null)
                     + ", milestones="
                     + runtime.worldData()
                         .verifiedRouteProgress(
@@ -8899,8 +8903,9 @@ public final class LiveModelChatGameTests {
                     + ", crystalAlive="
                     + (crystal != null && crystal.isAlive())
                     + ", returnPortal=" + returnPortalCenter
-                    + ", arrows=" + body.getInventory().countItem(
-                        Items.ARROW)
+                    + ", arrows=" + body.map(player -> player.getInventory()
+                            .countItem(Items.ARROW))
+                        .orElse(-1)
                     + ", checkpoint=" + runtime.skillSupervisor()
                         .lastCheckpointPayload().orElse("none")
                     + ", " + perception;
@@ -8960,6 +8965,22 @@ public final class LiveModelChatGameTests {
                             Blocks.AIR.defaultBlockState()
                     );
                 }
+            }
+        }
+        /* The production sampler refuses to ray-test through an unloaded
+         * horizontal chunk.  GameTest block writes do not guarantee that
+         * every intermediate chunk remains resident after the player has
+         * walked around the arena, so load only this bounded fixture corridor
+         * before the real model is allowed to fight. */
+        final int arenaChunkX = Math.floorDiv(arena.getX(), 16);
+        final int arenaChunkZ = Math.floorDiv(arena.getZ(), 16);
+        for (int chunkX = arenaChunkX - 4;
+                chunkX <= arenaChunkX + 4;
+                chunkX++) {
+            for (int chunkZ = arenaChunkZ - 4;
+                    chunkZ <= arenaChunkZ + 4;
+                    chunkZ++) {
+                end.getChunkAt(new BlockPos(chunkX << 4, 0, chunkZ << 4));
             }
         }
         end.getEntities(
@@ -9061,9 +9082,14 @@ public final class LiveModelChatGameTests {
                     .forEach(Entity::discard);
         }
         dragon.setPos(
-                arena.getX() + 0.5D,
+                arena.getX() + 12.5D,
                 arena.getY() + 2.0D,
-                arena.getZ() + 4.5D
+                /* Keep the dragon in the same loaded arena, but offset it
+                 * laterally from the crystal cage.  A bar directly between
+                 * the body and dragon would make every fair visual ray hit
+                 * the obstruction and would turn a legitimate fixture into
+                 * a forced-visibility test. */
+                arena.getZ() + 12.5D
         );
         dragon.setYRot(180.0F);
         dragon.setNoAi(true);

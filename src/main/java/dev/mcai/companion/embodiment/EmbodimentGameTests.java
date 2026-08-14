@@ -11313,6 +11313,17 @@ public final class EmbodimentGameTests {
                         + semantic(observation)
                             .getAsJsonArray("visibleEntities")
             );
+            final JsonObject observedDragon = findEntity(
+                    observation,
+                    "minecraft:ender_dragon"
+            );
+            helper.assertTrue(
+                    observedDragon != null,
+                    "Controlled Ender Dragon was not fairly visible from "
+                        + "the initial first-person pose; visible entities="
+                        + semantic(observation)
+                            .getAsJsonArray("visibleEntities")
+            );
             startSkill(
                     CombatSkills.FIGHT_ENDER_DRAGON,
                 List.of(),

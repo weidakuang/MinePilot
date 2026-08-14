@@ -3,6 +3,7 @@ package dev.mcai.companion.skills.combat;
 import dev.mcai.companion.action.ActionHand;
 import dev.mcai.companion.action.ActionOutcome;
 import dev.mcai.companion.action.LookIntent;
+import dev.mcai.companion.action.MovementIntent;
 import dev.mcai.companion.perception.HeldItemSummary;
 import dev.mcai.companion.perception.InventoryItemSummary;
 import dev.mcai.companion.perception.PerceptionVec3;
@@ -332,8 +333,27 @@ public final class ShootObservedEntitySkill
             return fail(NAME + ".crystal_too_close");
         }
         updateTargetVelocity(core, target);
-        if (!coreActuator.stop().accepted()) {
-            return fail(NAME + ".stop_rejected");
+        /*
+         * Keep a dragon shot mobile.  A bow charge can last a full second;
+         * stopping for that entire interval makes the companion an
+         * unusually easy target for breath and contact damage.  The strafe
+         * is deliberately small, player-relative, and only applies to the
+         * dragon target. Crystals and ordinary ranged interactions retain
+         * the stationary first-person alignment they require.
+         */
+        final ActionOutcome position =
+                "minecraft:ender_dragon".equals(boundTargetType)
+                        ? coreActuator.move(new MovementIntent(
+                                    0.0,
+                                    ((context.gameTick() / 6L) & 1L) == 0L
+                                            ? 0.30
+                                            : -0.30,
+                                    false,
+                                    false
+                                ))
+                        : coreActuator.stop();
+        if (!position.accepted()) {
+            return fail(NAME + ".position_rejected");
         }
         final PerceptionVec3 aimPoint = aimPoint(
                 core,

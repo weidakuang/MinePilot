@@ -175,6 +175,13 @@ public final class FightEnderDragonSkill
     private int cageDescentScans;
     private int cageLandingScans;
     private float scanBaseYaw;
+    /**
+     * Last fair direction from a recent damage/contact cue.  A dodge turns
+     * the camera away from the attacker; preserving this direction lets the
+     * next bounded scan reacquire that same visible threat instead of
+     * repeatedly sweeping the opposite hemisphere.
+     */
+    private PerceptionVec3 lastThreatDirection;
     private PerceptionVec3 localRallyPoint;
     private boolean recoveringSafetyReserve;
     private boolean dragonRangedMode;
@@ -391,6 +398,7 @@ public final class FightEnderDragonSkill
         cageDescentScans = 0;
         cageLandingScans = 0;
         scanBaseYaw = lookYaw(snapshot.core());
+        lastThreatDirection = null;
         /*
          * This exact pose belongs to the live authoritative body and proves a
          * reachable standing point. It replaces the old model-supplied rally
@@ -813,6 +821,15 @@ public final class FightEnderDragonSkill
                         0.0,
                         0.35
                 ));
+        final PerceptionVec3 horizontalToward = new PerceptionVec3(
+                toward.x(),
+                0.0,
+                toward.z()
+        );
+        if (horizontalToward.lengthSquared() > 1.0E-12) {
+            lastThreatDirection = horizontalToward.normalized();
+            scanBaseYaw = yawFromDirection(lastThreatDirection);
+        }
         final PerceptionVec3 horizontalAway = new PerceptionVec3(
                 -toward.x(),
                 0.0,
@@ -1989,8 +2006,26 @@ public final class FightEnderDragonSkill
             final CoreSkillFrame frame,
             final boolean fresh
     ) {
-        if (!core.move(MovementIntent.STOPPED).accepted()) {
-            return fail(context, NAME + ".stop_rejected");
+        /*
+         * A real first-person player does not plant their feet while
+         * searching the sky.  The old STOPPED input left the body exposed to
+         * dragon breath during every 48-view sweep, and also produced the
+         * exact "looks around but does nothing" failure seen in live runs.
+         * Use a small alternating strafe only while no legal target is
+         * visible.  It remains a normal player-relative input; collision,
+         * fall, and emergency-survival checks still own the final movement.
+         */
+        final double searchStrafe =
+                ((scanTurns / SCAN_PITCHES.length) & 1) == 0
+                        ? 0.35
+                        : -0.35;
+        if (!core.move(new MovementIntent(
+                0.0,
+                searchStrafe,
+                false,
+                false
+        )).accepted()) {
+            return fail(context, NAME + ".search_move_rejected");
         }
         if (scanTurns >= SCANS_BEFORE_RALLY) {
             if (rallyAttempts >= MAXIMUM_RALLY_ATTEMPTS) {
@@ -3017,6 +3052,15 @@ public final class FightEnderDragonSkill
         return (float) Math.toDegrees(Math.atan2(
                 -frame.lookDirection().x(),
                 frame.lookDirection().z()
+        ));
+    }
+
+    private static float yawFromDirection(
+            final PerceptionVec3 direction
+    ) {
+        return (float) Math.toDegrees(Math.atan2(
+                -direction.x(),
+                direction.z()
         ));
     }
 

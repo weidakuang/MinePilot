@@ -9,7 +9,9 @@ Last reviewed: 2026-08-14
   Java 25.
 - Development version: `0.1.10-dev-mc26.2`.
 - Public backup: `https://github.com/weidakuang/MinePilot`.
-- Local development branch: `agent/minecraft-companion-0.1.9`.
+- Local development branch: `main`.
+- Latest local commit: see the public `main` history for the current
+  validation commit.
 - Forge 65.x major-line backup branch: `mc26.2-forge65`.
 - Artifact status: `NON_RELEASE` until all formal gates pass.
 
@@ -67,7 +69,7 @@ or speedrun claim.
   JUnit suite, the release build and jar verification, the compatibility
   checker, and the 61-case Python audit after this change. The artifact is
   `build/libs/mcai_companion-0.1.10-dev-mc26.2.jar` with SHA-256
-  `0d5934905ce4a2381a56eb2eb443bcad63876e6aca73e7e86f9fb47e622b2d9c`.
+  `efede34c86e6825a4f3016990aaf785bf6c343e5329abc79738f5a811ca804bc`.
 
 ### Live MiMo result (latest)
 
@@ -76,11 +78,12 @@ real-time Forge 65.1.1 server. The model produced a valid
 `START_SKILL(fight_ender_dragon)` response; the body performed real melee and
 bow actions, destroyed the observed crystal and dragon, then selected
 `find_and_enter_observed_portal`. The route verifier recorded `DRAGON_KILLED`
-at game tick 2164 and `RETURNED_FROM_END` at tick 2283. The same body UUID
-returned through the activated portal and the Forge test reported
-`All 1 required tests passed` in 1.903 minutes. The arena disables only
-ambient mob spawning after installing the dragon and crystal, so this is a
-controlled live-model chain, not a random-seed, Hardcore, or speedrun claim.
+and `RETURNED_FROM_END`; the same body UUID returned through the activated
+portal and Forge reported `All 1 required tests passed` in 2.183 minutes. The
+run also covered the first-human cross-dimension anchor guard and the 16-block
+fair portal approach bound. The arena disables only ambient mob spawning after
+installing the dragon and crystal, so this is a controlled live-model chain,
+not a random-seed, Hardcore, or speedrun claim.
 
 Earlier controlled MiMo slices reached End entry and demonstrated follow and
 other task chains, but they are historical evidence and do not upgrade the

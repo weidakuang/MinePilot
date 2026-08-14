@@ -39,7 +39,7 @@ final class AiPlayerManagerInitialAnchorSourceContractTest {
                 "private boolean tryDeferredInitialAnchor()"
         );
         final int normalReanchor = source.indexOf(
-                "reanchorInitialBodyNear(anchor)",
+                "reanchorInitialBodyNear(currentAnchor)",
                 retry
         );
 
@@ -55,6 +55,21 @@ final class AiPlayerManagerInitialAnchorSourceContractTest {
         assertTrue(
                 retry >= 0 && normalReanchor > retry,
                 "a deferred login must retry through server-tick reanchor"
+        );
+        assertTrue(
+                source.contains("private SafeCompanionSpawnLocator.Anchor deferredInitialAnchor")
+                    && source.contains("requestSpawn(Optional.of(anchor))"),
+                "the validated anchor must survive a same-tick human "
+                    + "disconnect instead of relying only on a live UUID"
+        );
+        assertTrue(
+                source.contains("body.level() != anchor.level()")
+                    && source.contains("markBodyAnchored()")
+                    && source.contains(
+                        "initial_anchor_claimed_current_dimension"
+                    ),
+                "a first human in another dimension must not move an active "
+                    + "body across dimensions"
         );
     }
 }

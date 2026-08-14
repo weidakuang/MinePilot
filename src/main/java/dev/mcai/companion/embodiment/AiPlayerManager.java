@@ -28,6 +28,15 @@ public final class AiPlayerManager {
     private long sessionGeneration;
     private java.util.UUID deferredInitialAnchorPlayer;
 
+    /*
+     * Keep the already validated spawn anchor, not only the human UUID. A
+     * player can disconnect in the same server tick that requests the one-time
+     * initial re-anchor; losing the UUID at that boundary used to leave the AI
+     * permanently absent. The value is process-local and is consumed only by
+     * the normal ServerPlayer login lifecycle.
+     */
+    private SafeCompanionSpawnLocator.Anchor deferredInitialAnchor;
+
     private AiPlayerManager(MinecraftServer server) {
         this.server = server;
     }
@@ -104,8 +113,30 @@ public final class AiPlayerManager {
         }
         if (manager.lifecycle.state() == SessionState.ACTIVE
                 && CompanionWorldData.get(server).bodyNeedsInitialAnchor()) {
+            final ServerPlayer body = manager.session == null
+                    ? null
+                    : manager.session.currentPlayer();
+            if (body != null && body.level() != anchor.level()) {
+                /*
+                 * The first human may join a different dimension from a
+                 * body that has already entered a portal or resumed a saved
+                 * task.  Re-logging that body at the human's anchor would be
+                 * a cross-dimension gameplay teleport in disguise and can
+                 * destroy an otherwise valid task.  Claim the one-time
+                 * startup provenance in place; ordinary cross-dimension
+                 * travel remains an explicit skill decision.
+                 */
+                CompanionWorldData.get(server).markBodyAnchored();
+                manager.deferredInitialAnchorPlayer = null;
+                manager.deferredInitialAnchor = null;
+                return OperationResult.accepted(
+                        "initial_anchor_claimed_current_dimension"
+                );
+            }
             if (!manager.canReplaceInitialBody()) {
                 manager.deferredInitialAnchorPlayer = anchor.getUUID();
+                manager.deferredInitialAnchor =
+                        SafeCompanionSpawnLocator.capture(anchor);
                 return OperationResult.accepted(
                         "initial_anchor_deferred_busy"
                 );
@@ -232,6 +263,7 @@ public final class AiPlayerManager {
     ) {
         if (!canReplaceInitialBody()) {
             deferredInitialAnchorPlayer = anchor.getUUID();
+            deferredInitialAnchor = SafeCompanionSpawnLocator.capture(anchor);
             return OperationResult.accepted("initial_anchor_deferred_busy");
         }
         /*
@@ -244,6 +276,7 @@ public final class AiPlayerManager {
          * after the old authoritative entry has disappeared.
          */
         deferredInitialAnchorPlayer = anchor.getUUID();
+        deferredInitialAnchor = SafeCompanionSpawnLocator.capture(anchor);
         final OperationResult removed = requestRemove();
         if (!removed.accepted()) {
             return OperationResult.rejected("initial_anchor_remove_failed");
@@ -363,33 +396,34 @@ public final class AiPlayerManager {
 
     private boolean tryDeferredInitialAnchor() {
         if (!CompanionWorldData.get(server).bodyNeedsInitialAnchor()
-                || deferredInitialAnchorPlayer == null) {
+                || deferredInitialAnchor == null) {
             return false;
         }
-        final ServerPlayer anchor = server.getPlayerList().getPlayer(
-                deferredInitialAnchorPlayer
-        );
-        if (anchor == null || !anchor.isAlive()) {
+        final SafeCompanionSpawnLocator.Anchor anchor =
+                deferredInitialAnchor;
+        if (anchor.level().getServer() != server) {
             deferredInitialAnchorPlayer = null;
+            deferredInitialAnchor = null;
             return false;
         }
         if (lifecycle.state() == SessionState.ABSENT) {
             /*
              * A just-closed headless login may still be present in PlayerList
-             * for one or more callbacks.  Wait without replacing it, then
+             * for one or more callbacks. Wait without replacing it, then
              * start one ordinary anchored login once the UUID is genuinely
-             * free.  This is a lifecycle retry, never a gameplay teleport.
+             * free. The captured safe anchor remains valid even if the human
+             * disconnects before this retry tick; this is still a lifecycle
+             * retry, never a gameplay teleport.
              */
             if (server.getPlayerList().getPlayer(
                         CompanionWorldData.get(server).companionUuid()
                     ) != null) {
                 return false;
             }
-            final OperationResult result = requestSpawn(Optional.of(
-                    SafeCompanionSpawnLocator.capture(anchor)
-            ));
+            final OperationResult result = requestSpawn(Optional.of(anchor));
             if (result.accepted()) {
                 deferredInitialAnchorPlayer = null;
+                deferredInitialAnchor = null;
                 return true;
             }
             return false;
@@ -397,7 +431,15 @@ public final class AiPlayerManager {
         if (lifecycle.state() != SessionState.ACTIVE) {
             return false;
         }
-        final OperationResult result = reanchorInitialBodyNear(anchor);
+        final ServerPlayer currentAnchor = deferredInitialAnchorPlayer == null
+                ? null
+                : server.getPlayerList().getPlayer(
+                        deferredInitialAnchorPlayer
+                );
+        if (currentAnchor == null) {
+            return requestRemove().accepted();
+        }
+        final OperationResult result = reanchorInitialBodyNear(currentAnchor);
         return result.accepted()
                 && ("initial_anchor_replacement_started".equals(
                         result.code()

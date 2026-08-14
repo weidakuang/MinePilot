@@ -26,7 +26,10 @@ final class FairPerceptionContactSourceContractTest {
 
         assertTrue(sampler.contains("final boolean physicalContact"));
         assertTrue(sampler.contains(
-                "!physicalContact && !PerceptionGeometry.isInsideViewCone"
+                "!physicalContact && !anyVisualPointInView"
+        ));
+        assertTrue(sampler.contains(
+                "PerceptionGeometry.isInsideViewCone"
         ));
         assertTrue(sampler.contains(
                 "physicalContact\n                            ? PerceptionProvenance.PHYSICAL_CONTACT"

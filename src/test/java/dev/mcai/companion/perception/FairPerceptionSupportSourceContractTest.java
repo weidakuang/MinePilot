@@ -83,10 +83,42 @@ final class FairPerceptionSupportSourceContractTest {
         assertTrue(source.contains(
                 "candidate instanceof EnderDragonPart part"
         ));
-        assertTrue(source.contains("? part.parentMob"));
+        assertTrue(source.contains("part.parentMob != null"));
         assertTrue(source.contains(
                 "emittedEntityIds.add(perceived.getUUID())"
         ));
+        assertTrue(
+                source.contains("for (EnderDragonPart part : level.dragonParts())"),
+                "Fair entity candidates must include Level multipart parts; "
+                    + "the generic EntityTypeTest query omits them"
+        );
+        assertTrue(
+                source.contains("for (EnderDragon dragon : level.getDragons())"),
+                "Loaded dragon roots must repopulate multipart candidates "
+                    + "when the auxiliary section map is briefly stale"
+        );
+        assertTrue(
+                source.contains("EntityTypeTest.forClass(EnderDragon.class)")
+                    && source.contains("loadedDragonRoots"),
+                "The ordinary loaded dragon-root query must cover a fight "
+                    + "manager whose convenience collection is not refreshed"
+        );
+        assertTrue(
+                source.contains("candidates.removeIf(existing ->")
+                    && source.contains("existing.getUUID().equals(part.getUUID())"),
+                "Fresh root-owned dragon parts must replace stale same-UUID "
+                    + "multipart index entries"
+        );
+        assertTrue(
+                source.contains("level.getDragonFight().dragonUUID()"),
+                "The End fight UUID must be a final loaded-root fallback"
+        );
+        assertTrue(
+                source.contains("level.isLoaded(candidate.blockPosition())"),
+                "Broad multipart indexing must still apply loaded-section "
+                    + "gates before publication"
+        );
+        assertTrue(source.contains("candidates.subList("));
         assertTrue(source.contains("\"interactionAimX\""));
         assertTrue(source.contains("\"interactionAimY\""));
         assertTrue(source.contains("\"interactionAimZ\""));
@@ -95,6 +127,43 @@ final class FairPerceptionSupportSourceContractTest {
         ));
         assertTrue(source.contains("projectileThreat"));
         assertTrue(source.contains("isCurrentThreat(player, entity)"));
+        assertTrue(source.contains(
+                "canonicalPerceivedEntity(candidate).getUUID()"
+        ));
+        assertTrue(source.contains(
+                "candidate instanceof EnderDragonPart part"
+        ));
+        assertTrue(
+                source.contains("part.parentMob.isAlive()")
+                    && source.contains("part.parentMob.isRemoved()"),
+                "Dragon-part threat identity must follow its live parent"
+        );
+        assertTrue(
+                source.contains("anyVisualPointInView"),
+                "Entity FOV must test bounded collider points rather than "
+                    + "requiring only a tall entity's eye to be in frame"
+        );
+        assertTrue(
+                source.contains("emittedEntityIds.contains(part.parentMob.getUUID())"),
+                "Multipart siblings must not consume the finite LOS budget "
+                    + "after their semantic parent was published"
+        );
+        assertTrue(
+                source.contains("isCurrentThreat(player, entity)"),
+                "Finite entity perception must prioritize bounded hostile "
+                    + "candidates before neutral aftermath entities"
+        );
+        assertTrue(
+                source.contains("candidate instanceof EnderDragon dragon")
+                    && source.contains("isHostilePerceivedEntity(perceived)"),
+                "The canonical dragon root must remain a hostile semantic "
+                    + "target even though vanilla does not mark it Enemy"
+        );
+        assertTrue(
+                source.contains("instanceof EnderDragon ? 0 : 1"),
+                "Dragon roots and multipart colliders must not be starved "
+                    + "by breath-cloud LOS checks"
+        );
     }
 
     @Test

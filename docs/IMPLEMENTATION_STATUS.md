@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last reviewed: 2026-08-13
+Last reviewed: 2026-08-14
 
 ## Current release line
 
@@ -58,11 +58,16 @@ or speedrun claim.
   emergency golem, zombie/skeleton horde, parkour, furnace/menu, water clutch,
   and compatibility smoke tests have passed in prior fresh servers. Their logs
   remain component evidence only.
+- Stronghold portal-room search and activation now have fair first-person
+  diagnostics, bounded interior confidence, dead-end backtracking, and a
+  regression guard against walking without observed support. The live entry
+  harness keeps the chat sender connected until the production remove/relogin
+  anchor transaction settles.
 - The current working tree passed the focused combat test, the complete offline
   JUnit suite, the release build and jar verification, the compatibility
   checker, and the 61-case Python audit after this change. The artifact is
   `build/libs/mcai_companion-0.1.10-dev-mc26.2.jar` with SHA-256
-  `7ecf2e1d2a8a5d6a7192a7603cdb5fd47b76681703cf1bfec1dd0d98f2eb9e8c`.
+  `0d5934905ce4a2381a56eb2eb443bcad63876e6aca73e7e86f9fb47e622b2d9c`.
 
 ### Live MiMo result (latest)
 
@@ -83,12 +88,24 @@ current formal gates.
 
 ### Fresh controlled live slices
 
-Using the same real `mimo-v2.5` gateway, the current line also passed bounded
+Using the same real `mimo-v2.5` gateway, the current line passed bounded
 model-to-action slices for ordinary movement, follow, surprise-zombie defense,
-and owned golden-apple consumption. The model returned an actionable skill in
-each case, and the verifier observed vanilla movement, follow, combat, or food
-use. See `docs/progress/CONTROLLED_LIVE_RUNS.md`; these remain controlled
+owned golden-apple consumption, chest withdrawal, item collection, a complete
+foundation shelter route, and Nether portal construction/entry. The model
+returned actionable skills and the verifier observed vanilla movement,
+inventory/menu transactions, combat, food use, physical building, and portal
+entry. See `docs/progress/CONTROLLED_LIVE_RUNS.md`; these remain controlled
 evidence and do not upgrade any formal gate.
+
+The newest controlled slice, `real_player_task_to_live_model_stronghold_portal_room_and_entry`,
+also passed with the supplied `mimo-v2.5` gateway on Forge 65.1.1. The model
+selected `search_stronghold_portal_room`, `activate_observed_end_portal`, and
+`find_and_enter_observed_portal` in sequence. The verifier observed physical
+maze movement, a dead-end and second-turn route, twelve ordinary Eye of Ender
+transactions, nine active portal blocks, End entry, and the vanilla `The End?`
+advancement. SQLite recorded the complete model request/response, decision
+acceptance, skill-start, and low-level action chain. This is a bounded fixture
+and does not upgrade M2, M4, or the formal Actor/Observer gate.
 
 ## Formal gate status
 
@@ -114,11 +131,11 @@ does not satisfy the causal audit.
 
 ## Next engineering steps
 
-1. Preserve the live End victory/return evidence and extend the same causal
-   audit to natural-world progression.
-2. Add or refine regression coverage for observed target points, projectile
-   lead, dragon-part reacquisition, and bounded retry behavior without direct
-   world mutation.
+1. Preserve the live End-entry evidence and extend the same causal audit into
+   the release-excluded End combat arena and return path.
+2. Keep regression coverage for observed target points, portal reach limits,
+   projectile lead, dragon-part reacquisition, and bounded retry behavior
+   without direct world mutation.
 3. Extend the controlled live causal chain to natural-world progression and
    add fresh combat regression coverage as observations expose new cases.
 4. Run the formal Actor/Observer and hidden-seed protocols only on an authorized

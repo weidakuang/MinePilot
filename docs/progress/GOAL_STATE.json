@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-13T22:22:48Z",
-  "sourceState": "CLEAN_COMMITTED",
+  "updatedAtUtc": "2026-08-14T01:18:03Z",
+  "sourceState": "DIRTY_PENDING_COMMIT",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.10-dev-mc26.2",
@@ -99,6 +99,65 @@
       "fixtureConstraint": "Owned fixture inventory and bounded food goal; not a general inventory policy claim.",
       "formalGate": "NOT_RUN"
     },
+    "latestLiveContainerWithdrawal": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL use_block, then transfer_menu_item",
+      "actions": "The first malformed use_block was rejected locally; the model corrected it, opened a chest menu, and transferred three oak planks through vanilla menu actions.",
+      "runtimeSeconds": 14.41,
+      "fixtureConstraint": "Bounded observed chest fixture; not a general storage-policy claim.",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveItemCollection": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL collect_observed_item",
+      "actions": "The body collected the observed item through the normal pickup path and the verifier checked the inventory/stat delta.",
+      "runtimeSeconds": 16.86,
+      "fixtureConstraint": "Single visible item fixture; not an arbitrary-world collection statistic.",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveFoundationBootstrap": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "Multiple START_SKILL decisions ending in build_shelter_step",
+      "actions": "The body mined and crafted the foundation route, stored supplies through a real chest menu, dynamically built the shelter, survived the configured night, and SQLite recorded low-level actions plus server_verified_auto_complete and goalStatus COMPLETED.",
+      "runtimeSeconds": 534.72,
+      "fixtureConstraint": "Bounded visible-resource fixture and controlled night; not a random Hardcore seed or M1 statistic.",
+      "runRoot": "run-live-foundation-20260814e",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveNetherPortal": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL build_and_light_nether_portal, then find_and_enter_observed_portal",
+      "actions": "The body built and lit an observed portal through normal placement/use actions and entered it; SQLite recorded both skill completions.",
+      "runtimeSeconds": 52.17,
+      "fixtureConstraint": "Bounded portal-material fixture; no stronghold, Nether fortress, or random-seed claim.",
+      "runRoot": "run-live-nether-portal-20260814",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveStrongholdPortalEntry": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL survey_surroundings, search_stronghold_portal_room, activate_observed_end_portal, then find_and_enter_observed_portal",
+      "actions": "The body traversed the authored maze with a dead end and second turn, inserted all twelve eyes through first-person vanilla use and inventory verification, created nine active portal blocks, entered the End, and triggered the vanilla The End? advancement.",
+      "runtimeSeconds": 97.62,
+      "fixtureConstraint": "Bounded release-excluded stronghold maze and portal-room fixture; no random seed, Hardcore, speedrun, or rendered-client claim.",
+      "runRoot": "run-live-stronghold-entry-debug15-20260814",
+      "audit": "SQLite recorded model request/response, schema validation, decision acceptance, skill starts, and low-level movement/use actions for all four model decisions.",
+      "supersededFailures": [
+        "debug11 final-eye local fallback stalled after eleven eyes",
+        "debug12 stale TARGET_OUT_OF_REACH replay stalled after nine eyes",
+        "debug14 semantic 4.5..4.7 range mismatch stalled after eight eyes"
+      ],
+      "formalGate": "NOT_RUN"
+    },
     "latestDedicatedServerSmoke": {
       "status": "PASS_CONTROLLED_REAL_SERVER",
       "runRoot": "e2e/results/6f6b8f76db9f/20260813T221301Z-e2e6f6f3cabeb02",
@@ -122,15 +181,15 @@
     },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
-      "details": "Full offline Gradle JUnit, release build, verifyReleaseJar, compatibility checker, and 61 Python E2E tests passed after the combat fix. Public documentation Han scan and git diff check passed.",
+      "details": "Full offline Gradle clean build, JUnit suite, verifyReleaseJar, compatibility checker, and 61 Python E2E tests passed after the live stronghold fixes. Public documentation English-only scan and staged preflight remain required before commit.",
       "artifact": "build/libs/mcai_companion-0.1.10-dev-mc26.2.jar",
-      "sha256": "7ecf2e1d2a8a5d6a7192a7603cdb5fd47b76681703cf1bfec1dd0d98f2eb9e8c",
+      "sha256": "0d5934905ce4a2381a56eb2eb443bcad63876e6aca73e7e86f9fb47e622b2d9c",
       "formalGate": "NOT_RUN"
     }
   },
   "nextActions": [
-    "Extend the controlled live causal chain to natural-world progression.",
-    "Add regression coverage for observed target points, projectile lead, and bounded combat retry.",
+    "Preserve the live stronghold-entry evidence and extend the causal chain into End combat and return.",
+    "Run the full offline regression, release build, English documentation scan, and preflight-before-commit.",
     "Run formal Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker."
   ],
   "evidencePolicy": "No controlled test, model acknowledgement, historical run, or no-model arena may be promoted to a formal M0-M4 PASS."

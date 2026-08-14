@@ -198,6 +198,62 @@ final class SearchObservedStrongholdPortalRoomSkillTest {
     }
 
     @Test
+    void doesNotWalkFromAViewWithoutAStrongholdFloorUnderfoot() {
+        final CountingActuator actuator = new CountingActuator();
+        final MutableFrames frames = new MutableFrames(frame(
+                List.of(),
+                List.of(strongholdFace())
+        ));
+        final SearchObservedStrongholdPortalRoomSkill skill =
+                new SearchObservedStrongholdPortalRoomSkill(
+                        PLAYER_ID,
+                        actuator,
+                        frames,
+                        () -> 7L
+                );
+        skill.start(context(20), NoParameters.INSTANCE);
+
+        final CoreSkillFrame base = frames.frame;
+        final double pitch = Math.toRadians(20.0);
+        frames.frame = new CoreSkillFrame(
+                base.playerId(),
+                base.dimension(),
+                REVISION + 1,
+                REVISION + 1,
+                base.position(),
+                base.eyePosition(),
+                new PerceptionVec3(
+                        0.0,
+                        -Math.sin(pitch),
+                        Math.cos(pitch)
+                ),
+                base.onGround(),
+                base.inWater(),
+                base.danger(),
+                base.navigation(),
+                List.of(),
+                base.health(),
+                base.maxHealth(),
+                base.foodLevel(),
+                base.inventory(),
+                base.mainHand(),
+                base.offHand(),
+                base.visibleEntities(),
+                base.dangerSignals()
+        );
+
+        assertEquals(
+                SkillTickResult.Status.RUNNING,
+                skill.tick(context(21), NoParameters.INSTANCE).status()
+        );
+        assertEquals(
+                0,
+                actuator.moveCalls,
+                "The search must not walk into an unverified open area"
+        );
+    }
+
+    @Test
     void refusesToStartWithoutFirstPersonStrongholdEvidence() {
         final SearchObservedStrongholdPortalRoomSkill skill =
                 new SearchObservedStrongholdPortalRoomSkill(
@@ -372,10 +428,13 @@ final class SearchObservedStrongholdPortalRoomSkillTest {
         }
     }
 
-    private static final class AcceptedActuator
+    private static class AcceptedActuator
             implements CoreSkillActuator {
+        int moveCalls;
+
         @Override
         public ActionOutcome move(final MovementIntent intent) {
+            moveCalls++;
             return ActionOutcome.QUEUED;
         }
 
@@ -400,5 +459,8 @@ final class SearchObservedStrongholdPortalRoomSkillTest {
         ) {
             return ActionOutcome.DISPATCHED;
         }
+    }
+
+    private static final class CountingActuator extends AcceptedActuator {
     }
 }

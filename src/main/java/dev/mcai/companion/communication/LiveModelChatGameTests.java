@@ -7091,6 +7091,8 @@ public final class LiveModelChatGameTests {
                         + ", reserve=" + reserveLogSummary()
                         + ", skill=" + skill.skillName()
                         + ", rejection=" + skill.lastStartRejection()
+                        + ", checkpoint=" + runtime.skillSupervisor()
+                            .lastCheckpointPayload().orElse("<none>")
             );
             helper.assertTrue(
                     System.nanoTime() - stageStartedNanos
@@ -9139,7 +9141,11 @@ public final class LiveModelChatGameTests {
         );
         body.getInventory().setItem(
                 slot++,
-                new ItemStack(Items.ARROW, 128)
+                new ItemStack(Items.ARROW, 99)
+        );
+        body.getInventory().setItem(
+                slot++,
+                new ItemStack(Items.ARROW, 29)
         );
         body.getInventory().setItem(
                 slot++,
@@ -12038,10 +12044,14 @@ public final class LiveModelChatGameTests {
                 );
                 body.getInventory().setItem(
                         10,
-                        new ItemStack(Items.ARROW, 128)
+                        new ItemStack(Items.ARROW, 99)
                 );
                 body.getInventory().setItem(
                         11,
+                        new ItemStack(Items.ARROW, 29)
+                );
+                body.getInventory().setItem(
+                        12,
                         new ItemStack(Items.DIAMOND_SWORD)
                 );
             }
@@ -13130,7 +13140,16 @@ public final class LiveModelChatGameTests {
             humanSession = PlacedHuman.create(
                     helper,
                     runtime,
-                    body.position().add(-2.0D, 0.0D, -2.0D)
+                    /*
+                     * SafeCompanionSpawnLocator examines the anchor ring in
+                     * a deterministic (-1,-1) first position.  The fixture
+                     * maze is authored around the body's pre-login block;
+                     * placing the human one block forward therefore keeps
+                     * the ordinary remove/relogin anchor inside that same
+                     * observed corridor instead of moving the body outside
+                     * the release-excluded structure.
+                     */
+                    body.position().add(1.0D, 0.0D, 1.0D)
             );
             final ServerPlayer human = humanSession.player();
             helper.assertTrue(
@@ -13162,13 +13181,31 @@ public final class LiveModelChatGameTests {
                     "Companion cancelled the stronghold portal-room "
                         + "chat command"
             );
-            humanSession.close();
-            humanSession = null;
             stage = StrongholdPortalRoomStage.GOAL;
             stageStartedNanos = System.nanoTime();
         }
 
         private void waitForGoal() {
+            /*
+             * The production login path may need one remove-and-relogin
+             * cycle when the server spawned the body before any human was
+             * online.  Keep the real chat sender connected until that
+             * bounded initial anchor is committed; closing it in the same
+             * tick would cancel the pending anchor and make the body
+             * disappear for a reason unrelated to the model or the route.
+             */
+            if (humanSession != null) {
+                if (runtime.worldData().bodyNeedsInitialAnchor()) {
+                    assertWithin(
+                            MODEL_TIMEOUT_NANOS,
+                            "Initial human anchor did not settle: "
+                                + diagnostics()
+                    );
+                    return;
+                }
+                humanSession.close();
+                humanSession = null;
+            }
             assertNoHumanPlayers();
             assertWithin(
                     MODEL_TIMEOUT_NANOS,

@@ -53,7 +53,14 @@ public final class ActivateObservedEndPortalSkill
             "minecraft:end_portal";
     private static final String ENDER_EYE =
             "minecraft:ender_eye";
-    private static final double MAXIMUM_INTERACTION_DISTANCE = 4.70;
+    /*
+     * Player.blockInteractionRange is 4.5 blocks in the survival fixture.
+     * VisibleBlockFace.distance is measured to the sampled hit point, while
+     * vanilla validates the closest point of the block AABB.  A small
+     * fail-closed margin prevents a 4.5..4.7 semantic hit from being selected
+     * and then rejected forever by the authoritative player range check.
+     */
+    private static final double MAXIMUM_INTERACTION_DISTANCE = 4.45;
     private static final double ALIGNMENT_DEGREES = 3.0;
     private static final double NORMAL_MAXIMUM_DANGER = 0.12;
     private static final double HARDCORE_MAXIMUM_DANGER = 0.04;
@@ -450,6 +457,23 @@ public final class ActivateObservedEndPortalSkill
                                 frame.observationRevision();
                         return SkillTickResult.running(true, false);
                     }
+                    if (used == ActionOutcome.TARGET_OUT_OF_REACH
+                            || used == ActionOutcome.TARGET_CHANGED
+                            || used == ActionOutcome.TARGET_OCCLUDED) {
+                        /*
+                         * The remembered ray hit is no longer a legal
+                         * crosshair target after the body moved. Do not
+                         * replay it eight times; discard it and obtain a
+                         * newer visible frame from the current pose.
+                         */
+                        pendingFrame = null;
+                        resetAlignment(context);
+                        phase = Phase.SEARCHING;
+                        phaseStartedAtTick = context.gameTick();
+                        phaseObservationRevision =
+                                frame.observationRevision();
+                        return SkillTickResult.running(true, true);
+                    }
                     pendingFrame = null;
                     consecutiveInteractionRejections++;
                     if (consecutiveInteractionRejections
@@ -570,6 +594,15 @@ public final class ActivateObservedEndPortalSkill
         lastInteractionOutcome = used;
         if (!used.accepted()) {
             pendingFrame = null;
+            if (used == ActionOutcome.TARGET_OUT_OF_REACH
+                    || used == ActionOutcome.TARGET_CHANGED
+                    || used == ActionOutcome.TARGET_OCCLUDED) {
+                resetAlignment(context);
+                phase = Phase.SEARCHING;
+                phaseStartedAtTick = context.gameTick();
+                phaseObservationRevision = frame.observationRevision();
+                return SkillTickResult.running(true, true);
+            }
             consecutiveInteractionRejections++;
             if (consecutiveInteractionRejections
                     >= MAXIMUM_INTERACTION_REJECTIONS) {

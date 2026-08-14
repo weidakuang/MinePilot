@@ -11169,18 +11169,22 @@ public final class EmbodimentGameTests {
             );
             player.getInventory().setItem(
                 1,
-                new ItemStack(Items.ARROW, 128)
+                new ItemStack(Items.ARROW, 99)
             );
             player.getInventory().setItem(
                 2,
-                new ItemStack(Items.COOKED_BEEF, 16)
+                new ItemStack(Items.ARROW, 29)
             );
             player.getInventory().setItem(
                 3,
-                new ItemStack(Items.DIAMOND_SWORD)
+                new ItemStack(Items.COOKED_BEEF, 16)
             );
             player.getInventory().setItem(
                 4,
+                new ItemStack(Items.DIAMOND_SWORD)
+            );
+            player.getInventory().setItem(
+                5,
                 new ItemStack(Items.DIAMOND_PICKAXE)
             );
             player.getInventory().setSelectedSlot(0);

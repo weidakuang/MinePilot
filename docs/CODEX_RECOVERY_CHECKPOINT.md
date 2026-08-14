@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-13T22:20:56Z
+Last updated: 2026-08-14T01:18:03Z
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -15,8 +15,9 @@ pass.
 
 ## Latest root cause and evidence
 
-The latest authorized `mimo-v2.5` live slice completed a real End fight and
-physical return. Final evidence:
+The latest authorized `mimo-v2.5` live progression slices now include a
+complete controlled M1 foundation route and a complete controlled Nether
+portal handoff. Final evidence:
 
 - Forge 65.1.1, Java 25, real-time GameTest server;
 - model response was HTTP 200 and schema-valid `START_SKILL`;
@@ -33,10 +34,22 @@ physical return. Final evidence:
 - test `real_player_task_to_live_model_end_victory_and_return` passed with
   `All 1 required tests passed` in a 1.903-minute real-time GameTest run.
 
-The scenario is controlled and bounded: the test-only End arena disables
-ambient mob spawning after installing the dragon and crystal. It is evidence
-for the live model-to-vanilla combat and return chain, not a random-seed or
-speedrun result.
+The End scenario is controlled and bounded: the test-only End arena disables
+ambient mob spawning after installing the dragon and crystal. The foundation
+and portal scenarios are also bounded fixtures. They are evidence for live
+model-to-vanilla causal chains, not random-seed or speedrun results.
+
+The latest stronghold entry slice also passed after two real-model failures
+exposed interaction bugs. The first failure came from an overly local final-eye
+fallback that kept the body rotating at one station; the second came from
+accepting a semantic hit in the 4.5-to-4.7 block range that vanilla correctly
+rejected. The fallback was removed and the candidate distance was tightened to
+4.45 blocks. Run `debug15` then passed with the real model: physical maze
+search, dead-end backtracking, a second turn, four-station portal activation,
+the full twelve-eye transaction, model-selected End entry, and the vanilla
+`The End?` advancement. The SQLite causal order included four model
+responses, four accepted skill starts, and low-level movement/use actions.
+This remains a controlled fixture, not an M2 or speedrun result.
 
 ## Changes in the current worktree
 
@@ -55,6 +68,24 @@ speedrun result.
   search; the live fixture now places the test crystal off the dragon's direct
   centerline so the scenario can verify crystal priority without an impossible
   static occlusion.
+- `PrepareFoundationShelterMaterialsSkill`: remembered-table aiming now has a
+  short bounded alignment window and reacquires the table through ordinary
+  movement instead of remaining in a stale crosshair loop.
+- `BuildShelterStepSkill`: roof recovery opens a closed shelter door only via
+  the normal first-person use action when it occludes a pending roof face, and
+  resets one exhausted exterior fallback marker so a final roof corner can be
+  reached from the observed apron without a permanent interior retry loop.
+- `SearchObservedStrongholdPortalRoomSkill`: bounded inherited interior
+  confidence, fair frontier diagnostics, station yaw derived from actual
+  travel, and no walking from a first-person view without observed floor
+  support. The live harness keeps the chat sender connected until the initial
+  anchor transaction settles and places it in the safe locator's authored
+  corridor.
+- `ActivateObservedEndPortalSkill`: stale target outcomes are discarded rather
+  than replayed, final-eye movement uses the normal station route, and the
+  semantic candidate range fails closed below the survival block interaction
+  range. This prevents the observed "staring but doing nothing" loop while
+  preserving vanilla crosshair, reach, and inventory validation.
 - `FairPerceptionSupportSourceContractTest`, `FightEnderDragonSkillTest`, and
   `EmergencySurvivalControllerTest`: regression coverage for collider-center,
   transient shot failures, bounded retreat, and End fall recovery.
@@ -68,6 +99,12 @@ FairPerception focused tests                      PASS
 Offline End/dragon/return physical baseline       PASS (no model)
 Live MiMo End victory and return                  PASS (controlled real-model chain; Forge 65.1.1)
 Live MiMo movement, follow, surprise defense, food PASS (four controlled live-model slices)
+Live MiMo container withdrawal and item collection PASS (two controlled live-model slices)
+Live MiMo foundation bootstrap and shelter       PASS (8.912-minute controlled slice; isolated SQLite)
+Live MiMo Nether portal build and entry          PASS (52.17-second controlled slice; isolated SQLite)
+Live MiMo stronghold search, portal activation, End entry PASS (controlled real-model slice; debug15)
+Roof-jump physical recovery contract             PASS (no-model GameTest)
+Focused shelter-material/building JUnit tests    PASS
 Exact Forge 65.1.1 dedicated lifecycle smoke      PASS (real dedicated server; no functional claim)
 Exact Forge 65.1.1 two-boot persistence smoke     PASS (real restart; no functional claim)
 Delayed first-human anchor client smoke           NOT_RUN (macOS lacks Linux/Xvfb; no client claim)
@@ -83,10 +120,11 @@ seed statistic.
 
 ## Immediate next steps
 
-1. Preserve the movement, follow, defense, food, and End results as controlled
-   evidence; do not promote them to a random-seed or speedrun claim.
-2. Extend the controlled live causal chain to natural-world progression and
-   keep adding regression coverage for fair observed combat recovery.
+1. Preserve all live progression results as controlled evidence; do not
+   promote them to a random-seed or speedrun claim.
+2. Extend the controlled live causal chain from End entry into the release-
+   excluded combat arena and return path, while keeping portal target and
+   movement regressions in the offline suite.
 3. Run formal Actor/Observer and hidden-seed gates only on an authorized
    Linux/Xvfb worker with the exact frozen jar. Keep missing infrastructure as
    `NOT_RUN`.
@@ -97,6 +135,6 @@ seed statistic.
 - Main backup commit before this work: `8ba8a554aa461f0ce2c09c3924d996cbe0854d82`.
 - Forge 65.x backup branch: `mc26.2-forge65`.
 - Local branch: `agent/minecraft-companion-0.1.9`.
-- Worktree: clean at the last checkpoint; the current metadata and evidence
-  update is pending the preflight-before-commit check.
+- Worktree: source and evidence changes are pending the preflight-before-commit
+  check; generated run directories remain ignored or disposable.
 - API keys are process-only during live tests and are never written here.

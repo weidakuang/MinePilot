@@ -867,11 +867,8 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                             ? Set.of(
                                 "find_and_enter_observed_portal"
                             )
-                            : withCompletionUtility(
-                                "reach_observed_stronghold",
-                                "search_stronghold_portal_room",
-                                "activate_observed_end_portal",
-                                "find_and_enter_observed_portal"
+                            : portalDiscoveryPhaseSkills(
+                                trustedRuntimeJson
                             );
             case "DEFEAT_ENDER_DRAGON" ->
                     Set.of("fight_ender_dragon");
@@ -907,6 +904,57 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
         );
         admitted.addAll(Set.of(phaseSkills));
         return Set.copyOf(admitted);
+    }
+
+    /**
+     * Do not advertise a prerequisite that the server has already recorded
+     * as complete.  In particular, once the measured stronghold search area
+     * exists, offering reach_observed_stronghold beside the portal-room
+     * search lets a provider repeatedly request a skill whose own fair
+     * intersection precondition is intentionally no longer satisfied.
+     */
+    private static Set<String> portalDiscoveryPhaseSkills(
+            final String trustedRuntimeJson
+    ) {
+        final Set<String> skills = new java.util.HashSet<>(
+                withCompletionUtility(
+                        "search_stronghold_portal_room",
+                        "activate_observed_end_portal",
+                        "find_and_enter_observed_portal"
+                )
+        );
+        if (!hasVerifiedMilestone(
+                    trustedRuntimeJson,
+                    "STRONGHOLD_SEARCH_AREA_TRIANGULATED"
+                )) {
+            skills.add("reach_observed_stronghold");
+        }
+        return Set.copyOf(skills);
+    }
+
+    private static boolean hasVerifiedMilestone(
+            final String trustedRuntimeJson,
+            final String milestone
+    ) {
+        try {
+            final var trusted = JsonParser.parseString(
+                    Objects.requireNonNullElse(trustedRuntimeJson, "")
+            ).getAsJsonObject();
+            final var route = trusted.getAsJsonObject(
+                    "verifiedCompletionRouteData"
+            );
+            if (route == null || !route.has("verifiedMilestones")) {
+                return false;
+            }
+            for (var value : route.getAsJsonArray("verifiedMilestones")) {
+                if (milestone.equals(value.getAsString())) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException malformedTrustedRuntime) {
+            return false;
+        }
+        return false;
     }
 
     /**

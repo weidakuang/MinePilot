@@ -95,6 +95,13 @@ public final class PrepareFoundationShelterMaterialsSkill
     private static final int PLANKS_PER_WOOD = 4;
     private static final int MAXIMUM_TICKS = 9_000;
     private static final int MAXIMUM_CONFIRM_TICKS = 120;
+    /**
+     * A remembered workstation is already server-verified, but a stale
+     * crosshair can still keep the headless player in an aim loop. Give
+     * ordinary look alignment a short window, then reacquire the same
+     * verified block through vanilla movement instead of scanning forever.
+     */
+    private static final int MAXIMUM_TABLE_AIM_TICKS = 24;
     private static final int MAXIMUM_RECIPE_WAIT_TICKS = 120;
     private static final int MAXIMUM_MENU_WAIT_TICKS = 120;
     private static final int MAXIMUM_SCAN_TURNS = 64;
@@ -1524,9 +1531,15 @@ public final class PrepareFoundationShelterMaterialsSkill
                 );
             }
             if (context.gameTick() - phaseStartedAtTick
-                    < MAXIMUM_CONFIRM_TICKS) {
+                    < MAXIMUM_TABLE_AIM_TICKS) {
                 return aimAt(context, frame, target);
             }
+            return beginTableApproach(
+                    context,
+                    frame,
+                    (int) Math.floor(target.x()),
+                    (int) Math.floor(target.z())
+            );
         }
         return scan(context, frame, Phase.FIND_TABLE);
     }
@@ -1619,7 +1632,7 @@ public final class PrepareFoundationShelterMaterialsSkill
             return SkillTickResult.running(true, true);
         }
         if (context.gameTick() - phaseStartedAtTick
-                >= MAXIMUM_CONFIRM_TICKS) {
+                >= MAXIMUM_TABLE_AIM_TICKS) {
             return beginTableApproach(
                     context,
                     frame,

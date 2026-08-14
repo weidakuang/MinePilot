@@ -82,6 +82,13 @@ public final class SearchObservedStrongholdPortalRoomSkill
     private static final int MAXIMUM_HORIZONTAL_RADIUS = 192;
     private static final int MAXIMUM_VERTICAL_RADIUS = 48;
     private static final int MAXIMUM_MOVE_FAILURES = 24;
+    /**
+     * A first-person ray can show a stronghold wall without hitting the
+     * floor. Keep a bounded amount of that inherited interior confidence so
+     * a corridor is not rejected merely because the camera is looking level;
+     * never allow the same ambiguity to become an unbounded overworld walk.
+     */
+    private static final int MAXIMUM_UNVERIFIED_STATION_STEPS = 48;
     private static final float SCAN_ALIGNMENT_TOLERANCE_DEGREES = 2.0F;
     private static final float[] SCAN_YAW_OFFSETS = {
         0.0F,
@@ -119,6 +126,8 @@ public final class SearchObservedStrongholdPortalRoomSkill
     private GridPos station;
     private float stationBaseYaw;
     private int scanViewIndex;
+    private String lastVisibleStrongholdFaces = "";
+    private String lastObservedFrontiers = "";
     private int moveFailures;
     private boolean backtracking;
     private MoveToSkill movement;
@@ -135,6 +144,10 @@ public final class SearchObservedStrongholdPortalRoomSkill
     private final Map<GridPos, GridPos> parent = new HashMap<>();
     private final Map<GridPos, Integer> scanCursor = new HashMap<>();
     private final Map<GridPos, Float> scanBaseYaws = new HashMap<>();
+    private final Map<GridPos, Integer> unverifiedStationSteps =
+            new HashMap<>();
+    private final Map<GridPos, Boolean> stationStrongholdEvidence =
+            new HashMap<>();
 
     public SearchObservedStrongholdPortalRoomSkill(
             final UUID expectedPlayerId,
@@ -249,6 +262,8 @@ public final class SearchObservedStrongholdPortalRoomSkill
         station = frame.feet();
         stationBaseYaw = yawOf(frame.lookDirection());
         scanViewIndex = 0;
+        lastVisibleStrongholdFaces = "";
+        lastObservedFrontiers = "";
         moveFailures = 0;
         backtracking = false;
         movement = null;
@@ -265,9 +280,18 @@ public final class SearchObservedStrongholdPortalRoomSkill
         parent.clear();
         scanCursor.clear();
         scanBaseYaws.clear();
+        unverifiedStationSteps.clear();
+        stationStrongholdEvidence.clear();
         visited.add(station);
         scanCursor.put(station, 0);
         scanBaseYaws.put(station, stationBaseYaw);
+        // Preconditions already proved stronghold material in the current
+        // first-person frame; the next station inherits only a bounded step.
+        unverifiedStationSteps.put(station, 0);
+        stationStrongholdEvidence.put(
+                station,
+                strongholdEvidenceVisible(frame)
+        );
     }
 
     @Override
@@ -298,7 +322,10 @@ public final class SearchObservedStrongholdPortalRoomSkill
                             + "\"station\":\"%s\",\"scanView\":%d,"
                             + "\"visited\":%d,\"exhausted\":%d,"
                             + "\"rejected\":%d,\"moveFailures\":%d,"
-                            + "\"backtracking\":%s}",
+                            + "\"backtracking\":%s,"
+                            + "\"visibleStrongholdFaces\":\"%s\","
+                            + "\"frontiers\":\"%s\","
+                            + "\"stationYaw\":%.1f}",
                         phase.name(),
                         origin == null ? "" : origin,
                         station == null ? "" : station,
@@ -307,7 +334,10 @@ public final class SearchObservedStrongholdPortalRoomSkill
                         exhausted.size(),
                         rejected.size(),
                         moveFailures,
-                        backtracking
+                        backtracking,
+                        escapeJson(lastVisibleStrongholdFaces),
+                        escapeJson(lastObservedFrontiers),
+                        stationBaseYaw
                 )
         );
     }
@@ -470,6 +500,7 @@ public final class SearchObservedStrongholdPortalRoomSkill
 
         final Optional<VisibleBlockFace> obstacle =
                 visibleOperableObstacle(frame);
+        lastVisibleStrongholdFaces = describeVisibleStrongholdFaces(frame);
         if (obstacle.isPresent()) {
             final VisibleBlockFace face = obstacle.orElseThrow();
             final Optional<BlockInteractionTarget> target =
@@ -487,16 +518,72 @@ public final class SearchObservedStrongholdPortalRoomSkill
             }
         }
 
-        final Optional<GridPos> next =
-                nextObservedAdjacentFrontier(
-                        frame,
-                        origin,
-                        visited,
-                        rejected,
-                        context.hardcore(),
-                        localPlanner,
-                        corePolicy
+        /*
+         * A stronghold search must not turn an initially observed corridor
+         * into an unbounded walk through ordinary open terrain.  The local
+         * navigation map quite correctly records clear rays outside a
+         * structure, but those cells are not evidence that the player is
+         * still inside the stronghold.  Finish this camera sweep in place
+         * and backtrack through the last physically traversed edge whenever
+         * the current first-person view contains no stronghold block.  This
+         * keeps exploration fair while preventing the real-model route from
+         * drifting hundreds of blocks into an unknown overworld.
+         */
+        final boolean interiorEvidence =
+                strongholdInteriorEvidenceVisible(frame);
+        final boolean corridorEvidence =
+                strongholdCorridorEvidenceVisible(frame);
+        if (strongholdEvidenceVisible(frame)) {
+            stationStrongholdEvidence.put(station, true);
+        }
+        if (interiorEvidence || corridorEvidence) {
+            unverifiedStationSteps.put(station, 0);
+        }
+        final int inheritedUnverifiedSteps =
+                unverifiedStationSteps.getOrDefault(
+                        station,
+                        MAXIMUM_UNVERIFIED_STATION_STEPS + 1
                 );
+        final boolean hasStationEvidence =
+                stationStrongholdEvidence.getOrDefault(
+                        station,
+                        false
+                );
+        if (!interiorEvidence
+                && !corridorEvidence
+                && (!hasStationEvidence
+                    || inheritedUnverifiedSteps
+                        > MAXIMUM_UNVERIFIED_STATION_STEPS)) {
+            scanViewIndex++;
+            scanCursor.put(station, scanViewIndex);
+            requiredObservationRevision =
+                    frame.observationRevision() + 1;
+            return SkillTickResult.running(true, true);
+        }
+
+        final List<GridPos> observedFrontiers = observedAdjacentFrontiers(
+                frame,
+                origin,
+                visited,
+                rejected,
+                context.hardcore(),
+                localPlanner,
+                corePolicy
+        );
+        lastObservedFrontiers = observedFrontiers.stream()
+                .limit(12)
+                .map(GridPos::toString)
+                .reduce((left, right) -> left + ";" + right)
+                .orElse("");
+        final Optional<GridPos> next = observedFrontiers.stream()
+                .min(Comparator
+                        .comparingDouble((GridPos candidate) ->
+                                lookAlignmentCost(
+                                        frame,
+                                        candidate,
+                                        stationBaseYaw
+                                ))
+                        .thenComparing(Comparator.naturalOrder()));
         scanViewIndex++;
         scanCursor.put(station, scanViewIndex);
         requiredObservationRevision =
@@ -504,6 +591,20 @@ public final class SearchObservedStrongholdPortalRoomSkill
         if (next.isPresent()) {
             final GridPos destination = next.orElseThrow();
             parent.putIfAbsent(destination, station);
+            unverifiedStationSteps.putIfAbsent(
+                    destination,
+                    Math.min(
+                            MAXIMUM_UNVERIFIED_STATION_STEPS + 1,
+                            inheritedUnverifiedSteps + 1
+                    )
+            );
+            stationStrongholdEvidence.putIfAbsent(
+                    destination,
+                    stationStrongholdEvidence.getOrDefault(
+                            station,
+                            false
+                    )
+            );
             return startMovement(
                     context,
                     frame,
@@ -698,11 +799,27 @@ public final class SearchObservedStrongholdPortalRoomSkill
         final GridPos reached = movementTarget;
         final boolean completedBacktrack = backtracking;
         clearMovement();
+        final GridPos previousStation = station;
+        final float travelYaw = yawOf(new PerceptionVec3(
+                reached.x() - previousStation.x(),
+                0.0,
+                reached.z() - previousStation.z()
+        ));
         station = reached;
         visited.add(reached);
+        unverifiedStationSteps.putIfAbsent(
+                station,
+                Math.min(
+                        MAXIMUM_UNVERIFIED_STATION_STEPS + 1,
+                        unverifiedStationSteps.getOrDefault(
+                                station,
+                                MAXIMUM_UNVERIFIED_STATION_STEPS
+                        )
+                )
+        );
         stationBaseYaw = scanBaseYaws.computeIfAbsent(
                 station,
-                ignored -> yawOf(frame.lookDirection())
+                ignored -> travelYaw
         );
         scanViewIndex = completedBacktrack
                 ? scanCursor.getOrDefault(reached, 0)
@@ -793,10 +910,43 @@ public final class SearchObservedStrongholdPortalRoomSkill
         ).stream()
                 .min(Comparator
                         .comparingDouble((GridPos candidate) ->
-                                lookAlignmentCost(frame, candidate))
+                                lookAlignmentCost(
+                                        frame,
+                                        candidate,
+                                        yawOf(frame.lookDirection())
+                                ))
                         .thenComparing(
                                 Comparator.naturalOrder()
                         ));
+    }
+
+    private static Optional<GridPos> nextObservedAdjacentFrontier(
+            final CoreSkillFrame frame,
+            final GridPos origin,
+            final Set<GridPos> visited,
+            final Set<GridPos> rejected,
+            final boolean hardcore,
+            final LocalAStarPlanner planner,
+            final CoreSkillPolicy policy,
+            final float preferredYaw
+    ) {
+        return observedAdjacentFrontiers(
+                frame,
+                origin,
+                visited,
+                rejected,
+                hardcore,
+                planner,
+                policy
+        ).stream()
+                .min(Comparator
+                        .comparingDouble((GridPos candidate) ->
+                                lookAlignmentCost(
+                                        frame,
+                                        candidate,
+                                        preferredYaw
+                                ))
+                        .thenComparing(Comparator.naturalOrder()));
     }
 
     private static List<GridPos> observedAdjacentFrontiers(
@@ -1060,17 +1210,18 @@ public final class SearchObservedStrongholdPortalRoomSkill
 
     private static double lookAlignmentCost(
             final CoreSkillFrame frame,
-            final GridPos candidate
+            final GridPos candidate,
+            final float preferredYaw
     ) {
         final PerceptionVec3 target = new PerceptionVec3(
                 candidate.x() + 0.5,
                 frame.eyePosition().y(),
                 candidate.z() + 0.5
         );
-        return angularErrorDegrees(
-                frame.lookDirection(),
+        final float candidateYaw = yawOf(
                 target.subtract(frame.eyePosition())
         );
+        return Math.abs(normalizeDegrees(candidateYaw - preferredYaw));
     }
 
     private static boolean portalVisible(
@@ -1087,6 +1238,90 @@ public final class SearchObservedStrongholdPortalRoomSkill
         return frame.visibleBlockFaces().stream().anyMatch(face ->
                 STRONGHOLD_BLOCKS.contains(face.blockTypeId())
         );
+    }
+
+    private static String describeVisibleStrongholdFaces(
+            final CoreSkillFrame frame
+    ) {
+        return frame.visibleBlockFaces().stream()
+                .filter(face -> STRONGHOLD_BLOCKS.contains(
+                        face.blockTypeId()
+                ))
+                .limit(12)
+                .map(face -> face.blockTypeId()
+                        + "@"
+                        + face.block().x() + ","
+                        + face.block().y() + ","
+                        + face.block().z()
+                        + "/" + face.face())
+                .reduce((left, right) -> left + ";" + right)
+                .orElse("");
+    }
+
+    private static String escapeJson(final String value) {
+        return value.replace("\\", "\\\\")
+                .replace("\"", "\\\"");
+    }
+
+    /**
+     * A wall seen across an exit is not enough to prove that the body is
+     * still inside the structure.  The current first-person frame must also
+     * show a stronghold-material floor within three blocks of the feet. This
+     * deliberately conservative handoff rejects open overworld ground and
+     * makes the search backtrack rather than drifting outside, while the
+     * normal stone-brick, mossy, cracked, infested and iron-bar floors used
+     * by vanilla strongholds remain valid.
+     */
+    private static boolean strongholdInteriorEvidenceVisible(
+            final CoreSkillFrame frame
+    ) {
+        final int floorY = frame.feet().y() - 1;
+        return frame.visibleBlockFaces().stream().anyMatch(face ->
+                Math.abs(face.block().x() - frame.feet().x()) <= 3
+                    && Math.abs(face.block().z() - frame.feet().z()) <= 3
+                    && face.block().y() == floorY
+                    && STRONGHOLD_BLOCKS.contains(face.blockTypeId())
+        );
+    }
+
+    /**
+     * Corridor walls are a second fair signal when the downward camera ray
+     * is occluded by the body.  Require opposite, already observed solid
+     * surfaces within a short span; a single exterior wall (or an outside
+     * corner) therefore cannot keep the DFS walking around the structure.
+     */
+    private static boolean strongholdCorridorEvidenceVisible(
+            final CoreSkillFrame frame
+    ) {
+        if (!strongholdEvidenceVisible(frame)) {
+            return false;
+        }
+        final GridPos feet = frame.feet();
+        return (hasObservedSolidWall(frame, feet, 1, 0)
+                    && hasObservedSolidWall(frame, feet, -1, 0))
+                || (hasObservedSolidWall(frame, feet, 0, 1)
+                    && hasObservedSolidWall(frame, feet, 0, -1));
+    }
+
+    private static boolean hasObservedSolidWall(
+            final CoreSkillFrame frame,
+            final GridPos feet,
+            final int stepX,
+            final int stepZ
+    ) {
+        for (int distance = 1; distance <= 4; distance++) {
+            final GridPos position = feet.offset(
+                    stepX * distance,
+                    0,
+                    stepZ * distance
+            );
+            if (frame.navigation().voxelAt(position)
+                    .map(voxel -> voxel.kind().supportsWeight())
+                    .orElse(false)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void cancelMovement(final SkillContext context) {

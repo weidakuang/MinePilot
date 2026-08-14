@@ -473,7 +473,9 @@ public final class FightEnderDragonSkill
                             + "\"crystalLaneAttempts\":%d,"
                             + "\"crystalLaneScanTurns\":%d,"
                             + "\"recoveringSafetyReserve\":%s,"
-                            + "\"cageStatus\":\"%s\"}",
+                            + "\"cageStatus\":\"%s\","
+                            + "\"visibleEntityTypes\":\"%s\","
+                            + "\"bodyPosition\":\"%s\"}",
                         phase.name(),
                         shotsDispatched,
                         meleeAttacks,
@@ -496,9 +498,35 @@ public final class FightEnderDragonSkill
                         crystalLaneAttempts,
                         crystalLaneScanTurns,
                         recoveringSafetyReserve,
-                        cageStatus.name()
+                        cageStatus.name(),
+                        visibleEntityTypes(),
+                        currentBodyPosition()
                 )
         );
+    }
+
+    private String visibleEntityTypes() {
+        return coreFrames.current()
+                .map(frame -> frame.visibleEntities().stream()
+                        .limit(12)
+                        .map(entity -> entity.entityTypeId())
+                        .distinct()
+                        .sorted()
+                        .reduce((left, right) -> left + "|" + right)
+                        .orElse(""))
+                .orElse("");
+    }
+
+    private String currentBodyPosition() {
+        return coreFrames.current()
+                .map(frame -> String.format(
+                        Locale.ROOT,
+                        "%.1f,%.1f,%.1f",
+                        frame.position().x(),
+                        frame.position().y(),
+                        frame.position().z()
+                ))
+                .orElse("");
     }
 
     @Override

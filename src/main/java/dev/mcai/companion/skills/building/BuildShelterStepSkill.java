@@ -175,6 +175,14 @@ public final class BuildShelterStepSkill
             new HashSet<>();
     private final Set<PlacementSupportIdentity> abandonedAimSupports =
             new HashSet<>();
+    /*
+     * A completed shelter door is a real interactive block, not a hole in the
+     * navigation map.  If the body exits while the door is closed, the fair
+     * centre ray can repeatedly hit that door before the roof support behind
+     * it.  Remember the door cells we opened through the ordinary interaction
+     * actuator so a recovery tick never toggles an already-open door closed.
+     */
+    private final Set<GridPos> openedOccludingDoors = new HashSet<>();
     private final BoundedRepositionProgress aimRepositionWatchdog =
             new BoundedRepositionProgress(
                     AIM_REPOSITION_STALL_TICKS,
@@ -2034,6 +2042,7 @@ public final class BuildShelterStepSkill
         attemptedRoofObservationStands.clear();
         activeRoofApronSurveyStand = null;
         clearRoofApronRefresh();
+        openedOccludingDoors.clear();
         aimRepositionWatchdog.clear();
         placementRecoveryAttempts = 0;
         unconfirmedPlacementRetries = 0;
@@ -3861,6 +3870,62 @@ public final class BuildShelterStepSkill
     }
 
     /**
+     * Opens a closed shelter door that is physically occluding a pending roof
+     * support.  This is deliberately an ordinary first-person use action: the
+     * block remains authoritative and the next semantic frame must still show
+     * the roof face before a placement is dispatched.  We never close a door
+     * here and we never mutate its block state directly.
+     */
+    private Optional<SkillTickResult> openOccludingDoor(
+            final SkillContext context,
+            final ShelterFrame frame,
+            final VisibleBlockFace face
+    ) {
+        if (executingStep == null
+                || executingStep.role() != ShelterStepRole.ROOF
+                || !face.blockTypeId().endsWith("_door")
+                || !"false".equals(
+                        face.stateProperties().get("open")
+                )) {
+            return Optional.empty();
+        }
+        final GridPos door = new GridPos(
+                face.block().x(),
+                face.block().y(),
+                face.block().z()
+        );
+        if (!openedOccludingDoors.add(door)) {
+            return Optional.empty();
+        }
+        final Optional<BlockInteractionTarget> target = toTarget(face);
+        if (target.isEmpty()) {
+            openedOccludingDoors.remove(door);
+            return Optional.empty();
+        }
+        final ActionOutcome opened = actuator.useOnBlock(
+                ActionHand.MAIN_HAND,
+                target.orElseThrow()
+        );
+        if (!opened.accepted()) {
+            openedOccludingDoors.remove(door);
+            return Optional.empty();
+        }
+        coreActuator.ifPresent(CoreSkillActuator::stop);
+        beginAim(context, frame);
+        MinecraftAiCompanion.LOGGER.info(
+                "Opened closed shelter door that occluded roof aim "
+                        + "planOrigin={} stepIndex={} door={} outcome={}",
+                activePlan == null ? null : activePlan.origin(),
+                executingStep.index(),
+                door,
+                opened
+        );
+        return Optional.of(
+                SkillTickResult.running(true, true)
+        );
+    }
+
+    /**
      * Converts a peripheral fair ray into the same centre-crosshair action a
      * real client would perform. The actuator is intentionally allowed to
      * reject stale or occluded targets; no block placement packet is sent
@@ -4197,6 +4262,15 @@ public final class BuildShelterStepSkill
             return SkillTickResult.running(false, true);
         }
         final VisibleBlockFace face = crosshair.orElseThrow();
+        final Optional<SkillTickResult> openedDoor =
+                openOccludingDoor(
+                        context,
+                        frame,
+                        face
+                );
+        if (openedDoor.isPresent()) {
+            return openedDoor.orElseThrow();
+        }
         final Optional<StepTarget> adapted =
                 adaptToCrosshair(frame, face);
         if (adapted.isPresent()) {
@@ -5942,6 +6016,17 @@ public final class BuildShelterStepSkill
                             activePlan,
                             frame.feet()
                     )) {
+                /*
+                 * If every remaining roof cell was deferred from the
+                 * interior, the completed wall may have made the last outer
+                 * corner reachable only from the apron.  The old fallback
+                 * kept the body in the interior mode and re-selected the
+                 * same deferred corner forever.  Start one fresh, bounded
+                 * exterior search instead: it still uses observed apron
+                 * cells and the normal MoveTo/ray/placement path, but clears
+                 * only the per-step exhaustion marker so the player can try
+                 * the other side of the finished shell.
+                 */
                 coreActuator.ifPresent(
                         CoreSkillActuator::stop
                 );
@@ -5950,13 +6035,17 @@ public final class BuildShelterStepSkill
                 activeRoofApronSurveyStand = null;
                 clearRoofApronRefresh();
                 aimRepositionWatchdog.clear();
+                exhaustedExteriorRoofSteps.clear(deferredIndex);
+                roofInteriorFallbackPriority = -1;
+                returningInsideForRoof = false;
+                deferredAimSteps.clear(deferredIndex);
                 MinecraftAiCompanion.LOGGER.info(
-                        "Relocating within shelter after deferred roof "
-                                + "fallback cycle planOrigin={} "
-                                + "deferredCount={} priority={} feet={}",
+                        "Restarting observed exterior roof recovery after "
+                                + "deferred interior cycle planOrigin={} "
+                                + "deferredStep={} deferredCount={} feet={}",
                         activePlan.origin(),
+                        deferredIndex,
                         deferredAimSteps.cardinality(),
-                        roofInteriorFallbackPriority,
                         frame.feet()
                 );
                 return Optional.of(

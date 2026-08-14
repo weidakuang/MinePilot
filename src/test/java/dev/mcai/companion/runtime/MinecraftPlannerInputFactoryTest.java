@@ -501,6 +501,10 @@ final class MinecraftPlannerInputFactoryTest {
                         accepts
                 ),
                 Map.entry(
+                        "search_stronghold_portal_room",
+                        accepts
+                ),
+                Map.entry(
                         "activate_observed_end_portal",
                         accepts
                 ),
@@ -693,6 +697,32 @@ final class MinecraftPlannerInputFactoryTest {
                 )
         );
         assertFalse(endPortal.containsKey("fight_ender_dragon"));
+        final var measuredSearchArea = MinecraftPlannerInputFactory
+                .completionPhaseSkills(
+                        all,
+                        """
+                        {
+                          "verifiedCompletionRouteData": {
+                            "profile": "COMPLETION",
+                            "nextObjectives": [
+                              "ACTIVATE_AND_ENTER_END_PORTAL"
+                            ],
+                            "verifiedMilestones": [
+                              "STRONGHOLD_SEARCH_AREA_TRIANGULATED"
+                            ]
+                          }
+                        }
+                        """
+                );
+        assertFalse(
+                measuredSearchArea.containsKey("reach_observed_stronghold"),
+                "A completed measured search area must not re-admit reach"
+        );
+        assertTrue(
+                measuredSearchArea.containsKey(
+                        "search_stronghold_portal_room"
+                )
+        );
         final var activatedEndPortal = MinecraftPlannerInputFactory
                 .completionPhaseSkills(
                         all,

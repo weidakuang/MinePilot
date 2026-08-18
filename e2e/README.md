@@ -100,9 +100,11 @@ python3 e2e/orchestrator.py preflight --forge-version 65.1.0
 This prints a machine-readable infrastructure report. A non-zero result means
 the functional gate is `NOT_RUN`; it is not a product or gameplay failure.
 
-Install Java 25, Xvfb, Mesa/llvmpipe, and the normal Forge build
-prerequisites. Inject the configured real model without writing its key into
-the repository:
+Install Java 25, Xvfb, Mesa/llvmpipe, and the normal Forge build. The
+preflight executes the selected Java binary with `-version` and fails closed
+unless its major version is exactly 25; merely having a file named `java` is
+not sufficient for this gate. Inject the configured real model without
+writing its key into the repository:
 
 ```bash
 export MCAI_API_KEY_FILE=/run/secrets/mcai-api-key

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-14T07:52:00Z",
+  "updatedAtUtc": "2026-08-18T19:04:47Z",
   "sourceState": "COMMITTED_MAIN",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -76,9 +76,9 @@
       "forge": "65.1.1",
       "decision": "START_SKILL follow_entity",
       "actions": "The body rejoined through the initial-anchor lifecycle and followed the moving course with vanilla movement.",
-      "runtimeSeconds": 18.17,
-      "fixtureConstraint": "Bounded follow course with an embedded GameTest player; not the formal Actor/Observer gate.",
-      "runRoot": "run-live-follow-20260814",
+      "runtimeSeconds": 12.66,
+      "fixtureConstraint": "Bounded follow course with an embedded GameTest player and an ordinary unaddressed Chinese chat message; not the formal Actor/Observer gate.",
+      "runRoot": "run/gametestserver (2026-08-18T19:04Z authorized rerun)",
       "formalGate": "NOT_RUN"
     },
     "latestLiveSurpriseDefense": {
@@ -134,9 +134,9 @@
       "forge": "65.1.1",
       "decision": "START_SKILL engage_observed_entity",
       "actions": "A Chinese request to protect the player from ten Zombies and ten Skeletons reached the real model; HTTP-200 output passed schema/revision validation, SQLite recorded skill_started and low_level_actions_issued, and the causal evidence counted 16 of 20 authored targets damaged after the skill entered RUNNING. The body moved and remained at full health; the fixture threshold is 10 damaged targets.",
-      "runtimeSeconds": 39.19,
+      "runtimeSeconds": 39.70,
       "fixtureConstraint": "Twenty controlled visible mobs (ten Zombies, ten Skeletons), owned iron equipment, and a bounded arena; not human PVP, Hardcore, random-seed, or M4 evidence.",
-      "runRoot": "run/gametestserver (latest authorized live run)",
+      "runRoot": "run/gametestserver (2026-08-18T19:02Z authorized rerun)",
       "supersededFailures": [
         "The previous 38.28-second rerun counted all 20 authored targets and remains valid controlled evidence, but it is not the latest measurement.",
         "Earlier runs counted target death flags or ambient damage before model skill start and are explicitly superseded.",

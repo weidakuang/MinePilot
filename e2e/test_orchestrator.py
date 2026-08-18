@@ -13,6 +13,7 @@ from e2e.orchestrator import (
     E2E_ACTOR_NAME,
     forge_version,
     functional_preflight,
+    java_major_version,
     model_metadata,
     normalized_chat_sha256,
     offline_player_uuid,
@@ -28,6 +29,45 @@ from e2e.orchestrator import (
 
 
 class OrchestratorEvidenceTest(unittest.TestCase):
+    def test_java_major_parser_does_not_expose_version_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            java = root / "java"
+            java.write_text(
+                "#!/bin/sh\n"
+                "echo 'openjdk version \"21.0.8\"' >&2\n",
+                encoding="utf-8",
+            )
+            java.chmod(0o755)
+            self.assertEqual(21, java_major_version(str(java)))
+
+    def test_functional_preflight_rejects_non_java25(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            java_dir = root / "bin"
+            java_dir.mkdir()
+            java = java_dir / "java"
+            java.write_text(
+                "#!/bin/sh\n"
+                "echo 'openjdk version \"21.0.8\"' >&2\n",
+                encoding="utf-8",
+            )
+            java.chmod(0o755)
+            report = functional_preflight(
+                {
+                    "JAVA_HOME": str(root),
+                    "MCAI_BASE_URL": "https://provider.example/v1",
+                    "MCAI_MODEL": "model-name",
+                    "MCAI_API_KEY": "test-only-placeholder",
+                },
+                "65.1.0",
+            )
+
+        self.assertFalse(report["ready"])
+        self.assertEqual(21, report["javaMajor"])
+        self.assertIn("java25", report["missing"])
+        self.assertNotIn("21.0.8", json.dumps(report))
+
     def test_artifact_version_is_bound_to_current_gradle_source(self):
         version = current_build_version()
         self.assertRegex(version, r"^0\.1\.\d+-dev-mc26\.2$")

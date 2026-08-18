@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-14T07:55:00Z
+Last updated: 2026-08-18T19:04:47Z
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -144,7 +144,7 @@ target death flags and local/ambient damage were counted before a model skill
 started, and the first-human relogin could unload the authored mobs. The
 fixture now recreates ten Zombies and ten Skeletons after the body relogin,
 requires `engage_observed_entity` to enter `RUNNING`, and compares health only
-against a post-start baseline. The latest real `mimo-v2.5` run passed in 39.19
+against a post-start baseline. The latest real `mimo-v2.5` run passed in 39.70
 seconds: SQLite recorded the full model-to-skill-to-action chain, sixteen of
 twenty authored targets were damaged (the fixture threshold is ten), the body
 moved, and body health stayed full. A previous 38.28-second run damaged all
@@ -265,7 +265,7 @@ Live MiMo stronghold search, portal activation, End entry PASS (controlled real-
 Live MiMo stronghold-to-End dragon victory       FAIL (full route still lacks a stronghold-to-return PASS; isolated End chain now passes)
 Live MiMo End return after anchor/portal fixes   PASS (model fight, vanilla return portal, stable UUID; bounded fixture)
 Live MiMo movement causal chain                  PASS (12.26-second real-time slice; START_SKILL travel_to and vanilla move)
-Live MiMo follow causal chain                    PASS (18.17-second real-time slice; START_SKILL follow_entity and vanilla move)
+Live MiMo follow causal chain                    PASS (12.66-second real-time slice; ordinary unaddressed Chinese chat, START_SKILL follow_entity, vanilla move)
 Live MiMo surprise-zombie defense (pre-fix)     FAIL (12.69-second slice; rear hostile killed body while scanning)
 Live MiMo surprise-zombie defense (patched)     PASS (15.27-second real-time slice; bounded damage separation and vanilla counterattack)
 Live MiMo golden-apple consumption               PASS (15.26-second real-time slice; vanilla item-use consumption)
@@ -276,7 +276,7 @@ Initial-anchor no-safe-placement guard           PASS (focused source contract a
 Live MiMo directionless-damage shield regression PASS (offline JUnit; real stronghold effectiveness NOT_PROVEN)
 Live MiMo directional-damage separation         PASS (real 15.27-second slice; model request plus emergency recovery)
 Live MiMo bounded hostile group                  PASS (40.14-second slice; six visible mobs, model engage RUNNING, 4 damaged, body moved/alive)
-Live MiMo ten-plus-ten hostile group             PASS (39.19-second slice; 20 visible mobs, model engage RUNNING, 16 damaged, body moved/alive; threshold 10)
+Live MiMo ten-plus-ten hostile group             PASS (39.70-second slice; 20 visible mobs, model engage RUNNING, 16 damaged, body moved/alive; threshold 10)
 Live MiMo iron-golem duel                         PASS (12.21-second bounded slice; model engage, vanilla attack, golem damage, verified incoming golem attack, body survival)
 Roof-jump physical recovery contract             PASS (no-model GameTest)
 Focused shelter-material/building JUnit tests    PASS

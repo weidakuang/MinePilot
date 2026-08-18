@@ -1,11 +1,11 @@
 # Verified platform facts
 
-Last checked: 2026-08-11 14:06:49 UTC.
+Last checked: 2026-08-18 19:02:47 UTC.
 
 ## Live Forge discovery recheck
 
 The release discovery command was rerun against the official Forge promotions
-document and the 26.2 download index:
+document and the 26.2 download index on 2026-08-18:
 
 ```text
 python3 scripts/discover-forge-lines.py --json --check-patches
@@ -63,17 +63,18 @@ Primary sources:
   plus 65.1.0 and 65.1.1. Forge 66 is not present in the official promotion list at this
   check, so no Forge 66 adapter or compatibility claim is made.
 - The official source branch is `26.2`. The observed branch head during this
-  check was `d17cfd0b4bbfd192a9007f02240032f19b9b340d`.
+  check was `f0f144156b5c8d7ccbe358772e9e33b57d849d5e` (the signed Forge
+  commit dated 2026-08-11).
 - Forge 26.1+ uses Java 25.
 - Forge source and MDK code are LGPL-2.1-only. The project remains
   Apache-2.0; Forge is a build/runtime dependency and is not embedded in the
   product JAR.
 
-The official index and promotions document were rechecked on 2026-08-11 12:47:17 UTC: they report 65.1.1
-as Latest and 65.1.0 as Recommended for Minecraft 26.2, list 65.0.0--65.0.9,
-65.1.0, and 65.1.1, and have no Forge 66 release entry. This repository therefore keeps a
-separate-adapter policy for any future 66 line and does not widen the Forge 65
-product claim.
+The official index and promotions document were rechecked on 2026-08-18
+19:02 UTC: they report 65.1.1 as Latest and 65.1.0 as Recommended for
+Minecraft 26.2, list 65.0.0--65.0.9, 65.1.0, and 65.1.1, and have no Forge 66
+release entry. This repository therefore keeps a separate-adapter policy for
+any future 66 line and does not widen the Forge 65 product claim.
 
 The release workflow also runs `scripts/discover-forge-lines.py` against the
 official promotions document. If a newly promoted Forge major at or above 65
@@ -91,7 +92,7 @@ Primary sources:
 
 The current page also reports 65.1.1 as the 26.2 latest build and 65.1.0 as
 recommended, and lists the 65.x release dates and MDK checksums (rechecked
-2026-08-11 UTC); this repository still treats
+2026-08-18 UTC); this repository still treats
 the runtime range as a declaration only until every listed patch has a real
 load/chat/movement/menu/save regression.
 

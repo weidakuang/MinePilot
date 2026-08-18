@@ -481,6 +481,41 @@ def required_model_environment(environment: dict[str, str]) -> None:
         )
 
 
+def java_major_version(java_executable: str) -> int | None:
+    """Return only the Java major version from ``java -version`` output.
+
+    The version is written to stderr by most JDKs and to stdout by a few
+    wrappers.  Keep the parser deliberately small and return no raw command
+    output: preflight reports must never become an accidental environment
+    dump.
+    """
+    try:
+        completed = subprocess.run(
+            [java_executable, "-version"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    output = (completed.stdout + "\n" + completed.stderr)[:4096]
+    for pattern in (
+        r'\bversion\s+"(\d+)',
+        r'\bopenjdk\s+(\d+)(?:\.|\s)',
+        r'\bjava\s+(\d+)(?:\.|\s)',
+    ):
+        match = re.search(pattern, output, flags=re.IGNORECASE)
+        if match is not None:
+            try:
+                return int(match.group(1))
+            except ValueError:
+                return None
+    return None
+
+
 def functional_preflight(
     environment: dict[str, str],
     forge_version: str,
@@ -516,7 +551,12 @@ def functional_preflight(
         else shutil.which("java")
     )
     java_available = bool(java_executable and Path(java_executable).exists())
-    if not java_available:
+    detected_java_major = (
+        java_major_version(java_executable)
+        if java_available and java_executable
+        else None
+    )
+    if not java_available or detected_java_major != 25:
         missing.append("java25")
 
     metadata = model_metadata(environment, "preflight")
@@ -530,6 +570,7 @@ def functional_preflight(
         "forgeVersion": forge_version,
         "xvfbExecutablePresent": xvfb is not None,
         "javaExecutablePresent": java_available,
+        "javaMajor": detected_java_major,
         "model": metadata,
         "missing": missing,
         "ready": not missing,

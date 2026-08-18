@@ -28,6 +28,22 @@ class ChatAddressingTest {
     }
 
     @Test
+    void ordinaryChineseSinglePlayerTaskNeedsNoMention() {
+        final var parsed = ChatAddressing.parse(
+                "跟我来，保持两三格距离，正常走，不要传送。",
+                "MC_AI"
+        );
+
+        assertFalse(parsed.explicit());
+        assertEquals(
+                "跟我来，保持两三格距离，正常走，不要传送。",
+                parsed.message()
+        );
+        assertTrue(ChatAddressing.addressedForServer(parsed, 1));
+        assertFalse(ChatAddressing.addressedForServer(parsed, 2));
+    }
+
+    @Test
     void acceptsAgentNameWithOrWithoutAt() {
         assertEquals(
                 "去砍树",

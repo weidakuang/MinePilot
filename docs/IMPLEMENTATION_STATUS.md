@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last reviewed: 2026-08-14
+Last reviewed: 2026-08-19
 
 ## Current release line
 
@@ -69,7 +69,7 @@ or speedrun claim.
   JUnit suite, the release build and jar verification, the compatibility
   checker, and the 61-case Python audit after this change. The artifact is
   `build/libs/mcai_companion-0.1.10-dev-mc26.2.jar` with SHA-256
-  `f1de2fae25281dff7f55b8f65893b545f6bb13b61458f88877210508ebdddb01`.
+  `c62a9db20f5d864179f48e501d26f0a4cf505fdfeac28d4963964552123a60af`.
 
 ### Live MiMo result (latest)
 
@@ -111,7 +111,7 @@ acceptance, skill-start, and low-level action chain. This is a bounded fixture
 and does not upgrade M2, M4, or the formal Actor/Observer gate.
 
 The latest live regression set also passed on the same real gateway: ordinary
-movement (`travel_to`, 12.26 seconds), follow (`follow_entity`, 18.17 seconds),
+movement (`travel_to`, 12.26 seconds), follow (`follow_entity`, 12.66 seconds),
 surprise-zombie defense (14.27 seconds), and owned golden-apple consumption
 (15.26 seconds). The movement and follow runs recorded the complete causal
 sequence through `skill_started` and `low_level_actions_issued`; the defense
@@ -156,14 +156,16 @@ pre-start attribution runs remain superseded evidence. This is bounded
 evidence, not the formal Hardcore, random-seed, or M4 result.
 
 The requested ten-Zombie/ten-Skeleton extension now also passes as a real
-MiMo causal slice in 39.19 seconds. The fixture recreates twenty authored
-targets after the body relogin, requires `engage_observed_entity` to enter
+MiMo causal slice in 39.70 seconds in the latest authorized rerun. The fixture
+recreates twenty authored targets after the body relogin, requires
+`engage_observed_entity` to enter
 `RUNNING`, and counts only target health loss against a post-start baseline.
 SQLite recorded `skill_started` and `low_level_actions_issued`; sixteen of
 twenty targets were damaged after the skill entered `RUNNING` (the fixture
 threshold is ten), the body moved, and body health remained full. This is
 controlled multi-hostile evidence, not human PVP, Hardcore, random-seed, or
-M4 evidence.
+M4 evidence. The previous 39.19-second run remains retained as controlled
+evidence.
 
 The first three live iron-golem duel attempts remain negative evidence: the
 real model selected `START_SKILL(engage_observed_entity)` and damaged the golem,

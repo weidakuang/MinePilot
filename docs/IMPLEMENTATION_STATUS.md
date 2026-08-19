@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last reviewed: 2026-08-19
+Last reviewed: 2026-08-20
 
 ## Current release line
 
@@ -8,12 +8,13 @@ Last reviewed: 2026-08-19
 - Minecraft Java 26.2; Forge 65.0.0 inclusive through 66.0.0 exclusive;
   Java 25.
 - Development version: `0.1.10-dev-mc26.2`.
-- Public repository: `https://github.com/weidakuang/MinePilot`; repair commit
-  `5edcdc7f7d37e91b1466fff460b571333c8312db` has the exact validated source
-  tree and passes a fresh-clone build.
+- Public repository: `https://github.com/weidakuang/MinePilot`; snapshot commit
+  `11975c380c243aa331ac19edbb0e494d99663313` carries source tree
+  `32c864eff3c26c0119ee23f62537b58ff9acac49` and passes a fresh-clone build.
 - Local development branch: `main`.
-- Current code commit: local `b30d8b61950344b8d958261925441881f4c72136`;
-  its tree is published byte-for-byte by the repair commit above.
+- Current development includes the focused End fall-recovery and bounded
+  dragon melee-cycle corrections described below. Git remains the authority
+  for the exact local and published snapshot identifiers.
 - Forge 65.x major-line backup branch: `mc26.2-forge65`.
 - Artifact status: `NON_RELEASE` until all formal gates pass.
 
@@ -53,6 +54,14 @@ or speedrun claim.
 ### Passed controlled physical checks
 
 - JDK25 focused combat, perception, and dragon unit tests pass.
+- The End fall reflex now treats only the Nether as water-forbidden. A focused
+  regression proves that an owned water bucket is equipped and used only after
+  a fresh visible and reachable End-stone landing surface satisfies the
+  existing fair-action gates. The Nether hay-bale regression remains intact.
+- Dragon combat now resets its finite melee burst after four completed normal
+  arrows, allowing a newly perched and safely reachable dragon to be attacked
+  again. A focused regression proves the cycle reset and the next vanilla
+  attack request; no dynamic-manager-dragon pass is claimed.
 - Offline End-entry/dragon/return baseline passes on a controlled arena. The
   baseline uses a real `ServerPlayer`, real arrows/melee, static visible dragon
   parts, a 24-swing melee burst, bounded eight-tick ranged retreat, and a
@@ -71,11 +80,12 @@ or speedrun claim.
   regression guard against walking without observed support. The live entry
   harness keeps the chat sender connected until the production remove/relogin
   anchor transaction settles.
-- The current working tree passed the focused combat test, the complete offline
-  JUnit suite, the release build and jar verification, the compatibility
-  checker, and the 63-case Python audit after this change. The artifact is
+- The current working tree passed the focused End survival/dragon tests, the
+  complete offline JUnit suite, the release build and jar verification, and
+  the compatibility checker. The latest protocol-only change separately
+  passed all 65 Python audit tests and ten mutation variants. The artifact is
   `build/libs/mcai_companion-0.1.10-dev-mc26.2.jar` with SHA-256
-  `28bffa0d16e5ef425db30d84e60fd902f21866cd111231987bef804a5d9576b9`.
+  `79859cc6ce7d4ff1c7ec0bf16b13a7ef333c696ff9ff4f9ca863f7e4485cdac1`.
 
 ### Live MiMo result (latest)
 

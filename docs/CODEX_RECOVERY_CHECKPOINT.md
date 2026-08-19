@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-19T17:05:24Z
+Last updated: 2026-08-20T02:31:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -25,6 +25,12 @@ This section supersedes older chronological notes below when they conflict.
   reacquiring a visible dragon; and the continuous-route harness incorrectly
   required destruction of one optional crystal and one artificial bar even
   after vanilla had credited the dragon kill to the companion.
+- Two additional production defects are closed in the current worktree. The
+  emergency fall controller incorrectly treated the End as water-forbidden;
+  it now rejects water only in the Nether and retains all observed-surface and
+  vanilla-use gates. Dragon combat also used to enter ranged mode permanently
+  after its first finite melee burst; four completed arrows now reopen one
+  bounded melee window so a later perch can be used safely.
 - Current implementation files include `AiPlayerSession`,
   `FightEnderDragonSkill`, and the controlled live/zero-human Forge GameTests.
   Focused JUnit coverage includes risky-cage recovery, dimension-aware session
@@ -43,15 +49,16 @@ This section supersedes older chronological notes below when they conflict.
   65.0.0 and 65.1.1. It verifies destination simulation, an outlying entity
   and scheduled block tick, and retirement of the old dimension's window
   without a test force-load at the destination.
-- The exact current-tree Gradle clean/test/build, release-JAR inspection,
-  compatibility checker, and all 63 Python E2E protocol tests pass. The
+- The exact current-tree Gradle clean/test/build, release-JAR inspection, and
+  compatibility checker pass after the End safety corrections. The preceding
+  evidence-integrity snapshot separately passed all 65 Python protocol tests
+  and all ten mutation variants. The
   production JAR SHA-256 is
-  `28bffa0d16e5ef425db30d84e60fd902f21866cd111231987bef804a5d9576b9`.
-  Public repair commit `5edcdc7f7d37e91b1466fff460b571333c8312db`
-  now carries the exact validated tree
-  `e9ec6c1fab68dcbd04b9fa14063e9072bb6e44b1`. A fresh public clone passed the
-  same Gradle build/JUnit/JAR/compatibility gate; the formerly truncated files
-  are 89,015 and 84,836 bytes with their expected Git blob hashes. Formal
+  `79859cc6ce7d4ff1c7ec0bf16b13a7ef333c696ff9ff4f9ca863f7e4485cdac1`.
+  The last published snapshot before these two focused corrections is public
+  commit `11975c380c243aa331ac19edbb0e494d99663313`, exact tree
+  `32c864eff3c26c0119ee23f62537b58ff9acac49`; its fresh clone compiled
+  successfully. Formal
   Actor/Observer, random Hardcore, and M0--M4 statistical gates remain
   `NOT_RUN`.
 

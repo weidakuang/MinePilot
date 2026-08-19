@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-19T17:18:55Z",
-  "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD",
+  "updatedAtUtc": "2026-08-19T17:31:00Z",
+  "sourceState": "VALIDATED_DEVELOPMENT_TREE",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.10-dev-mc26.2",
@@ -304,11 +304,18 @@
       "fixtureConstraint": "Protocol and artifact-staging evidence only; the Linux/Xvfb Actor/Observer gameplay gate remains NOT_RUN.",
       "formalGate": "NOT_RUN"
     },
+    "endCombatSafetyCorrections": {
+      "status": "PASS_FOCUSED_AND_FULL_OFFLINE_BUILD",
+      "details": "The emergency fall lane permits observed, reachable vanilla water placement in the End while continuing to reject water in the Nether. Four completed ordinary dragon arrows now reopen one finite melee burst so a later safe perch is actionable instead of remaining in permanent ranged mode.",
+      "tests": "EmergencySurvivalControllerTest and FightEnderDragonSkillTest pass; clean JUnit, build, release-JAR verification, and Forge compatibility checks pass.",
+      "fixtureConstraint": "Unit and offline build evidence only. No AI-enabled manager dragon, natural End ingress, random seed, Hardcore, or rendered-client result is claimed.",
+      "formalGate": "NOT_RUN"
+    },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
-      "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, Forge compatibility validation, all 65 Python E2E protocol tests, and all ten mutation variants. The build now disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes. The previously verified public repair remains the last uploaded snapshot until this change is published.",
+      "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, and Forge compatibility validation after the focused End safety changes. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
       "artifact": "build/libs/mcai_companion-0.1.10-dev-mc26.2.jar",
-      "sha256": "28bffa0d16e5ef425db30d84e60fd902f21866cd111231987bef804a5d9576b9",
+      "sha256": "79859cc6ce7d4ff1c7ec0bf16b13a7ef333c696ff9ff4f9ca863f7e4485cdac1",
       "formalGate": "NOT_RUN"
     }
   },

@@ -2468,12 +2468,7 @@ public final class FightEnderDragonSkill
         if (result.status() == SkillTickResult.Status.COMPLETED) {
             shotsDispatched++;
             if (shotTargetDragon) {
-                rangedDragonShotsSinceMeleeRetry++;
-                if (rangedDragonShotsSinceMeleeRetry
-                        >= RANGED_SHOTS_BEFORE_MELEE_RETRY) {
-                    meleeReachMisses = 0;
-                    rangedDragonShotsSinceMeleeRetry = 0;
-                }
+                recordCompletedDragonShot();
             }
             shot = null;
             shotParameters = null;
@@ -2502,6 +2497,28 @@ public final class FightEnderDragonSkill
                 result.madeProgress() || fresh,
                 result.safeCheckpoint()
         );
+    }
+
+    private void recordCompletedDragonShot() {
+        rangedDragonShotsSinceMeleeRetry++;
+        if (rangedDragonShotsSinceMeleeRetry
+                < RANGED_SHOTS_BEFORE_MELEE_RETRY) {
+            return;
+        }
+        /*
+         * A flying dragon may become safely reachable after it perches. The
+         * old accounting cleared only reach misses, leaving meleeAttacks at
+         * its burst limit and dragonRangedMode permanently true. Every later
+         * close observation therefore skipped the sword forever. Reopen one
+         * bounded melee burst after four ordinary arrows; distance, line of
+         * sight, aim and attack cooldown still gate every swing.
+         */
+        meleeReachMisses = 0;
+        meleeAttacks = 0;
+        rangedDragonShotsSinceMeleeRetry = 0;
+        dragonRangedMode = false;
+        dragonRetreatDirection = null;
+        dragonRetreatTicksRemaining = 0;
     }
 
     private SkillTickResult startRallyTravel(

@@ -220,6 +220,59 @@ final class FightEnderDragonSkillTest {
     }
 
     @Test
+    void fourDragonShotsReopenTheBoundedPerchedMeleeWindow()
+            throws Exception {
+        final MutableFrames frames = new MutableFrames(
+                frameWithEntities(
+                        12,
+                        List.of(dragon(4.0)),
+                        List.of(),
+                        DIAMOND_SWORD,
+                        List.of()
+                )
+        );
+        final RecordingInteractions interactions =
+                new RecordingInteractions();
+        final FightEnderDragonSkill skill = skill(
+                frames,
+                new RecordingCore(),
+                interactions,
+                new RecordingInventory()
+        );
+        final FightEnderDragonParameters parameters = parameters();
+        skill.start(context(1), parameters);
+
+        setField(skill, "meleeAttacks", 24);
+        setField(skill, "meleeReachMisses", 3);
+        setField(skill, "rangedDragonShotsSinceMeleeRetry", 3);
+        setField(skill, "dragonRangedMode", true);
+        final var completion = FightEnderDragonSkill.class
+                .getDeclaredMethod("recordCompletedDragonShot");
+        completion.setAccessible(true);
+        completion.invoke(skill);
+
+        final String checkpoint = skill
+                .checkpoint(context(2), parameters)
+                .payload();
+        assertTrue(checkpoint.contains("\"melee\":0"));
+        assertTrue(checkpoint.contains("\"meleeReachMisses\":0"));
+        assertTrue(checkpoint.contains(
+                "\"rangedDragonShotsSinceMeleeRetry\":0"
+        ));
+        assertTrue(checkpoint.contains("\"dragonRangedMode\":false"));
+
+        frames.set(frameWithEntities(
+                13,
+                List.of(dragon(4.0)),
+                List.of(),
+                DIAMOND_SWORD,
+                List.of()
+        ));
+        skill.tick(context(2), parameters);
+        assertEquals(1, interactions.attackCalls);
+    }
+
+    @Test
     void nearbyDragonTakesPriorityOverCageBarWhenUnderThreat() {
         final VisibleEntity blocked = crystal(14.0, false);
         final VisibleBlockFace bar = ironBar(
@@ -1456,6 +1509,16 @@ final class FightEnderDragonSkillTest {
             CoreSkillFrame core,
             InteractionSkillFrame interaction
     ) {
+    }
+
+    private static void setField(
+            final Object target,
+            final String name,
+            final Object value
+    ) throws ReflectiveOperationException {
+        final var field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
     }
 
     private static final class MutableFrames {

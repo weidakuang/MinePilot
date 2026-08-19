@@ -1995,7 +1995,7 @@ final class EmergencySurvivalControllerTest {
     }
 
     @Test
-    void usesAnOwnedHayBaleInsteadOfIllegalWaterInTheEnd() {
+    void equipsAndDeploysWaterOnAFreshVisibleFallSurfaceInTheEnd() {
         final DangerSignal falling = new DangerSignal(
                 DangerKind.FALLING,
                 0.8,
@@ -2041,13 +2041,60 @@ final class EmergencySurvivalControllerTest {
 
         final var equipped = controller.tick();
         assertEquals(
-                EmergencySurvivalController.State.EQUIPPING_FALL_CLUTCH,
+                EmergencySurvivalController.State.EQUIPPING_WATER,
                 equipped.state()
         );
         assertEquals(
-                List.of("MAIN_HAND=minecraft:hay_block"),
+                List.of("MAIN_HAND=minecraft:water_bucket"),
                 equipment.requests
         );
+
+        final PerceptionVec3 downward =
+                new PerceptionVec3(0.0, -1.0, 0.0);
+        final VisibleBlockFace ground = new VisibleBlockFace(
+                new BlockCoordinate(0, 3, 0),
+                "minecraft:end_stone",
+                "up",
+                new PerceptionVec3(0.5, 4.0, 0.5),
+                2.62,
+                PerceptionProvenance.BLOCK_SURFACE_RAY_CLIP,
+                Map.of()
+        );
+        frames.frame = frameWithInventory(
+                2,
+                20,
+                new HeldItemSummary(
+                        "minecraft:water_bucket",
+                        1,
+                        0,
+                        0
+                ),
+                HeldItemSummary.empty(),
+                List.of(
+                        new InventoryItemSummary(
+                                "minecraft:water_bucket",
+                                1
+                        ),
+                        new InventoryItemSummary(
+                                "minecraft:hay_block",
+                                1
+                        )
+                ),
+                List.of(),
+                List.of(falling),
+                List.of(ground),
+                false,
+                DimensionRef.END,
+                downward
+        );
+        final var deployed = controller.tick();
+
+        assertEquals(
+                EmergencySurvivalController.State.DEPLOYING_WATER,
+                deployed.state()
+        );
+        assertEquals(List.of(ActionHand.MAIN_HAND), actuator.itemUses);
+        assertTrue(actuator.blockUses.isEmpty());
     }
 
     private static CoreSkillFrame frame(

@@ -186,6 +186,17 @@ vanilla attack dispatch, body movement, golem damage, a real golem attack, and
 body survival. This is a controlled neutral-mob slice, not a human PVP or
 Hardcore claim.
 
+The external evidence verifier now receives its expected run nonce from the
+immutable manifest instead of deriving it from the submitted Oracle log.
+Every Actor, Observer, Oracle, and Oracle-result event in both the functional
+and delayed-first-human slices must carry that exact nonce. Focused regressions
+reject a required Oracle event with no nonce, an internally consistent bundle
+from a foreign run, and mixed delayed-anchor client evidence. All 65 Python
+protocol tests and all ten mutation variants pass; an actual `prepare` run
+wrote `BINDINGCHECK` into the manifest without persisting model credentials.
+This hardens evidence provenance only and does not turn the Linux/Xvfb client
+gate into a gameplay pass.
+
 ## Formal gate status
 
 ```text
@@ -210,13 +221,15 @@ does not satisfy the causal audit.
 
 ## Next engineering steps
 
-1. Preserve the live End-entry evidence and extend the same causal audit into
-   the release-excluded End combat arena and return path.
-2. Keep regression coverage for observed target points, portal reach limits,
+1. Preserve the controlled stronghold-room-to-return pass while adding a
+   separate manager-owned, AI-enabled vanilla dragon slice; never replace the
+   stricter static physical regression or promote either to random-seed proof.
+2. Close natural End ingress and terrain-safety gaps before claiming dynamic
+   combat: the ordinary End spawn is outside the fair entity range and current
+   no-target recovery only returns to its original local rally point.
+3. Keep regression coverage for observed target points, portal reach limits,
    projectile lead, dragon-part reacquisition, and bounded retry behavior
    without direct world mutation.
-3. Preserve the six-mob and ten-plus-ten causal fixtures while extending the
-   same fair evidence into full End survival and recovery scenarios.
 4. Run the formal Actor/Observer and hidden-seed protocols only on an authorized
    Linux/Xvfb worker with the exact frozen jar; retain `NOT_RUN` when unavailable.
 

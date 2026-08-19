@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from e2e.orchestrator import verify_evidence
-from e2e.test_orchestrator import OrchestratorEvidenceTest
+from e2e.test_orchestrator import OrchestratorEvidenceTest, TEST_NONCE
 
 
 MUTATIONS = (
@@ -248,14 +248,22 @@ def run() -> dict[str, Any]:
             expected_hash = OrchestratorEvidenceTest.write_functional_bundle(
                 run_root
             )
-            baseline = verify_evidence(run_root, expected_hash)
+            baseline = verify_evidence(
+                run_root,
+                expected_hash,
+                TEST_NONCE,
+            )
             if baseline.get("status") != "PASS":
                 raise AssertionError(
                     f"canonical evidence did not pass: {baseline}"
                 )
             if name == "PACKET_LEAK":
                 apply_mutation(run_root, name)
-                mutated = verify_evidence(run_root, expected_hash)
+                mutated = verify_evidence(
+                    run_root,
+                    expected_hash,
+                    TEST_NONCE,
+                )
                 caught = (
                     mutated.get("status") == "FAIL"
                     and "production-audit:connection-transport-health"
@@ -267,7 +275,11 @@ def run() -> dict[str, Any]:
                 }
                 continue
             apply_mutation(run_root, name)
-            mutated = verify_evidence(run_root, expected_hash)
+            mutated = verify_evidence(
+                run_root,
+                expected_hash,
+                TEST_NONCE,
+            )
             caught = mutated.get("status") == "FAIL"
             results[name] = {
                 "status": "CAUGHT" if caught else "SURVIVED",

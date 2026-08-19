@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-19T17:05:24Z",
+  "updatedAtUtc": "2026-08-19T17:18:55Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -297,9 +297,16 @@
       "functionalAiClaim": false,
       "formalGate": "NOT_RUN"
     },
+    "formalEvidenceNonceBinding": {
+      "status": "PASS_PROTOCOL_AND_PREPARE",
+      "details": "The manifest owns the externally expected run nonce. Functional and delayed-anchor verification now binds every Actor, Observer, Oracle, and Oracle-result event to it and rejects missing, mixed, or internally consistent foreign-run bundles. All 65 Python protocol tests and all ten evidence mutations passed.",
+      "prepareEvidence": "A real prepare-only run persisted nonce BINDINGCHECK while retaining NON_RELEASE and credentialPresent=false.",
+      "fixtureConstraint": "Protocol and artifact-staging evidence only; the Linux/Xvfb Actor/Observer gameplay gate remains NOT_RUN.",
+      "formalGate": "NOT_RUN"
+    },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
-      "details": "The exact current tree passed Gradle clean, all JUnit tests, production JAR build and content verification, Forge compatibility validation, and all 63 Python E2E protocol tests. Public repair commit 5edcdc7f7d37e91b1466fff460b571333c8312db has the identical e9ec6c1fab68dcbd04b9fa14063e9072bb6e44b1 tree; both formerly truncated large blobs match local hashes and a fresh public clone passed the Gradle build/JUnit/JAR/compatibility gate.",
+      "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, Forge compatibility validation, all 65 Python E2E protocol tests, and all ten mutation variants. The build now disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes. The previously verified public repair remains the last uploaded snapshot until this change is published.",
       "artifact": "build/libs/mcai_companion-0.1.10-dev-mc26.2.jar",
       "sha256": "28bffa0d16e5ef425db30d84e60fd902f21866cd111231987bef804a5d9576b9",
       "formalGate": "NOT_RUN"
@@ -308,7 +315,7 @@
   "nextActions": [
     "Preserve the controlled stronghold-room-to-return PASS without promoting it to random-seed, Hardcore, dynamic-dragon, or M2/M4 evidence.",
     "Run the formal rendered Actor/Observer gate only on an authorized Linux/Xvfb worker with the exact frozen artifact.",
-    "Extend controlled completion into a natural dynamic-dragon world before any hidden-seed statistical promotion.",
+    "Implement natural End ingress and a separate manager-owned, AI-enabled dynamic-dragon slice before any hidden-seed statistical promotion.",
     "Keep missing infrastructure and unexecuted statistical gates explicitly marked NOT_RUN."
   ],
   "evidencePolicy": "No controlled test, model acknowledgement, historical run, or no-model arena may be promoted to a formal M0-M4 PASS."

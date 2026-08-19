@@ -26,6 +26,11 @@ MinePilot change log
   model and formal random-seed claims.
 - Reworked public project documentation to English-only and recorded the latest
   live MiMo victory/return evidence honestly.
+- Bound functional and delayed-anchor evidence to a manifest-owned run nonce;
+  missing, mixed, and internally consistent foreign-run bundles now fail.
+- Disabled the incomplete ForgeGradle merged-main JavaCompile cache entry so a
+  clean or fresh CI checkout always materializes production classes before
+  compiling tests and packaging the exact JAR.
 
 0.1.9-dev-mc26.2
 -----------------

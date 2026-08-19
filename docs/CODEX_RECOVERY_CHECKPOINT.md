@@ -219,6 +219,11 @@ Hardcore result.
   regression for the headless player's vanilla tracking window.
 - `build.gradle`: supports the documented generic `test_selector`, preserves
   `live_model_selector` as an alias, and rejects conflicting values.
+- `build.gradle`: disables caching only for ForgeGradle's merged main
+  `compileJava` output. A clean build had reported `FROM-CACHE` without
+  materializing `build/sourceSets/main`, causing `compileTestJava` to lose
+  production classes; the same clean command now compiles main locally and
+  passes.
 - Public governance: current security version, an auditable 0.1.9 chronology,
   and an English Contributor Covenant-based code of conduct.
 
@@ -342,6 +347,9 @@ Exact Forge 65.1.1 two-boot persistence smoke     PASS (real restart; no functio
 Delayed first-human anchor client smoke           NOT_RUN (macOS lacks Linux/Xvfb; no client claim)
 Zero-human same-section cross-dimension simulation PASS (Forge 65.0.0 and 65.1.1; no fixture force-load at destination)
 Full current Gradle/JUnit, release jar, compatibility, and Python audit     PASS (63 Python tests; artifact SHA recorded above)
+Formal evidence nonce-binding regressions          PASS (65 Python tests; foreign/missing/mixed-run evidence rejected)
+Prepared manifest request-nonce binding             PASS (`BINDINGCHECK`; no model credential persisted)
+Clean cached Gradle release gate                    PASS after merged-main cache guard
 Formal Actor/Observer client gate                 NOT_RUN
 Hidden random Hardcore M1/M2/M4 gates             NOT_RUN
 M0/M1/M2/M3/M4 product milestones                 NOT_RUN
@@ -353,13 +361,18 @@ seed statistic.
 
 ## Immediate next steps
 
-1. Preserve all live progression results as controlled evidence; do not
-   promote them to a random-seed or speedrun claim.
-2. Run the formal Actor/Observer client gate only on an authorized Linux/Xvfb
-   worker with the exact frozen JAR; keep missing infrastructure as `NOT_RUN`.
-3. Extend the controlled chain into a natural dynamic-dragon world and then
-   execute hidden-seed protocols only after their exact artifact and worker
-   prerequisites are satisfied.
+1. Preserve the closed formal-evidence nonce boundary: the manifest now owns
+   the externally expected nonce and both functional and delayed-anchor
+   verifiers bind every Actor, Observer, Oracle, and Oracle-result event to it.
+   Missing, mixed, and internally consistent foreign bundles fail closed.
+2. Preserve all live progression results as controlled evidence; do not
+   promote them to a random-seed or speedrun claim. The last formal-client
+   preflight remains `NOT_RUN` because this macOS host lacks Linux/Xvfb; the
+   next local verification command is the focused Python orchestrator suite.
+3. Run the formal Actor/Observer client gate only on an authorized Linux/Xvfb
+   worker with the exact frozen JAR, then extend the controlled chain into a
+   natural dynamic-dragon world and execute hidden-seed protocols only after
+   their exact artifact and worker prerequisites are satisfied.
 
 ## Repository and release state
 

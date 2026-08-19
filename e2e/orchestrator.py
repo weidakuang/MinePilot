@@ -1063,6 +1063,7 @@ def event_nonce_binding(
 def verify_evidence(
     run_root: Path,
     expected_product_hash: str,
+    expected_nonce: str | None,
 ) -> dict[str, Any]:
     actor = read_json_lines(run_root / "actor-client-events.jsonl")
     observer = read_json_lines(
@@ -1177,17 +1178,6 @@ def verify_evidence(
     actor_types = {event.get("type") for event in actor}
     observer_types = {event.get("type") for event in observer}
     oracle_types = {event.get("type") for event in oracle}
-    oracle_nonces = {
-        event.get("nonce")
-        for event in oracle
-        if isinstance(event.get("nonce"), str)
-        and event.get("nonce")
-    }
-    expected_nonce = (
-        next(iter(oracle_nonces))
-        if len(oracle_nonces) == 1
-        else None
-    )
     observer_motion = observer_motion_summary(
         observer,
         chat_at_utc,
@@ -1281,12 +1271,14 @@ def verify_evidence(
         *(f"oracle:{value}" for value in sorted(required_oracle - oracle_types)),
         *production_audit_errors,
     ]
-    if expected_nonce is None:
-        missing.append("oracle:single-run-nonce")
+    if not expected_nonce:
+        missing.append("manifest:run-nonce")
     if not event_nonce_binding(actor, expected_nonce):
         missing.append("actor:run-nonce-binding")
     if not event_nonce_binding(observer, expected_nonce):
         missing.append("observer:run-nonce-binding")
+    if not event_nonce_binding(oracle, expected_nonce):
+        missing.append("oracle:run-nonce-binding")
     if (
         not isinstance(oracle_result.get("nonce"), str)
         or oracle_result.get("nonce") != expected_nonce
@@ -1591,6 +1583,7 @@ def verify_evidence(
         "causalModelTrace": causal_trace,
         "inventoryCausalModelTrace": inventory_causal_trace,
         "expectedProductSha256": expected_product_hash,
+        "expectedNonce": expected_nonce,
         "loadedProductCopiesSha256": copied_hashes,
     }
 
@@ -1680,6 +1673,7 @@ def verify_server_smoke(
 def verify_delayed_anchor_evidence(
     run_root: Path,
     expected_product_hash: str,
+    expected_nonce: str | None,
 ) -> dict[str, Any]:
     """Verify the real-client, no-human-first-login lifecycle slice.
 
@@ -1705,6 +1699,16 @@ def verify_delayed_anchor_evidence(
         "delayed_anchor_objective_oracle_passed",
     )
     missing: list[str] = []
+    if not expected_nonce:
+        missing.append("manifest:run-nonce")
+    if not event_nonce_binding(oracle, expected_nonce):
+        missing.append("oracle:run-nonce-binding")
+    if not event_nonce_binding(actor, expected_nonce):
+        missing.append("actor:run-nonce-binding")
+    if not event_nonce_binding(observer, expected_nonce):
+        missing.append("observer:run-nonce-binding")
+    if result.get("nonce") != expected_nonce:
+        missing.append("oracle-result:run-nonce-binding")
     cursor = -1
     for required in required_oracle:
         try:
@@ -1783,6 +1787,7 @@ def verify_delayed_anchor_evidence(
         "actorEventCount": len(actor),
         "observerEventCount": len(observer),
         "expectedProductSha256": expected_product_hash,
+        "expectedNonce": expected_nonce,
         "loadedProductCopiesSha256": copied_hashes,
     }
 
@@ -1861,6 +1866,7 @@ def gradle_run_command(
 def prepare_manifest(
     *,
     run_id: str,
+    nonce: str,
     run_root: Path,
     source: dict[str, Any],
     product: Path,
@@ -1880,6 +1886,7 @@ def prepare_manifest(
     manifest = {
         "schemaVersion": 1,
         "runId": run_id,
+        "nonce": nonce,
         "createdAtUtc": utc_now(),
         "status": status,
         "evidenceClass": (
@@ -1918,6 +1925,7 @@ def prepare_manifest(
 def record_functional_preflight_failure(
     *,
     run_id: str,
+    nonce: str,
     run_root: Path,
     source: dict[str, Any],
     environment: dict[str, str],
@@ -1935,6 +1943,7 @@ def record_functional_preflight_failure(
     manifest = {
         "schemaVersion": 1,
         "runId": run_id,
+        "nonce": nonce,
         "createdAtUtc": utc_now(),
         "status": "NOT_RUN",
         "evidenceClass": "INFRASTRUCTURE_PRECHECK",
@@ -1981,6 +1990,7 @@ def command_prepare(args: argparse.Namespace) -> int:
         write_instance_files(run_root, args.port or 25575, nonce)
         manifest = prepare_manifest(
             run_id=run_id,
+            nonce=nonce,
             run_root=run_root,
             source=source,
             product=product,
@@ -2034,6 +2044,7 @@ def command_server_smoke(args: argparse.Namespace) -> int:
         write_instance_files(run_root, port, nonce)
         manifest = prepare_manifest(
             run_id=run_id,
+            nonce=nonce,
             run_root=run_root,
             source=source,
             product=product,
@@ -2159,6 +2170,7 @@ def command_anchor_smoke(args: argparse.Namespace) -> int:
         write_instance_files(run_root, port, nonce)
         manifest = prepare_manifest(
             run_id=run_id,
+            nonce=nonce,
             run_root=run_root,
             source=source,
             product=product,
@@ -2300,6 +2312,7 @@ def command_anchor_smoke(args: argparse.Namespace) -> int:
         verdict = verify_delayed_anchor_evidence(
             run_root,
             manifest["artifacts"]["productionJar"]["sha256"],
+            manifest.get("nonce"),
         )
         atomic_json(run_root / "anchor-verdict.json", verdict)
         manifest["status"] = verdict["status"]
@@ -2369,6 +2382,7 @@ def command_restart_smoke(args: argparse.Namespace) -> int:
         write_instance_files(run_root, port, nonce)
         manifest = prepare_manifest(
             run_id=run_id,
+            nonce=nonce,
             run_root=run_root,
             source=source,
             product=product,
@@ -2526,6 +2540,7 @@ def command_functional(args: argparse.Namespace) -> int:
         )
         record_functional_preflight_failure(
             run_id=run_id,
+            nonce=nonce,
             run_root=run_root,
             source=source,
             environment=environment,
@@ -2542,6 +2557,7 @@ def command_functional(args: argparse.Namespace) -> int:
         message = "Xvfb disappeared after functional preflight"
         record_functional_preflight_failure(
             run_id=run_id,
+            nonce=nonce,
             run_root=run_root,
             source=source,
             environment=environment,
@@ -2576,6 +2592,7 @@ def command_functional(args: argparse.Namespace) -> int:
         write_instance_files(run_root, port, nonce)
         manifest = prepare_manifest(
             run_id=run_id,
+            nonce=nonce,
             run_root=run_root,
             source=source,
             product=product,
@@ -2750,6 +2767,7 @@ def command_functional(args: argparse.Namespace) -> int:
         verdict = verify_evidence(
             run_root,
             manifest["artifacts"]["productionJar"]["sha256"],
+            manifest.get("nonce"),
         )
         atomic_json(run_root / "e2e-verdict.json", verdict)
         manifest["status"] = verdict["status"]
@@ -2797,7 +2815,11 @@ def command_verify(args: argparse.Namespace) -> int:
         (run_root / "manifest.json").read_text(encoding="utf-8")
     )
     expected = manifest["artifacts"]["productionJar"]["sha256"]
-    verdict = verify_evidence(run_root, expected)
+    verdict = verify_evidence(
+        run_root,
+        expected,
+        manifest.get("nonce"),
+    )
     atomic_json(run_root / "e2e-verdict.json", verdict)
     print(json.dumps(verdict, ensure_ascii=False, indent=2))
     return 0 if verdict["status"] == "PASS" else 1

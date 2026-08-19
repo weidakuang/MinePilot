@@ -25,6 +25,21 @@ def forgeCompileVersion = providers.gradleProperty(
 java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 
 /*
+ * ForgeGradle's merged source-set mode writes main classes under
+ * build/sourceSets/main. Gradle's remote/local JavaCompile cache entry does
+ * not restore that transformed directory on a clean checkout: compileJava
+ * can report FROM-CACHE while compileTestJava then sees an empty production
+ * classpath. Compile the main source set locally until ForgeGradle exposes
+ * that transformed output as a complete cache artifact. This preserves
+ * deterministic clean builds; the E2E source sets remain cacheable.
+ */
+tasks.named('compileJava') {
+    outputs.doNotCacheIf(
+        'ForgeGradle merged main output is not fully cache-restorable'
+    ) { true }
+}
+
+/*
  * Real-client E2E support is compiled into two separate, test-only Mods.
  * Neither source set is on the production JAR input.  Development runs use
  * these source sets directly; the formal orchestrator installs the dedicated

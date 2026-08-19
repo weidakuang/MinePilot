@@ -27,6 +27,8 @@ from e2e.orchestrator import (
     write_instance_files,
 )
 
+TEST_NONCE = "TESTNONCE"
+
 
 class OrchestratorEvidenceTest(unittest.TestCase):
     def test_java_major_parser_does_not_expose_version_text(self):
@@ -152,12 +154,17 @@ class OrchestratorEvidenceTest(unittest.TestCase):
                     "zeroHumanTicks": 45,
                 },
             ]
+            oracle_events = [
+                {"nonce": TEST_NONCE, **event}
+                for event in oracle_events
+            ]
             (run_root / "oracle-events.jsonl").write_text(
                 "".join(json.dumps(event) + "\n" for event in oracle_events),
                 encoding="utf-8",
             )
             (run_root / "oracle-result.json").write_text(
                 json.dumps({
+                    "nonce": TEST_NONCE,
                     "status": "PASS",
                     "reason": "delayed_initial_anchor_passed",
                     "scenario": "delayed_first_human_anchor",
@@ -175,13 +182,36 @@ class OrchestratorEvidenceTest(unittest.TestCase):
                         "distance": 6.0,
                     },
                 ]
+                events = [
+                    {"nonce": TEST_NONCE, **event}
+                    for event in events
+                ]
                 (run_root / f"{role}-client-events.jsonl").write_text(
                     "".join(json.dumps(event) + "\n" for event in events),
                     encoding="utf-8",
                 )
-            verdict = verify_delayed_anchor_evidence(run_root, expected)
+            verdict = verify_delayed_anchor_evidence(
+                run_root,
+                expected,
+                TEST_NONCE,
+            )
             self.assertEqual("PASS", verdict["status"])
             self.assertEqual(45, verdict["zeroHumanTicks"])
+
+            observer_path = run_root / "observer-client-events.jsonl"
+            observer_events = self.read_json_lines(observer_path)
+            observer_events[0]["nonce"] = "OTHER-RUN"
+            self.write_json_lines(observer_path, observer_events)
+            mixed_run = verify_delayed_anchor_evidence(
+                run_root,
+                expected,
+                TEST_NONCE,
+            )
+            self.assertEqual("FAIL", mixed_run["status"])
+            self.assertIn(
+                "observer:run-nonce-binding",
+                mixed_run["missingEvidence"],
+            )
 
     def test_delayed_anchor_verifier_rejects_short_zero_human_window(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -197,12 +227,17 @@ class OrchestratorEvidenceTest(unittest.TestCase):
                 {"type": "delayed_anchor_human_login_observed"},
                 {"type": "delayed_anchor_objective_oracle_passed"},
             ]
+            events = [
+                {"nonce": TEST_NONCE, **event}
+                for event in events
+            ]
             (run_root / "oracle-events.jsonl").write_text(
                 "".join(json.dumps(event) + "\n" for event in events),
                 encoding="utf-8",
             )
             (run_root / "oracle-result.json").write_text(
                 json.dumps({
+                    "nonce": TEST_NONCE,
                     "status": "PASS",
                     "reason": "delayed_initial_anchor_passed",
                     "scenario": "delayed_first_human_anchor",
@@ -213,9 +248,16 @@ class OrchestratorEvidenceTest(unittest.TestCase):
             for role in ("actor", "observer"):
                 (run_root / f"{role}-client-events.jsonl").write_text(
                     "\n".join([
-                        json.dumps({"type": "client_logged_in"}),
-                        json.dumps({"type": "scenario_ready_received"}),
                         json.dumps({
+                            "nonce": TEST_NONCE,
+                            "type": "client_logged_in",
+                        }),
+                        json.dumps({
+                            "nonce": TEST_NONCE,
+                            "type": "scenario_ready_received",
+                        }),
+                        json.dumps({
+                            "nonce": TEST_NONCE,
                             "type": "client_initial_anchor_observed",
                             "sameDimension": True,
                             "distance": 4.0,
@@ -223,7 +265,11 @@ class OrchestratorEvidenceTest(unittest.TestCase):
                     ]) + "\n",
                     encoding="utf-8",
                 )
-            verdict = verify_delayed_anchor_evidence(run_root, expected)
+            verdict = verify_delayed_anchor_evidence(
+                run_root,
+                expected,
+                TEST_NONCE,
+            )
             self.assertEqual("FAIL", verdict["status"])
             self.assertIn(
                 "oracle:at-least-40-zero-human-ticks",
@@ -517,6 +563,7 @@ class OrchestratorEvidenceTest(unittest.TestCase):
             }
             record_functional_preflight_failure(
                 run_id="run-1",
+                nonce=TEST_NONCE,
                 run_root=run_root,
                 source={"label": "test", "dirty": True},
                 environment={
@@ -535,6 +582,7 @@ class OrchestratorEvidenceTest(unittest.TestCase):
                 )
             )
             self.assertEqual("NOT_RUN", manifest["status"])
+            self.assertEqual(TEST_NONCE, manifest["nonce"])
             self.assertFalse(manifest["functionalAiClaim"])
             self.assertEqual(
                 "INFRASTRUCTURE_PRECHECK",
@@ -591,7 +639,11 @@ class OrchestratorEvidenceTest(unittest.TestCase):
             run_root = Path(directory)
             expected_hash = self.write_functional_bundle(run_root)
 
-            verdict = verify_evidence(run_root, expected_hash)
+            verdict = verify_evidence(
+                run_root,
+                expected_hash,
+                TEST_NONCE,
+            )
 
             self.assertEqual("PASS", verdict["status"])
             self.assertEqual([], verdict["missingEvidence"])
@@ -619,6 +671,7 @@ class OrchestratorEvidenceTest(unittest.TestCase):
             missing_delta = verify_evidence(
                 run_root,
                 expected_hash,
+                TEST_NONCE,
             )
             self.assertEqual("FAIL", missing_delta["status"])
             self.assertIn(
@@ -668,7 +721,11 @@ class OrchestratorEvidenceTest(unittest.TestCase):
                     delta,
                 ],
             )
-            verdict = verify_evidence(run_root, expected_hash)
+            verdict = verify_evidence(
+                run_root,
+                expected_hash,
+                TEST_NONCE,
+            )
             self.assertEqual("FAIL", verdict["status"])
             self.assertIn(
                 "oracle:server_vanilla_item_pickup",
@@ -695,7 +752,11 @@ class OrchestratorEvidenceTest(unittest.TestCase):
                 ],
             )
 
-            verdict = verify_evidence(run_root, expected_hash)
+            verdict = verify_evidence(
+                run_root,
+                expected_hash,
+                TEST_NONCE,
+            )
 
             self.assertEqual("FAIL", verdict["status"])
             self.assertIn(
@@ -713,7 +774,11 @@ class OrchestratorEvidenceTest(unittest.TestCase):
             expected_hash = self.write_functional_bundle(run_root)
             (run_root / "screenshots" / "observer-rendered.png").unlink()
 
-            verdict = verify_evidence(run_root, expected_hash)
+            verdict = verify_evidence(
+                run_root,
+                expected_hash,
+                TEST_NONCE,
+            )
 
             self.assertEqual("FAIL", verdict["status"])
             self.assertIn(
@@ -738,13 +803,79 @@ class OrchestratorEvidenceTest(unittest.TestCase):
                 observer,
             )
 
-            verdict = verify_evidence(run_root, expected_hash)
+            verdict = verify_evidence(
+                run_root,
+                expected_hash,
+                TEST_NONCE,
+            )
 
             self.assertEqual("FAIL", verdict["status"])
             self.assertIn(
                 "observer:run-nonce-binding",
                 verdict["missingEvidence"],
             )
+
+    def test_missing_oracle_event_nonce_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run_root = Path(directory)
+            expected_hash = self.write_functional_bundle(run_root)
+            oracle = self.read_json_lines(
+                run_root / "oracle-events.jsonl"
+            )
+            oracle[0].pop("nonce")
+            (run_root / "oracle-events.jsonl").write_text(
+                "".join(json.dumps(event) + "\n" for event in oracle),
+                encoding="utf-8",
+            )
+
+            verdict = verify_evidence(
+                run_root,
+                expected_hash,
+                TEST_NONCE,
+            )
+
+            self.assertEqual("FAIL", verdict["status"])
+            self.assertIn(
+                "oracle:run-nonce-binding",
+                verdict["missingEvidence"],
+            )
+
+    def test_consistent_foreign_bundle_cannot_choose_its_own_nonce(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run_root = Path(directory)
+            expected_hash = self.write_functional_bundle(run_root)
+            for name in (
+                "actor-client-events.jsonl",
+                "observer-client-events.jsonl",
+                "oracle-events.jsonl",
+            ):
+                path = run_root / name
+                events = self.read_json_lines(path)
+                for event in events:
+                    event["nonce"] = "FOREIGNRUN"
+                self.write_json_lines(path, events)
+            result_path = run_root / "oracle-result.json"
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+            result["nonce"] = "FOREIGNRUN"
+            result_path.write_text(
+                json.dumps(result),
+                encoding="utf-8",
+            )
+
+            verdict = verify_evidence(
+                run_root,
+                expected_hash,
+                TEST_NONCE,
+            )
+
+            self.assertEqual("FAIL", verdict["status"])
+            for binding in (
+                "actor:run-nonce-binding",
+                "observer:run-nonce-binding",
+                "oracle:run-nonce-binding",
+                "oracle-result:run-nonce-binding",
+            ):
+                self.assertIn(binding, verdict["missingEvidence"])
 
     @staticmethod
     def write_functional_bundle(run_root: Path) -> str:

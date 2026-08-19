@@ -22,9 +22,9 @@ Hardcore world or the rendered Actor/Observer protocol.
 All runs used Forge `65.1.1`, Minecraft `26.2`, and Java `25`. Each passing
 test ran one case and exited cleanly with `All 1 required tests passed`; the
 newest movement, follow, defense, food, combat, and delayed-login results are
-recorded in the current validated worktree. Publication remains pending until
-the previously truncated public `main` is repaired and a fresh clone builds.
-They remain controlled evidence, not release artifacts.
+recorded in the validated source tree. Public repair commit `5edcdc7f` carries
+that exact tree and passes a fresh-clone Gradle build. They remain controlled
+evidence, not release artifacts.
 
 | Scenario | Model decision evidence | Vanilla-world evidence | Result |
 | --- | --- | --- | --- |

@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-19T16:57:33Z
+Last updated: 2026-08-19T17:05:24Z
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -47,9 +47,13 @@ This section supersedes older chronological notes below when they conflict.
   compatibility checker, and all 63 Python E2E protocol tests pass. The
   production JAR SHA-256 is
   `28bffa0d16e5ef425db30d84e60fd902f21866cd111231987bef804a5d9576b9`.
-  The remaining release gate is a fresh-clone build after repairing the
-  truncated public `main` tree. Formal Actor/Observer, random Hardcore, and
-  M0--M4 statistical gates remain `NOT_RUN`.
+  Public repair commit `5edcdc7f7d37e91b1466fff460b571333c8312db`
+  now carries the exact validated tree
+  `e9ec6c1fab68dcbd04b9fa14063e9072bb6e44b1`. A fresh public clone passed the
+  same Gradle build/JUnit/JAR/compatibility gate; the formerly truncated files
+  are 89,015 and 84,836 bytes with their expected Git blob hashes. Formal
+  Actor/Observer, random Hardcore, and M0--M4 statistical gates remain
+  `NOT_RUN`.
 
 ## Latest root cause and evidence
 
@@ -351,24 +355,24 @@ seed statistic.
 
 1. Preserve all live progression results as controlled evidence; do not
    promote them to a random-seed or speedrun claim.
-2. Run the complete build, release-JAR, compatibility, and repository policy
-   gates against the exact current tree, then bind the resulting artifact hash
-   to the evidence state.
-3. Repair public `main` with full Git blobs, verify the two previously
-   truncated large files by blob hash, and build a fresh clone before treating
-   GitHub as a valid backup. Run formal
-   Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker
-   with the exact frozen jar. Keep missing infrastructure as `NOT_RUN`.
+2. Run the formal Actor/Observer client gate only on an authorized Linux/Xvfb
+   worker with the exact frozen JAR; keep missing infrastructure as `NOT_RUN`.
+3. Extend the controlled chain into a natural dynamic-dragon world and then
+   execute hidden-seed protocols only after their exact artifact and worker
+   prerequisites are satisfied.
 
 ## Repository and release state
 
 - Public repository: `https://github.com/weidakuang/MinePilot`.
 - Public `main` before repair: `66bb2cff9362451fb08daf6fbf330a5d1058d589`.
+- Verified repair commit: `5edcdc7f7d37e91b1466fff460b571333c8312db`;
+  exact source tree: `e9ec6c1fab68dcbd04b9fa14063e9072bb6e44b1`.
 - Forge 65.x backup branch: `mc26.2-forge65`.
 - Local branch: `main`.
-- Public `main` is not currently a valid backup: two large emergency-survival
-  source files were truncated by an earlier per-file upload and a fresh clone
-  does not compile. The next publication must use full Git blob/tree objects
-  or native Git and then pass a fresh-clone byte comparison and build.
-  Generated run directories remain disposable and must not be staged.
+- Public `main` is again a valid source backup. The two large
+  emergency-survival files were restored with full Git blob/tree objects;
+  byte counts and blob hashes match the local tree, and a fresh public clone
+  passed Gradle test/build/JAR/compatibility verification. Future connector
+  publications must keep using blob/tree objects for large files. Generated
+  run directories remain disposable and must not be staged.
 - API keys are process-only during live tests and are never written here.

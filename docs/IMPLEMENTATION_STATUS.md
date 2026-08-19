@@ -8,12 +8,12 @@ Last reviewed: 2026-08-19
 - Minecraft Java 26.2; Forge 65.0.0 inclusive through 66.0.0 exclusive;
   Java 25.
 - Development version: `0.1.10-dev-mc26.2`.
-- Public repository: `https://github.com/weidakuang/MinePilot`; its current
-  `main` tree is not a valid backup until the documented large-file truncation
-  is repaired and a fresh clone builds successfully.
+- Public repository: `https://github.com/weidakuang/MinePilot`; repair commit
+  `5edcdc7f7d37e91b1466fff460b571333c8312db` has the exact validated source
+  tree and passes a fresh-clone build.
 - Local development branch: `main`.
-- Current validation tree: local worktree pending intentional commit and
-  verified publication.
+- Current code commit: local `b30d8b61950344b8d958261925441881f4c72136`;
+  its tree is published byte-for-byte by the repair commit above.
 - Forge 65.x major-line backup branch: `mc26.2-forge65`.
 - Artifact status: `NON_RELEASE` until all formal gates pass.
 

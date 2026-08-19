@@ -1242,9 +1242,19 @@ public final class FightEnderDragonSkill
             final boolean fresh
     ) {
         if (!cageTraversalSafety(context, frame)) {
-            return fail(
+            /* A distant cage is optional while the player is under pressure.
+             * Refusing a risky tower/descent must not terminate the entire
+             * dragon fight when an ordinary visible dragon target can still
+             * be reacquired.  Clear the tentative traversal authority and
+             * resume the bounded first-person sweep; a later safe frame may
+             * plan the cage again. */
+            clearCageTraversalPlan();
+            cageStatus = CageStatus.SAFETY_RESERVE_REQUIRED;
+            return scan(
                     context,
-                    NAME + ".cage_descent_safety_reserve_required"
+                    parameters,
+                    frame,
+                    fresh
             );
         }
         if (inventoryCount(
@@ -3261,6 +3271,7 @@ public final class FightEnderDragonSkill
         SEEKING_VISIBLE_BAR,
         APPROACH_OR_ELEVATION_REQUIRED,
         SAFE_TRAVERSAL_UNAVAILABLE,
+        SAFETY_RESERVE_REQUIRED,
         PICKAXE_REQUIRED,
         WATER_BUCKET_REQUIRED,
         EQUIPPING_PICKAXE,

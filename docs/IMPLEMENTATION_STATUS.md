@@ -8,10 +8,12 @@ Last reviewed: 2026-08-19
 - Minecraft Java 26.2; Forge 65.0.0 inclusive through 66.0.0 exclusive;
   Java 25.
 - Development version: `0.1.10-dev-mc26.2`.
-- Public backup: `https://github.com/weidakuang/MinePilot`.
+- Public repository: `https://github.com/weidakuang/MinePilot`; its current
+  `main` tree is not a valid backup until the documented large-file truncation
+  is repaired and a fresh clone builds successfully.
 - Local development branch: `main`.
-- Latest local commit: see the public `main` history for the current
-  validation commit.
+- Current validation tree: local worktree pending intentional commit and
+  verified publication.
 - Forge 65.x major-line backup branch: `mc26.2-forge65`.
 - Artifact status: `NON_RELEASE` until all formal gates pass.
 
@@ -60,6 +62,10 @@ or speedrun claim.
   emergency golem, zombie/skeleton horde, parkour, furnace/menu, water clutch,
   and compatibility smoke tests have passed in prior fresh servers. Their logs
   remain component evidence only.
+- The zero-human cross-dimension regression passes on Forge 65.0.0 and 65.1.1
+  with identical Overworld/Nether section coordinates. It verifies that the
+  headless player's ordinary destination simulation window ticks an outlying
+  entity and scheduled block update, then retires the old dimension window.
 - Stronghold portal-room search and activation now have fair first-person
   diagnostics, bounded interior confidence, dead-end backtracking, and a
   regression guard against walking without observed support. The live entry
@@ -67,23 +73,26 @@ or speedrun claim.
   anchor transaction settles.
 - The current working tree passed the focused combat test, the complete offline
   JUnit suite, the release build and jar verification, the compatibility
-  checker, and the 61-case Python audit after this change. The artifact is
+  checker, and the 63-case Python audit after this change. The artifact is
   `build/libs/mcai_companion-0.1.10-dev-mc26.2.jar` with SHA-256
-  `c62a9db20f5d864179f48e501d26f0a4cf505fdfeac28d4963964552123a60af`.
+  `28bffa0d16e5ef425db30d84e60fd902f21866cd111231987bef804a5d9576b9`.
 
 ### Live MiMo result (latest)
 
-The authorized `mimo-v2.5` focused test used the supplied provider URL and a
-real-time Forge 65.1.1 server. The model produced a valid
-`START_SKILL(fight_ender_dragon)` response; the body performed real melee and
-bow actions, destroyed the observed crystal and dragon, then selected
-`find_and_enter_observed_portal`. The route verifier recorded `DRAGON_KILLED`
-and `RETURNED_FROM_END`; the same body UUID returned through the activated
-portal and Forge reported `All 1 required tests passed` in 2.183 minutes. The
-run also covered the first-human cross-dimension anchor guard and the 16-block
-fair portal approach bound. The arena disables only ambient mob spawning after
-installing the dragon and crystal, so this is a controlled live-model chain,
-not a random-seed, Hardcore, or speedrun claim.
+The latest authorized `mimo-v2.5` focused test used the supplied provider URL
+and a real-time Forge 65.1.1 server. From one Chinese player task, the model
+selected the stronghold search, twelve-eye portal activation, End entry,
+dragon fight, and return-portal skills. Vanilla attributed the dragon death to
+the companion; the route verifier recorded `DRAGON_KILLED` at game tick 4802
+and `RETURNED_FROM_END` at tick 7425. SQLite contains the ordered model and
+vanilla-action audit chain, and Forge reported `All 1 required tests passed`
+in 6.188 minutes. The authored maze and controlled End arena disable ambient
+spawning, use a static dragon target and bounded loaded chunks, and activate a
+test return portal after the credited kill. This is a controlled causal chain,
+not a dynamic vanilla dragon fight, random-seed, Hardcore, or speedrun claim.
+
+The earlier standalone controlled End victory/return run passed in 2.183
+minutes and remains narrower historical component evidence.
 
 Earlier controlled MiMo slices reached End entry and demonstrated follow and
 other task chains, but they are historical evidence and do not upgrade the

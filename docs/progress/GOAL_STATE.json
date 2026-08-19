@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-18T19:04:47Z",
-  "sourceState": "COMMITTED_MAIN",
+  "updatedAtUtc": "2026-08-19T16:57:33Z",
+  "sourceState": "VERIFIED_WORKTREE_PENDING_COMMIT_AND_PUBLICATION",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.10-dev-mc26.2",
@@ -248,6 +248,34 @@
       ],
       "formalGate": "NOT_RUN"
     },
+    "latestLiveStrongholdRoomToReturn": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL search_stronghold_portal_room, activate_observed_end_portal, find_and_enter_observed_portal, fight_ender_dragon, then find_and_enter_observed_portal",
+      "actions": "A Chinese player task reached the real model. The body traversed the authored maze, inserted twelve eyes through vanilla interactions, entered the End, killed the dragon with companion-attributed physical combat, selected the return route, entered the End return portal, and returned to the Overworld. SQLite records perception, request, HTTP-200 response, schema validation, revision acceptance, skill start, and low-level movement/use/attack actions.",
+      "dragonKilledGameTick": 4802,
+      "returnedFromEndGameTick": 7425,
+      "runtimeSeconds": 371.28,
+      "fixtureConstraint": "Release-excluded bounded stronghold maze and controlled End arena with ambient spawning disabled, a static dragon target, bounded loaded chunks, and a test-activated return portal; not a random seed, dynamic vanilla dragon-fight, Hardcore, speedrun, or rendered-client result.",
+      "supersededFailures": [
+        "A pre-settling run lost the fixture dragon during vanilla legacy End-fight scanning.",
+        "A 90-second combat gate expired with the dragon at 15.445984 health while the skill remained RUNNING.",
+        "A risky optional cage traversal terminated with cage_descent_safety_reserve_required before bounded reacquisition was added.",
+        "The first credited-kill rerun reached Free the End but an over-constrained harness incorrectly required one optional crystal and artificial bar to be destroyed."
+      ],
+      "formalGate": "NOT_RUN"
+    },
+    "zeroHumanCrossDimensionTracking": {
+      "status": "PASS_CONTROLLED_REAL_SERVER",
+      "forgeMatrix": [
+        "65.0.0",
+        "65.1.1"
+      ],
+      "details": "With zero humans and one headless AI, an Overworld-to-Nether transition using identical SectionPos coordinates refreshed the destination level's ordinary player tracking window. A non-forced destination entity ticked more than 100 times, a scheduled block tick executed, an outlying destination chunk simulated, and the old Overworld simulation window retired.",
+      "fixtureConstraint": "Controlled direct vanilla ServerPlayer dimension transition; not physical portal construction/traversal, a rendered client, or random Hardcore evidence.",
+      "formalGate": "NOT_RUN"
+    },
     "latestDedicatedServerSmoke": {
       "status": "PASS_CONTROLLED_REAL_SERVER",
       "runRoot": "e2e/results/6f6b8f76db9f/20260813T221301Z-e2e6f6f3cabeb02",
@@ -271,14 +299,16 @@
     },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
-      "details": "Full offline Gradle clean build, JUnit suite, verifyReleaseJar, compatibility checker, 61 Python E2E tests, public documentation English-only scan, and staged preflight passed after the bounded horde fixture and directional-damage recovery fixes. Real movement, follow, combat, food, surprise-defense, delayed-login, and six-mob horde slices also passed; formal gates remain NOT_RUN.",
+      "details": "The exact current tree passed Gradle clean, all JUnit tests, production JAR build and content verification, Forge compatibility validation, and all 63 Python E2E protocol tests. Public-main repair and a fresh-clone build remain separate pending publication gates.",
       "artifact": "build/libs/mcai_companion-0.1.10-dev-mc26.2.jar",
-      "sha256": "c62a9db20f5d864179f48e501d26f0a4cf505fdfeac28d4963964552123a60af",
+      "sha256": "28bffa0d16e5ef425db30d84e60fd902f21866cd111231987bef804a5d9576b9",
       "formalGate": "NOT_RUN"
     }
   },
   "nextActions": [
-    "Preserve the live movement, follow, defense, food, combat, directional-damage, delayed-anchor, clean six-mob horde, verified iron-golem, and ten-plus-ten evidence while extending the causal chain into End survival.",
+    "Preserve the controlled stronghold-room-to-return PASS without promoting it to random-seed, Hardcore, dynamic-dragon, or M2/M4 evidence.",
+    "Run the full current-tree Gradle, release-JAR, compatibility, policy, and secret gates and bind the new artifact hash.",
+    "Repair public main with non-truncating Git blob/tree objects and require a byte-identical fresh-clone build before treating it as a backup.",
     "Run the formal Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker.",
     "Keep missing infrastructure and unexecuted statistical gates explicitly marked NOT_RUN."
   ],

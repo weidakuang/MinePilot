@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-18T19:04:47Z
+Last updated: 2026-08-19T16:57:33Z
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -12,6 +12,44 @@ Continue the MinePilot M1–M4 objective on Minecraft Java 26.2 / Forge 65.x wit
 real, fair `ServerPlayer` behavior. Do not claim professional-companion,
 random-seed, two-hour, or M0–M4 completion until the artifact-bound protocols
 pass.
+
+## Current recovery state
+
+This section supersedes older chronological notes below when they conflict.
+
+- Root causes closed in the current worktree: the vanilla End fight bootstrap
+  could retire a test dragon created before its legacy scan settled; a
+  headless player could retain the same section coordinates across dimensions
+  without refreshing the new level's ordinary player-tracking window; unsafe
+  optional cage traversal terminated the whole dragon fight instead of
+  reacquiring a visible dragon; and the continuous-route harness incorrectly
+  required destruction of one optional crystal and one artificial bar even
+  after vanilla had credited the dragon kill to the companion.
+- Current implementation files include `AiPlayerSession`,
+  `FightEnderDragonSkill`, and the controlled live/zero-human Forge GameTests.
+  Focused JUnit coverage includes risky-cage recovery, dimension-aware session
+  tracking, and Gradle selector wiring.
+- The last failed live gate reached `Free the End` but the harness rejected the
+  credited kill because of its over-constrained optional-obstacle assertion.
+  That failure is retained as negative harness evidence.
+- The corrected authorized `mimo-v2.5` run passed the complete controlled
+  stronghold-room-to-return chain on Forge 65.1.1 in 6.188 minutes. The model
+  selected normal skills for maze search, twelve-eye activation, End entry,
+  dragon combat, and return. Vanilla recorded `The End?`, `Free the End`, and
+  companion kill credit; route milestones recorded `DRAGON_KILLED` at game
+  tick 4802 and `RETURNED_FROM_END` at game tick 7425. SQLite records the
+  perception/request/HTTP-200/schema/revision/skill/action causal chain.
+- A zero-human, same-section Overworld-to-Nether regression passes on Forge
+  65.0.0 and 65.1.1. It verifies destination simulation, an outlying entity
+  and scheduled block tick, and retirement of the old dimension's window
+  without a test force-load at the destination.
+- The exact current-tree Gradle clean/test/build, release-JAR inspection,
+  compatibility checker, and all 63 Python E2E protocol tests pass. The
+  production JAR SHA-256 is
+  `28bffa0d16e5ef425db30d84e60fd902f21866cd111231987bef804a5d9576b9`.
+  The remaining release gate is a fresh-clone build after repairing the
+  truncated public `main` tree. Formal Actor/Observer, random Hardcore, and
+  M0--M4 statistical gates remain `NOT_RUN`.
 
 ## Latest root cause and evidence
 
@@ -72,17 +110,15 @@ tracked dragon-fight UUID as a bounded fallback, and treats the canonical
 dragon root as a hostile boss for finite candidate prioritization. A separate
 standalone authorized MiMo End test passed dragon combat and the return portal
 in 1.958 minutes. A fresh repeat after the anchor and portal policy fixes also
-passed in 2.183 minutes. The full stronghold-to-End run still has not passed:
-recent attempts reached the End and then either lost the fair dragon target or
-were killed by dragon magic. The latest attempt failed with
-`fight_ender_dragon.no_visible_combat_target` after 2.701 minutes; it did not
-record `DRAGON_KILLED` or `RETURNED_FROM_END`.
+passed in 2.183 minutes. Those older full-route failures remain useful negative
+evidence, but the current controlled stronghold-room-to-return chain now passes
+as recorded in the current recovery state above.
 
 The latest damage-focused patch also makes a shielded body perform one bounded
 side-step after a directionless recent damage cue (such as indirect magic),
-instead of remaining shield-only. This is covered by a regression test, but a
-new full stronghold real-model run is still required before calling it an
-effective dragon survival fix.
+instead of remaining shield-only. This is covered by a regression test and was
+present in the passing controlled full-route run; that single bounded pass is
+still not a random-world survival statistic.
 
 The latest live debugging found one concrete first-human lifecycle failure:
 the body could be removed before a malformed or void-like test anchor had a
@@ -164,6 +200,23 @@ body survival. This is a controlled neutral-mob slice, not a human PVP or
 Hardcore result.
 
 ## Changes in the current worktree
+
+- `AiPlayerSession`: refreshes the ordinary vanilla player chunk-tracking
+  window when the `ServerLevel` changes even if the section coordinates do
+  not.
+- `FightEnderDragonSkill`: an unsafe optional cage tower now clears tentative
+  traversal authority and resumes fair target scanning instead of terminating
+  the complete fight.
+- `LiveModelChatGameTests`: waits for vanilla End-fight settling, uses bounded
+  loaded geometry for the controlled arena, allows the historically measured
+  150-second combat window, and distinguishes credited physical dragon damage
+  from optional crystal/bar tactics.
+- `EmbodimentGameTests`: zero-human same-section cross-dimension simulation
+  regression for the headless player's vanilla tracking window.
+- `build.gradle`: supports the documented generic `test_selector`, preserves
+  `live_model_selector` as an alias, and rejects conflicting values.
+- Public governance: current security version, an auditable 0.1.9 chronology,
+  and an English Contributor Covenant-based code of conduct.
 
 - `FairPerceptionSampler`: multipart Ender Dragon samples begin at a collider
   center and bounded horizontal points, with ordinary first-person LOS checks;
@@ -262,7 +315,7 @@ Live MiMo container withdrawal and item collection PASS (two controlled live-mod
 Live MiMo foundation bootstrap and shelter       PASS (8.912-minute controlled slice; isolated SQLite)
 Live MiMo Nether portal build and entry          PASS (52.17-second controlled slice; isolated SQLite)
 Live MiMo stronghold search, portal activation, End entry PASS (controlled real-model prefix)
-Live MiMo stronghold-to-End dragon victory       FAIL (full route still lacks a stronghold-to-return PASS; isolated End chain now passes)
+Live MiMo stronghold-room-to-return chain        PASS (6.188-minute controlled real-model chain; not random Hardcore evidence)
 Live MiMo End return after anchor/portal fixes   PASS (model fight, vanilla return portal, stable UUID; bounded fixture)
 Live MiMo movement causal chain                  PASS (12.26-second real-time slice; START_SKILL travel_to and vanilla move)
 Live MiMo follow causal chain                    PASS (12.66-second real-time slice; ordinary unaddressed Chinese chat, START_SKILL follow_entity, vanilla move)
@@ -283,7 +336,8 @@ Focused shelter-material/building JUnit tests    PASS
 Exact Forge 65.1.1 dedicated lifecycle smoke      PASS (real dedicated server; no functional claim)
 Exact Forge 65.1.1 two-boot persistence smoke     PASS (real restart; no functional claim)
 Delayed first-human anchor client smoke           NOT_RUN (macOS lacks Linux/Xvfb; no client claim)
-Full offline Gradle/JUnit, release jar, compatibility, and Python audit     PASS (61 Python tests)
+Zero-human same-section cross-dimension simulation PASS (Forge 65.0.0 and 65.1.1; no fixture force-load at destination)
+Full current Gradle/JUnit, release jar, compatibility, and Python audit     PASS (63 Python tests; artifact SHA recorded above)
 Formal Actor/Observer client gate                 NOT_RUN
 Hidden random Hardcore M1/M2/M4 gates             NOT_RUN
 M0/M1/M2/M3/M4 product milestones                 NOT_RUN
@@ -297,22 +351,24 @@ seed statistic.
 
 1. Preserve all live progression results as controlled evidence; do not
    promote them to a random-seed or speedrun claim.
-2. Continue the targeted stronghold-to-End real-model investigation. The
-   remaining production gate is fair dragon reacquisition plus survival under
-   vanilla magic damage; the isolated End slice passes, but the full route
-   still lacks a stronghold-to-return PASS.
-3. Preserve the six-mob and ten-plus-ten causal protocols while extending the
-   same fair evidence into full End survival and recovery. Run formal
+2. Run the complete build, release-JAR, compatibility, and repository policy
+   gates against the exact current tree, then bind the resulting artifact hash
+   to the evidence state.
+3. Repair public `main` with full Git blobs, verify the two previously
+   truncated large files by blob hash, and build a fresh clone before treating
+   GitHub as a valid backup. Run formal
    Actor/Observer and hidden-seed gates only on an authorized Linux/Xvfb worker
    with the exact frozen jar. Keep missing infrastructure as `NOT_RUN`.
 
 ## Repository and release state
 
 - Public repository: `https://github.com/weidakuang/MinePilot`.
-- Main backup commit before this work: `2158b9a722b593d5d6d66087402384c934d86d80`.
+- Public `main` before repair: `66bb2cff9362451fb08daf6fbf330a5d1058d589`.
 - Forge 65.x backup branch: `mc26.2-forge65`.
 - Local branch: `main`.
-- The previous validated combat-fixture commit is backed up to public `main`;
-  the directional-damage fix and bounded horde evidence are the next backup.
+- Public `main` is not currently a valid backup: two large emergency-survival
+  source files were truncated by an earlier per-file upload and a fresh clone
+  does not compile. The next publication must use full Git blob/tree objects
+  or native Git and then pass a fresh-clone byte comparison and build.
   Generated run directories remain disposable and must not be staged.
 - API keys are process-only during live tests and are never written here.

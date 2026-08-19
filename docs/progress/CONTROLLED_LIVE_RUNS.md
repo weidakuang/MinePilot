@@ -21,8 +21,9 @@ Hardcore world or the rendered Actor/Observer protocol.
 
 All runs used Forge `65.1.1`, Minecraft `26.2`, and Java `25`. Each passing
 test ran one case and exited cleanly with `All 1 required tests passed`; the
-newest movement, follow, defense, food, combat, and delayed-login results are frozen
-in the current validation commit and are being backed up to public `main`.
+newest movement, follow, defense, food, combat, and delayed-login results are
+recorded in the current validated worktree. Publication remains pending until
+the previously truncated public `main` is repaired and a fresh clone builds.
 They remain controlled evidence, not release artifacts.
 
 | Scenario | Model decision evidence | Vanilla-world evidence | Result |
@@ -43,6 +44,7 @@ They remain controlled evidence, not release artifacts.
 | `real_player_task_to_live_model_foundation_bootstrap` | Multiple accepted foundation skills, ending with `build_shelter_step`; the model re-planned roof placement after observed occlusion. | The body mined/crafted/organized the M1 materials, physically built the dynamic shelter, survived the configured night, and the SQLite audit recorded `skill_completed.build_shelter_step`, `low_level_actions_issued`, `server_verified_auto_complete`, and `goalStatus=COMPLETED`. | PASS (8.912-minute controlled live slice) |
 | `real_player_task_to_live_model_nether_portal_build_and_entry` | `START_SKILL(build_and_light_nether_portal)` followed by `START_SKILL(find_and_enter_observed_portal)`. | The body built and lit the portal using the ordinary placement/use path, entered it, and the portal-entry skill completed. | PASS (52.17-second controlled live slice) |
 | `real_player_task_to_live_model_stronghold_portal_room_and_entry` | Four accepted real-model decisions: `survey_surroundings`, `search_stronghold_portal_room`, `activate_observed_end_portal`, and `find_and_enter_observed_portal`. | The body traversed the authored maze, visited a dead end and a second turn, inserted all twelve eyes through ordinary crosshair use and inventory verification, created nine portal blocks, entered the End, and triggered the vanilla `The End?` advancement with the same body UUID. | PASS (`debug15`, 1.627-minute controlled live slice) |
+| `real_player_task_to_live_model_stronghold_portal_room_to_victory` | One Chinese player task produced accepted `search_stronghold_portal_room`, `activate_observed_end_portal`, End-entry, `fight_ender_dragon`, and return-portal skill decisions. SQLite records HTTP-200 responses, schema/revision acceptance, skill starts, and low-level movement/use/attack actions. | The body completed the authored maze and twelve-eye transaction, entered the End, received vanilla dragon-kill credit, then physically entered the return portal. Route milestones recorded `DRAGON_KILLED` at tick 4802 and `RETURNED_FROM_END` at tick 7425. | PASS (6.188-minute controlled chain; static bounded End arena, not random Hardcore or a dynamic vanilla dragon fight) |
 
 ## Superseded live failures that drove fixes
 
@@ -75,6 +77,16 @@ working progression route:
   removed, stale targets are discarded, and semantic interaction candidates
   now fail closed at 4.45 blocks. `debug15` is the first passing run after all
   three fixes.
+- A later stronghold-to-return run installed its test dragon before vanilla's
+  legacy End-fight scan settled, so vanilla correctly retired the fixture.
+  Another 90-second gate expired with the still-running skill and the dragon
+  at 15.445984 health. A third run exposed a terminal optional cage-safety
+  failure. After bounded settling, a 150-second measured fight window, and
+  safe target reacquisition, the first credited-kill rerun was then rejected
+  only because the harness required destruction of one optional crystal and
+  artificial bar. The current full controlled PASS verifies companion kill
+  credit, real dragon damage and resource use without requiring that one
+  unnecessary tactic; the stricter standalone cage/crystal test remains.
 
 The isolated `20260814e` run is the first foundation run after both fixes and
 is the only one counted as a passing controlled foundation result.
@@ -136,6 +148,12 @@ ray, dispatched through the vanilla server-player actuator, and confirmed by
 the inventory/world revision before the next eye. A semantic ray outside the
 authoritative survival reach is rejected and causes a bounded station change
 rather than an infinite speech-only retry.
+
+The stronghold-room-to-return run adds one complete controlled handoff across
+those component skills, including a companion-attributed dragon death and
+physical return. Its static dragon, bounded chunk residency, disabled ambient
+spawning, authored maze, and test-activated return portal prevent it from
+serving as random-world, dynamic-dragon, Hardcore, or speedrun evidence.
 
 They do not prove:
 

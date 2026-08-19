@@ -135,8 +135,24 @@ minecraft {
                     .gradleProperty('live_model_test')
                     .getOrElse('false')
                     .toBoolean()
-            def requestedSelector = providers
+            def genericSelector = providers
+                    .gradleProperty('test_selector')
+            def legacyLiveSelector = providers
                     .gradleProperty('live_model_selector')
+            if (genericSelector.isPresent()
+                    && legacyLiveSelector.isPresent()
+                    && genericSelector.get()
+                        != legacyLiveSelector.get()) {
+                throw new GradleException(
+                    'test_selector and live_model_selector disagree; '
+                        + 'provide only one selector or make them identical.'
+                )
+            }
+            /* test_selector is the generic public option. Keep the older
+             * live_model_selector as a compatible alias for existing CI and
+             * live-evidence commands. */
+            def requestedSelector = genericSelector
+                    .orElse(legacyLiveSelector)
             if (requestedSelector.isPresent()) {
                 def selector = requestedSelector.get()
                 def selectsLiveModelScenario = selector.contains('live_model')

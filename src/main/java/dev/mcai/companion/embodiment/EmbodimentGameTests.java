@@ -158,6 +158,8 @@ public final class EmbodimentGameTests {
     private static final int FOCUSED_BODY_START_TIMEOUT_TICKS = 3_000;
     private static final int FOCUSED_SIMULATION_TICKET_TIMEOUT_TICKS =
         3_000;
+    private static final int CROSS_DIMENSION_TICKET_TEST_MAX_TICKS =
+        20_000;
     private static final long FOCUSED_SIMULATION_TICKET_TIMEOUT_NANOS =
         java.time.Duration.ofSeconds(15).toNanos();
     private static final long FOCUSED_ASYNC_CHUNK_YIELD_NANOS =
@@ -2507,6 +2509,425 @@ public final class EmbodimentGameTests {
             );
             helper.succeed();
         });
+    }
+
+    /**
+     * Regression for a clientless player crossing into a different level at
+     * exactly the same section coordinate. A real client follows a dimension
+     * transition with movement packets, but the server-driven companion has
+     * no packet stream to refresh the destination level's player ticket.
+     * Comparing only {@link SectionPos} therefore left the ticket behind.
+     *
+     * <p>The fixture neither prepares nor force-loads the Nether destination.
+     * Only after the companion's ordinary player ticket makes both the body
+     * chunk and an outlying chunk entity-ticking does the test add its
+     * scheduled-block and entity probes. This keeps the oracle focused on
+     * vanilla player tracking rather than a fixture-owned chunk load.</p>
+     */
+    @GameTest(
+        name = "zero_human_cross_dimension_chunk_tracking",
+        environment = "exclusive_zero_human_cross_dimension_tracking",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = CROSS_DIMENSION_TICKET_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void zeroHumanCrossDimensionChunkTracking(
+            final GameTestHelper helper
+    ) {
+        final var overworld = helper.getLevel();
+        final var server = overworld.getServer();
+        final var nether = server.getLevel(Level.NETHER);
+        helper.assertTrue(
+                nether != null,
+                "Cross-dimension ticket gate could not access the Nether"
+        );
+
+        final BlockPos fixtureAnchor = helper.absolutePos(
+                FOCUSED_TEST_ORIGIN
+        );
+        /*
+         * Stay well outside every test structure and the Nether's ordinary
+         * origin region. The first teleport establishes an Overworld player
+         * ticket; the second uses the identical XYZ section in the Nether so
+         * the former section-only session check cannot pass accidentally.
+         */
+        final BlockPos sharedFeet = new BlockPos(
+                fixtureAnchor.getX() + 3_072,
+                192,
+                fixtureAnchor.getZ() + 1_536
+        );
+        final ChunkPos bodyChunk = new ChunkPos(
+                SectionPos.blockToSectionCoord(sharedFeet.getX()),
+                SectionPos.blockToSectionCoord(sharedFeet.getZ())
+        );
+        final ChunkPos simulationProbeChunk = new ChunkPos(
+                bodyChunk.x() + 2,
+                bodyChunk.z() + 1
+        );
+        final BlockPos simulationProbeStand = new BlockPos(
+                SectionPos.sectionToBlockCoord(
+                        simulationProbeChunk.x(),
+                        8
+                ),
+                sharedFeet.getY(),
+                SectionPos.sectionToBlockCoord(
+                        simulationProbeChunk.z(),
+                        8
+                )
+        );
+        final BlockPos blockTickProbe =
+                simulationProbeStand.offset(3, 0, 0);
+        final AtomicInteger phase = new AtomicInteger();
+        final AtomicLong phaseStartedAt = new AtomicLong(helper.getTick());
+        final AtomicLong phaseStartedNanos = new AtomicLong(
+                System.nanoTime()
+        );
+        final AtomicLong probeStartAge = new AtomicLong(-1L);
+        final AtomicReference<SectionPos> sourceSection =
+                new AtomicReference<>();
+        final AtomicReference<ItemEntity> probe = new AtomicReference<>();
+
+        helper.addCleanup(ignored -> {
+            final ItemEntity currentProbe = probe.get();
+            if (currentProbe != null && !currentProbe.isRemoved()) {
+                currentProbe.discard();
+            }
+            if (AiPlayerManager.status(server).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(server);
+            }
+        });
+
+        assertNoHumanPlayers(helper);
+        final var spawn = GameTestCompanionSpawn.request(
+                helper,
+                FOCUSED_TEST_ORIGIN
+        );
+        helper.assertTrue(
+                spawn.accepted(),
+                "Cross-dimension companion spawn was rejected: "
+                    + spawn.code()
+        );
+
+        scheduleEveryTick(
+                helper,
+                CROSS_DIMENSION_TICKET_TEST_MAX_TICKS,
+                () -> {
+                    assertNoHumanPlayers(helper);
+                    final long now = helper.getTick();
+
+                    if (phase.get() == 0) {
+                        final var status = AiPlayerManager.status(server);
+                        helper.assertTrue(
+                                status.state() != SessionState.FAILED,
+                                "Cross-dimension body failed: " + status
+                        );
+                        if (status.state() != SessionState.ACTIVE
+                                || !status.online()) {
+                            helper.assertTrue(
+                                    now - phaseStartedAt.get()
+                                        <= FOCUSED_BODY_START_TIMEOUT_TICKS,
+                                    "Cross-dimension body did not become "
+                                        + "active"
+                            );
+                            return;
+                        }
+
+                        final var runtime = CompanionRuntime.active()
+                                .filter(candidate ->
+                                        candidate.server() == server
+                                )
+                                .orElseThrow(() ->
+                                        helper.assertionException(
+                                            "Cross-dimension runtime is "
+                                                + "unavailable"
+                                        ));
+                        runtime.brain().close();
+                        runtime.survival().reset();
+                        runtime.coreActions().quiesceNow();
+                        runtime.interactionActions().quiesceNow();
+                        runtime.skillSupervisor()
+                                .abandonForSessionEnd();
+
+                        final var player = AiPlayerManager
+                                .onlinePlayer(server)
+                                .orElseThrow();
+                        player.setInvulnerable(true);
+                        player.setNoGravity(true);
+                        player.noPhysics = true;
+                        player.setDeltaMovement(Vec3.ZERO);
+                        player.teleportTo(
+                                sharedFeet.getX() + 0.5D,
+                                sharedFeet.getY(),
+                                sharedFeet.getZ() + 0.5D
+                        );
+                        phase.set(1);
+                        phaseStartedAt.set(now);
+                        phaseStartedNanos.set(System.nanoTime());
+                        return;
+                    }
+
+                    if (phase.get() == 1) {
+                        final var player = AiPlayerManager
+                                .onlinePlayer(server)
+                                .orElseThrow(() ->
+                                        helper.assertionException(
+                                            "Cross-dimension body "
+                                                + "disconnected in the "
+                                                + "Overworld"
+                                        ));
+                        helper.assertTrue(
+                                player.level() == overworld,
+                                "Body changed dimension before the gate"
+                        );
+                        if (!overworld.isPositionEntityTicking(
+                                    player.blockPosition()
+                                )) {
+                            awaitVanillaPlayerTicket(
+                                    helper,
+                                    phaseStartedAt.get(),
+                                    phaseStartedNanos.get(),
+                                    "Overworld staging chunk"
+                            );
+                            return;
+                        }
+
+                        helper.assertTrue(
+                                !nether.getChunkSource()
+                                    .getForceLoadedChunks()
+                                    .contains(bodyChunk.pack())
+                                    && !nether.getChunkSource()
+                                        .getForceLoadedChunks()
+                                        .contains(
+                                            simulationProbeChunk.pack()
+                                        ),
+                                "Nether destination was force-loaded before "
+                                    + "the companion entered it"
+                        );
+                        helper.assertTrue(
+                                !nether.shouldTickBlocksAt(
+                                    bodyChunk.pack()
+                                )
+                                    && !nether
+                                        .areEntitiesActuallyLoadedAndTicking(
+                                            bodyChunk
+                                        ),
+                                "Nether destination already had an active "
+                                    + "simulation ticket before traversal"
+                        );
+
+                        sourceSection.set(SectionPos.of(player));
+                        final boolean teleported = player.teleportTo(
+                                nether,
+                                sharedFeet.getX() + 0.5D,
+                                sharedFeet.getY(),
+                                sharedFeet.getZ() + 0.5D,
+                                Set.of(),
+                                player.getYRot(),
+                                player.getXRot(),
+                                false
+                        );
+                        helper.assertTrue(
+                                teleported,
+                                "Vanilla cross-dimension teleport was rejected"
+                        );
+                        player.setInvulnerable(true);
+                        player.setNoGravity(true);
+                        player.noPhysics = true;
+                        player.setDeltaMovement(Vec3.ZERO);
+                        helper.assertTrue(
+                                player.level() == nether,
+                                "Body did not enter the Nether"
+                        );
+                        helper.assertTrue(
+                                SectionPos.of(player).equals(
+                                    sourceSection.get()
+                                ),
+                                "Fixture did not preserve the same section "
+                                    + "coordinate across dimensions"
+                        );
+                        phase.set(2);
+                        phaseStartedAt.set(now);
+                        phaseStartedNanos.set(System.nanoTime());
+                        return;
+                    }
+
+                    if (phase.get() == 2) {
+                        final var player = AiPlayerManager
+                                .onlinePlayer(server)
+                                .orElseThrow(() ->
+                                        helper.assertionException(
+                                            "Cross-dimension body "
+                                                + "disconnected in the "
+                                                + "Nether"
+                                        ));
+                        helper.assertTrue(
+                                player.level() == nether,
+                                "Body left the Nether before its ticket "
+                                    + "settled"
+                        );
+                        final boolean destinationSimulating =
+                                nether.shouldTickBlocksAt(bodyChunk.pack())
+                                    && nether
+                                        .areEntitiesActuallyLoadedAndTicking(
+                                            bodyChunk
+                                        )
+                                    && nether.shouldTickBlocksAt(
+                                        simulationProbeChunk.pack()
+                                    )
+                                    && nether
+                                        .areEntitiesActuallyLoadedAndTicking(
+                                            simulationProbeChunk
+                                        );
+                        if (!destinationSimulating) {
+                            awaitVanillaPlayerTicket(
+                                    helper,
+                                    phaseStartedAt.get(),
+                                    phaseStartedNanos.get(),
+                                    "same-section Nether destination window"
+                            );
+                            return;
+                        }
+
+                        helper.assertTrue(
+                                server.getPlayerList().getPlayers().size()
+                                    == 1,
+                                "Expected one AI and zero humans after "
+                                    + "dimension travel"
+                        );
+                        helper.assertTrue(
+                                !nether.getChunkSource()
+                                    .getForceLoadedChunks()
+                                    .contains(bodyChunk.pack())
+                                    && !nether.getChunkSource()
+                                        .getForceLoadedChunks()
+                                        .contains(
+                                            simulationProbeChunk.pack()
+                                        ),
+                                "Destination simulation used a force-loaded "
+                                    + "chunk instead of the AI player ticket"
+                        );
+
+                        nether.setBlockAndUpdate(
+                                blockTickProbe,
+                                Blocks.REDSTONE_LAMP
+                                    .defaultBlockState()
+                                    .setValue(
+                                        RedstoneLampBlock.LIT,
+                                        true
+                                    )
+                        );
+                        nether.scheduleTick(
+                                blockTickProbe,
+                                Blocks.REDSTONE_LAMP,
+                                4
+                        );
+                        final ItemEntity tickingProbe = new ItemEntity(
+                                nether,
+                                simulationProbeStand.getX() + 0.5D,
+                                simulationProbeStand.getY() + 0.25D,
+                                simulationProbeStand.getZ() + 0.5D,
+                                new ItemStack(Items.COBBLESTONE)
+                        );
+                        tickingProbe.setNoGravity(true);
+                        tickingProbe.setPickUpDelay(32_767);
+                        helper.assertTrue(
+                                nether.addFreshEntity(tickingProbe),
+                                "Could not add the Nether ticking probe"
+                        );
+                        probe.set(tickingProbe);
+                        phase.set(3);
+                        phaseStartedAt.set(now);
+                        return;
+                    }
+
+                    if (phase.get() == 3) {
+                        final ItemEntity currentProbe = probe.get();
+                        helper.assertTrue(
+                                currentProbe != null
+                                    && !currentProbe.isRemoved(),
+                                "Nether entity probe vanished after ticket "
+                                    + "settlement"
+                        );
+                        if (!nether.isPositionEntityTicking(
+                                    currentProbe.blockPosition()
+                                )) {
+                            helper.assertTrue(
+                                    now - phaseStartedAt.get() <= 100L,
+                                    "Nether probe never entered the "
+                                        + "entity-ticking state"
+                            );
+                            return;
+                        }
+                        probeStartAge.set(currentProbe.tickCount);
+                        phase.set(4);
+                        phaseStartedAt.set(now);
+                        return;
+                    }
+
+                    if (now - phaseStartedAt.get() < 120L) {
+                        return;
+                    }
+                    final ItemEntity currentProbe = probe.get();
+                    helper.assertTrue(
+                            currentProbe != null
+                                && !currentProbe.isRemoved(),
+                            "Nether entity probe disappeared during the "
+                                + "cross-dimension simulation window"
+                    );
+                    helper.assertTrue(
+                            currentProbe.tickCount
+                                - probeStartAge.get() >= 100L,
+                            "Nether entity probe received only "
+                                + (currentProbe.tickCount
+                                    - probeStartAge.get())
+                                + " ticks from the AI player window"
+                    );
+                    helper.assertTrue(
+                            !nether.getBlockState(blockTickProbe)
+                                .getValue(RedstoneLampBlock.LIT),
+                            "Scheduled Nether block tick did not run under "
+                                + "the AI player ticket"
+                    );
+                    helper.assertTrue(
+                            !overworld.shouldTickBlocksAt(bodyChunk.pack())
+                                && !overworld
+                                    .areEntitiesActuallyLoadedAndTicking(
+                                        bodyChunk
+                                    ),
+                            "The old Overworld simulation window remained "
+                                + "active after the sole player left"
+                    );
+                    helper.succeed();
+                }
+        );
+    }
+
+    private static void awaitVanillaPlayerTicket(
+            final GameTestHelper helper,
+            final long startedAtTick,
+            final long startedAtNanos,
+            final String windowDescription
+    ) {
+        final long elapsedTicks = helper.getTick() - startedAtTick;
+        final long elapsedNanos = System.nanoTime() - startedAtNanos;
+        /*
+         * Chunk promotion uses async workers while GameTest ticks are
+         * normally unthrottled. Yield one bounded millisecond without adding
+         * any ticket so the test observes the vanilla player's own window.
+         */
+        LockSupport.parkNanos(FOCUSED_ASYNC_CHUNK_YIELD_NANOS);
+        helper.assertTrue(
+                elapsedTicks <= FOCUSED_SIMULATION_TICKET_TIMEOUT_TICKS
+                    || elapsedNanos
+                        <= FOCUSED_SIMULATION_TICKET_TIMEOUT_NANOS,
+                "Headless player's vanilla ticket did not establish the "
+                    + windowDescription + ": ticks=" + elapsedTicks
+                    + ", wallMillis="
+                    + java.time.Duration.ofNanos(elapsedNanos)
+                        .toMillis()
+        );
     }
 
     private static void assertNoHumanPlayers(

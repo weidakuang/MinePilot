@@ -9,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundClientCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerLoadedPacket;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 
@@ -30,6 +31,12 @@ final class AiPlayerSession implements AutoCloseable {
 
     private int deadTicks;
     private boolean closed;
+    /**
+     * The level whose vanilla player-tracking ticket was last refreshed.
+     * Dimension changes can retain the same section coordinate, so a
+     * section-only check is insufficient for a clientless player.
+     */
+    private ServerLevel lastChunkWindowLevel;
 
     private AiPlayerSession(
             MinecraftServer server,
@@ -58,6 +65,7 @@ final class AiPlayerSession implements AutoCloseable {
         }
         ServerGamePacketListenerImpl listener = initialPlayer.connection;
         AiPlayerSession session = new AiPlayerSession(server, playerId, connection, channel, listener);
+        session.lastChunkWindowLevel = initialPlayer.level();
         listener.handleAcceptPlayerLoad(new ServerboundPlayerLoadedPacket());
         session.pump.tick();
         return session;
@@ -90,10 +98,21 @@ final class AiPlayerSession implements AutoCloseable {
          * the old location. This is the ordinary player-ticket path, not a
          * forced chunk.
          */
-        if (!SectionPos.of(player).equals(
+        final ServerLevel currentLevel = player.level();
+        final boolean dimensionChanged =
+                lastChunkWindowLevel != currentLevel;
+        if (dimensionChanged
+                || !SectionPos.of(player).equals(
                     player.getLastSectionPos()
                 )) {
-            player.level().getChunkSource().move(player);
+            /*
+             * This is the same vanilla ticket refresh caused by a real
+             * client movement packet.  The dimension check is essential:
+             * portal travel may leave the section coordinate unchanged while
+             * replacing the ServerLevel and its tracking window.
+             */
+            currentLevel.getChunkSource().move(player);
+            lastChunkWindowLevel = currentLevel;
         }
 
         if (player.getHealth() > 0.0F) {

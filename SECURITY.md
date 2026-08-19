@@ -4,7 +4,7 @@
 
 This policy covers the `mcai_companion` source tree, the installable Forge JAR,
 the loopback MCP endpoint, world `SavedData`, and the SQLite memory database.
-The current branch is a development build (`0.1.6-dev-mc26.2`), not a security
+The current branch is a development build (`0.1.10-dev-mc26.2`), not a security
 or gameplay release.
 
 ## Report a vulnerability

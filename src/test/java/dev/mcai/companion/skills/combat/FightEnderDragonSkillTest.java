@@ -652,6 +652,102 @@ final class FightEnderDragonSkillTest {
     }
 
     @Test
+    void unsafeHighCageTraversalReacquiresVisibleDragon() {
+        final VisibleEntity blocked =
+                crystalAt(4.0, 73.0, false);
+        final VisibleEntity dragon = dragon(12.0);
+        final VisibleBlockFace highBar = ironBar(
+                4,
+                73,
+                0,
+                new PerceptionVec3(4.0, 73.0, 0.5),
+                8.2
+        );
+        final List<InventoryItemSummary> inventory = List.of(
+                new InventoryItemSummary(BOW, 1),
+                new InventoryItemSummary("minecraft:arrow", 32),
+                new InventoryItemSummary(PICKAXE, 1),
+                new InventoryItemSummary(
+                        "minecraft:water_bucket",
+                        1
+                ),
+                new InventoryItemSummary(
+                        "minecraft:cobblestone",
+                        16
+                )
+        );
+        final MutableFrames frames = new MutableFrames(frame(
+                43,
+                blocked,
+                List.of(
+                        highBar,
+                        landingTop(-1, 63, 0)
+                ),
+                BOW,
+                inventory,
+                blocked.position(),
+                List.of(blocked, dragon),
+                List.of()
+        ));
+        final RecordingCore core = new RecordingCore();
+        final FightEnderDragonSkill skill = skill(
+                frames,
+                core,
+                new RecordingInteractions(),
+                new RecordingInventory()
+        );
+        final FightEnderDragonParameters parameters = parameters();
+        final SkillContext unsafe = new SkillContext(
+                4,
+                10,
+                1,
+                true,
+                true,
+                0.10
+        );
+
+        skill.start(unsafe, parameters);
+        final SkillTickResult deferred = skill.tick(
+                new SkillContext(4, 10, 2, true, true, 0.10),
+                parameters
+        );
+
+        assertEquals(
+                SkillTickResult.Status.RUNNING,
+                deferred.status()
+        );
+        assertFalse(deferred.failure().isPresent());
+        assertTrue(
+                skill.checkpoint(unsafe, parameters)
+                        .payload()
+                        .contains("SAFETY_RESERVE_REQUIRED")
+        );
+        assertFalse(core.looks.isEmpty());
+
+        frames.set(frameWithEntities(
+                44,
+                List.of(dragon),
+                List.of(),
+                BOW,
+                List.of()
+        ));
+        final SkillTickResult fallback = skill.tick(
+                new SkillContext(4, 10, 5, true, true, 0.10),
+                parameters
+        );
+
+        assertEquals(
+                SkillTickResult.Status.RUNNING,
+                fallback.status()
+        );
+        assertTrue(
+                skill.checkpoint(unsafe, parameters)
+                        .payload()
+                        .contains("\"phase\":\"SHOOTING\"")
+        );
+    }
+
+    @Test
     void refusesHighCageTowerWithoutOwnedWaterBucket() {
         final VisibleEntity blocked =
                 crystalAt(4.0, 73.0, false);

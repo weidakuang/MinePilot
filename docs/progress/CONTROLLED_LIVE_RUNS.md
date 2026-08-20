@@ -23,7 +23,7 @@ All runs used Forge `65.1.1`, Minecraft `26.2`, and Java `25`. Each passing
 test ran one case and exited cleanly with `All 1 required tests passed`; the
 newest movement, follow, defense, food, combat, and delayed-login results are
 recorded in the validated source tree. Public `main` commit
-`62a6666b11585297c9942e2b2e44b45ec0ce95ab` carries the exact current tree and
+`50fb70bbbb0441b16e1456e5b96e6d2c08defdb5` carries the exact current tree and
 passes a fresh-clone Forge 65.1.1 `compileJava` build. They remain controlled
 evidence, not release artifacts.
 

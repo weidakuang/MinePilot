@@ -9,8 +9,8 @@ Last reviewed: 2026-08-20
   Java 25.
 - Development version: `0.1.11-dev-mc26.2`.
 - Public repository: `https://github.com/weidakuang/MinePilot`; current public
-  `main` commit `62a6666b11585297c9942e2b2e44b45ec0ce95ab` carries source tree
-  `0ea66d14ec68123126c6e6481f265c5a16aaf550` and passes a fresh-clone
+  `main` commit `50fb70bbbb0441b16e1456e5b96e6d2c08defdb5` carries source tree
+  `66cf4c51c975d8c0f82e7cb8659c2b8e4fdf5736` and passes a fresh-clone
   `compileJava` build on Forge 65.1.1.
 - Local development branch: `main`.
 - Current development includes the focused End fall-recovery and bounded

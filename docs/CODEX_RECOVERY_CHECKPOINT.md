@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-20T23:04:00+09:00
+Last updated: 2026-08-20T23:19:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -35,8 +35,8 @@ This section supersedes older chronological notes below when they conflict.
   the observation-provider source contract and the 25-field route-snapshot
   test.
 - The source/test fix is published on public `main` through Git Data commit
-  `62a6666b11585297c9942e2b2e44b45ec0ce95ab` with tree
-  `0ea66d14ec68123126c6e6481f265c5a16aaf550`. A fresh clone matched the local
+  `50fb70bbbb0441b16e1456e5b96e6d2c08defdb5` with tree
+  `66cf4c51c975d8c0f82e7cb8659c2b8e4fdf5736`. A fresh clone matched the local
   tree and key production blobs, and Forge 65.1.1 `compileJava` passed.
 
 - The fair natural-End ingress gate now passes on both Forge 65.1.1 and
@@ -64,8 +64,8 @@ This section supersedes older chronological notes below when they conflict.
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
   `44d9a8013c16a96c227046cef233e51c4ce6affa54d5d360ce2775f3c914512b`.
 - The exact current local tree is published on public `main` through Git Data
-  commit `62a6666b11585297c9942e2b2e44b45ec0ce95ab` with tree
-  `0ea66d14ec68123126c6e6481f265c5a16aaf550`. A fresh public clone verified
+  commit `50fb70bbbb0441b16e1456e5b96e6d2c08defdb5` with tree
+  `66cf4c51c975d8c0f82e7cb8659c2b8e4fdf5736`. A fresh public clone verified
   the same tree, the previously truncated emergency-survival files, the new
   epoch/projection fixes, and `compileJava` on Forge 65.1.1. The repository
   remains `NON_RELEASE` because dynamic-dragon and formal M1--M4 gates are

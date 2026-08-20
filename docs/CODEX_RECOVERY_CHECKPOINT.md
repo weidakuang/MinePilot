@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-20T22:15:00+09:00
+Last updated: 2026-08-20T22:28:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -41,6 +41,13 @@ This section supersedes older chronological notes below when they conflict.
   changes. The release JAR is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
   `5200153a20aa291425fcbe0a0f2d11a3c1e2e0157560b474bae22d62cfd78b35`.
+- The exact local `6d295f6` tree is now published on public `main` through
+  Git Data commit `fd0e492d53ca4bfdf8f41cd5c511f3e256ebe756` with tree
+  `1d1c0d6116d0a54e7d939e49035386c3ea2b2b1f`. A fresh public clone verified
+  the same tree, the two previously truncated emergency-survival files, the
+  natural ingress source, and `compileJava` on Forge 65.1.1. The repository
+  remains `NON_RELEASE` because dynamic-dragon and formal M1--M4 gates are
+  not complete.
 
 - Root causes closed in the current worktree: the vanilla End fight bootstrap
   could retire a test dragon created before its legacy scan settled; a
@@ -77,8 +84,8 @@ This section supersedes older chronological notes below when they conflict.
 - The exact current-tree Gradle clean/test/build, release-JAR inspection, and
   compatibility checker pass after the End safety corrections. The preceding
   evidence-integrity snapshot separately passed all 65 Python protocol tests
-  and all ten mutation variants. The
-  the preceding 0.1.10 production JAR SHA-256 was
+  and all ten mutation variants. The preceding 0.1.10 production JAR SHA-256
+  was
   `79859cc6ce7d4ff1c7ec0bf16b13a7ef333c696ff9ff4f9ca863f7e4485cdac1`.
   The last published snapshot before these two focused corrections is public
   commit `11975c380c243aa331ac19edbb0e494d99663313`, exact tree

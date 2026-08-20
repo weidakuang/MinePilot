@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-20T23:28:00+09:00
+Last updated: 2026-08-21T00:50:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,29 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+- The latest Forge 65.1.1 natural End ingress rerun passed in isolated
+  directory `/tmp/mcai-end-ingress-piTmLV`: `All 1 required tests passed` in
+  2.519 minutes. It reached natural End-stone inside the ready radius using
+  the production headless `ServerPlayer`, observed mining/bridge actions, and
+  no teleport or hidden terrain access. The preceding run that stalled in
+  `VERIFYING_CURRENT_SUPPORT` was stopped and the over-strict extra support
+  wait was removed; the focused JUnit suite is green again.
+- A new release-excluded natural dynamic-dragon combat selector was exercised
+  three times on Forge 65.1.1. Vanilla manager-dragon presence/motion remains
+  real and AI-enabled, but the production fight still fails honestly with
+  `fight_ender_dragon.no_visible_combat_target` after four bounded rally scans;
+  the latest failure ended near `(69.99,49.0,0.49)` with zero shots and a
+  first-person frame showing a low natural End-stone ceiling. This is now the
+  active P0 combat gap: the controller must mine/escape an observed overhead
+  obstruction and reacquire the live dragon before any dragon-kill claim.
+- Fight admission still requires both natural standing-cell evidence and the
+  fresh open-sky handoff predicate; a temporary relaxed admission experiment
+  was reverted after the live gate showed four no-target scans and zero shots
+  under a low ceiling. Observed rally candidates are now filtered to centerward
+  progress. The focused `FightEnderDragonSkillTest`, ingress tests, and
+  `EndIslandRallyEvidenceSourceContractTest` pass. The natural dynamic fight
+  gate remains `FAILED`, not a release or speedrun result.
 
 - The latest authorized real-model `mimo-v2.5` Ender-pearl reserve slice now
   passes on Forge 65.1.1 after the epoch fix below. The model returned

@@ -948,7 +948,7 @@ final class EndIslandIngressSkillTest {
             final boolean safeClearance
     ) {
         final int footX = (int) Math.floor(x);
-        return frame(
+        final CoreSkillFrame base = frame(
                 PLAYER_ID,
                 DimensionRef.END,
                 revision,
@@ -959,6 +959,20 @@ final class EndIslandIngressSkillTest {
                 false,
                 List.of(top(footX, 49, 0, block, face)),
                 clearance(revision, footX, 50, 0, safeClearance)
+        );
+        return new CoreSkillFrame(
+                base.playerId(),
+                base.dimension(),
+                base.gameTime(),
+                base.observationRevision(),
+                base.position(),
+                base.eyePosition(),
+                new PerceptionVec3(0.0, 1.0, 0.0),
+                base.onGround(),
+                base.inWater(),
+                base.danger(),
+                base.navigation(),
+                base.visibleBlockFaces()
         );
     }
 

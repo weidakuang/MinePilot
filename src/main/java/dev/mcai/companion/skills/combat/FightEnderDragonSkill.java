@@ -2539,8 +2539,19 @@ public final class FightEnderDragonSkill
             final CoreSkillFrame frame,
             final boolean fresh
     ) {
+        /*
+         * A body can enter the central island on a legal cell whose current
+         * frame contains no other complete standing cell (for example while
+         * under a low End-stone lip). Returning to the same rally point in
+         * that case is a liveness trap: four successful zero-distance travel
+         * attempts only repeat the same blocked camera sweep. Use a bounded
+         * centerward waypoint derived from the authoritative pose instead.
+         * TravelTo still has to prove every intermediate voxel from fresh
+         * semantic navigation evidence, so this is not a teleport or hidden
+         * terrain lookup.
+         */
         final PerceptionVec3 rallyPoint = selectObservedRallyPoint(frame)
-                .orElse(Objects.requireNonNull(localRallyPoint));
+                .orElseGet(() -> centerwardSearchPoint(frame));
         travelParameters = new TravelToParameters(
                 parameters.dimension(),
                 rallyPoint.x(),
@@ -2573,6 +2584,23 @@ public final class FightEnderDragonSkill
         return SkillTickResult.running(fresh, true);
     }
 
+    private static PerceptionVec3 centerwardSearchPoint(
+            final CoreSkillFrame frame
+    ) {
+        final double dx = EndArenaTopology.CENTER_X - frame.position().x();
+        final double dz = EndArenaTopology.CENTER_Z - frame.position().z();
+        final double length = Math.hypot(dx, dz);
+        if (!Double.isFinite(length) || length < 1.0E-6) {
+            return frame.position();
+        }
+        final double distance = Math.min(6.0, Math.max(2.0, length));
+        return new PerceptionVec3(
+                frame.position().x() + dx / length * distance,
+                frame.position().y(),
+                frame.position().z() + dz / length * distance
+        );
+    }
+
     /**
      * Select a bounded, freshly observed standing cell for the next search
      * leg. Returning to the exact start pose after every empty scan is safe
@@ -2591,6 +2619,20 @@ public final class FightEnderDragonSkill
         );
         final double headingX = Math.cos(heading);
         final double headingZ = Math.sin(heading);
+        final double centerwardX = EndArenaTopology.CENTER_X
+                - frame.position().x();
+        final double centerwardZ = EndArenaTopology.CENTER_Z
+                - frame.position().z();
+        final double centerwardLength = Math.hypot(
+                centerwardX,
+                centerwardZ
+        );
+        if (!Double.isFinite(centerwardLength)
+                || centerwardLength < 1.0E-6) {
+            return Optional.empty();
+        }
+        final double centerwardUnitX = centerwardX / centerwardLength;
+        final double centerwardUnitZ = centerwardZ / centerwardLength;
         return frame.navigation().observedVoxels().values().stream()
                 .filter(voxel -> voxel.observationRevision() == revision)
                 .filter(voxel -> voxel.position().y() == current.y())
@@ -2625,13 +2667,22 @@ public final class FightEnderDragonSkill
                         position.y(),
                         position.z() + 0.5
                 ))
+                .filter(position -> {
+                    final double dx = position.x() - frame.position().x();
+                    final double dz = position.z() - frame.position().z();
+                    return dx * centerwardUnitX
+                            + dz * centerwardUnitZ > 0.5;
+                })
                 .filter(EndArenaTopology::insideArenaReadyRadius)
                 .max(Comparator.comparingDouble(candidate -> {
                     final double dx = candidate.x() - frame.position().x();
                     final double dz = candidate.z() - frame.position().z();
                     final double distance = Math.hypot(dx, dz);
                     final double directional = dx * headingX + dz * headingZ;
-                    return directional * 2.0 + distance * 0.05;
+                    final double centerward = dx * centerwardUnitX
+                            + dz * centerwardUnitZ;
+                    return centerward * 2.0 + directional * 0.1
+                            + distance * 0.01;
                 }));
     }
 

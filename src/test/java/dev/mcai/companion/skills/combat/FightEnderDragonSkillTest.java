@@ -379,12 +379,12 @@ final class FightEnderDragonSkillTest {
                 3.7
         );
         final MutableFrames frames = new MutableFrames(
-                frame(
+                upwardSky(frame(
                         12,
                         blocked,
                         List.of(bar, landingTop(0, 63, 0)),
                         BOW
-                )
+                ))
         );
         final RecordingCore core = new RecordingCore();
         final RecordingInteractions interactions =
@@ -1536,6 +1536,14 @@ final class FightEnderDragonSkillTest {
                         OccupancyEvidence.MULTI_RAY_CLEAR,
                         TopSupportAffordance.UNKNOWN
                 ));
+                voxels.add(new ObservedVoxel(
+                        new GridPos(x, 66, z),
+                        VoxelKind.AIR,
+                        0.0,
+                        revision,
+                        OccupancyEvidence.MULTI_RAY_CLEAR,
+                        TopSupportAffordance.UNKNOWN
+                ));
             }
         }
         return new LocalNavSnapshot(
@@ -1549,6 +1557,35 @@ final class FightEnderDragonSkillTest {
             CoreSkillFrame core,
             InteractionSkillFrame interaction
     ) {
+    }
+
+    private static Snapshot upwardSky(final Snapshot source) {
+        final CoreSkillFrame core = source.core();
+        return new Snapshot(
+                new CoreSkillFrame(
+                        core.playerId(),
+                        core.dimension(),
+                        core.gameTime(),
+                        core.observationRevision(),
+                        core.position(),
+                        core.eyePosition(),
+                        new PerceptionVec3(0.0, 1.0, 0.0),
+                        core.onGround(),
+                        core.inWater(),
+                        core.danger(),
+                        core.navigation(),
+                        core.visibleBlockFaces(),
+                        core.health(),
+                        core.maxHealth(),
+                        core.foodLevel(),
+                        core.inventory(),
+                        core.mainHand(),
+                        core.offHand(),
+                        core.visibleEntities(),
+                        core.dangerSignals()
+                ),
+                source.interaction()
+        );
     }
 
     private static Snapshot withPosition(

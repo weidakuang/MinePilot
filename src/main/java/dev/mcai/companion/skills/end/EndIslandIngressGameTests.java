@@ -127,6 +127,64 @@ public final class EndIslandIngressGameTests {
         });
     }
 
+    @GameTest(
+        name = "natural_end_dynamic_dragon_combat",
+        environment = "exclusive_natural_end_dynamic_dragon_combat",
+        structure = TEST_STRUCTURE,
+        maxTicks = MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void naturalEndDynamicDragonCombat(
+            final GameTestHelper helper
+    ) {
+        final var server = helper.getLevel().getServer();
+        final AtomicReference<Scenario> scenario = new AtomicReference<>();
+        helper.addCleanup(ignored -> {
+            final Scenario current = scenario.get();
+            if (current != null) {
+                current.cleanup();
+            } else {
+                cleanupRuntime(server);
+            }
+        });
+        final var spawn = GameTestCompanionSpawn.request(
+                helper,
+                TEST_ORIGIN
+        );
+        helper.assertTrue(
+                spawn.accepted(),
+                "Natural dynamic-dragon body spawn was rejected: "
+                    + spawn.code()
+        );
+        scheduleEveryTick(helper, MAX_TICKS, () -> {
+            final Scenario current = scenario.get();
+            if (current != null) {
+                current.tick();
+                return;
+            }
+            final var status = AiPlayerManager.status(server);
+            helper.assertTrue(
+                    status.state() != SessionState.FAILED,
+                    "Natural dynamic-dragon body failed: " + status
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                        helper.getTick() <= BODY_TIMEOUT_TICKS,
+                        "Natural dynamic-dragon body did not become active"
+                );
+                return;
+            }
+            final ServerRuntime runtime = CompanionRuntime.active()
+                    .filter(candidate -> candidate.server() == server)
+                    .orElseThrow(() -> helper.assertionException(
+                            "Natural dynamic-dragon test has no runtime"
+                    ));
+            scenario.set(new Scenario(helper, runtime, true));
+        });
+    }
+
     private static void scheduleEveryTick(
             final GameTestHelper helper,
             final long finalTickInclusive,
@@ -180,11 +238,13 @@ public final class EndIslandIngressGameTests {
         private final GameTestHelper helper;
         private final ServerRuntime runtime;
         private final UUID bodyId;
+        private final boolean requireDynamicCombat;
         private Stage stage = Stage.ENTERING_END;
         private long stageStartedAt;
         private long ingressStartedAt = -1L;
         private long ingressStartObservationRevision = -1L;
         private long dynamicDragonStartedAt = -1L;
+        private long dynamicCombatStartedAt = -1L;
         private Vec3 dynamicDragonStartPosition;
         private double dynamicDragonMaximumDisplacement;
         private final java.util.Set<String> dynamicDragonPhases =
@@ -197,8 +257,17 @@ public final class EndIslandIngressGameTests {
                 final GameTestHelper helper,
                 final ServerRuntime runtime
         ) {
+            this(helper, runtime, false);
+        }
+
+        private Scenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime,
+                final boolean requireDynamicCombat
+        ) {
             this.helper = helper;
             this.runtime = runtime;
+            this.requireDynamicCombat = requireDynamicCombat;
             helper.assertTrue(
                     helper.getLevel().dimension().equals(Level.OVERWORLD),
                     "GameTest controller did not remain in the Overworld"
@@ -269,6 +338,14 @@ public final class EndIslandIngressGameTests {
             body.getInventory().setItem(
                     3,
                     new ItemStack(Items.WATER_BUCKET)
+            );
+            body.getInventory().setItem(
+                    4,
+                    new ItemStack(Items.BOW)
+            );
+            body.getInventory().setItem(
+                    5,
+                    new ItemStack(Items.ARROW, 64)
             );
             body.setItemSlot(
                     EquipmentSlot.HEAD,
@@ -346,6 +423,7 @@ public final class EndIslandIngressGameTests {
                 case SETTLING_END -> waitForStableEndFrame(body);
                 case RUNNING -> waitForIngress(body);
                 case VERIFYING_DYNAMIC_DRAGON -> verifyDynamicDragon(body);
+                case FIGHTING_DYNAMIC_DRAGON -> fightDynamicDragon(body);
                 case DONE -> {
                     // GameTest is already terminal.
                 }
@@ -552,8 +630,12 @@ public final class EndIslandIngressGameTests {
                         >= DYNAMIC_DRAGON_OBSERVATION_TICKS
                         && dynamicDragonMaximumDisplacement >= 2.0D
                         && !dynamicDragonPhases.isEmpty()) {
-                    helper.succeed();
-                    stage = Stage.DONE;
+                    if (requireDynamicCombat) {
+                        startDynamicDragonCombat(body);
+                    } else {
+                        helper.succeed();
+                        stage = Stage.DONE;
+                    }
                     return;
                 }
             }
@@ -567,6 +649,70 @@ public final class EndIslandIngressGameTests {
                         + dynamicDragonMaximumDisplacement
                         + ", phases=" + dynamicDragonPhases
             );
+        }
+
+        private void startDynamicDragonCombat(final ServerPlayer body) {
+            final BrainObservation observation = runtime.observations()
+                    .observe(runtime.goals().snapshot());
+            final SkillContext sampled = observation.skillContext();
+            final SkillContext connected = new SkillContext(
+                    sampled.goalRevision(),
+                    sampled.worldRevision(),
+                    Integer.toUnsignedLong(runtime.server().getTickCount()),
+                    sampled.hardcore(),
+                    true,
+                    sampled.riskScore()
+            );
+            final DecisionEnvelope decision = new DecisionEnvelope(
+                    "gametest-natural-dynamic-dragon-" + helper.getTick(),
+                    connected.worldRevision(),
+                    connected.goalRevision(),
+                    DecisionKind.START_SKILL,
+                    "fight_ender_dragon",
+                    List.of(),
+                    RequestedObservation.none(),
+                    "",
+                    1.0
+            );
+            final SkillSupervisor.StartOutcome outcome =
+                    runtime.skillSupervisor().start(
+                            decision,
+                            connected
+                    );
+            helper.assertTrue(
+                    outcome.accepted(),
+                    "Natural dynamic-dragon fight was rejected: "
+                        + outcome.failure().map(failure -> failure.code())
+                            .orElse("unknown")
+                        + "; " + diagnostics()
+            );
+            dynamicCombatStartedAt = helper.getTick();
+            stage = Stage.FIGHTING_DYNAMIC_DRAGON;
+        }
+
+        private void fightDynamicDragon(final ServerPlayer body) {
+            helper.assertTrue(
+                    body.level().dimension().equals(Level.END),
+                    "Natural dynamic-dragon fight left the End"
+            );
+            final SkillSupervisor.Snapshot snapshot = advanceSkill();
+            if (snapshot.state() == SkillSupervisor.State.RUNNING
+                    || snapshot.state() == SkillSupervisor.State.CANCEL_PENDING) {
+                helper.assertTrue(
+                        helper.getTick() - dynamicCombatStartedAt
+                            <= MAX_TICKS,
+                        "Natural dynamic-dragon fight exceeded its bound: "
+                            + diagnostics()
+                );
+                return;
+            }
+            helper.assertTrue(
+                    snapshot.state() == SkillSupervisor.State.COMPLETED,
+                    "Natural dynamic-dragon fight did not complete: "
+                        + diagnostics()
+            );
+            helper.succeed();
+            stage = Stage.DONE;
         }
 
         private SkillSupervisor.Snapshot advanceSkill() {
@@ -693,6 +839,7 @@ public final class EndIslandIngressGameTests {
         SETTLING_END,
         RUNNING,
         VERIFYING_DYNAMIC_DRAGON,
+        FIGHTING_DYNAMIC_DRAGON,
         DONE
     }
 

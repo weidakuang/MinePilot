@@ -1390,7 +1390,7 @@ public final class EndIslandIngressSkill
             final CoreSkillFrame frame,
             final EndIslandIngressParameters parameters
     ) {
-        return EndIslandRallyEvidence.supportsCurrentPose(
+        return EndIslandRallyEvidence.supportsCurrentStandingCell(
                 frame,
                 parameters.arenaReadyRadius()
         );

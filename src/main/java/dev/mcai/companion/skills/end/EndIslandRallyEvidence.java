@@ -24,6 +24,15 @@ public final class EndIslandRallyEvidence {
             final CoreSkillFrame frame,
             final double maximumRadius
     ) {
+        return supportsCurrentStandingCell(frame, maximumRadius)
+                && hasFreshSkyObservation(frame);
+    }
+
+    /** Fair support/clearance evidence before the controller aims upward. */
+    public static boolean supportsCurrentStandingCell(
+            final CoreSkillFrame frame,
+            final double maximumRadius
+    ) {
         Objects.requireNonNull(frame, "frame");
         if (!frame.onGround()
                 || frame.inWater()
@@ -52,6 +61,19 @@ public final class EndIslandRallyEvidence {
         );
     }
 
+    /**
+     * The latest semantic frame must be an upward-looking sky check with no
+     * visible block in the current body column above the head. This prevents
+     * handing a body from a low End-stone tunnel to the dragon controller.
+     */
+    public static boolean hasFreshSkyObservation(
+            final CoreSkillFrame frame
+    ) {
+        Objects.requireNonNull(frame, "frame");
+        return frame.lookDirection().y() >= 0.25
+                && !visibleOverheadObstruction(frame);
+    }
+
     private static boolean safeFreshDestination(
             final CoreSkillFrame frame,
             final GridPos support
@@ -72,6 +94,20 @@ public final class EndIslandRallyEvidence {
                                 voxel,
                                 revision
                         )).isPresent();
+    }
+
+    private static boolean visibleOverheadObstruction(
+            final CoreSkillFrame frame
+    ) {
+        final GridPos feet = frame.feet();
+        return frame.visibleBlockFaces().stream().anyMatch(face -> {
+            final BlockCoordinate block = face.block();
+            return block.x() == feet.x()
+                    && block.z() == feet.z()
+                    && block.y() >= feet.y() + 2
+                    && block.y() <= feet.y() + 8
+                    && !"minecraft:air".equals(face.blockTypeId());
+        });
     }
 
     private static GridPos grid(final BlockCoordinate block) {

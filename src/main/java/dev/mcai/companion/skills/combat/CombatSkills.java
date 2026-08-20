@@ -1,158 +1,1 @@
-package dev.mcai.companion.skills.combat;
-
-import dev.mcai.companion.skill.SkillRegistry;
-import dev.mcai.companion.skills.bridging.BridgeMaterialActuator;
-import dev.mcai.companion.skills.core.CoreSkillActuator;
-import dev.mcai.companion.skills.core.CoreSkillFrameSource;
-import dev.mcai.companion.skills.interaction.InteractionSkillActuator;
-import dev.mcai.companion.skills.interaction.InteractionSkillFrameSource;
-import dev.mcai.companion.skills.inventory.InventorySkillActuator;
-import java.util.Objects;
-import java.util.UUID;
-import java.util.function.LongSupplier;
-
-/**
- * Registration slice for fair, local, one-target combat.
- */
-public final class CombatSkills {
-    public static final String ENGAGE_OBSERVED_ENTITY =
-            "engage_observed_entity";
-    public static final String FIGHT_ENDER_DRAGON =
-            FightEnderDragonSkill.NAME;
-
-    private CombatSkills() {
-    }
-
-    public static SkillRegistry registerAll(
-            SkillRegistry registry,
-            UUID playerId,
-            CoreSkillActuator coreActuator,
-            CoreSkillFrameSource coreFrames,
-            InteractionSkillActuator interactionActuator,
-            InteractionSkillFrameSource interactionFrames
-    ) {
-        return registerAll(
-                registry,
-                playerId,
-                coreActuator,
-                coreFrames,
-                interactionActuator,
-                interactionFrames,
-                CombatSkillPolicy.defaults()
-        );
-    }
-
-    public static SkillRegistry registerAll(
-            SkillRegistry registry,
-            UUID playerId,
-            CoreSkillActuator coreActuator,
-            CoreSkillFrameSource coreFrames,
-            InteractionSkillActuator interactionActuator,
-            InteractionSkillFrameSource interactionFrames,
-            CombatSkillPolicy policy
-    ) {
-        Objects.requireNonNull(registry, "registry");
-        Objects.requireNonNull(playerId, "playerId");
-        Objects.requireNonNull(coreActuator, "coreActuator");
-        Objects.requireNonNull(coreFrames, "coreFrames");
-        Objects.requireNonNull(
-                interactionActuator,
-                "interactionActuator"
-        );
-        Objects.requireNonNull(interactionFrames, "interactionFrames");
-        Objects.requireNonNull(policy, "policy");
-        return registry
-                .register(
-                        ENGAGE_OBSERVED_ENTITY,
-                        new EngageObservedEntitySkill(
-                                playerId,
-                                coreActuator,
-                                coreFrames,
-                                interactionActuator,
-                                interactionFrames,
-                                policy
-                        )
-                )
-                .register(
-                        ShootObservedEntitySkill.NAME,
-                        new ShootObservedEntitySkill(
-                                playerId,
-                                coreActuator,
-                                coreFrames,
-                                interactionActuator,
-                                interactionFrames,
-                                RangedCombatSkillPolicy.defaults()
-                        )
-                );
-    }
-
-    public static SkillRegistry registerDragonFight(
-            final SkillRegistry registry,
-            final UUID playerId,
-            final CoreSkillActuator coreActuator,
-            final CoreSkillFrameSource coreFrames,
-            final InteractionSkillActuator interactionActuator,
-            final InteractionSkillFrameSource interactionFrames,
-            final InventorySkillActuator inventory,
-            final BridgeMaterialActuator bridgeMaterials,
-            final DragonVictorySource victory,
-            final LongSupplier sessionGeneration
-    ) {
-        return Objects.requireNonNull(registry, "registry")
-                .register(
-                        FIGHT_ENDER_DRAGON,
-                        new FightEnderDragonSkill(
-                                Objects.requireNonNull(
-                                        playerId,
-                                        "playerId"
-                                ),
-                                Objects.requireNonNull(
-                                        coreActuator,
-                                        "coreActuator"
-                                ),
-                                Objects.requireNonNull(
-                                        coreFrames,
-                                        "coreFrames"
-                                ),
-                                Objects.requireNonNull(
-                                        interactionActuator,
-                                        "interactionActuator"
-                                ),
-                                Objects.requireNonNull(
-                                        interactionFrames,
-                                        "interactionFrames"
-                                ),
-                                Objects.requireNonNull(
-                                        inventory,
-                                        "inventory"
-                                ),
-                                Objects.requireNonNull(
-                                        bridgeMaterials,
-                                        "bridgeMaterials"
-                                ),
-                                Objects.requireNonNull(
-                                        victory,
-                                        "victory"
-                                ),
-                                Objects.requireNonNull(
-                                        sessionGeneration,
-                                        "sessionGeneration"
-                                )
-                        )
-                );
-    }
-
-    public static String plannerGuide() {
-        return """
-            engage_observed_entity: sampleSequence,observationId. Binds one
-            visible hostile/player locally, never exposes or accepts UUIDs;
-            uses safe cells, vanilla attack cooldown, shield/retreat.
-            shoot_observed_entity requires sampleSequence, observationId,
-            hand (main_hand/off_hand),shots [1,16]; visible legal target plus
-            owned bow/crossbow/trident and ammo. Nearby End crystals refused.
-            fight_ender_dragon has no arguments; local code binds the current
-            End body, rally and budgets. It fights visible targets, handles
-            observed cages with owned gear, and wins only on attributed death.
-            """;
-    }
-}
+ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½µ‰…Ðì()¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±I•¥ÍÑÉäì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹‰É¥‘¥¹œ¹	É¥‘•5…Ñ•É¥…±ÑÕ…Ñ½Èì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹½É•M­¥±±ÑÕ…Ñ½Èì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹½É•M­¥±±É…µ•M½ÕÉ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ñ•É…Ñ¥½¸¹%¹Ñ•É…Ñ¥½¹M­¥±±ÑÕ…Ñ½Èì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ñ•É…Ñ¥½¸¹%¹Ñ•É…Ñ¥½¹M­¥±±É…µ•M½ÕÉ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ù•¹Ñ½Éä¹%¹Ù•¹Ñ½ÉåM­¥±±ÑÕ…Ñ½Èì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=‰©•ÑÌì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹UU%ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹™Õ¹Ñ¥½¸¹1½¹MÕÁÁ±¥•Èì((¼¨¨(€¨I•¥ÍÑÉ…Ñ¥½¸Í±¥”™½È™…¥È°±½…°°½¹”µÑ…É•Ð½µ‰…Ð¸(€¨¼)ÁÕ‰±¥Œ™¥¹…°±…ÍÌ½µ‰…ÑM­¥±±Ìì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°MÑÉ¥¹œ9}=	MIY}9Q%Qd€ô(€€€€€€€€€€€€‰•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñäˆì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°MÑÉ¥¹œ%!Q}9I}I=8€ô(€€€€€€€€€€€¥¡Ñ¹‘•ÉÉ…½¹M­¥±°¹95ì((€€€ÁÉ¥Ù…Ñ”½µ‰…ÑM­¥±±Ì ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒM­¥±±I•¥ÍÑÉäÉ•¥ÍÑ•É±° (€€€€€€€€€€€M­¥±±I•¥ÍÑÉäÉ•¥ÍÑÉä°(€€€€€€€€€€€UU%Á±…å•É%°(€€€€€€€€€€€½É•M­¥±±ÑÕ…Ñ½È½É•ÑÕ…Ñ½È°(€€€€€€€€€€€½É•M­¥±±É…µ•M½ÕÉ”½É•É…µ•Ì°(€€€€€€€€€€€%¹Ñ•É…Ñ¥½¹M­¥±±ÑÕ…Ñ½È¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È°(€€€€€€€€€€€%¹Ñ•É…Ñ¥½¹M­¥±±É…µ•M½ÕÉ”¥¹Ñ•É…Ñ¥½¹É…µ•Ì(€€€€¤ì(€€€€€€€É•ÑÕÉ¸É•¥ÍÑ•É±° (€€€€€€€€€€€€€€€É•¥ÍÑÉä°(€€€€€€€€€€€€€€€Á±…å•É%°(€€€€€€€€€€€€€€€½É•ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒM­¥±±I•¥ÍÑÉäÉ•¥ÍÑ•É±° (€€€€€€€€€€€M­¥±±I•¥ÍÑÉäÉ•¥ÍÑÉä°(€€€€€€€€€€€UU%Á±…å•É%°(€€€€€€€€€€€½É•M­¥±±ÑÕ…Ñ½È½É•ÑÕ…Ñ½È°(€€€€€€€€€€€½É•M­¥±±É…µ•M½ÕÉ”½É•É…µ•Ì°(€€€€€€€€€€€%¹Ñ•É…Ñ¥½¹M­¥±±ÑÕ…Ñ½È¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È°(€€€€€€€€€€€%¹Ñ•É…Ñ¥½¹M­¥±±É…µ•M½ÕÉ”¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥äÁ½±¥ä(€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡É•¥ÍÑÉä°€‰É•¥ÍÑÉäˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Á±…å•É%°€‰Á±…å•É%ˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡½É•ÑÕ…Ñ½È°€‰½É•ÑÕ…Ñ½Èˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡½É•É…µ•Ì°€‰½É•É…µ•Ìˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€€‰¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½Èˆ(€€€€€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡¥¹Ñ•É…Ñ¥½¹É…µ•Ì°€‰¥¹Ñ•É…Ñ¥½¹É…µ•Ìˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Á½±¥ä°€‰Á½±¥äˆ¤ì(€€€€€€€É•ÑÕÉ¸É•¥ÍÑÉä(€€€€€€€€€€€€€€€€¹É•¥ÍÑ•È (€€€€€€€€€€€€€€€€€€€€€€€9}=	MIY}9Q%Qd°(€€€€€€€€€€€€€€€€€€€€€€€¹•Ü¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Á±…å•É%°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½É•ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Á½±¥ä(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹É•¥ÍÑ•È (€€€€€€€€€€€€€€€€€€€€€€€M¡½½Ñ=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°¹95°(€€€€€€€€€€€€€€€€€€€€€€€¹•ÜM¡½½Ñ=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Á±…å•É%°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½É•ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€I…¹•‘½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒM­¥±±I•¥ÍÑÉäÉ•¥ÍÑ•ÉÉ…½¹¥¡Ð (€€€€€€€€€€€™¥¹…°M­¥±±I•¥ÍÑÉäÉ•¥ÍÑÉä°(€€€€€€€€€€€™¥¹…°UU%Á±…å•É%°(€€€€€€€€€€€™¥¹…°½É•M­¥±±ÑÕ…Ñ½È½É•ÑÕ…Ñ½È°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ•M½ÕÉ”½É•É…µ•Ì°(€€€€€€€€€€€™¥¹…°%¹Ñ•É…Ñ¥½¹M­¥±±ÑÕ…Ñ½È¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È°(€€€€€€€€€€€™¥¹…°%¹Ñ•É…Ñ¥½¹M­¥±±É…µ•M½ÕÉ”¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€™¥¹…°%¹Ù•¹Ñ½ÉåM­¥±±ÑÕ…Ñ½È¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€™¥¹…°	É¥‘•5…Ñ•É¥…±ÑÕ…Ñ½È‰É¥‘•5…Ñ•É¥…±Ì°(€€€€€€€€€€€™¥¹…°É…½¹Y¥Ñ½ÉåM½ÕÉ”Ù¥Ñ½Éä°(€€€€€€€€€€€™¥¹…°1½¹MÕÁÁ±¥•ÈÍ•ÍÍ¥½¹•¹•É…Ñ¥½¸(€€€€¤ì(€€€€€€€É•ÑÕÉ¸=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡É•¥ÍÑÉä°€‰É•¥ÍÑÉäˆ¤(€€€€€€€€€€€€€€€€¹É•¥ÍÑ•È (€€€€€€€€€€€€€€€€€€€€€€€%!Q}9I}I=8°(€€€€€€€€€€€€€€€€€€€€€€€¹•Ü¥¡Ñ¹‘•ÉÉ…½¹M­¥±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Á±…å•É%°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰Á±…å•É%ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½É•ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰½É•ÑÕ…Ñ½Èˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰½É•É…µ•Ìˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½Èˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰¥¹Ñ•É…Ñ¥½¹É…µ•Ìˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰¥¹Ù•¹Ñ½Éäˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰É¥‘•5…Ñ•É¥…±Ì°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰‰É¥‘•5…Ñ•É¥…±Ìˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù¥Ñ½Éä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰Ù¥Ñ½Éäˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•ÍÍ¥½¹•¹•É…Ñ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰Í•ÍÍ¥½¹•¹•É…Ñ¥½¸ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒMÑÉ¥¹œÁ±…¹¹•ÉÕ¥‘” ¤ì(€€€€€€€É•ÑÕÉ¸€ˆˆˆ(€€€€€€€€€€€•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥ÑäèÍ…µÁ±•M•ÅÕ•¹”±½‰Í•ÉÙ…Ñ¥½¹%¸	¥¹‘Ì½¹”(€€€€€€€€€€€Ù¥Í¥‰±”¡½ÍÑ¥±”½Á±…å•È±½…±±ä°¹•Ù•È•áÁ½Í•Ì½È…•ÁÑÌUU%Ìì(€€€€€€€€€€€ÕÍ•ÌÍ…™”•±±Ì°Ù…¹¥±±„…ÑÑ…¬½½±‘½Ý¸°Í¡¥•±½É•ÑÉ•…Ð¸(€€€€€€€€€€€Í¡½½Ñ}½‰Í•ÉÙ•‘}•¹Ñ¥ÑäÉ•ÅÕ¥É•ÌÍ…µÁ±•M•ÅÕ•¹”°½‰Í•ÉÙ…Ñ¥½¹%°(€€€€€€€€€€€¡…¹€¡µ…¥¹}¡…¹½½™™}¡…¹¤±Í¡½ÑÌlÄ°ÄÙtìÙ¥Í¥‰±”±•…°Ñ…É•ÐÁ±ÕÌ(€€€€€€€€€€€½Ý¹•‰½Ü½É½ÍÍ‰½Ü½ÑÉ¥‘•¹Ð…¹…µµ¼¸9•…É‰ä¹ÉåÍÑ…±ÌÉ•™ÕÍ•¸(€€€€€€€€€€€™Ñ•È¹…ÑÕÉ…°¹•¹ÑÉä°ÉÕ¸Á…É…µ•Ñ•É±•ÍÌÉ•…¡}•¹‘}¥Í±…¹°Ñ¡•¸(€€€€€€€€€€€Á…É…µ•Ñ•É±•ÍÌ™¥¡Ñ}•¹‘•É}‘É…½¸¸	½Ñ ‰¥¹Ñ¡”ÕÉÉ•¹Ð‰½‘äì(€€€€€€€€€€€½µ‰…ÐÉ•©•ÑÌ…¸½ÕÑ•ÈÍÁ…Ý¸µÁ±…Ñ™½É´É…±±ä°¡…¹‘±•Ì½¹±ä™…¥É±ä(€€€€€€€€€€€½‰Í•ÉÙ•Ñ…É•ÑÌ½…•Ì°…¹Ý¥¹Ì½¹±ä½¸…ÑÑÉ¥‰ÕÑ•‘•…Ñ ¸(€€€€€€€€€€€€ˆˆˆì(€€€ô)ô(

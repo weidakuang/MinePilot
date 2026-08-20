@@ -1,33 +1,1 @@
-# See https://docs.minecraftforge.net/en/1.21.x/gettingstarted/modfiles/#modstoml
-# There are lots of things you can do with the mods.toml, and not all fields are included with this MDK
-# References: https://github.com/MinecraftForge/MDKExamples
-
-modLoader="javafml"
-loaderVersion="[65,66)"
-license="Apache-2.0"
-#clientSideOnly=true #optional, default=false
-
-[[mods]]
-modId="mcai_companion"
-version="0.1.10-dev-mc26.2"
-displayName="Minecraft AI Companion"
-authors="weida"
-#displayTest="MATCH_VERSION" #optional, default=MATCH_VERSION when not clientSideOnly, else IGNORE_ALL_VERSION
-
-description='''A fair-play, accountless AI companion embodied as a headless
-ServerPlayer. The language model chooses validated high-level skills while
-deterministic local controllers handle real-time safety and legal game actions.'''
-
-[[dependencies.mcai_companion]]
-    modId="forge"
-    mandatory=true
-    versionRange="[65.0.0,66)"
-    ordering="NONE"
-    side="BOTH"
-
-[[dependencies.mcai_companion]]
-    modId="minecraft"
-    mandatory=true
-    versionRange="[26.2]"
-    ordering="NONE"
-    side="BOTH"
+ıK®Ïğz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰n·°ı¸§ıºŞÀŒM•”¡ÑÑÁÌè¼½‘½Ì¹µ¥¹•É…™Ñ™½É”¹¹•Ğ½•¸¼Ä¸ÈÄ¹à½•ÑÑ¥¹ÍÑ…ÉÑ•½µ½‘™¥±•Ì¼µ½‘ÍÑ½µ°(ŒQ¡•É”…É”±½ÑÌ½˜Ñ¡¥¹Ìå½Ô…¸‘¼İ¥Ñ Ñ¡”µ½‘Ì¹Ñ½µ°°…¹¹½Ğ…±°™¥•±‘Ì…É”¥¹±Õ‘•İ¥Ñ Ñ¡¥Ì5,(ŒI•™•É•¹•Ìè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½5¥¹•É…™Ñ½É”½5-á…µÁ±•Ì()µ½‘1½…‘•Èô‰©…Ù…™µ°ˆ)±½…‘•ÉY•ÉÍ¥½¸ô‰lØÔ°ØØ¤ˆ)±¥•¹Í”ô‰Á…¡”´È¸Àˆ(±¥•¹ÑM¥‘•=¹±äõÑÉÕ”€½ÁÑ¥½¹…°°‘•™…Õ±Ğõ™…±Í”()mmµ½‘Íut)µ½‘%ô‰µ…¥}½µÁ…¹¥½¸ˆ)Ù•ÉÍ¥½¸ôˆÀ¸Ä¸ÄÄµ‘•ØµµŒÈØ¸Èˆ)‘¥ÍÁ±…å9…µ”ô‰5¥¹•É…™Ğ$½µÁ…¹¥½¸ˆ)…ÕÑ¡½ÉÌô‰İ•¥‘„ˆ(‘¥ÍÁ±…åQ•ÍĞô‰5Q!}YIM%=8ˆ€½ÁÑ¥½¹…°°‘•™…Õ±Ğõ5Q!}YIM%=8İ¡•¸¹½Ğ±¥•¹ÑM¥‘•=¹±ä°•±Í”%9=I}11}YIM%=8()‘•ÍÉ¥ÁÑ¥½¸ôœœ™…¥ÈµÁ±…ä°…½Õ¹Ñ±•ÍÌ$½µÁ…¹¥½¸•µ‰½‘¥•…Ì„¡•…‘±•ÍÌ)M•ÉÙ•ÉA±…å•È¸Q¡”±…¹Õ…”µ½‘•°¡½½Í•ÌÙ…±¥‘…Ñ•¡¥ µ±•Ù•°Í­¥±±Ìİ¡¥±”)‘•Ñ•Éµ¥¹¥ÍÑ¥Œ±½…°½¹ÑÉ½±±•ÉÌ¡…¹‘±”É•…°µÑ¥µ”Í…™•Ñä…¹±•…°…µ”…Ñ¥½¹Ì¸œœœ()mm‘•Á•¹‘•¹¥•Ì¹µ…¥}½µÁ…¹¥½¹ut(€€€µ½‘%ô‰™½É”ˆ(€€€µ…¹‘…Ñ½ÉäõÑÉÕ”(€€€Ù•ÉÍ¥½¹I…¹”ô‰lØÔ¸À¸À°ØØ¤ˆ(€€€½É‘•É¥¹œô‰9=9ˆ(€€€Í¥‘”ô‰	=Q ˆ()mm‘•Á•¹‘•¹¥•Ì¹µ…¥}½µÁ…¹¥½¹ut(€€€µ½‘%ô‰µ¥¹•É…™Ğˆ(€€€µ…¹‘…Ñ½ÉäõÑÉÕ”(€€€Ù•ÉÍ¥½¹I…¹”ô‰lÈØ¸Étˆ(€€€½É‘•É¥¹œô‰9=9ˆ(€€€Í¥‘”ô‰	=Q ˆ(

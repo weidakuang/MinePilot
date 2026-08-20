@@ -1,3344 +1,1 @@
-package dev.mcai.companion.skills.combat;
-
-import dev.mcai.companion.action.ActionHand;
-import dev.mcai.companion.action.ActionMath;
-import dev.mcai.companion.action.ActionOutcome;
-import dev.mcai.companion.action.BlockFace;
-import dev.mcai.companion.action.LookIntent;
-import dev.mcai.companion.action.MovementIntent;
-import dev.mcai.companion.navigation.GridPos;
-import dev.mcai.companion.perception.InventoryItemSummary;
-import dev.mcai.companion.perception.DangerKind;
-import dev.mcai.companion.perception.PerceptionVec3;
-import dev.mcai.companion.perception.PerceptionProvenance;
-import dev.mcai.companion.perception.VisibleBlockFace;
-import dev.mcai.companion.perception.VisibleEntity;
-import dev.mcai.companion.skill.Skill;
-import dev.mcai.companion.skill.SkillCheckpoint;
-import dev.mcai.companion.skill.SkillContext;
-import dev.mcai.companion.skill.SkillFailure;
-import dev.mcai.companion.skill.SkillParameterParser;
-import dev.mcai.companion.skill.SkillResult;
-import dev.mcai.companion.skill.SkillTickResult;
-import dev.mcai.companion.skills.bridging.BridgeMaterialActuator;
-import dev.mcai.companion.skills.bridging.BridgeMaterialResult;
-import dev.mcai.companion.skills.bridging.TowerUpParameters;
-import dev.mcai.companion.skills.bridging.TowerUpSkill;
-import dev.mcai.companion.skills.bridging.WaterClutchDescendParameters;
-import dev.mcai.companion.skills.bridging.WaterClutchDescendSkill;
-import dev.mcai.companion.skills.core.CoreSkillActuator;
-import dev.mcai.companion.skills.core.CoreSkillFrame;
-import dev.mcai.companion.skills.core.CoreSkillFrameSource;
-import dev.mcai.companion.skills.core.MoveToParameters;
-import dev.mcai.companion.skills.core.MoveToSkill;
-import dev.mcai.companion.skills.core.TravelToParameters;
-import dev.mcai.companion.skills.core.TravelToSkill;
-import dev.mcai.companion.skills.interaction.BreakBlockParameters;
-import dev.mcai.companion.skills.interaction.BreakBlockSkill;
-import dev.mcai.companion.skills.interaction.InteractionSkillActuator;
-import dev.mcai.companion.skills.interaction.InteractionSkillFrame;
-import dev.mcai.companion.skills.interaction.InteractionSkillFrameSource;
-import dev.mcai.companion.skills.interaction.InteractionSkillPolicy;
-import dev.mcai.companion.skills.interaction.ObservedBlockTarget;
-import dev.mcai.companion.skills.inventory.EquipItemParameters;
-import dev.mcai.companion.skills.inventory.EquipmentTarget;
-import dev.mcai.companion.skills.inventory.InventoryOperationResult;
-import dev.mcai.companion.skills.inventory.InventorySkillActuator;
-import dev.mcai.companion.waypoint.DimensionRef;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.OptionalDouble;
-import java.util.OptionalLong;
-import java.util.UUID;
-import java.util.function.LongSupplier;
-
-/**
- * Bounded End-fight coordination driven only by the player's current semantic
- * view. Every projectile is delegated to the normal ranged combat skill and
- * victory is accepted only from the companion-attributed dragon-death event.
- */
-public final class FightEnderDragonSkill
-        implements Skill<FightEnderDragonParameters> {
-    public static final String NAME = "fight_ender_dragon";
-
-    private static final String BOW = "minecraft:bow";
-    private static final String ARROW = "minecraft:arrow";
-    private static final String END_CRYSTAL =
-            "minecraft:end_crystal";
-    private static final String ENDER_DRAGON =
-            "minecraft:ender_dragon";
-    private static final String IRON_BARS =
-            "minecraft:iron_bars";
-    private static final int SCAN_INTERVAL_TICKS = 3;
-    private static final int SCANS_BEFORE_RALLY = 48;
-    private static final int MAXIMUM_RALLY_ATTEMPTS = 4;
-    /* A full bow flight at the maximum observed dragon distance is shorter
-     * than this; leave enough time for the vanilla projectile to advance
-     * before reacquiring a target without idling a whole second. */
-    private static final int PROJECTILE_SETTLE_TICKS = 8;
-    private static final int CAGE_SCANS_BEFORE_RALLY = 12;
-    private static final int CAGE_DESCENT_SCAN_LIMIT = 12;
-    private static final int MAXIMUM_CAGE_APPROACH_ATTEMPTS = 2;
-    private static final int MAXIMUM_CAGE_BARS_MINED = 12;
-    private static final int CRYSTAL_CAGE_INSPECTION_SCANS = 12;
-    private static final int MAXIMUM_CRYSTAL_STANDOFF_SCANS = 12;
-    private static final int MAXIMUM_CRYSTAL_STANDOFF_ATTEMPTS = 8;
-    private static final int MAXIMUM_CRYSTAL_LANE_ATTEMPTS = 3;
-    private static final int MAXIMUM_CRYSTAL_LANE_SCANS = 8;
-    private static final double CAGE_LINE_RADIUS = 1.15;
-    private static final double CAGE_BREAK_REACH = 4.5;
-    private static final double CAGE_MINING_ALIGNMENT_DEGREES = 1.5;
-    private static final double MELEE_DRAGON_DISTANCE = 5.75;
-    private static final double MELEE_ALIGNMENT_DEGREES = 5.0;
-    private static final double MELEE_ATTACK_STRENGTH = 0.90;
-    /*
-     * A vanilla player can land many swings on a dragon part while the
-     * attack cooldown and the dragon's damage immunity are out of phase.
-     * Staying pressed against one tail/wing indefinitely is nevertheless a
-     * poor recovery strategy: it leaves no room for the ordinary bow path
-     * and makes a multipart target look like a frozen conversation.  After
-     * this bounded local melee burst, keep using the currently visible
-     * dragon and normal arrows until it is dead.  This is a combat policy,
-     * not a health/world shortcut; every shot still goes through the
-     * first-person crosshair and vanilla projectile interaction checks.
-     */
-    private static final int MELEE_ATTACKS_BEFORE_RANGED = 24;
-    private static final int DEFENSIVE_DODGE_COOLDOWN_TICKS = 6;
-    /*
-     * Keep the first-person retreat inside the observed dragon arena.  The
-     * movement actuator advances roughly 1.2 blocks per tick; twenty-four
-     * ticks therefore sent the body almost thirty blocks away, where the
-     * dragon could occlude every crystal lane and heal indefinitely.  Eight
-     * ticks gives a normal melee-to-bow separation of about ten blocks while
-     * retaining vanilla collision and hazard handling.
-     */
-    private static final int DRAGON_RANGED_RETREAT_TICKS = 8;
-    private static final double IMMEDIATE_DRAGON_DISTANCE = 8.75;
-    private static final int MELEE_REACH_MISSES_BEFORE_RANGED = 3;
-    private static final int RANGED_SHOTS_BEFORE_MELEE_RETRY = 4;
-    private static final List<String> MELEE_WEAPONS = List.of(
-            "minecraft:netherite_sword",
-            "minecraft:diamond_sword",
-            "minecraft:iron_sword",
-            "minecraft:stone_sword",
-            "minecraft:netherite_axe",
-            "minecraft:diamond_axe",
-            "minecraft:iron_axe",
-            "minecraft:stone_axe"
-    );
-    private static final List<String> CAGE_MINING_TOOLS = List.of(
-            "minecraft:netherite_pickaxe",
-            "minecraft:diamond_pickaxe",
-            "minecraft:iron_pickaxe",
-            "minecraft:stone_pickaxe",
-            "minecraft:golden_pickaxe",
-            "minecraft:wooden_pickaxe"
-    );
-    private static final float[] SCAN_PITCHES = {
-        -15.0F,
-        -35.0F,
-        -60.0F,
-        8.0F
-    };
-
-    private final UUID expectedPlayerId;
-    private final CoreSkillActuator core;
-    private final CoreSkillFrameSource coreFrames;
-    private final InteractionSkillActuator interactions;
-    private final InteractionSkillFrameSource interactionFrames;
-    private final InventorySkillActuator inventory;
-    private final BridgeMaterialActuator bridgeMaterials;
-    private final DragonVictorySource victory;
-    private final LongSupplier sessionGeneration;
-
-    private Phase phase = Phase.IDLE;
-    private SkillFailure failure;
-    private long startedAtTick = -1;
-    private long nextActionTick = -1;
-    private long lastDefensiveDodgeTick = -1;
-    private long lastObservationRevision = -1;
-    private long boundSessionGeneration = -1;
-    private int shotsDispatched;
-    private int meleeAttacks;
-    private int meleeReachMisses;
-    private int rangedDragonShotsSinceMeleeRetry;
-    private int dragonRetreatTicksRemaining;
-    private int scanTurns;
-    private int rallyAttempts;
-    private int cageScanTurns;
-    private int cageBarsMined;
-    private int cageApproachAttempts;
-    private int cageDescentScans;
-    private int cageLandingScans;
-    private float scanBaseYaw;
-    /**
-     * Last fair direction from a recent damage/contact cue.  A dodge turns
-     * the camera away from the attacker; preserving this direction lets the
-     * next bounded scan reacquire that same visible threat instead of
-     * repeatedly sweeping the opposite hemisphere.
-     */
-    private PerceptionVec3 lastThreatDirection;
-    private PerceptionVec3 localRallyPoint;
-    private boolean recoveringSafetyReserve;
-    private boolean dragonRangedMode;
-    private PerceptionVec3 dragonRetreatDirection;
-    private boolean sawCageBarBeyondReach;
-    private boolean cageTowered;
-    private boolean cageLandingVerified;
-    private long cageLandingVerifiedRevision = -1;
-    private int crystalStandOffScans;
-    private int crystalStandOffAttempts;
-    private int crystalCageInspectionTurns;
-    private int crystalLaneAttempts;
-    private int crystalLaneScanTurns;
-    private CageStatus cageStatus = CageStatus.NONE;
-    private TravelPurpose travelPurpose = TravelPurpose.NONE;
-    private UUID cageCrystalId;
-    private PerceptionVec3 cageLastSeenPosition;
-    private PerceptionVec3 crystalStandOffPosition;
-    private CagedCrystalTraversalPlanner.Plan cagePlan;
-    private ShootObservedEntitySkill shot;
-    private ShootObservedEntityParameters shotParameters;
-    private boolean shotTargetDragon;
-    private TravelToSkill travel;
-    private TravelToParameters travelParameters;
-    private MoveToSkill crystalStandOff;
-    private MoveToParameters crystalStandOffParameters;
-    private MoveToSkill crystalLane;
-    private MoveToParameters crystalLaneParameters;
-    private BreakBlockSkill cageBreak;
-    private BreakBlockParameters cageBreakParameters;
-    private TowerUpSkill cageTower;
-    private TowerUpParameters cageTowerParameters;
-    private WaterClutchDescendSkill cageDescent;
-    private WaterClutchDescendParameters cageDescentParameters;
-
-    public FightEnderDragonSkill(
-            final UUID expectedPlayerId,
-            final CoreSkillActuator core,
-            final CoreSkillFrameSource coreFrames,
-            final InteractionSkillActuator interactions,
-            final InteractionSkillFrameSource interactionFrames,
-            final InventorySkillActuator inventory,
-            final BridgeMaterialActuator bridgeMaterials,
-            final DragonVictorySource victory,
-            final LongSupplier sessionGeneration
-    ) {
-        this.expectedPlayerId = Objects.requireNonNull(
-                expectedPlayerId,
-                "expectedPlayerId"
-        );
-        this.core = Objects.requireNonNull(core, "core");
-        this.coreFrames = Objects.requireNonNull(
-                coreFrames,
-                "coreFrames"
-        );
-        this.interactions = Objects.requireNonNull(
-                interactions,
-                "interactions"
-        );
-        this.interactionFrames = Objects.requireNonNull(
-                interactionFrames,
-                "interactionFrames"
-        );
-        this.inventory = Objects.requireNonNull(
-                inventory,
-                "inventory"
-        );
-        this.bridgeMaterials = Objects.requireNonNull(
-                bridgeMaterials,
-                "bridgeMaterials"
-        );
-        this.victory = Objects.requireNonNull(victory, "victory");
-        this.sessionGeneration = Objects.requireNonNull(
-                sessionGeneration,
-                "sessionGeneration"
-        );
-    }
-
-    @Override
-    public SkillParameterParser<FightEnderDragonParameters> parameters() {
-        return DragonCombatSkillParameters::parse;
-    }
-
-    @Override
-    public boolean allowsWorldRevisionTransition() {
-        /*
-         * Dragon death is a server-verified completion boundary.  The skill
-         * must receive one more ordinary tick to observe victory and finish;
-         * invalidating its bound epoch first would turn a real kill into a
-         * stale-world failure.
-         */
-        return true;
-    }
-
-    @Override
-    public boolean managesVisibleHostileProximity() {
-        return phase != Phase.IDLE
-                && phase != Phase.COMPLETED
-                && phase != Phase.CANCELLED
-                && phase != Phase.FAILED
-                && !recoveringSafetyReserve;
-    }
-
-    @Override
-    public boolean managesVisibleProjectileThreats() {
-        return phase != Phase.IDLE
-                && phase != Phase.COMPLETED
-                && phase != Phase.CANCELLED
-                && phase != Phase.FAILED
-                && !recoveringSafetyReserve;
-    }
-
-    @Override
-    public boolean managesPhysicalContactThreats() {
-        return phase != Phase.IDLE
-                && phase != Phase.COMPLETED
-                && phase != Phase.CANCELLED
-                && phase != Phase.FAILED
-                && !recoveringSafetyReserve;
-    }
-
-    @Override
-    public OptionalDouble hardcoreRiskThresholdOverride(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters
-    ) {
-        final Optional<CoreSkillFrame> frame = coreFrames.current()
-                .filter(current ->
-                        expectedPlayerId.equals(current.playerId())
-                );
-        return frame.isEmpty()
-                ? OptionalDouble.empty()
-                : CombatHardcoreRisk.threshold(
-                        context,
-                        frame.orElseThrow(),
-                        1.0
-                );
-    }
-
-    @Override
-    public Optional<SkillFailure> preconditions(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters
-    ) {
-        final SnapshotValidation validation =
-                validateSnapshot(parameters);
-        if (validation.failure().isPresent()) {
-            return validation.failure();
-        }
-        final CoreSkillFrame frame = validation.snapshot()
-                .orElseThrow()
-                .core();
-        if (!DimensionRef.END.equals(parameters.dimension())) {
-            return Optional.of(SkillFailure.of(
-                    NAME + ".end_dimension_required"
-            ));
-        }
-        if (healthTooLow(context, frame)) {
-            return Optional.of(SkillFailure.of(
-                    NAME + ".health_reserve_required"
-            ));
-        }
-        if (frame.foodLevel() < (context.hardcore() ? 10 : 4)) {
-            return Optional.of(SkillFailure.of(
-                    NAME + ".food_reserve_required"
-            ));
-        }
-        if (inventoryCount(frame, BOW) < 1) {
-            return Optional.of(SkillFailure.of(
-                    NAME + ".bow_required"
-            ));
-        }
-        if (inventoryCount(frame, ARROW) < 1) {
-            return Optional.of(SkillFailure.of(
-                    NAME + ".arrows_required"
-            ));
-        }
-        if (!frame.onGround() || frame.inWater()) {
-            return Optional.of(SkillFailure.of(
-                    NAME + ".stable_local_rally_required"
-            ));
-        }
-        return Optional.empty();
-    }
-
-    @Override
-    public void start(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters
-    ) {
-        final Snapshot snapshot = validateSnapshot(parameters)
-                .snapshot()
-                .orElseThrow(() -> new IllegalStateException(
-                        "Dragon-fight body changed before start"
-                ));
-        phase = Phase.SEARCHING;
-        failure = null;
-        startedAtTick = context.gameTick();
-        nextActionTick = context.gameTick();
-        lastDefensiveDodgeTick = -1;
-        lastObservationRevision = -1;
-        boundSessionGeneration =
-                snapshot.interaction().sessionGeneration();
-        shotsDispatched = 0;
-        meleeAttacks = 0;
-        meleeReachMisses = 0;
-        rangedDragonShotsSinceMeleeRetry = 0;
-        dragonRetreatTicksRemaining = 0;
-        scanTurns = 0;
-        rallyAttempts = 0;
-        cageScanTurns = 0;
-        cageBarsMined = 0;
-        cageApproachAttempts = 0;
-        cageDescentScans = 0;
-        cageLandingScans = 0;
-        scanBaseYaw = lookYaw(snapshot.core());
-        lastThreatDirection = null;
-        /*
-         * This exact pose belongs to the live authoritative body and proves a
-         * reachable standing point. It replaces the old model-supplied rally
-         * coordinates, which could be invented or stale.
-         */
-        localRallyPoint = snapshot.core().position();
-        recoveringSafetyReserve = false;
-        dragonRangedMode = false;
-        dragonRetreatDirection = null;
-        sawCageBarBeyondReach = false;
-        cageTowered = false;
-        cageLandingVerified = false;
-        cageLandingVerifiedRevision = -1;
-        crystalStandOffScans = 0;
-        crystalStandOffAttempts = 0;
-        crystalCageInspectionTurns = 0;
-        crystalLaneAttempts = 0;
-        crystalLaneScanTurns = 0;
-        cageStatus = CageStatus.NONE;
-        travelPurpose = TravelPurpose.NONE;
-        cageCrystalId = null;
-        cageLastSeenPosition = null;
-        crystalStandOffPosition = null;
-        cagePlan = null;
-        shot = null;
-        shotParameters = null;
-        shotTargetDragon = false;
-        travel = null;
-        travelParameters = null;
-        crystalStandOff = null;
-        crystalStandOffParameters = null;
-        crystalLane = null;
-        crystalLaneParameters = null;
-        cageBreak = null;
-        cageBreakParameters = null;
-        cageTower = null;
-        cageTowerParameters = null;
-        cageDescent = null;
-        cageDescentParameters = null;
-    }
-
-    @Override
-    public SkillTickResult tick(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters
-    ) {
-        if (!phase.active()) {
-            return SkillTickResult.failed(NAME + ".invalid_state");
-        }
-        try {
-            return tickSafely(context, parameters);
-        } catch (RuntimeException exception) {
-            return fail(context, NAME + ".internal_failure");
-        }
-    }
-
-    @Override
-    public SkillCheckpoint checkpoint(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters
-    ) {
-        return new SkillCheckpoint(
-                1,
-                String.format(
-                        Locale.ROOT,
-                        "{\"phase\":\"%s\",\"shots\":%d,\"melee\":%d,"
-                            + "\"meleeReachMisses\":%d,"
-                            + "\"rangedDragonShotsSinceMeleeRetry\":%d,"
-                            + "\"dragonRangedMode\":%s,"
-                            + "\"dragonRetreatTicksRemaining\":%d,"
-                            + "\"scanTurns\":%d,\"rallyAttempts\":%d,"
-                            + "\"cageBarsMined\":%d,"
-                            + "\"cageApproaches\":%d,"
-                            + "\"cageRecoveryTurns\":%d,"
-                            + "\"cageTowerBlocks\":%d,"
-                            + "\"cageLandingVerified\":%s,"
-                            + "\"crystalStandOffScans\":%d,"
-                            + "\"crystalStandOffAttempts\":%d,"
-                            + "\"crystalCageInspectionTurns\":%d,"
-                            + "\"crystalLaneAttempts\":%d,"
-                            + "\"crystalLaneScanTurns\":%d,"
-                            + "\"recoveringSafetyReserve\":%s,"
-                            + "\"cageStatus\":\"%s\","
-                            + "\"visibleEntityTypes\":\"%s\","
-                            + "\"bodyPosition\":\"%s\"}",
-                        phase.name(),
-                        shotsDispatched,
-                        meleeAttacks,
-                        meleeReachMisses,
-                        rangedDragonShotsSinceMeleeRetry,
-                        dragonRangedMode,
-                        dragonRetreatTicksRemaining,
-                        scanTurns,
-                        rallyAttempts,
-                        cageBarsMined,
-                        cageApproachAttempts,
-                        cageScanTurns,
-                        cagePlan == null
-                            ? 0
-                            : cagePlan.towerBlocks(),
-                        cageLandingVerified,
-                        crystalStandOffScans,
-                        crystalStandOffAttempts,
-                        crystalCageInspectionTurns,
-                        crystalLaneAttempts,
-                        crystalLaneScanTurns,
-                        recoveringSafetyReserve,
-                        cageStatus.name(),
-                        visibleEntityTypes(),
-                        currentBodyPosition()
-                )
-        );
-    }
-
-    private String visibleEntityTypes() {
-        return coreFrames.current()
-                .map(frame -> frame.visibleEntities().stream()
-                        .limit(12)
-                        .map(entity -> entity.entityTypeId())
-                        .distinct()
-                        .sorted()
-                        .reduce((left, right) -> left + "|" + right)
-                        .orElse(""))
-                .orElse("");
-    }
-
-    private String currentBodyPosition() {
-        return coreFrames.current()
-                .map(frame -> String.format(
-                        Locale.ROOT,
-                        "%.1f,%.1f,%.1f",
-                        frame.position().x(),
-                        frame.position().y(),
-                        frame.position().z()
-                ))
-                .orElse("");
-    }
-
-    @Override
-    public void cancel(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters
-    ) {
-        cancelChildren(context);
-        quiesce();
-        phase = Phase.CANCELLED;
-    }
-
-    @Override
-    public SkillResult result(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters
-    ) {
-        return switch (phase) {
-            case COMPLETED -> SkillResult.completed();
-            case CANCELLED -> SkillResult.cancelled();
-            case FAILED -> SkillResult.failed(
-                    Objects.requireNonNull(failure)
-            );
-            default -> SkillResult.failed(
-                    SkillFailure.of(NAME + ".invalid_state")
-            );
-        };
-    }
-
-    private SkillTickResult tickSafely(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters
-    ) {
-        if (victory.dragonKilled(context.goalRevision())) {
-            cancelChildren(context);
-            quiesce();
-            phase = Phase.COMPLETED;
-            return SkillTickResult.completed();
-        }
-        if (context.gameTick() - startedAtTick
-                >= parameters.timeoutTicks()) {
-            return fail(context, NAME + ".timed_out");
-        }
-        final SnapshotValidation validation =
-                validateSnapshot(parameters);
-        if (validation.failure().isPresent()) {
-            return fail(
-                    context,
-                    validation.failure().orElseThrow()
-            );
-        }
-        final Snapshot snapshot =
-                validation.snapshot().orElseThrow();
-        final CoreSkillFrame frame = snapshot.core();
-        if (frame.observationRevision() < lastObservationRevision) {
-            return fail(context, NAME + ".stale_observation");
-        }
-        final boolean fresh = frame.observationRevision()
-                > lastObservationRevision;
-        lastObservationRevision = Math.max(
-                lastObservationRevision,
-                frame.observationRevision()
-        );
-        final Optional<SkillTickResult> projectileResponse =
-                evadeVisibleProjectile(context, frame, fresh);
-        if (projectileResponse.isPresent()) {
-            return projectileResponse.orElseThrow();
-        }
-        final Optional<SkillTickResult> damageResponse =
-                evadeRecentDamage(context, frame);
-        if (damageResponse.isPresent()) {
-            return damageResponse.orElseThrow();
-        }
-        if (phase == Phase.OPENING_CAGE
-                && immediateDragonIndex(frame).isPresent()) {
-            abortCageBreak(context);
-            phase = Phase.SEARCHING;
-            cageStatus = CageStatus.SEEKING_VISIBLE_BAR;
-            nextActionTick = context.gameTick();
-        }
-        if (healthTooLow(context, frame)
-                || frame.foodLevel()
-                    < (context.hardcore() ? 6 : 2)) {
-            recoveringSafetyReserve = true;
-            if (!core.stop().accepted()) {
-                return fail(
-                        context,
-                        NAME + ".recovery_stop_rejected"
-                );
-            }
-            /*
-             * Survival control executes after the skill lease. Relinquishing
-             * hostile-proximity ownership here lets it eat, guard, or evade
-             * at 20 TPS; the dragon coordinator keeps its bounded deadline
-             * and resumes only when both reserves are safe again.
-             */
-            return SkillTickResult.running(fresh, true);
-        }
-        recoveringSafetyReserve = false;
-        return switch (phase) {
-            case SEARCHING -> search(
-                    context,
-                    parameters,
-                    snapshot,
-                    fresh
-            );
-            case SHOOTING -> tickShot(context, fresh);
-            case RETREATING_DRAGON -> tickDragonRangedRetreat(
-                    context,
-                    frame,
-                    fresh
-            );
-            case REPOSITIONING_CRYSTAL ->
-                    tickCrystalStandOff(
-                            context,
-                            parameters,
-                            fresh
-                    );
-            case REPOSITIONING_CRYSTAL_LANE ->
-                    tickCrystalLane(context, fresh);
-            case TRAVELLING -> tickTravel(context, fresh);
-            case OPENING_CAGE -> tickCageBreak(
-                    context,
-                    fresh
-            );
-            case TOWERING_CAGE -> tickCageTower(
-                    context,
-                    parameters,
-                    fresh
-            );
-            case PREPARING_CAGE_TOWER ->
-                    prepareCageTower(
-                            context,
-                            parameters,
-                            frame,
-                            fresh
-                    );
-            case PREPARING_CAGE_DESCENT ->
-                    prepareCageDescent(
-                            context,
-                            frame,
-                            fresh
-                    );
-            case DESCENDING_CAGE -> tickCageDescent(
-                    context,
-                    fresh
-            );
-            default -> SkillTickResult.failed(
-                    NAME + ".invalid_state"
-            );
-        };
-    }
-
-    /**
-     * Dragon fireballs are fair first-person projectile observations, not a
-     * reason for the emergency lane to freeze the entire fight.  On a fresh
-     * visible projectile signal, turn away and issue one bounded sprint/strafe
-     * input.  If the projectile is not in the current semantic list, the
-     * directionless danger signal still triggers a short alternating strafe;
-     * no hidden projectile position or world scan is used.
-     */
-    private Optional<SkillTickResult> evadeVisibleProjectile(
-            final SkillContext context,
-            final CoreSkillFrame frame,
-            final boolean fresh
-    ) {
-        final Optional<VisibleEntity> projectile = frame.visibleEntities()
-                .stream()
-                .filter(VisibleEntity::projectile)
-                .filter(FightEnderDragonSkill::projectileThreatensBody)
-                .min(Comparator.comparingDouble(VisibleEntity::distance));
-        final boolean danger = frame.dangerSignals().stream().anyMatch(
-                signal -> signal.kind()
-                        == dev.mcai.companion.perception.DangerKind
-                            .PROJECTILE_PROXIMITY
-                    && signal.severity() >= 0.35
-        );
-        if (projectile.isEmpty() && !danger) {
-            return Optional.empty();
-        }
-        if (lastDefensiveDodgeTick >= 0
-                && context.gameTick() - lastDefensiveDodgeTick
-                    < DEFENSIVE_DODGE_COOLDOWN_TICKS) {
-            return Optional.empty();
-        }
-        final PerceptionVec3 away = projectile
-                .map(entity -> frame.position().subtract(entity.position()))
-                .filter(vector -> vector.lengthSquared() > 1.0E-12)
-                .orElseGet(() -> new PerceptionVec3(
-                        ((frame.gameTime() / 6L) & 1L) == 0L ? 1.0 : -1.0,
-                        0.0,
-                        0.35
-                ));
-        final LookIntent look = lookAt(
-                frame.eyePosition(),
-                frame.eyePosition().add(away)
-        );
-        if (!core.look(look).accepted()) {
-            return Optional.of(fail(
-                    context,
-                    NAME + ".projectile_dodge_look_rejected"
-            ));
-        }
-        final PerceptionVec3 horizontal = new PerceptionVec3(
-                away.x(),
-                0.0,
-                away.z()
-        );
-        final PerceptionVec3 desired = horizontal.lengthSquared() > 1.0E-12
-                ? horizontal.normalized()
-                : new PerceptionVec3(1.0, 0.0, 0.0);
-        final PerceptionVec3 horizontalForward = new PerceptionVec3(
-                frame.lookDirection().x(),
-                0.0,
-                frame.lookDirection().z()
-        );
-        final PerceptionVec3 forward = horizontalForward.lengthSquared()
-                > 1.0E-12
-                ? horizontalForward.normalized()
-                : new PerceptionVec3(0.0, 0.0, 1.0);
-        final PerceptionVec3 left = new PerceptionVec3(
-                forward.z(),
-                0.0,
-                -forward.x()
-        );
-        final ActionOutcome moved = core.move(new MovementIntent(
-                desired.dot(forward),
-                desired.dot(left),
-                true,
-                false
-        ));
-        if (!moved.accepted()) {
-            return Optional.of(fail(
-                    context,
-                    NAME + ".projectile_dodge_move_rejected"
-            ));
-        }
-        lastDefensiveDodgeTick = context.gameTick();
-        nextActionTick = context.gameTick() + 1;
-        return Optional.of(SkillTickResult.running(true, true));
-    }
-
-    /**
-     * Dragon breath and multipart contact can arrive as a fair recent-damage
-     * cue without a projectile entity in the current semantic sample.  Keep
-     * the fight alive with one bounded first-person side/back step, then let
-     * the ordinary combat phase resume; this never selects an unseen target
-     * or edits the world.
-     */
-    private Optional<SkillTickResult> evadeRecentDamage(
-            final SkillContext context,
-            final CoreSkillFrame frame
-    ) {
-        final Optional<dev.mcai.companion.perception.DangerSignal> damage =
-                frame.dangerSignals().stream()
-                        .filter(signal ->
-                                signal.kind() == DangerKind.THREAT_CONTACT)
-                        .filter(signal ->
-                                signal.provenance()
-                                        == PerceptionProvenance
-                                                .RECENT_DAMAGE_EVENT
-                                || signal.provenance()
-                                        == PerceptionProvenance
-                                                .PHYSICAL_CONTACT)
-                        .filter(signal -> signal.severity() >= 0.35)
-                        .max(Comparator.comparingDouble(
-                                dev.mcai.companion.perception.DangerSignal
-                                        ::severity
-                        ));
-        if (damage.isEmpty()) {
-            return Optional.empty();
-        }
-        if (lastDefensiveDodgeTick >= 0
-                && context.gameTick() - lastDefensiveDodgeTick
-                    < DEFENSIVE_DODGE_COOLDOWN_TICKS) {
-            return Optional.empty();
-        }
-        final PerceptionVec3 toward = damage.orElseThrow()
-                .contactDirection()
-                .filter(vector -> vector.lengthSquared() > 1.0E-12)
-                .orElseGet(() -> new PerceptionVec3(
-                        ((context.gameTick() / DEFENSIVE_DODGE_COOLDOWN_TICKS)
-                                & 1L) == 0L ? 1.0 : -1.0,
-                        0.0,
-                        0.35
-                ));
-        final PerceptionVec3 horizontalToward = new PerceptionVec3(
-                toward.x(),
-                0.0,
-                toward.z()
-        );
-        if (horizontalToward.lengthSquared() > 1.0E-12) {
-            lastThreatDirection = horizontalToward.normalized();
-            scanBaseYaw = yawFromDirection(lastThreatDirection);
-        }
-        final PerceptionVec3 horizontalAway = new PerceptionVec3(
-                -toward.x(),
-                0.0,
-                -toward.z()
-        );
-        final PerceptionVec3 away = horizontalAway.lengthSquared() > 1.0E-12
-                ? horizontalAway.normalized()
-                : new PerceptionVec3(
-                        ((context.gameTick() / DEFENSIVE_DODGE_COOLDOWN_TICKS)
-                                & 1L) == 0L ? 1.0 : -1.0,
-                        0.0,
-                        0.0
-                );
-        final PerceptionVec3 horizontalForward = new PerceptionVec3(
-                frame.lookDirection().x(),
-                0.0,
-                frame.lookDirection().z()
-        );
-        final PerceptionVec3 forward = horizontalForward.lengthSquared()
-                > 1.0E-12
-                ? horizontalForward.normalized()
-                : new PerceptionVec3(0.0, 0.0, 1.0);
-        final PerceptionVec3 left = new PerceptionVec3(
-                forward.z(),
-                0.0,
-                -forward.x()
-        );
-        if (!core.look(lookAt(
-                frame.eyePosition(),
-                frame.eyePosition().add(away)
-        )).accepted()) {
-            return Optional.of(fail(
-                    context,
-                    NAME + ".damage_dodge_look_rejected"
-            ));
-        }
-        final ActionOutcome moved = core.move(new MovementIntent(
-                away.dot(forward),
-                away.dot(left),
-                true,
-                false
-        ));
-        if (!moved.accepted()) {
-            return Optional.of(fail(
-                    context,
-                    NAME + ".damage_dodge_move_rejected"
-            ));
-        }
-        lastDefensiveDodgeTick = context.gameTick();
-        nextActionTick = context.gameTick() + 1;
-        return Optional.of(SkillTickResult.running(true, true));
-    }
-
-    private void abortCageBreak(final SkillContext context) {
-        if (cageBreak != null && cageBreakParameters != null) {
-            try {
-                cageBreak.cancel(context, cageBreakParameters);
-            } catch (RuntimeException ignored) {
-                interactions.abortMining();
-            }
-        }
-        cageBreak = null;
-        cageBreakParameters = null;
-    }
-
-    private SkillTickResult search(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final Snapshot snapshot,
-            final boolean fresh
-    ) {
-        final CoreSkillFrame frame = snapshot.core();
-        if (context.gameTick() < nextActionTick) {
-            core.stop();
-            return SkillTickResult.running(fresh, true);
-        }
-        if (shouldDescendFromCage(frame)) {
-            return startOrPrepareCageDescent(
-                    context,
-                    parameters,
-                    frame,
-                    fresh
-            );
-        }
-        final Optional<Integer> immediateDragon =
-                immediateDragonIndex(frame);
-        if (immediateDragon.isEmpty()
-                && (closestCrystalWithAlignedCageBar(frame).isPresent()
-                || boundBlockedCrystal(frame).isPresent()
-                || clearCrystalIndex(frame).isEmpty()
-                    && hasBlockedCrystal(frame))) {
-            return handleBlockedCrystal(
-                    context,
-                    parameters,
-                    snapshot,
-                    fresh
-            );
-        }
-        rememberUnsafeClearCrystal(frame);
-        if (crystalStandOffPosition != null) {
-            return prepareCrystalStandOff(
-                    context,
-                    parameters,
-                    frame,
-                    fresh
-            );
-        }
-        if (!cageTowered && cagePlan != null) {
-            clearCageTraversalPlan();
-        }
-        cageScanTurns = 0;
-        cageStatus = CageStatus.NONE;
-        sawCageBarBeyondReach = false;
-        final Optional<Integer> clearCrystal = clearCrystalIndex(frame);
-        final boolean activeDragonThreat = frame.dangerSignals().stream()
-                .anyMatch(signal ->
-                        (signal.kind() == DangerKind.THREAT_CONTACT
-                                || signal.kind()
-                                        == DangerKind.PROJECTILE_PROXIMITY)
-                                && signal.severity() >= 0.35
-                );
-        boolean crystalLaneBlocked = false;
-        if (!activeDragonThreat && clearCrystal.isPresent()) {
-            final VisibleEntity crystal = frame.visibleEntities()
-                    .get(clearCrystal.orElseThrow());
-            crystalLaneBlocked = EndCrystalStandOffPlanner.dragonBlocksFiringLane(
-                    frame,
-                    crystal
-            );
-            if (!crystalLaneBlocked) {
-                crystalLaneAttempts = 0;
-                crystalLaneScanTurns = 0;
-            } else if (crystalLaneAttempts
-                    < MAXIMUM_CRYSTAL_LANE_ATTEMPTS) {
-                final Optional<GridPos> lane =
-                        EndCrystalStandOffPlanner.selectFiringLane(
-                                frame,
-                                crystal.position(),
-                                context.hardcore()
-                        ).filter(candidate ->
-                                !candidate.equals(frame.feet())
-                        );
-                if (lane.isPresent()) {
-                    return startCrystalLane(
-                            context,
-                            parameters,
-                            lane.orElseThrow(),
-                            fresh
-                    );
-                }
-                if (crystalLaneScanTurns
-                        < MAXIMUM_CRYSTAL_LANE_SCANS) {
-                    final PerceptionVec3 toCrystal = crystal.position()
-                            .subtract(frame.position());
-                    final PerceptionVec3 horizontal = new PerceptionVec3(
-                            toCrystal.x(),
-                            0.0,
-                            toCrystal.z()
-                    );
-                    final PerceptionVec3 forward = horizontal.lengthSquared()
-                            > 1.0E-12
-                            ? horizontal.normalized()
-                            : new PerceptionVec3(0.0, 0.0, 1.0);
-                    final PerceptionVec3 side = new PerceptionVec3(
-                            forward.z(),
-                            0.0,
-                            -forward.x()
-                    );
-                    final double sign =
-                            (crystalLaneScanTurns & 1) == 0 ? 0.85 : -0.85;
-                    if (!core.move(MovementIntent.STOPPED).accepted()
-                            || !core.look(lookAt(
-                                    frame.eyePosition(),
-                                    frame.eyePosition().add(
-                                            forward.add(side.scale(sign))
-                                    )
-                            )).accepted()) {
-                        return fail(
-                                context,
-                                NAME + ".crystal_lane_scan_rejected"
-                        );
-                    }
-                    if (fresh) {
-                        crystalLaneScanTurns++;
-                    }
-                    nextActionTick = context.gameTick()
-                            + SCAN_INTERVAL_TICKS;
-                    return SkillTickResult.running(true, true);
-                }
-            }
-        }
-        /*
-         * A nearby dragon is not sufficient reason to ignore an exposed
-         * crystal. Vanilla crystals continuously heal the dragon, so a
-         * clear crystal must be removed first whenever the body is not
-         * currently under contact or projectile pressure. During an active
-         * threat, keep the dragon as the immediate target so emergency
-         * melee/ranged handling can take over without pausing for a crystal.
-         */
-        /*
-         * A dragon can hover directly between the body and an exposed
-         * crystal. After the bounded lane observations above, there may be no
-         * fair standing cell from which the crystal ray is clear at all. Do
-         * not stare at that crystal forever: choose the nearest observed
-         * dragon part and use the ordinary ranged path until the dragon moves
-         * or its health changes. This is still a normal first-person target;
-         * it never reads hidden entity state or fabricates a projectile hit.
-         */
-        final boolean useDragonFallback = crystalLaneBlocked
-                && crystalLaneScanTurns >= MAXIMUM_CRYSTAL_LANE_SCANS;
-        final Optional<Integer> targetIndex =
-                !activeDragonThreat
-                        && clearCrystal.isPresent()
-                        && !useDragonFallback
-                        ? clearCrystal
-                        : immediateDragon.or(() ->
-                                useDragonFallback
-                                        ? nearestDragonIndex(frame)
-                                        : selectTargetIndex(frame)
-                        );
-        if (targetIndex.isEmpty()) {
-            return scan(
-                    context,
-                    parameters,
-                    frame,
-                    fresh
-            );
-        }
-        final int index = targetIndex.orElseThrow();
-        final VisibleEntity target =
-                frame.visibleEntities().get(index);
-        final PerceptionVec3 meleeAim =
-                meleeAimPoint(target);
-        if (ENDER_DRAGON.equals(target.entityTypeId())
-                && meleeAttacks >= MELEE_ATTACKS_BEFORE_RANGED
-                && !dragonRangedMode) {
-            dragonRangedMode = true;
-            dragonRetreatDirection = horizontalAwayDirection(
-                    meleeAim,
-                    frame.position()
-            );
-            dragonRetreatTicksRemaining =
-                    DRAGON_RANGED_RETREAT_TICKS;
-            phase = Phase.RETREATING_DRAGON;
-            nextActionTick = context.gameTick();
-            return SkillTickResult.running(true, true);
-        }
-        if (ENDER_DRAGON.equals(target.entityTypeId())
-                && meleeReachMisses
-                    < MELEE_REACH_MISSES_BEFORE_RANGED
-                && !dragonRangedMode
-                && meleeAttacks < MELEE_ATTACKS_BEFORE_RANGED
-                && meleeAim.subtract(frame.eyePosition()).length()
-                    <= MELEE_DRAGON_DISTANCE
-                && interactionLineClear(target)) {
-            final Optional<String> meleeWeapon =
-                    preferredMeleeWeapon(frame);
-            if (meleeWeapon.isPresent()) {
-                return meleeDragon(
-                        context,
-                        frame,
-                        target,
-                        meleeWeapon.orElseThrow(),
-                        fresh
-                );
-            }
-        }
-        if (shotsDispatched >= parameters.maximumShots()) {
-            return fail(
-                    context,
-                    NAME + ".shot_budget_exhausted"
-            );
-        }
-        if (!BOW.equals(frame.mainHand().itemId())) {
-            final InventoryOperationResult equipped =
-                    inventory.equip(new EquipItemParameters(
-                            BOW,
-                            EquipmentTarget.MAINHAND
-                    ));
-            if (!equipped.succeeded()) {
-                return fail(
-                        context,
-                        equipped.failure().orElseThrow()
-                );
-            }
-            return SkillTickResult.running(true, true);
-        }
-        if (inventoryCount(frame, ARROW) < 1) {
-            return fail(context, NAME + ".arrows_exhausted");
-        }
-        shotParameters = new ShootObservedEntityParameters(
-                frame.observationRevision(),
-                "visible-" + index,
-                ActionHand.MAIN_HAND,
-                1
-        );
-        shotTargetDragon = ENDER_DRAGON.equals(
-                target.entityTypeId()
-        );
-        shot = new ShootObservedEntitySkill(
-                expectedPlayerId,
-                core,
-                coreFrames,
-                interactions,
-                interactionFrames,
-                RangedCombatSkillPolicy.defaults()
-        );
-        final Optional<SkillFailure> precondition =
-                shot.preconditions(context, shotParameters);
-        if (precondition.isPresent()) {
-            shot = null;
-            shotParameters = null;
-            shotTargetDragon = false;
-            nextActionTick = context.gameTick()
-                    + SCAN_INTERVAL_TICKS;
-            return scan(
-                    context,
-                    parameters,
-                    frame,
-                    fresh
-            );
-        }
-        shot.start(context, shotParameters);
-        phase = Phase.SHOOTING;
-        scanTurns = 0;
-        return SkillTickResult.running(true, true);
-    }
-
-    private SkillTickResult handleBlockedCrystal(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final Snapshot snapshot,
-            final boolean fresh
-    ) {
-        final CoreSkillFrame frame = snapshot.core();
-        final VisibleEntity crystal =
-                closestCrystalWithAlignedCageBar(frame)
-                .or(() -> boundBlockedCrystal(frame))
-                .or(() -> closestBlockedCrystal(frame))
-                .orElseThrow();
-        final Optional<VisibleBlockFace> maybeBar =
-                alignedCageBar(frame, crystal);
-        if (maybeBar.isPresent()) {
-            final VisibleBlockFace bar = maybeBar.orElseThrow();
-            if (bar.distance() <= CAGE_BREAK_REACH) {
-                return startCageBreak(
-                        context,
-                        parameters,
-                        frame,
-                        bar,
-                        fresh
-                );
-            }
-            sawCageBarBeyondReach = true;
-            cageStatus =
-                    CageStatus.APPROACH_OR_ELEVATION_REQUIRED;
-            if (cageTowered) {
-                return startOrPrepareCageDescent(
-                        context,
-                        parameters,
-                        frame,
-                        fresh
-                );
-            }
-            final Optional<CagedCrystalTraversalPlanner.Plan>
-                    planned =
-                    CagedCrystalTraversalPlanner.plan(
-                            context,
-                            frame,
-                            bar
-                    );
-            if (planned.isPresent()) {
-                return startCageTraversal(
-                        context,
-                        parameters,
-                        frame,
-                        crystal,
-                        planned.orElseThrow(),
-                        fresh
-                );
-            }
-            cageStatus =
-                    CageStatus.SAFE_TRAVERSAL_UNAVAILABLE;
-        } else {
-            cageStatus = CageStatus.SEEKING_VISIBLE_BAR;
-            if (cageTowered) {
-                return startOrPrepareCageDescent(
-                        context,
-                        parameters,
-                        frame,
-                        fresh
-                );
-            }
-        }
-        return recoverCageView(
-                context,
-                parameters,
-                frame,
-                crystal,
-                fresh
-        );
-    }
-
-    private SkillTickResult startCageTraversal(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final CoreSkillFrame frame,
-            final VisibleEntity crystal,
-            final CagedCrystalTraversalPlanner.Plan plan,
-            final boolean fresh
-    ) {
-        if (!cageTraversalSafety(context, frame)) {
-            /* A distant cage is optional while the player is under pressure.
-             * Refusing a risky tower/descent must not terminate the entire
-             * dragon fight when an ordinary visible dragon target can still
-             * be reacquired.  Clear the tentative traversal authority and
-             * resume the bounded first-person sweep; a later safe frame may
-             * plan the cage again. */
-            clearCageTraversalPlan();
-            cageStatus = CageStatus.SAFETY_RESERVE_REQUIRED;
-            return scan(
-                    context,
-                    parameters,
-                    frame,
-                    fresh
-            );
-        }
-        if (inventoryCount(
-                frame,
-                "minecraft:water_bucket"
-        ) < 1) {
-            cageStatus = CageStatus.WATER_BUCKET_REQUIRED;
-            return fail(
-                    context,
-                    NAME + ".cage_water_bucket_required"
-            );
-        }
-        if (preferredCageMiningTool(frame).isEmpty()) {
-            cageStatus = CageStatus.PICKAXE_REQUIRED;
-            return fail(
-                    context,
-                    NAME + ".cage_pickaxe_required"
-            );
-        }
-        if (cageCrystalId != null
-                && !cageCrystalId.equals(crystal.entityId())) {
-            clearCageTraversalPlan();
-        }
-        cageCrystalId = crystal.entityId();
-        cageLastSeenPosition = crystal.position();
-        cagePlan = plan;
-        if (!frame.feet().equals(plan.approach())) {
-            if (cageApproachAttempts
-                    >= MAXIMUM_CAGE_APPROACH_ATTEMPTS) {
-                return fail(
-                        context,
-                        NAME + ".cage_approach_failed"
-                );
-            }
-            return startCageApproach(
-                    context,
-                    parameters,
-                    plan,
-                    fresh
-            );
-        }
-        rememberVisibleLanding(frame, plan.landing());
-        if (!recentLandingVerification(frame)) {
-            phase = Phase.PREPARING_CAGE_TOWER;
-            cageLandingScans = 0;
-            return prepareCageTower(
-                    context,
-                    parameters,
-                    frame,
-                    fresh
-            );
-        }
-        cageLandingScans = 0;
-        final BridgeMaterialResult material =
-                bridgeMaterials.ensureEquipped();
-        if (!material.ready()) {
-            return fail(
-                    context,
-                    NAME + ".cage_tower_material_unavailable"
-            );
-        }
-        if (material.availableCount() < plan.towerBlocks()) {
-            return fail(
-                    context,
-                    NAME + ".cage_tower_material_insufficient"
-            );
-        }
-        cageTowerParameters = new TowerUpParameters(
-                parameters.dimension(),
-                plan.targetY(),
-                0.2,
-                plan.towerBlocks()
-        );
-        cageTower = new TowerUpSkill(
-                expectedPlayerId,
-                core,
-                coreFrames,
-                bridgeMaterials
-        );
-        final Optional<SkillFailure> precondition =
-                cageTower.preconditions(
-                        context,
-                        cageTowerParameters
-                );
-        if (precondition.isPresent()) {
-            cageTower = null;
-            cageTowerParameters = null;
-            return fail(
-                    context,
-                    NAME + ".cage_tower_precondition_failed"
-            );
-        }
-        cageTower.start(context, cageTowerParameters);
-        cageStatus = CageStatus.TOWERING;
-        phase = Phase.TOWERING_CAGE;
-        return SkillTickResult.running(true, false);
-    }
-
-    private SkillTickResult startCageApproach(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final CagedCrystalTraversalPlanner.Plan plan,
-            final boolean fresh
-    ) {
-        travelParameters = new TravelToParameters(
-                parameters.dimension(),
-                plan.approach().x() + 0.5,
-                plan.approach().y(),
-                plan.approach().z() + 0.5,
-                0.45
-        );
-        travel = new TravelToSkill(
-                expectedPlayerId,
-                core,
-                coreFrames,
-                sessionGeneration
-        );
-        final Optional<SkillFailure> precondition =
-                travel.preconditions(context, travelParameters);
-        if (precondition.isPresent()) {
-            travel = null;
-            travelParameters = null;
-            cageApproachAttempts++;
-            cagePlan = null;
-            cageStatus = CageStatus.APPROACH_CELL_UNAVAILABLE;
-            nextActionTick = context.gameTick()
-                    + SCAN_INTERVAL_TICKS;
-            return SkillTickResult.running(fresh, true);
-        }
-        travel.start(context, travelParameters);
-        cageApproachAttempts++;
-        travelPurpose = TravelPurpose.CAGE_APPROACH;
-        cageStatus = CageStatus.APPROACHING;
-        phase = Phase.TRAVELLING;
-        return SkillTickResult.running(true, true);
-    }
-
-    private SkillTickResult startCageBreak(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final CoreSkillFrame frame,
-            final VisibleBlockFace bar,
-            final boolean fresh
-    ) {
-        if (cageBarsMined >= MAXIMUM_CAGE_BARS_MINED) {
-            return fail(
-                    context,
-                    NAME + ".cage_block_budget_exhausted"
-            );
-        }
-        final Optional<String> tool =
-                preferredCageMiningTool(frame);
-        if (tool.isEmpty()) {
-            cageStatus = CageStatus.PICKAXE_REQUIRED;
-            return fail(
-                    context,
-                    NAME + ".cage_pickaxe_required"
-            );
-        }
-        if (!tool.orElseThrow().equals(
-                frame.mainHand().itemId()
-        )) {
-            final InventoryOperationResult equipped =
-                    inventory.equip(new EquipItemParameters(
-                            tool.orElseThrow(),
-                            EquipmentTarget.MAINHAND
-                    ));
-            if (!equipped.succeeded()) {
-                return fail(
-                        context,
-                        equipped.failure().orElseThrow()
-                );
-            }
-            cageStatus = CageStatus.EQUIPPING_PICKAXE;
-            return SkillTickResult.running(true, true);
-        }
-        final PerceptionVec3 barDirection =
-                bar.hitPosition().subtract(frame.eyePosition());
-        if (angularError(
-                frame.lookDirection(),
-                barDirection
-        ) > CAGE_MINING_ALIGNMENT_DEGREES) {
-            final ActionOutcome stopped = core.stop();
-            final ActionOutcome looking = core.look(lookAt(
-                    frame.eyePosition(),
-                    bar.hitPosition()
-            ));
-            if (!stopped.accepted() || !looking.accepted()) {
-                return fail(
-                        context,
-                        NAME + ".cage_mining_alignment_rejected"
-                );
-            }
-            cageStatus = CageStatus.ALIGNING_VISIBLE_BAR;
-            nextActionTick = context.gameTick() + 1;
-            return SkillTickResult.running(true, true);
-        }
-        final Optional<BlockFace> face = blockFace(bar.face());
-        if (face.isEmpty()) {
-            cageStatus = CageStatus.SEEKING_VISIBLE_BAR;
-            return recoverCageView(
-                    context,
-                    parameters,
-                    frame,
-                    closestBlockedCrystal(frame).orElseThrow(),
-                    fresh
-            );
-        }
-        cageBreakParameters = new BreakBlockParameters(
-                parameters.dimension(),
-                new ObservedBlockTarget(
-                        frame.observationRevision(),
-                        bar.block().x(),
-                        bar.block().y(),
-                        bar.block().z(),
-                        face.orElseThrow()
-                )
-        );
-        cageBreak = new BreakBlockSkill(
-                expectedPlayerId,
-                interactions,
-                interactionFrames,
-                InteractionSkillPolicy.defaults()
-        );
-        final Optional<SkillFailure> precondition =
-                cageBreak.preconditions(
-                        context,
-                        cageBreakParameters
-                );
-        if (precondition.isPresent()) {
-            final String code =
-                    precondition.orElseThrow().code();
-            cageBreak = null;
-            cageBreakParameters = null;
-            if (transientCageBreakFailure(code)) {
-                cageStatus =
-                        CageStatus.SEEKING_VISIBLE_BAR;
-                nextActionTick = context.gameTick()
-                        + SCAN_INTERVAL_TICKS;
-                return SkillTickResult.running(
-                        fresh,
-                        true
-                );
-            }
-            return fail(
-                    context,
-                    NAME + ".cage_mining_unavailable"
-            );
-        }
-        cageBreak.start(context, cageBreakParameters);
-        cageStatus = CageStatus.MINING_VISIBLE_BAR;
-        phase = Phase.OPENING_CAGE;
-        cageScanTurns = 0;
-        return SkillTickResult.running(true, true);
-    }
-
-    private SkillTickResult recoverCageView(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final CoreSkillFrame frame,
-            final VisibleEntity crystal,
-            final boolean fresh
-    ) {
-        if (!core.move(MovementIntent.STOPPED).accepted()) {
-            return fail(context, NAME + ".stop_rejected");
-        }
-        if (cageScanTurns >= CAGE_SCANS_BEFORE_RALLY) {
-            cageScanTurns = 0;
-            if (rallyAttempts >= MAXIMUM_RALLY_ATTEMPTS) {
-                return fail(
-                        context,
-                        cageStatus
-                            == CageStatus
-                                .SAFE_TRAVERSAL_UNAVAILABLE
-                            ? NAME
-                                + ".cage_safe_traversal_unavailable"
-                            : sawCageBarBeyondReach
-                            ? NAME
-                                + ".cage_requires_approach_or_tower"
-                            : NAME
-                                + ".cage_obstruction_unresolved"
-                );
-            }
-            return startRallyTravel(
-                    context,
-                    parameters,
-                    fresh
-            );
-        }
-        final PerceptionVec3 offset = cageLookOffset(
-                cageScanTurns
-        );
-        if (!core.look(lookAt(
-                frame.eyePosition(),
-                crystal.position().add(offset)
-        )).accepted()) {
-            return fail(context, NAME + ".look_rejected");
-        }
-        cageScanTurns++;
-        nextActionTick = context.gameTick()
-                + SCAN_INTERVAL_TICKS;
-        return SkillTickResult.running(true, true);
-    }
-
-    private SkillTickResult tickCageBreak(
-            final SkillContext context,
-            final boolean fresh
-    ) {
-        final SkillTickResult result = cageBreak.tick(
-                context,
-                cageBreakParameters
-        );
-        if (result.status()
-                == SkillTickResult.Status.COMPLETED) {
-            cageBarsMined++;
-            cageBreak = null;
-            cageBreakParameters = null;
-            cageStatus = CageStatus.VERIFYING_OPENING;
-            phase = Phase.SEARCHING;
-            nextActionTick = context.gameTick()
-                    + SCAN_INTERVAL_TICKS;
-            return SkillTickResult.running(true, true);
-        }
-        if (result.status()
-                == SkillTickResult.Status.FAILED) {
-            final String code = result.failure()
-                    .orElseThrow()
-                    .code();
-            cageBreak = null;
-            cageBreakParameters = null;
-            phase = Phase.SEARCHING;
-            nextActionTick = context.gameTick()
-                    + SCAN_INTERVAL_TICKS;
-            if (transientCageBreakFailure(code)) {
-                cageStatus =
-                        CageStatus.SEEKING_VISIBLE_BAR;
-                return SkillTickResult.running(true, true);
-            }
-            return fail(
-                    context,
-                    NAME + ".cage_mining_failed"
-            );
-        }
-        return SkillTickResult.running(
-                result.madeProgress() || fresh,
-                result.safeCheckpoint()
-        );
-    }
-
-    private SkillTickResult tickCageTower(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final boolean fresh
-    ) {
-        final SkillTickResult result = cageTower.tick(
-                context,
-                cageTowerParameters
-        );
-        if (result.status()
-                == SkillTickResult.Status.COMPLETED) {
-            cageTower = null;
-            cageTowerParameters = null;
-            cageTowered = true;
-            cageStatus = CageStatus.ELEVATED;
-            phase = Phase.SEARCHING;
-            nextActionTick = context.gameTick()
-                    + SCAN_INTERVAL_TICKS;
-            return SkillTickResult.running(true, false);
-        }
-        if (result.status()
-                == SkillTickResult.Status.FAILED) {
-            cageTower = null;
-            cageTowerParameters = null;
-            final Optional<CoreSkillFrame> current =
-                    coreFrames.current();
-            if (current.isPresent()
-                    && cageDrop(current.orElseThrow())
-                        >= 3.5) {
-                cageTowered = true;
-                return startOrPrepareCageDescent(
-                        context,
-                        parameters,
-                        current.orElseThrow(),
-                        fresh
-                );
-            }
-            return fail(
-                    context,
-                    NAME + ".cage_tower_failed"
-            );
-        }
-        return SkillTickResult.running(
-                result.madeProgress() || fresh,
-                result.safeCheckpoint()
-        );
-    }
-
-    private SkillTickResult prepareCageTower(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final CoreSkillFrame frame,
-            final boolean fresh
-    ) {
-        if (cagePlan == null
-                || cageCrystalId == null
-                || cageLastSeenPosition == null) {
-            return fail(
-                    context,
-                    NAME + ".cage_tower_plan_unavailable"
-            );
-        }
-        rememberVisibleLanding(
-                frame,
-                cagePlan.landing()
-        );
-        final Optional<VisibleEntity> currentCrystal =
-                frame.visibleEntities().stream()
-                        .filter(entity ->
-                                cageCrystalId.equals(
-                                        entity.entityId()
-                                )
-                        )
-                        .filter(entity ->
-                                END_CRYSTAL.equals(
-                                        entity.entityTypeId()
-                                )
-                        )
-                        .findFirst();
-        if (currentCrystal.isPresent()) {
-            final VisibleEntity crystal =
-                    currentCrystal.orElseThrow();
-            cageLastSeenPosition = crystal.position();
-            if (interactionLineClear(crystal)) {
-                cageTowered = false;
-                clearCageTraversalPlan();
-                phase = Phase.SEARCHING;
-                nextActionTick = context.gameTick();
-                return SkillTickResult.running(true, true);
-            }
-            final Optional<VisibleBlockFace> bar =
-                    alignedCageBar(frame, crystal);
-            if (recentLandingVerification(frame)
-                    && bar.isPresent()) {
-                if (bar.orElseThrow().distance()
-                        <= CAGE_BREAK_REACH) {
-                    phase = Phase.SEARCHING;
-                    return startCageBreak(
-                            context,
-                            parameters,
-                            frame,
-                            bar.orElseThrow(),
-                            fresh
-                    );
-                }
-                return startCageTraversal(
-                        context,
-                        parameters,
-                        frame,
-                        crystal,
-                        cagePlan,
-                        fresh
-                );
-            }
-        }
-        if (cageLandingScans
-                >= CAGE_DESCENT_SCAN_LIMIT) {
-            return fail(
-                    context,
-                    NAME + ".cage_landing_not_visible"
-            );
-        }
-        final PerceptionVec3 target =
-                recentLandingVerification(frame)
-                    ? cageLastSeenPosition
-                    : landingTop(cagePlan.landing());
-        if (!core.move(MovementIntent.STOPPED).accepted()
-                || !core.look(
-                        lookAt(frame.eyePosition(), target)
-                ).accepted()) {
-            return fail(context, NAME + ".look_rejected");
-        }
-        if (fresh) {
-            cageLandingScans++;
-        }
-        cageStatus = recentLandingVerification(frame)
-                ? CageStatus.REACQUIRING_CAGE
-                : CageStatus.VERIFYING_LANDING;
-        return SkillTickResult.running(fresh, true);
-    }
-
-    private SkillTickResult startOrPrepareCageDescent(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final CoreSkillFrame frame,
-            final boolean fresh
-    ) {
-        if (cagePlan == null) {
-            return fail(
-                    context,
-                    NAME + ".cage_descent_plan_unavailable"
-            );
-        }
-        final double drop = cageDrop(frame);
-        if (drop < 3.5) {
-            cageTowered = false;
-            clearCageTraversalPlan();
-            phase = Phase.SEARCHING;
-            nextActionTick = context.gameTick();
-            return SkillTickResult.running(true, true);
-        }
-        final int maximumDrop = Math.max(
-                4,
-                Math.min(32, (int) Math.ceil(drop) + 1)
-        );
-        cageDescentParameters =
-                new WaterClutchDescendParameters(
-                        parameters.dimension(),
-                        cagePlan.landing().x() + 0.5,
-                        cagePlan.landing().y(),
-                        cagePlan.landing().z() + 0.5,
-                        0.6,
-                        maximumDrop
-                );
-        cageDescent = new WaterClutchDescendSkill(
-                expectedPlayerId,
-                core,
-                coreFrames
-        );
-        cageDescentScans = 0;
-        cageLandingScans = 0;
-        phase = Phase.PREPARING_CAGE_DESCENT;
-        return prepareCageDescent(
-                context,
-                frame,
-                fresh
-        );
-    }
-
-    private SkillTickResult prepareCageDescent(
-            final SkillContext context,
-            final CoreSkillFrame frame,
-            final boolean fresh
-    ) {
-        if (cageDescent == null
-                || cageDescentParameters == null
-                || cagePlan == null) {
-            return fail(
-                    context,
-                    NAME + ".cage_descent_plan_unavailable"
-            );
-        }
-        final Optional<SkillFailure> precondition =
-                cageDescent.preconditions(
-                        context,
-                        cageDescentParameters
-                );
-        if (precondition.isEmpty()) {
-            cageDescent.start(
-                    context,
-                    cageDescentParameters
-            );
-            cageStatus = CageStatus.DESCENDING;
-            phase = Phase.DESCENDING_CAGE;
-            return SkillTickResult.running(true, false);
-        }
-        final String code =
-                precondition.orElseThrow().code();
-        if (!code.endsWith(
-                ".visible_safe_landing_required"
-        )) {
-            return fail(
-                    context,
-                    NAME + ".cage_safe_descent_unavailable"
-            );
-        }
-        if (fresh) {
-            cageDescentScans++;
-        }
-        if (cageDescentScans
-                >= CAGE_DESCENT_SCAN_LIMIT) {
-            return fail(
-                    context,
-                    NAME + ".cage_landing_not_visible"
-            );
-        }
-        final PerceptionVec3 landing =
-                new PerceptionVec3(
-                        cagePlan.landing().x() + 0.5,
-                        cagePlan.landing().y(),
-                        cagePlan.landing().z() + 0.5
-                );
-        if (!core.move(MovementIntent.STOPPED).accepted()
-                || !core.look(
-                        lookAt(frame.eyePosition(), landing)
-                ).accepted()) {
-            return fail(context, NAME + ".look_rejected");
-        }
-        cageStatus = CageStatus.SCANNING_LANDING;
-        return SkillTickResult.running(fresh, true);
-    }
-
-    private SkillTickResult tickCageDescent(
-            final SkillContext context,
-            final boolean fresh
-    ) {
-        final SkillTickResult result = cageDescent.tick(
-                context,
-                cageDescentParameters
-        );
-        if (result.status()
-                == SkillTickResult.Status.COMPLETED) {
-            cageDescent = null;
-            cageDescentParameters = null;
-            cageTowered = false;
-            clearCageTraversalPlan();
-            cageStatus = CageStatus.DESCENT_COMPLETED;
-            phase = Phase.SEARCHING;
-            nextActionTick = context.gameTick()
-                    + SCAN_INTERVAL_TICKS;
-            return SkillTickResult.running(true, true);
-        }
-        if (result.status()
-                == SkillTickResult.Status.FAILED) {
-            cageDescent = null;
-            cageDescentParameters = null;
-            return fail(
-                    context,
-                    NAME + ".cage_descent_failed"
-            );
-        }
-        return SkillTickResult.running(
-                result.madeProgress() || fresh,
-                result.safeCheckpoint()
-        );
-    }
-
-    private SkillTickResult meleeDragon(
-            final SkillContext context,
-            final CoreSkillFrame frame,
-            final VisibleEntity target,
-            final String meleeWeapon,
-            final boolean fresh
-    ) {
-        if (!meleeWeapon.equals(frame.mainHand().itemId())) {
-            final InventoryOperationResult equipped =
-                    inventory.equip(new EquipItemParameters(
-                            meleeWeapon,
-                            EquipmentTarget.MAINHAND
-                    ));
-            if (!equipped.succeeded()) {
-                return fail(
-                        context,
-                        equipped.failure().orElseThrow()
-                );
-            }
-            return SkillTickResult.running(true, true);
-        }
-        final PerceptionVec3 interactionAim =
-                meleeAimPoint(target);
-        if (!core.move(MovementIntent.STOPPED).accepted()
-                || !core.look(
-                        lookAt(frame.eyePosition(), interactionAim)
-                ).accepted()) {
-            return fail(context, NAME + ".melee_aim_rejected");
-        }
-        if (angularError(
-                frame.lookDirection(),
-                interactionAim.subtract(frame.eyePosition())
-        ) > MELEE_ALIGNMENT_DEGREES) {
-            return SkillTickResult.running(true, false);
-        }
-        final OptionalDouble strength =
-                interactions.attackStrengthScale();
-        if (strength.isEmpty()) {
-            return fail(
-                    context,
-                    NAME + ".attack_strength_unavailable"
-            );
-        }
-        if (strength.orElseThrow() < MELEE_ATTACK_STRENGTH) {
-            return SkillTickResult.running(fresh, false);
-        }
-        final ActionOutcome attacked =
-                interactions.attack(target.entityId());
-        if (!attacked.accepted()) {
-            if (transientMeleeTargetFailure(attacked)) {
-                if (attacked
-                        == ActionOutcome.TARGET_OUT_OF_REACH) {
-                    meleeReachMisses++;
-                    if (frame.onGround()
-                            && interactionAim.y()
-                                - frame.eyePosition().y()
-                                >= 0.75
-                            && !core.jump().accepted()) {
-                        return fail(
-                                context,
-                                NAME + ".melee_jump_rejected"
-                        );
-                    }
-                }
-                nextActionTick = context.gameTick() + 1;
-                scanTurns = 0;
-                return SkillTickResult.running(true, true);
-            }
-            return fail(context, NAME + ".melee_attack_rejected");
-        }
-        meleeReachMisses = 0;
-        rangedDragonShotsSinceMeleeRetry = 0;
-        meleeAttacks++;
-        nextActionTick = context.gameTick() + 2;
-        scanTurns = 0;
-        return SkillTickResult.running(true, false);
-    }
-
-    private static PerceptionVec3 meleeAimPoint(
-            final VisibleEntity target
-    ) {
-        final Map<String, String> properties =
-                target.visibleProperties();
-        if ("true".equals(properties.get("multipartParent"))) {
-            try {
-                final double x = Double.parseDouble(
-                        properties.get("interactionAimX")
-                );
-                final double y = Double.parseDouble(
-                        properties.get("interactionAimY")
-                );
-                final double z = Double.parseDouble(
-                        properties.get("interactionAimZ")
-                );
-                if (Double.isFinite(x)
-                        && Double.isFinite(y)
-                        && Double.isFinite(z)) {
-                    return new PerceptionVec3(x, y, z);
-                }
-            } catch (NullPointerException
-                    | NumberFormatException ignored) {
-                // Fail closed to the ordinary semantic entity position.
-            }
-        }
-        return target.position().add(
-                new PerceptionVec3(0.0, 2.0, 0.0)
-        );
-    }
-
-    private static boolean transientMeleeTargetFailure(
-            final ActionOutcome outcome
-    ) {
-        return outcome == ActionOutcome.TARGET_NOT_FOUND
-                || outcome == ActionOutcome.TARGET_UNLOADED
-                || outcome == ActionOutcome.TARGET_OUT_OF_REACH
-                || outcome == ActionOutcome.TARGET_OCCLUDED
-                || outcome == ActionOutcome.TARGET_CHANGED;
-    }
-
-    private SkillTickResult scan(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final CoreSkillFrame frame,
-            final boolean fresh
-    ) {
-        /*
-         * A real first-person player does not plant their feet while
-         * searching the sky.  The old STOPPED input left the body exposed to
-         * dragon breath during every 48-view sweep, and also produced the
-         * exact "looks around but does nothing" failure seen in live runs.
-         * Use a small alternating strafe only while no legal target is
-         * visible.  It remains a normal player-relative input; collision,
-         * fall, and emergency-survival checks still own the final movement.
-         */
-        final double searchStrafe =
-                ((scanTurns / SCAN_PITCHES.length) & 1) == 0
-                        ? 0.35
-                        : -0.35;
-        if (!core.move(new MovementIntent(
-                0.0,
-                searchStrafe,
-                false,
-                false
-        )).accepted()) {
-            return fail(context, NAME + ".search_move_rejected");
-        }
-        if (scanTurns >= SCANS_BEFORE_RALLY) {
-            if (rallyAttempts >= MAXIMUM_RALLY_ATTEMPTS) {
-                return fail(
-                        context,
-                        NAME + ".no_visible_combat_target"
-                );
-            }
-            return startRallyTravel(
-                    context,
-                    parameters,
-                    fresh
-            );
-        }
-        final int pitchIndex =
-                scanTurns % SCAN_PITCHES.length;
-        final int yawStep =
-                scanTurns / SCAN_PITCHES.length;
-        final LookIntent look = new LookIntent(
-                ActionMath.wrapDegrees(
-                        scanBaseYaw + yawStep * 30.0F
-                ),
-                SCAN_PITCHES[pitchIndex]
-        );
-        if (!core.look(look).accepted()) {
-            return fail(context, NAME + ".look_rejected");
-        }
-        scanTurns++;
-        nextActionTick = context.gameTick()
-                + SCAN_INTERVAL_TICKS;
-        return SkillTickResult.running(true, true);
-    }
-
-    /**
-     * Move out of a close multipart hitbox before switching to the bow.  A
-     * normal player backs away from a dragon tail instead of continuing to
-     * swing at the same small part from inside its collider.  The destination
-     * is deliberately not teleported or path-injected: this is only a
-     * bounded forward input after a first-person look, so vanilla collision,
-     * void and emergency-survival rules still decide the result.
-     */
-    private SkillTickResult tickDragonRangedRetreat(
-            final SkillContext context,
-            final CoreSkillFrame frame,
-            final boolean fresh
-    ) {
-        if (dragonRetreatTicksRemaining <= 0
-                || dragonRetreatDirection == null) {
-            dragonRetreatDirection = null;
-            phase = Phase.SEARCHING;
-            nextActionTick = context.gameTick();
-            return SkillTickResult.running(true, true);
-        }
-        final PerceptionVec3 away = dragonRetreatDirection.lengthSquared()
-                > 1.0E-12
-                ? dragonRetreatDirection.normalized()
-                : new PerceptionVec3(
-                        ((context.gameTick() / 6L) & 1L) == 0L
-                                ? 1.0
-                                : -1.0,
-                        0.0,
-                        0.0
-                );
-        final PerceptionVec3 horizontalForward = new PerceptionVec3(
-                frame.lookDirection().x(),
-                0.0,
-                frame.lookDirection().z()
-        );
-        final PerceptionVec3 forward = horizontalForward.lengthSquared()
-                > 1.0E-12
-                ? horizontalForward.normalized()
-                : new PerceptionVec3(0.0, 0.0, 1.0);
-        final PerceptionVec3 left = new PerceptionVec3(
-                forward.z(),
-                0.0,
-                -forward.x()
-        );
-        if (!core.look(lookAt(
-                frame.eyePosition(),
-                frame.eyePosition().add(away)
-        )).accepted()) {
-            return fail(context, NAME + ".ranged_retreat_look_rejected");
-        }
-        if (!core.move(new MovementIntent(
-                away.dot(forward),
-                away.dot(left),
-                true,
-                false
-        )).accepted()) {
-            return fail(context, NAME + ".ranged_retreat_move_rejected");
-        }
-        if (fresh) {
-            dragonRetreatTicksRemaining--;
-        }
-        nextActionTick = context.gameTick() + 1;
-        return SkillTickResult.running(true, true);
-    }
-
-    private void rememberUnsafeClearCrystal(
-            final CoreSkillFrame frame
-    ) {
-        closestClearCrystal(frame)
-                .filter(crystal ->
-                        EndCrystalStandOffPlanner
-                            .horizontalDistance(
-                                frame.position(),
-                                crystal.position()
-                            )
-                            < EndCrystalStandOffPlanner
-                                .MINIMUM_FIRE_DISTANCE
-                )
-                .ifPresent(crystal -> {
-                    crystalStandOffPosition =
-                            crystal.position();
-                });
-    }
-
-    private SkillTickResult prepareCrystalStandOff(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final CoreSkillFrame frame,
-            final boolean fresh
-    ) {
-        final PerceptionVec3 crystal =
-                Objects.requireNonNull(
-                        crystalStandOffPosition
-                );
-        if (EndCrystalStandOffPlanner.horizontalDistance(
-                frame.position(),
-                crystal
-        ) >= EndCrystalStandOffPlanner.MINIMUM_FIRE_DISTANCE) {
-            clearCrystalStandOffMemory();
-            scanTurns = 0;
-            scanBaseYaw = lookYaw(frame);
-            nextActionTick = context.gameTick();
-            return SkillTickResult.running(true, true);
-        }
-        if (crystalCageInspectionTurns
-                < CRYSTAL_CAGE_INSPECTION_SCANS) {
-            if (!core.move(MovementIntent.STOPPED).accepted()) {
-                return fail(
-                        context,
-                        NAME + ".crystal_cage_inspection_stop_rejected"
-                );
-            }
-            final PerceptionVec3 inspectionTarget =
-                    crystal.add(
-                            cageLookOffset(
-                                    crystalCageInspectionTurns
-                            )
-                    );
-            if (!core.look(
-                    lookAt(
-                            frame.eyePosition(),
-                            inspectionTarget
-                    )
-            ).accepted()) {
-                return fail(
-                        context,
-                        NAME + ".crystal_cage_inspection_look_rejected"
-                );
-            }
-            if (fresh) {
-                crystalCageInspectionTurns++;
-            }
-            nextActionTick = context.gameTick()
-                    + SCAN_INTERVAL_TICKS;
-            return SkillTickResult.running(true, true);
-        }
-        final Optional<GridPos> retreat =
-                EndCrystalStandOffPlanner.select(
-                        frame,
-                        crystal,
-                        context.hardcore()
-                );
-        if (retreat.isEmpty()) {
-            if (crystalStandOffScans
-                    >= MAXIMUM_CRYSTAL_STANDOFF_SCANS) {
-                return fail(
-                        context,
-                        NAME + ".crystal_standoff_unobserved"
-                );
-            }
-            if (!core.stop().accepted()) {
-                return fail(
-                        context,
-                        NAME + ".crystal_standoff_stop_rejected"
-                );
-            }
-            final PerceptionVec3 away =
-                    horizontalAwayDirection(
-                            crystal,
-                            frame.position()
-                    );
-            final PerceptionVec3 inspectionTarget =
-                    frame.eyePosition().add(
-                            away.lengthSquared() <= 1.0E-12
-                                ? new PerceptionVec3(
-                                        0.0,
-                                        -2.0,
-                                        -8.0
-                                )
-                                : new PerceptionVec3(
-                                        away.x() * 8.0,
-                                        -2.0,
-                                        away.z() * 8.0
-                                )
-                    );
-            if (!core.look(
-                    lookAt(
-                            frame.eyePosition(),
-                            inspectionTarget
-                    )
-            ).accepted()) {
-                return fail(
-                        context,
-                        NAME + ".crystal_standoff_look_rejected"
-                );
-            }
-            crystalStandOffScans++;
-            nextActionTick = context.gameTick()
-                    + SCAN_INTERVAL_TICKS;
-            return SkillTickResult.running(true, true);
-        }
-        final GridPos destination = retreat.orElseThrow();
-        crystalStandOffParameters = new MoveToParameters(
-                parameters.dimension(),
-                destination.x() + 0.5,
-                destination.y(),
-                destination.z() + 0.5,
-                0.30
-        );
-        crystalStandOff = new MoveToSkill(
-                expectedPlayerId,
-                core,
-                coreFrames,
-                (authorizedContext, authorizedFrame, target) ->
-                    EndCrystalStandOffPlanner
-                        .authorizesAggregateRisk(
-                            authorizedFrame,
-                            target,
-                            crystal
-                        )
-        );
-        final Optional<SkillFailure> precondition =
-                crystalStandOff.preconditions(
-                        context,
-                        crystalStandOffParameters
-                );
-        if (precondition.isPresent()) {
-            crystalStandOff = null;
-            crystalStandOffParameters = null;
-            return fail(
-                    context,
-                    NAME + ".crystal_standoff_precondition"
-            );
-        }
-        crystalStandOff.start(
-                context,
-                crystalStandOffParameters
-        );
-        crystalStandOffAttempts++;
-        phase = Phase.REPOSITIONING_CRYSTAL;
-        return SkillTickResult.running(fresh, true);
-    }
-
-    private SkillTickResult tickCrystalStandOff(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final boolean fresh
-    ) {
-        final SkillTickResult result =
-                crystalStandOff.tick(
-                        context,
-                        crystalStandOffParameters
-                );
-        if (result.status()
-                == SkillTickResult.Status.COMPLETED) {
-            clearCrystalStandOffChild();
-            phase = Phase.SEARCHING;
-            scanTurns = 0;
-            nextActionTick = context.gameTick();
-            return SkillTickResult.running(true, true);
-        }
-        if (result.status()
-                == SkillTickResult.Status.FAILED) {
-            clearCrystalStandOffChild();
-            if (crystalStandOffAttempts
-                    >= MAXIMUM_CRYSTAL_STANDOFF_ATTEMPTS) {
-                return fail(
-                        context,
-                        NAME + ".crystal_standoff_failed"
-                );
-            }
-            phase = Phase.SEARCHING;
-            crystalStandOffScans = 0;
-            nextActionTick = context.gameTick()
-                    + SCAN_INTERVAL_TICKS;
-            return SkillTickResult.running(true, true);
-        }
-        return SkillTickResult.running(
-                result.madeProgress() || fresh,
-                result.safeCheckpoint()
-        );
-    }
-
-    private SkillTickResult startCrystalLane(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final GridPos destination,
-            final boolean fresh
-    ) {
-        crystalLaneParameters = new MoveToParameters(
-                parameters.dimension(),
-                destination.x() + 0.5,
-                destination.y(),
-                destination.z() + 0.5,
-                0.35
-        );
-        crystalLane = new MoveToSkill(
-                expectedPlayerId,
-                core,
-                coreFrames
-        );
-        final Optional<SkillFailure> precondition =
-                crystalLane.preconditions(
-                        context,
-                        crystalLaneParameters
-                );
-        if (precondition.isPresent()) {
-            crystalLane = null;
-            crystalLaneParameters = null;
-            crystalLaneAttempts++;
-            return SkillTickResult.running(fresh, true);
-        }
-        crystalLane.start(context, crystalLaneParameters);
-        crystalLaneAttempts++;
-        crystalLaneScanTurns = 0;
-        phase = Phase.REPOSITIONING_CRYSTAL_LANE;
-        return SkillTickResult.running(true, true);
-    }
-
-    private SkillTickResult tickCrystalLane(
-            final SkillContext context,
-            final boolean fresh
-    ) {
-        if (crystalLane == null || crystalLaneParameters == null) {
-            phase = Phase.SEARCHING;
-            return SkillTickResult.running(true, true);
-        }
-        final SkillTickResult result = crystalLane.tick(
-                context,
-                crystalLaneParameters
-        );
-        if (result.status() == SkillTickResult.Status.COMPLETED) {
-            crystalLane = null;
-            crystalLaneParameters = null;
-            phase = Phase.SEARCHING;
-            scanTurns = 0;
-            crystalLaneScanTurns = 0;
-            nextActionTick = context.gameTick();
-            return SkillTickResult.running(true, true);
-        }
-        if (result.status() == SkillTickResult.Status.FAILED) {
-            crystalLane = null;
-            crystalLaneParameters = null;
-            phase = Phase.SEARCHING;
-            nextActionTick = context.gameTick()
-                    + SCAN_INTERVAL_TICKS;
-            return SkillTickResult.running(true, true);
-        }
-        return SkillTickResult.running(
-                result.madeProgress() || fresh,
-                result.safeCheckpoint()
-        );
-    }
-
-    private static Optional<VisibleEntity> closestClearCrystal(
-            final CoreSkillFrame frame
-    ) {
-        return frame.visibleEntities()
-                .stream()
-                .filter(entity ->
-                        END_CRYSTAL.equals(
-                                entity.entityTypeId()
-                        )
-                )
-                .filter(
-                        FightEnderDragonSkill
-                            ::interactionLineClear
-                )
-                .min(Comparator.comparingDouble(
-                        VisibleEntity::distance
-                ));
-    }
-
-    private static PerceptionVec3 horizontalAwayDirection(
-            final PerceptionVec3 crystal,
-            final PerceptionVec3 body
-    ) {
-        final PerceptionVec3 away = new PerceptionVec3(
-                body.x() - crystal.x(),
-                0.0,
-                body.z() - crystal.z()
-        );
-        return away.lengthSquared() <= 1.0E-12
-                ? away
-                : away.normalized();
-    }
-
-    private void clearCrystalStandOffChild() {
-        crystalStandOff = null;
-        crystalStandOffParameters = null;
-    }
-
-    private void clearCrystalStandOffMemory() {
-        clearCrystalStandOffChild();
-        crystalStandOffPosition = null;
-        crystalStandOffScans = 0;
-        crystalStandOffAttempts = 0;
-        crystalCageInspectionTurns = 0;
-    }
-
-    private SkillTickResult tickShot(
-            final SkillContext context,
-            final boolean fresh
-    ) {
-        final SkillTickResult result =
-                shot.tick(context, shotParameters);
-        if (result.status() == SkillTickResult.Status.COMPLETED) {
-            shotsDispatched++;
-            if (shotTargetDragon) {
-                recordCompletedDragonShot();
-            }
-            shot = null;
-            shotParameters = null;
-            shotTargetDragon = false;
-            phase = Phase.SEARCHING;
-            nextActionTick = context.gameTick()
-                    + PROJECTILE_SETTLE_TICKS;
-            return SkillTickResult.running(true, true);
-        }
-        if (result.status() == SkillTickResult.Status.FAILED) {
-            final String code = result.failure()
-                    .orElseThrow()
-                    .code();
-            shot = null;
-            shotParameters = null;
-            shotTargetDragon = false;
-            phase = Phase.SEARCHING;
-            nextActionTick = context.gameTick()
-                    + SCAN_INTERVAL_TICKS;
-            if (transientShotFailure(code)) {
-                return SkillTickResult.running(true, true);
-            }
-            return fail(context, NAME + ".shot_failed");
-        }
-        return SkillTickResult.running(
-                result.madeProgress() || fresh,
-                result.safeCheckpoint()
-        );
-    }
-
-    private void recordCompletedDragonShot() {
-        rangedDragonShotsSinceMeleeRetry++;
-        if (rangedDragonShotsSinceMeleeRetry
-                < RANGED_SHOTS_BEFORE_MELEE_RETRY) {
-            return;
-        }
-        /*
-         * A flying dragon may become safely reachable after it perches. The
-         * old accounting cleared only reach misses, leaving meleeAttacks at
-         * its burst limit and dragonRangedMode permanently true. Every later
-         * close observation therefore skipped the sword forever. Reopen one
-         * bounded melee burst after four ordinary arrows; distance, line of
-         * sight, aim and attack cooldown still gate every swing.
-         */
-        meleeReachMisses = 0;
-        meleeAttacks = 0;
-        rangedDragonShotsSinceMeleeRetry = 0;
-        dragonRangedMode = false;
-        dragonRetreatDirection = null;
-        dragonRetreatTicksRemaining = 0;
-    }
-
-    private SkillTickResult startRallyTravel(
-            final SkillContext context,
-            final FightEnderDragonParameters parameters,
-            final boolean fresh
-    ) {
-        travelParameters = new TravelToParameters(
-                parameters.dimension(),
-                Objects.requireNonNull(localRallyPoint).x(),
-                localRallyPoint.y(),
-                localRallyPoint.z(),
-                3.0
-        );
-        travel = new TravelToSkill(
-                expectedPlayerId,
-                core,
-                coreFrames,
-                sessionGeneration
-        );
-        final Optional<SkillFailure> precondition =
-                travel.preconditions(context, travelParameters);
-        if (precondition.isPresent()) {
-            travel = null;
-            travelParameters = null;
-            rallyAttempts++;
-            scanTurns = 0;
-            scanBaseYaw = ActionMath.wrapDegrees(
-                    scanBaseYaw + 15.0F
-            );
-            return SkillTickResult.running(true, true);
-        }
-        travel.start(context, travelParameters);
-        rallyAttempts++;
-        travelPurpose = TravelPurpose.RALLY;
-        phase = Phase.TRAVELLING;
-        return SkillTickResult.running(fresh, true);
-    }
-
-    private SkillTickResult tickTravel(
-            final SkillContext context,
-            final boolean fresh
-    ) {
-        final SkillTickResult result =
-                travel.tick(context, travelParameters);
-        if (result.status() != SkillTickResult.Status.RUNNING) {
-            final TravelPurpose completedPurpose =
-                    travelPurpose;
-            travel = null;
-            travelParameters = null;
-            travelPurpose = TravelPurpose.NONE;
-            phase = Phase.SEARCHING;
-            scanTurns = 0;
-            nextActionTick = context.gameTick();
-            if (completedPurpose
-                    == TravelPurpose.CAGE_APPROACH) {
-                if (result.status()
-                        == SkillTickResult.Status.COMPLETED) {
-                    cageStatus =
-                            CageStatus.APPROACH_REACHED;
-                } else {
-                    cagePlan = null;
-                    cageStatus =
-                            CageStatus.APPROACH_CELL_UNAVAILABLE;
-                }
-            }
-            coreFrames.current().ifPresent(frame ->
-                    scanBaseYaw = lookYaw(frame)
-            );
-            return SkillTickResult.running(true, true);
-        }
-        return SkillTickResult.running(
-                result.madeProgress() || fresh,
-                result.safeCheckpoint()
-        );
-    }
-
-    private static Optional<Integer> selectTargetIndex(
-            final CoreSkillFrame frame
-    ) {
-        final Optional<Integer> crystal =
-                clearCrystalIndex(frame);
-        if (crystal.isPresent()) {
-            return crystal;
-        }
-        return java.util.stream.IntStream.range(
-                0,
-                frame.visibleEntities().size()
-        )
-                .boxed()
-                .filter(index ->
-                        ENDER_DRAGON.equals(
-                            frame.visibleEntities()
-                                .get(index)
-                                .entityTypeId()
-                        )
-                )
-                .min(Comparator.comparingDouble(index ->
-                        frame.visibleEntities()
-                            .get(index)
-                            .distance()
-                ));
-    }
-
-    private static Optional<Integer> immediateDragonIndex(
-            final CoreSkillFrame frame
-    ) {
-        final boolean damageNearby = frame.dangerSignals().stream()
-                .anyMatch(signal ->
-                        (signal.kind() == DangerKind.THREAT_CONTACT
-                                || signal.kind()
-                                        == DangerKind.PROJECTILE_PROXIMITY)
-                                && signal.severity() >= 0.35);
-        return java.util.stream.IntStream.range(
-                        0,
-                        frame.visibleEntities().size()
-                )
-                .boxed()
-                .filter(index -> ENDER_DRAGON.equals(
-                        frame.visibleEntities().get(index).entityTypeId()
-                ))
-                .filter(index ->
-                        damageNearby
-                                || frame.visibleEntities().get(index)
-                                        .distance()
-                                    <= IMMEDIATE_DRAGON_DISTANCE
-                )
-                .min(Comparator.comparingDouble(index ->
-                        frame.visibleEntities().get(index).distance()
-                ));
-    }
-
-    private static Optional<Integer> nearestDragonIndex(
-            final CoreSkillFrame frame
-    ) {
-        return java.util.stream.IntStream.range(
-                        0,
-                        frame.visibleEntities().size()
-                )
-                .boxed()
-                .filter(index -> ENDER_DRAGON.equals(
-                        frame.visibleEntities().get(index).entityTypeId()
-                ))
-                .min(Comparator.comparingDouble(index ->
-                        frame.visibleEntities().get(index).distance()
-                ));
-    }
-
-    private static Optional<Integer> clearCrystalIndex(
-            final CoreSkillFrame frame
-    ) {
-        return java.util.stream.IntStream.range(
-                        0,
-                        frame.visibleEntities().size()
-                )
-                    .boxed()
-                    .filter(index ->
-                            END_CRYSTAL.equals(
-                                frame.visibleEntities()
-                                    .get(index)
-                                    .entityTypeId()
-                            )
-                    )
-                    .filter(index ->
-                            frame.visibleEntities()
-                                .get(index)
-                                .distance()
-                                    >= EndCrystalStandOffPlanner
-                                        .MINIMUM_FIRE_DISTANCE
-                    )
-                    .filter(index ->
-                            interactionLineClear(
-                                frame.visibleEntities().get(index)
-                            )
-                    )
-                    .min(Comparator.comparingDouble(index ->
-                            frame.visibleEntities()
-                                .get(index)
-                                .distance()
-                    ));
-    }
-
-    private static boolean hasBlockedCrystal(
-            final CoreSkillFrame frame
-    ) {
-        return frame.visibleEntities().stream().anyMatch(entity ->
-                END_CRYSTAL.equals(entity.entityTypeId())
-                    && !interactionLineClear(entity)
-        );
-    }
-
-    private boolean shouldDescendFromCage(
-            final CoreSkillFrame frame
-    ) {
-        if (!cageTowered || cagePlan == null) {
-            return false;
-        }
-        if (cageCrystalId == null) {
-            return true;
-        }
-        return frame.visibleEntities().stream()
-                .filter(entity ->
-                        cageCrystalId.equals(entity.entityId())
-                )
-                .findFirst()
-                .map(FightEnderDragonSkill::interactionLineClear)
-                .orElse(true);
-    }
-
-    private Optional<VisibleEntity> boundBlockedCrystal(
-            final CoreSkillFrame frame
-    ) {
-        if (cageCrystalId == null) {
-            return Optional.empty();
-        }
-        return frame.visibleEntities().stream()
-                .filter(entity ->
-                        cageCrystalId.equals(entity.entityId())
-                )
-                .filter(entity ->
-                        END_CRYSTAL.equals(
-                                entity.entityTypeId()
-                        )
-                )
-                .filter(entity ->
-                        !interactionLineClear(entity)
-                )
-                .findFirst();
-    }
-
-    private static Optional<VisibleEntity> closestBlockedCrystal(
-            final CoreSkillFrame frame
-    ) {
-        return frame.visibleEntities().stream()
-                .filter(entity ->
-                        END_CRYSTAL.equals(
-                                entity.entityTypeId()
-                        )
-                )
-                .filter(entity ->
-                        !interactionLineClear(entity)
-                )
-                .min(Comparator.comparingDouble(
-                        VisibleEntity::distance
-                ));
-    }
-
-    private static Optional<VisibleEntity>
-            closestCrystalWithAlignedCageBar(
-                    final CoreSkillFrame frame
-            ) {
-        return frame.visibleEntities().stream()
-                .filter(entity ->
-                        END_CRYSTAL.equals(
-                                entity.entityTypeId()
-                        )
-                )
-                .filter(entity ->
-                        alignedCageBar(
-                                frame,
-                                entity
-                        ).isPresent()
-                )
-                .min(Comparator.comparingDouble(
-                        VisibleEntity::distance
-                ));
-    }
-
-    private double cageDrop(final CoreSkillFrame frame) {
-        return cagePlan == null
-                ? 0.0
-                : frame.position().y()
-                    - cagePlan.landing().y();
-    }
-
-    private static boolean visibleLandingSupport(
-            final CoreSkillFrame frame,
-            final GridPos landing
-    ) {
-        final GridPos support = landing.below();
-        return frame.visibleBlockFaces().stream().anyMatch(face ->
-                face.block().x() == support.x()
-                    && face.block().y() == support.y()
-                    && face.block().z() == support.z()
-                    && blockFace(face.face())
-                        .filter(value -> value == BlockFace.UP)
-                        .isPresent()
-        );
-    }
-
-    private void rememberVisibleLanding(
-            final CoreSkillFrame frame,
-            final GridPos landing
-    ) {
-        if (visibleLandingSupport(frame, landing)) {
-            cageLandingVerified = true;
-            cageLandingVerifiedRevision =
-                    frame.observationRevision();
-        }
-    }
-
-    private boolean recentLandingVerification(
-            final CoreSkillFrame frame
-    ) {
-        return cageLandingVerified
-                && cageLandingVerifiedRevision >= 0
-                && frame.observationRevision()
-                    >= cageLandingVerifiedRevision
-                && frame.observationRevision()
-                    - cageLandingVerifiedRevision <= 4;
-    }
-
-    private static PerceptionVec3 landingTop(
-            final GridPos landing
-    ) {
-        return new PerceptionVec3(
-                landing.x() + 0.5,
-                landing.y(),
-                landing.z() + 0.5
-        );
-    }
-
-    private void clearCageTraversalPlan() {
-        cageCrystalId = null;
-        cageLastSeenPosition = null;
-        cagePlan = null;
-        cageApproachAttempts = 0;
-        cageDescentScans = 0;
-        cageLandingScans = 0;
-        cageLandingVerified = false;
-        cageLandingVerifiedRevision = -1;
-        sawCageBarBeyondReach = false;
-    }
-
-    private static Optional<VisibleBlockFace> alignedCageBar(
-            final CoreSkillFrame frame,
-            final VisibleEntity crystal
-    ) {
-        final PerceptionVec3 origin = frame.eyePosition();
-        final PerceptionVec3 ray =
-                crystal.position().subtract(origin);
-        final double rayLengthSquared = ray.lengthSquared();
-        if (rayLengthSquared <= 1.0E-12) {
-            return Optional.empty();
-        }
-        return frame.visibleBlockFaces().stream()
-                .filter(face ->
-                        IRON_BARS.equals(face.blockTypeId())
-                )
-                .filter(face -> {
-                    final PerceptionVec3 fromOrigin =
-                            face.hitPosition().subtract(origin);
-                    final double fraction = fromOrigin.dot(ray)
-                            / rayLengthSquared;
-                    if (fraction <= 0.0 || fraction >= 1.05) {
-                        return false;
-                    }
-                    final PerceptionVec3 closest =
-                            origin.add(ray.scale(fraction));
-                    return face.hitPosition()
-                            .subtract(closest)
-                            .length()
-                            <= CAGE_LINE_RADIUS;
-                })
-                .min(Comparator.comparingDouble(
-                        VisibleBlockFace::distance
-                ));
-    }
-
-    private static boolean interactionLineClear(
-            final VisibleEntity entity
-    ) {
-        return !"false".equals(
-                entity.visibleProperties().get(
-                    "interactionLineClear"
-                )
-        );
-    }
-
-    private static boolean projectileThreatensBody(
-            final VisibleEntity projectile
-    ) {
-        /*
-         * The fair sampler marks the companion's own arrows as visible but
-         * non-threatening. Older fixtures without this property remain
-         * conservative and are treated as threats.
-         */
-        return !"false".equals(
-                projectile.visibleProperties().get("projectileThreat")
-        );
-    }
-
-    private static Optional<String> preferredMeleeWeapon(
-            final CoreSkillFrame frame
-    ) {
-        return MELEE_WEAPONS.stream().filter(itemId ->
-                inventoryCount(frame, itemId) > 0
-        ).findFirst();
-    }
-
-    private static Optional<String> preferredCageMiningTool(
-            final CoreSkillFrame frame
-    ) {
-        return CAGE_MINING_TOOLS.stream().filter(itemId ->
-                inventoryCount(frame, itemId) > 0
-        ).findFirst();
-    }
-
-    private static Optional<BlockFace> blockFace(
-            final String serialized
-    ) {
-        final int separator = serialized.lastIndexOf(':');
-        final String token = separator >= 0
-                ? serialized.substring(separator + 1)
-                : serialized;
-        try {
-            return Optional.of(BlockFace.valueOf(
-                    token.toUpperCase(Locale.ROOT)
-            ));
-        } catch (IllegalArgumentException exception) {
-            return Optional.empty();
-        }
-    }
-
-    private static PerceptionVec3 cageLookOffset(
-            final int scanTurn
-    ) {
-        return switch (scanTurn % 6) {
-            case 0 -> new PerceptionVec3(0.0, 0.0, 0.0);
-            case 1 -> new PerceptionVec3(0.0, 1.25, 0.0);
-            case 2 -> new PerceptionVec3(0.0, -0.75, 0.0);
-            case 3 -> new PerceptionVec3(0.75, 0.25, 0.0);
-            case 4 -> new PerceptionVec3(-0.75, 0.25, 0.0);
-            default -> new PerceptionVec3(0.0, 0.25, 0.75);
-        };
-    }
-
-    private static LookIntent lookAt(
-            final PerceptionVec3 eye,
-            final PerceptionVec3 target
-    ) {
-        final PerceptionVec3 delta = target.subtract(eye);
-        return new LookIntent(
-                (float) Math.toDegrees(
-                        Math.atan2(-delta.x(), delta.z())
-                ),
-                (float) Math.toDegrees(Math.atan2(
-                        -delta.y(),
-                        Math.hypot(delta.x(), delta.z())
-                ))
-        );
-    }
-
-    private static double angularError(
-            final PerceptionVec3 current,
-            final PerceptionVec3 desired
-    ) {
-        if (desired.lengthSquared() <= 1.0E-12) {
-            return 180.0;
-        }
-        final double dot = current.normalized()
-                .dot(desired.normalized());
-        return Math.toDegrees(Math.acos(
-                Math.max(-1.0, Math.min(1.0, dot))
-        ));
-    }
-
-    private SnapshotValidation validateSnapshot(
-            final FightEnderDragonParameters parameters
-    ) {
-        final Optional<CoreSkillFrame> maybeCore =
-                coreFrames.current();
-        final Optional<InteractionSkillFrame> maybeInteraction =
-                interactionFrames.current();
-        if (maybeCore.isEmpty() || maybeInteraction.isEmpty()) {
-            return SnapshotValidation.failed(
-                    NAME + ".observation_unavailable"
-            );
-        }
-        final CoreSkillFrame coreFrame = maybeCore.orElseThrow();
-        final InteractionSkillFrame interaction =
-                maybeInteraction.orElseThrow();
-        if (!expectedPlayerId.equals(coreFrame.playerId())
-                || !expectedPlayerId.equals(
-                    interaction.playerId()
-                )) {
-            return SnapshotValidation.failed(
-                    NAME + ".body_mismatch"
-            );
-        }
-        if (!parameters.dimension().equals(coreFrame.dimension())
-                || !coreFrame.dimension().equals(
-                    interaction.dimension()
-                )) {
-            return SnapshotValidation.failed(
-                    NAME + ".wrong_dimension"
-            );
-        }
-        if (coreFrame.observationRevision()
-                != interaction.observationRevision()) {
-            return SnapshotValidation.failed(
-                    NAME + ".observation_desynchronized"
-            );
-        }
-        final OptionalLong session =
-                interactions.sessionGeneration();
-        if (session.isEmpty()
-                || session.orElseThrow()
-                    != interaction.sessionGeneration()
-                || boundSessionGeneration >= 0
-                    && session.orElseThrow()
-                        != boundSessionGeneration) {
-            return SnapshotValidation.failed(
-                    NAME + ".session_mismatch"
-            );
-        }
-        return SnapshotValidation.available(
-                new Snapshot(coreFrame, interaction)
-        );
-    }
-
-    private static boolean healthTooLow(
-            final SkillContext context,
-            final CoreSkillFrame frame
-    ) {
-        final double ratio = frame.health() / frame.maxHealth();
-        return ratio < (context.hardcore() ? 0.50 : 0.25);
-    }
-
-    private static boolean cageTraversalSafety(
-            final SkillContext context,
-            final CoreSkillFrame frame
-    ) {
-        final double maximumDanger =
-                context.hardcore() ? 0.04 : 0.12;
-        final double minimumHealth =
-                context.hardcore() ? 0.95 : 0.80;
-        return context.riskScore() <= maximumDanger
-                && frame.danger() <= maximumDanger
-                && frame.health() / frame.maxHealth()
-                    >= minimumHealth
-                && frame.foodLevel() >= 8
-                && frame.onGround()
-                && !frame.inWater();
-    }
-
-    private static int inventoryCount(
-            final CoreSkillFrame frame,
-            final String itemId
-    ) {
-        return frame.inventory().stream()
-                .filter(item -> item.itemId().equals(itemId))
-                .mapToInt(InventoryItemSummary::count)
-                .sum();
-    }
-
-    private static float lookYaw(final CoreSkillFrame frame) {
-        return (float) Math.toDegrees(Math.atan2(
-                -frame.lookDirection().x(),
-                frame.lookDirection().z()
-        ));
-    }
-
-    private static float yawFromDirection(
-            final PerceptionVec3 direction
-    ) {
-        return (float) Math.toDegrees(Math.atan2(
-                -direction.x(),
-                direction.z()
-        ));
-    }
-
-    private static boolean transientShotFailure(
-            final String code
-    ) {
-        return code.endsWith(".target_lost")
-                || code.endsWith(".stale_observation")
-                || code.endsWith(".stale_observation_id")
-                /*
-                 * The 20 TPS survival supervisor may fairly pre-empt the
-                 * bow with food after a crystal explosion. The child has
-                 * already released its use action on failure; reobserve and
-                 * equip again after the safety action instead of converting
-                 * that expected pre-emption into a terminal dragon failure.
-                 */
-                || code.endsWith(".weapon_changed")
-                || code.endsWith(".crystal_too_close")
-                || code.endsWith(".target_out_of_reach")
-                /*
-                 * A dragon part can move between the sampled observation
-                 * and the vanilla use packet.  Alignment, line-of-sight,
-                 * and use-start failures are therefore ordinary retryable
-                 * first-person races, not reasons to hand the whole fight
-                 * back to the language model.  Releasing the child below
-                 * always returns the skill to SEARCHING, where a fresh
-                 * observation must prove the next shot.
-                 */
-                || code.endsWith(".interaction_line_blocked")
-                || code.endsWith(".look_rejected")
-                || code.endsWith(".stop_rejected")
-                || code.endsWith(".use_start_rejected")
-                || code.endsWith(".use_interrupted")
-                || code.endsWith(".release_rejected")
-                /*
-                 * A dragon wing/contact pulse can raise the sampled danger
-                 * after the child has already begun aiming.  The emergency
-                 * supervisor owns the immediate retreat/guard response; the
-                 * dragon skill must reobserve and retry instead of ending
-                 * the entire victory goal on that one fair safety rejection.
-                 */
-                || code.endsWith(".danger_too_high");
-    }
-
-    private static boolean transientCageBreakFailure(
-            final String code
-    ) {
-        return code.endsWith(".observation_expired")
-                || code.endsWith(".target_not_visible")
-                || code.endsWith(".target_out_of_range")
-                || code.endsWith(".stale_observation")
-                || code.endsWith(".target_changed")
-                || code.endsWith(".action_target_occluded")
-                || code.endsWith(".action_target_out_of_reach");
-    }
-
-    private void cancelChildren(final SkillContext context) {
-        if (shot != null && shotParameters != null) {
-            try {
-                shot.cancel(context, shotParameters);
-            } catch (RuntimeException ignored) {
-                interactions.releaseUse();
-            }
-        }
-        shot = null;
-        shotParameters = null;
-        shotTargetDragon = false;
-        if (travel != null && travelParameters != null) {
-            try {
-                travel.cancel(context, travelParameters);
-            } catch (RuntimeException ignored) {
-                core.stop();
-            }
-        }
-        travel = null;
-        travelParameters = null;
-        travelPurpose = TravelPurpose.NONE;
-        if (crystalStandOff != null
-                && crystalStandOffParameters != null) {
-            try {
-                crystalStandOff.cancel(
-                        context,
-                        crystalStandOffParameters
-                );
-            } catch (RuntimeException ignored) {
-                core.stop();
-            }
-        }
-        clearCrystalStandOffChild();
-        if (crystalLane != null && crystalLaneParameters != null) {
-            try {
-                crystalLane.cancel(context, crystalLaneParameters);
-            } catch (RuntimeException ignored) {
-                core.stop();
-            }
-        }
-        crystalLane = null;
-        crystalLaneParameters = null;
-        if (cageBreak != null
-                && cageBreakParameters != null) {
-            try {
-                cageBreak.cancel(
-                        context,
-                        cageBreakParameters
-                );
-            } catch (RuntimeException ignored) {
-                interactions.abortMining();
-            }
-        }
-        cageBreak = null;
-        cageBreakParameters = null;
-        if (cageTower != null
-                && cageTowerParameters != null) {
-            try {
-                cageTower.cancel(
-                        context,
-                        cageTowerParameters
-                );
-            } catch (RuntimeException ignored) {
-                core.stop();
-            }
-        }
-        cageTower = null;
-        cageTowerParameters = null;
-        if (cageDescent != null
-                && cageDescentParameters != null) {
-            try {
-                cageDescent.cancel(
-                        context,
-                        cageDescentParameters
-                );
-            } catch (RuntimeException ignored) {
-                core.stop();
-            }
-        }
-        cageDescent = null;
-        cageDescentParameters = null;
-    }
-
-    private void quiesce() {
-        interactions.releaseUse();
-        core.releaseUse();
-        core.stop();
-    }
-
-    private SkillTickResult fail(
-            final SkillContext context,
-            final String code
-    ) {
-        return fail(context, SkillFailure.of(code));
-    }
-
-    private SkillTickResult fail(
-            final SkillContext context,
-            final SkillFailure reason
-    ) {
-        cancelChildren(context);
-        quiesce();
-        failure = reason;
-        phase = Phase.FAILED;
-        return SkillTickResult.failed(reason);
-    }
-
-    private enum Phase {
-        IDLE,
-        SEARCHING,
-        SHOOTING,
-        RETREATING_DRAGON,
-        REPOSITIONING_CRYSTAL,
-        REPOSITIONING_CRYSTAL_LANE,
-        TRAVELLING,
-        OPENING_CAGE,
-        PREPARING_CAGE_TOWER,
-        TOWERING_CAGE,
-        PREPARING_CAGE_DESCENT,
-        DESCENDING_CAGE,
-        COMPLETED,
-        FAILED,
-        CANCELLED;
-
-        private boolean active() {
-            return this == SEARCHING
-                    || this == SHOOTING
-                    || this == RETREATING_DRAGON
-                    || this == REPOSITIONING_CRYSTAL
-                    || this == REPOSITIONING_CRYSTAL_LANE
-                    || this == TRAVELLING
-                    || this == OPENING_CAGE
-                    || this == PREPARING_CAGE_TOWER
-                    || this == TOWERING_CAGE
-                    || this == PREPARING_CAGE_DESCENT
-                    || this == DESCENDING_CAGE;
-        }
-    }
-
-    private enum CageStatus {
-        NONE,
-        SEEKING_VISIBLE_BAR,
-        APPROACH_OR_ELEVATION_REQUIRED,
-        SAFE_TRAVERSAL_UNAVAILABLE,
-        SAFETY_RESERVE_REQUIRED,
-        PICKAXE_REQUIRED,
-        WATER_BUCKET_REQUIRED,
-        EQUIPPING_PICKAXE,
-        APPROACH_CELL_UNAVAILABLE,
-        APPROACHING,
-        APPROACH_REACHED,
-        VERIFYING_LANDING,
-        REACQUIRING_CAGE,
-        TOWERING,
-        ELEVATED,
-        ALIGNING_VISIBLE_BAR,
-        MINING_VISIBLE_BAR,
-        VERIFYING_OPENING,
-        SCANNING_LANDING,
-        DESCENDING,
-        DESCENT_COMPLETED
-    }
-
-    private enum TravelPurpose {
-        NONE,
-        RALLY,
-        CAGE_APPROACH
-    }
-
-    private record Snapshot(
-            CoreSkillFrame core,
-            InteractionSkillFrame interaction
-    ) {
-    }
-
-    private record SnapshotValidation(
-            Optional<Snapshot> snapshot,
-            Optional<SkillFailure> failure
-    ) {
-        private static SnapshotValidation available(
-                final Snapshot snapshot
-        ) {
-            return new SnapshotValidation(
-                    Optional.of(snapshot),
-                    Optional.empty()
-            );
-        }
-
-        private static SnapshotValidation failed(
-                final String code
-        ) {
-            return new SnapshotValidation(
-                    Optional.empty(),
-                    Optional.of(SkillFailure.of(code))
-            );
-        }
-    }
-}
+ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½µ‰…Ðì()¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹Ñ¥½¹!…¹ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹Ñ¥½¹5…Ñ ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹Ñ¥½¹=ÕÑ½µ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹	±½­…”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹1½½­%¹Ñ•¹Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹5½Ù•µ•¹Ñ%¹Ñ•¹Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹ÁÉ½É•ÍÍ¥½¸¹½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹É¥‘A½Ìì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹%¹Ù•¹Ñ½Éå%Ñ•µMÕµµ…Éäì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹…¹•É-¥¹ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹A•É•ÁÑ¥½¹Y•ŒÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹A•É•ÁÑ¥½¹AÉ½Ù•¹…¹”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹Y¥Í¥‰±•	±½­…”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹Y¥Í¥‰±•¹Ñ¥Ñäì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±°ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±¡•­Á½¥¹Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±½¹Ñ•áÐì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±…¥±ÕÉ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±A…É…µ•Ñ•ÉA…ÉÍ•Èì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±I•ÍÕ±Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±Q¥­I•ÍÕ±Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹‰É¥‘¥¹œ¹	É¥‘•5…Ñ•É¥…±ÑÕ…Ñ½Èì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹‰É¥‘¥¹œ¹	É¥‘•5…Ñ•É¥…±I•ÍÕ±Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹‰É¥‘¥¹œ¹Q½Ý•ÉUÁA…É…µ•Ñ•ÉÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹‰É¥‘¥¹œ¹Q½Ý•ÉUÁM­¥±°ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹‰É¥‘¥¹œ¹]…Ñ•É±ÕÑ¡•Í•¹‘A…É…µ•Ñ•ÉÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹‰É¥‘¥¹œ¹]…Ñ•É±ÕÑ¡•Í•¹‘M­¥±°ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹½É•M­¥±±ÑÕ…Ñ½Èì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹½É•M­¥±±É…µ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹½É•M­¥±±É…µ•M½ÕÉ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹5½Ù•Q½A…É…µ•Ñ•ÉÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹5½Ù•Q½M­¥±°ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹QÉ…Ù•±Q½A…É…µ•Ñ•ÉÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹QÉ…Ù•±Q½M­¥±°ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹•¹¹¹‘É•¹…Q½Á½±½äì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹•¹¹¹‘%Í±…¹‘I…±±åÙ¥‘•¹”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ñ•É…Ñ¥½¸¹	É•…­	±½­A…É…µ•Ñ•ÉÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ñ•É…Ñ¥½¸¹	É•…­	±½­M­¥±°ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ñ•É…Ñ¥½¸¹%¹Ñ•É…Ñ¥½¹M­¥±±ÑÕ…Ñ½Èì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ñ•É…Ñ¥½¸¹%¹Ñ•É…Ñ¥½¹M­¥±±É…µ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ñ•É…Ñ¥½¸¹%¹Ñ•É…Ñ¥½¹M­¥±±É…µ•M½ÕÉ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ñ•É…Ñ¥½¸¹%¹Ñ•É…Ñ¥½¹M­¥±±A½±¥äì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ñ•É…Ñ¥½¸¹=‰Í•ÉÙ•‘	±½­Q…É•Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ù•¹Ñ½Éä¹ÅÕ¥Á%Ñ•µA…É…µ•Ñ•ÉÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ù•¹Ñ½Éä¹ÅÕ¥Áµ•¹ÑQ…É•Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ù•¹Ñ½Éä¹%¹Ù•¹Ñ½Éå=Á•É…Ñ¥½¹I•ÍÕ±Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ù•¹Ñ½Éä¹%¹Ù•¹Ñ½ÉåM­¥±±ÑÕ…Ñ½Èì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Ý…åÁ½¥¹Ð¹¥µ•¹Í¥½¹I•˜ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹½µÁ…É…Ñ½Èì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹1¥ÍÐì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹1½…±”ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹5…Àì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=‰©•ÑÌì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=ÁÑ¥½¹…°ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=ÁÑ¥½¹…±½Õ‰±”ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=ÁÑ¥½¹…±1½¹œì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹UU%ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹™Õ¹Ñ¥½¸¹1½¹MÕÁÁ±¥•Èì((¼¨¨(€¨	½Õ¹‘•¹µ™¥¡Ð½½É‘¥¹…Ñ¥½¸‘É¥Ù•¸½¹±ä‰äÑ¡”Á±…å•ÈÌÕÉÉ•¹ÐÍ•µ…¹Ñ¥Œ(€¨Ù¥•Ü¸Ù•ÉäÁÉ½©•Ñ¥±”¥Ì‘•±•…Ñ•Ñ¼Ñ¡”¹½Éµ…°É…¹•½µ‰…ÐÍ­¥±°…¹(€¨Ù¥Ñ½Éä¥Ì…•ÁÑ•½¹±ä™É½´Ñ¡”½µÁ…¹¥½¸µ…ÑÑÉ¥‰ÕÑ•‘É…½¸µ‘•…Ñ •Ù•¹Ð¸(€¨¼)ÁÕ‰±¥Œ™¥¹…°±…ÍÌ¥¡Ñ¹‘•ÉÉ…½¹M­¥±°(€€€€€€€¥µÁ±•µ•¹ÑÌM­¥±°ñ¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌøì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°MÑÉ¥¹œ95€ô€‰™¥¡Ñ}•¹‘•É}‘É…½¸ˆì((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°MÑÉ¥¹œ	=\€ô€‰µ¥¹•É…™Ðé‰½Üˆì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°MÑÉ¥¹œII=\€ô€‰µ¥¹•É…™Ðé…ÉÉ½Üˆì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°MÑÉ¥¹œ9}IeMQ0€ô(€€€€€€€€€€€€‰µ¥¹•É…™Ðé•¹‘}ÉåÍÑ…°ˆì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°MÑÉ¥¹œ9I}I=8€ô(€€€€€€€€€€€€‰µ¥¹•É…™Ðé•¹‘•É}‘É…½¸ˆì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°MÑÉ¥¹œ%I=9}	IL€ô(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¥É½¹}‰…ÉÌˆì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹ÐM9}%9QIY1}Q%-L€ô€Ìì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹ÐM9M}	=I}I11d€ô€Ðàì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a%5U5}I11e}QQ5AQL€ô€Ðì(€€€€¼¨™Õ±°‰½Ü™±¥¡Ð…ÐÑ¡”µ…á¥µÕ´½‰Í•ÉÙ•‘É…½¸‘¥ÍÑ…¹”¥ÌÍ¡½ÉÑ•È(€€€€€¨Ñ¡…¸Ñ¡¥Ìì±•…Ù”•¹½Õ Ñ¥µ”™½ÈÑ¡”Ù…¹¥±±„ÁÉ½©•Ñ¥±”Ñ¼…‘Ù…¹”(€€€€€¨‰•™½É”É•…ÅÕ¥É¥¹œ„Ñ…É•ÐÝ¥Ñ¡½ÕÐ¥‘±¥¹œ„Ý¡½±”Í•½¹¸€¨¼(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹ÐAI=)Q%1}MQQ1}Q%-L€ô€àì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð}M9M}	=I}I11d€ô€ÄÈì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð}M9Q}M9}1%5%P€ô€ÄÈì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a%5U5}}AAI=!}QQ5AQL€ô€Èì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a%5U5}}	IM}5%9€ô€ÄÈì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹ÐIeMQ1}}%9MAQ%=9}M9L€ô€ÄÈì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a%5U5}IeMQ1}MQ9=}M9L€ô€ÄÈì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a%5U5}IeMQ1}MQ9=}QQ5AQL€ô€àì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a%5U5}IeMQ1}19}QQ5AQL€ô€Ìì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a%5U5}IeMQ1}19}M9L€ô€àì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”}1%9}I%UL€ô€Ä¸ÄÔì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”}	I-}I €ô€Ð¸Ôì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”}5%9%9}1%959Q}IL€ô€Ä¸Ôì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”51}I=9}%MQ9€ô€Ô¸ÜÔì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”51}1%959Q}IL€ô€Ô¸Àì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”51}QQ-}MQI9Q €ô€À¸äÀì(€€€€¼¨(€€€€€¨Ù…¹¥±±„Á±…å•È…¸±…¹µ…¹äÍÝ¥¹Ì½¸„‘É…½¸Á…ÉÐÝ¡¥±”Ñ¡”(€€€€€¨…ÑÑ…¬½½±‘½Ý¸…¹Ñ¡”‘É…½¸Ì‘…µ…”¥µµÕ¹¥Ñä…É”½ÕÐ½˜Á¡…Í”¸(€€€€€¨MÑ…å¥¹œÁÉ•ÍÍ•……¥¹ÍÐ½¹”Ñ…¥°½Ý¥¹œ¥¹‘•™¥¹¥Ñ•±ä¥Ì¹•Ù•ÉÑ¡•±•ÍÌ„(€€€€€¨Á½½ÈÉ•½Ù•ÉäÍÑÉ…Ñ•äè¥Ð±•…Ù•Ì¹¼É½½´™½ÈÑ¡”½É‘¥¹…Éä‰½ÜÁ…Ñ (€€€€€¨…¹µ…­•Ì„µÕ±Ñ¥Á…ÉÐÑ…É•Ð±½½¬±¥­”„™É½é•¸½¹Ù•ÉÍ…Ñ¥½¸¸€™Ñ•È(€€€€€¨Ñ¡¥Ì‰½Õ¹‘•±½…°µ•±•”‰ÕÉÍÐ°­••ÀÕÍ¥¹œÑ¡”ÕÉÉ•¹Ñ±äÙ¥Í¥‰±”(€€€€€¨‘É…½¸…¹¹½Éµ…°…ÉÉ½ÝÌÕ¹Ñ¥°¥Ð¥Ì‘•…¸€Q¡¥Ì¥Ì„½µ‰…ÐÁ½±¥ä°(€€€€€¨¹½Ð„¡•…±Ñ ½Ý½É±Í¡½ÉÑÕÐì•Ù•ÉäÍ¡½ÐÍÑ¥±°½•ÌÑ¡É½Õ Ñ¡”(€€€€€¨™¥ÉÍÐµÁ•ÉÍ½¸É½ÍÍ¡…¥È…¹Ù…¹¥±±„ÁÉ½©•Ñ¥±”¥¹Ñ•É…Ñ¥½¸¡•­Ì¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð51}QQ-M}	=I}I9€ô€ÈÐì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð9M%Y}=}==1=]9}Q%-L€ô€Øì(€€€€¼¨(€€€€€¨-••ÀÑ¡”™¥ÉÍÐµÁ•ÉÍ½¸É•ÑÉ•…Ð¥¹Í¥‘”Ñ¡”½‰Í•ÉÙ•‘É…½¸…É•¹„¸€Q¡”(€€€€€¨µ½Ù•µ•¹Ð…ÑÕ…Ñ½È…‘Ù…¹•ÌÉ½Õ¡±ä€Ä¸È‰±½­ÌÁ•ÈÑ¥¬ìÑÝ•¹Ñäµ™½ÕÈ(€€€€€¨Ñ¥­ÌÑ¡•É•™½É”Í•¹ÐÑ¡”‰½‘ä…±µ½ÍÐÑ¡¥ÉÑä‰±½­Ì…Ý…ä°Ý¡•É”Ñ¡”(€€€€€¨‘É…½¸½Õ±½±Õ‘”•Ù•ÉäÉåÍÑ…°±…¹”…¹¡•…°¥¹‘•™¥¹¥Ñ•±ä¸€¥¡Ð(€€€€€¨Ñ¥­Ì¥Ù•Ì„¹½Éµ…°µ•±•”µÑ¼µ‰½ÜÍ•Á…É…Ñ¥½¸½˜…‰½ÕÐÑ•¸‰±½­ÌÝ¡¥±”(€€€€€¨É•Ñ…¥¹¥¹œÙ…¹¥±±„½±±¥Í¥½¸…¹¡…é…É¡…¹‘±¥¹œ¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹ÐI=9}I9}IQIQ}Q%-L€ô€àì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”%55%Q}I=9}%MQ9€ô€à¸ÜÔì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð51}I!}5%MMM}	=I}I9€ô€Ìì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹ÐI9}M!=QM}	=I}51}IQId€ô€Ðì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°1¥ÍÐñMÑÉ¥¹œø51}]A=9L€ô1¥ÍÐ¹½˜ (€€€€€€€€€€€€‰µ¥¹•É…™Ðé¹•Ñ¡•É¥Ñ•}ÍÝ½Éˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé‘¥…µ½¹‘}ÍÝ½Éˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¥É½¹}ÍÝ½Éˆ°(€€€€€€€€€€€€‰µ¥¹•É…™ÐéÍÑ½¹•}ÍÝ½Éˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¹•Ñ¡•É¥Ñ•}…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé‘¥…µ½¹‘}…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¥É½¹}…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™ÐéÍÑ½¹•}…á”ˆ(€€€€¤ì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°1¥ÍÐñMÑÉ¥¹œø}5%9%9}Q==1L€ô1¥ÍÐ¹½˜ (€€€€€€€€€€€€‰µ¥¹•É…™Ðé¹•Ñ¡•É¥Ñ•}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé‘¥…µ½¹‘}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¥É½¹}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™ÐéÍÑ½¹•}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé½±‘•¹}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™ÐéÝ½½‘•¹}Á¥­…á”ˆ(€€€€¤ì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°™±½…ÑmtM9}A%Q!L€ôì(€€€€€€€€´ÄÔ¸Á°(€€€€€€€€´ÌÔ¸Á°(€€€€€€€€´ØÀ¸Á°(€€€€€€€€à¸Á(€€€ôì((€€€ÁÉ¥Ù…Ñ”™¥¹…°UU%•áÁ•Ñ•‘A±…å•É%ì(€€€ÁÉ¥Ù…Ñ”™¥¹…°½É•M­¥±±ÑÕ…Ñ½È½É”ì(€€€ÁÉ¥Ù…Ñ”™¥¹…°½É•M­¥±±É…µ•M½ÕÉ”½É•É…µ•Ìì(€€€ÁÉ¥Ù…Ñ”™¥¹…°%¹Ñ•É…Ñ¥½¹M­¥±±ÑÕ…Ñ½È¥¹Ñ•É…Ñ¥½¹Ìì(€€€ÁÉ¥Ù…Ñ”™¥¹…°%¹Ñ•É…Ñ¥½¹M­¥±±É…µ•M½ÕÉ”¥¹Ñ•É…Ñ¥½¹É…µ•Ìì(€€€ÁÉ¥Ù…Ñ”™¥¹…°%¹Ù•¹Ñ½ÉåM­¥±±ÑÕ…Ñ½È¥¹Ù•¹Ñ½Éäì(€€€ÁÉ¥Ù…Ñ”™¥¹…°	É¥‘•5…Ñ•É¥…±ÑÕ…Ñ½È‰É¥‘•5…Ñ•É¥…±Ìì(€€€ÁÉ¥Ù…Ñ”™¥¹…°É…½¹Y¥Ñ½ÉåM½ÕÉ”Ù¥Ñ½Éäì(€€€ÁÉ¥Ù…Ñ”™¥¹…°1½¹MÕÁÁ±¥•ÈÍ•ÍÍ¥½¹•¹•É…Ñ¥½¸ì((€€€ÁÉ¥Ù…Ñ”A¡…Í”Á¡…Í”€ôA¡…Í”¹%1ì(€€€ÁÉ¥Ù…Ñ”M­¥±±…¥±ÕÉ”™…¥±ÕÉ”ì(€€€ÁÉ¥Ù…Ñ”±½¹œÍÑ…ÉÑ•‘ÑQ¥¬€ô€´Äì(€€€ÁÉ¥Ù…Ñ”±½¹œ¹•áÑÑ¥½¹Q¥¬€ô€´Äì(€€€ÁÉ¥Ù…Ñ”±½¹œ±…ÍÑ•™•¹Í¥Ù•½‘•Q¥¬€ô€´Äì(€€€ÁÉ¥Ù…Ñ”±½¹œ±…ÍÑ=‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸€ô€´Äì(€€€ÁÉ¥Ù…Ñ”±½¹œ‰½Õ¹‘M•ÍÍ¥½¹•¹•É…Ñ¥½¸€ô€´Äì(€€€ÁÉ¥Ù…Ñ”¥¹ÐÍ¡½ÑÍ¥ÍÁ…Ñ¡•ì(€€€ÁÉ¥Ù…Ñ”¥¹Ðµ•±••ÑÑ…­Ìì(€€€ÁÉ¥Ù…Ñ”¥¹Ðµ•±••I•…¡5¥ÍÍ•Ìì(€€€ÁÉ¥Ù…Ñ”¥¹ÐÉ…¹•‘É…½¹M¡½ÑÍM¥¹•5•±••I•ÑÉäì(€€€ÁÉ¥Ù…Ñ”¥¹Ð‘É…½¹I•ÑÉ•…ÑQ¥­ÍI•µ…¥¹¥¹œì(€€€ÁÉ¥Ù…Ñ”¥¹ÐÍ…¹QÕÉ¹Ìì(€€€ÁÉ¥Ù…Ñ”¥¹ÐÉ…±±åÑÑ•µÁÑÌì(€€€ÁÉ¥Ù…Ñ”¥¹Ð…•M…¹QÕÉ¹Ìì(€€€ÁÉ¥Ù…Ñ”¥¹Ð…•	…ÉÍ5¥¹•ì(€€€ÁÉ¥Ù…Ñ”¥¹Ð…•ÁÁÉ½…¡ÑÑ•µÁÑÌì(€€€ÁÉ¥Ù…Ñ”¥¹Ð…••Í•¹ÑM…¹Ìì(€€€ÁÉ¥Ù…Ñ”¥¹Ð…•1…¹‘¥¹M…¹Ìì(€€€ÁÉ¥Ù…Ñ”™±½…ÐÍ…¹	…Í•e…Üì(€€€€¼¨¨(€€€€€¨1…ÍÐ™…¥È‘¥É•Ñ¥½¸™É½´„É••¹Ð‘…µ…”½½¹Ñ…ÐÕ”¸€‘½‘”ÑÕÉ¹Ì(€€€€€¨Ñ¡”…µ•É„…Ý…ä™É½´Ñ¡”…ÑÑ…­•ÈìÁÉ•Í•ÉÙ¥¹œÑ¡¥Ì‘¥É•Ñ¥½¸±•ÑÌÑ¡”(€€€€€¨¹•áÐ‰½Õ¹‘•Í…¸É•…ÅÕ¥É”Ñ¡…ÐÍ…µ”Ù¥Í¥‰±”Ñ¡É•…Ð¥¹ÍÑ•…½˜(€€€€€¨É•Á•…Ñ•‘±äÍÝ••Á¥¹œÑ¡”½ÁÁ½Í¥Ñ”¡•µ¥ÍÁ¡•É”¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”A•É•ÁÑ¥½¹Y•ŒÌ±…ÍÑQ¡É•…Ñ¥É•Ñ¥½¸ì(€€€ÁÉ¥Ù…Ñ”A•É•ÁÑ¥½¹Y•ŒÌ±½…±I…±±åA½¥¹Ðì(€€€ÁÉ¥Ù…Ñ”‰½½±•…¸É•½Ù•É¥¹M…™•ÑåI•Í•ÉÙ”ì(€€€ÁÉ¥Ù…Ñ”‰½½±•…¸‘É…½¹I…¹•‘5½‘”ì(€€€ÁÉ¥Ù…Ñ”A•É•ÁÑ¥½¹Y•ŒÌ‘É…½¹I•ÑÉ•…Ñ¥É•Ñ¥½¸ì(€€€ÁÉ¥Ù…Ñ”‰½½±•…¸Í…Ý…•	…É	•å½¹‘I•… ì(€€€ÁÉ¥Ù…Ñ”‰½½±•…¸…•Q½Ý•É•ì(€€€ÁÉ¥Ù…Ñ”‰½½±•…¸…•1…¹‘¥¹Y•É¥™¥•ì(€€€ÁÉ¥Ù…Ñ”±½¹œ…•1…¹‘¥¹Y•É¥™¥•‘I•Ù¥Í¥½¸€ô€´Äì(€€€ÁÉ¥Ù…Ñ”¥¹ÐÉåÍÑ…±MÑ…¹‘=™™M…¹Ìì(€€€ÁÉ¥Ù…Ñ”¥¹ÐÉåÍÑ…±MÑ…¹‘=™™ÑÑ•µÁÑÌì(€€€ÁÉ¥Ù…Ñ”¥¹ÐÉåÍÑ…±…•%¹ÍÁ•Ñ¥½¹QÕÉ¹Ìì(€€€ÁÉ¥Ù…Ñ”¥¹ÐÉåÍÑ…±1…¹•ÑÑ•µÁÑÌì(€€€ÁÉ¥Ù…Ñ”¥¹ÐÉåÍÑ…±1…¹•M…¹QÕÉ¹Ìì(€€€ÁÉ¥Ù…Ñ”…•MÑ…ÑÕÌ…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹9=9ì(€€€ÁÉ¥Ù…Ñ”QÉ…Ù•±AÕÉÁ½Í”ÑÉ…Ù•±AÕÉÁ½Í”€ôQÉ…Ù•±AÕÉÁ½Í”¹9=9ì(€€€ÁÉ¥Ù…Ñ”UU%…•ÉåÍÑ…±%ì(€€€ÁÉ¥Ù…Ñ”A•É•ÁÑ¥½¹Y•ŒÌ…•1…ÍÑM••¹A½Í¥Ñ¥½¸ì(€€€ÁÉ¥Ù…Ñ”A•É•ÁÑ¥½¹Y•ŒÌÉåÍÑ…±MÑ…¹‘=™™A½Í¥Ñ¥½¸ì(€€€ÁÉ¥Ù…Ñ”…•‘ÉåÍÑ…±QÉ…Ù•ÉÍ…±A±…¹¹•È¹A±…¸…•A±…¸ì(€€€ÁÉ¥Ù…Ñ”M¡½½Ñ=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í¡½Ðì(€€€ÁÉ¥Ù…Ñ”M¡½½Ñ=‰Í•ÉÙ•‘¹Ñ¥ÑåA…É…µ•Ñ•ÉÌÍ¡½ÑA…É…µ•Ñ•ÉÌì(€€€ÁÉ¥Ù…Ñ”‰½½±•…¸Í¡½ÑQ…É•ÑÉ…½¸ì(€€€ÁÉ¥Ù…Ñ”QÉ…Ù•±Q½M­¥±°ÑÉ…Ù•°ì(€€€ÁÉ¥Ù…Ñ”QÉ…Ù•±Q½A…É…µ•Ñ•ÉÌÑÉ…Ù•±A…É…µ•Ñ•ÉÌì(€€€ÁÉ¥Ù…Ñ”5½Ù•Q½M­¥±°ÉåÍÑ…±MÑ…¹‘=™˜ì(€€€ÁÉ¥Ù…Ñ”5½Ù•Q½A…É…µ•Ñ•ÉÌÉåÍÑ…±MÑ…¹‘=™™A…É…µ•Ñ•ÉÌì(€€€ÁÉ¥Ù…Ñ”5½Ù•Q½M­¥±°ÉåÍÑ…±1…¹”ì(€€€ÁÉ¥Ù…Ñ”5½Ù•Q½A…É…µ•Ñ•ÉÌÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌì(€€€ÁÉ¥Ù…Ñ”	É•…­	±½­M­¥±°…•	É•…¬ì(€€€ÁÉ¥Ù…Ñ”	É•…­	±½­A…É…µ•Ñ•ÉÌ…•	É•…­A…É…µ•Ñ•ÉÌì(€€€ÁÉ¥Ù…Ñ”Q½Ý•ÉUÁM­¥±°…•Q½Ý•Èì(€€€ÁÉ¥Ù…Ñ”Q½Ý•ÉUÁA…É…µ•Ñ•ÉÌ…•Q½Ý•ÉA…É…µ•Ñ•ÉÌì(€€€ÁÉ¥Ù…Ñ”]…Ñ•É±ÕÑ¡•Í•¹‘M­¥±°…••Í•¹Ðì(€€€ÁÉ¥Ù…Ñ”]…Ñ•É±ÕÑ¡•Í•¹‘A…É…µ•Ñ•ÉÌ…••Í•¹ÑA…É…µ•Ñ•ÉÌì((€€€ÁÕ‰±¥Œ¥¡Ñ¹‘•ÉÉ…½¹M­¥±° (€€€€€€€€€€€™¥¹…°UU%•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€™¥¹…°½É•M­¥±±ÑÕ…Ñ½È½É”°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ•M½ÕÉ”½É•É…µ•Ì°(€€€€€€€€€€€™¥¹…°%¹Ñ•É…Ñ¥½¹M­¥±±ÑÕ…Ñ½È¥¹Ñ•É…Ñ¥½¹Ì°(€€€€€€€€€€€™¥¹…°%¹Ñ•É…Ñ¥½¹M­¥±±É…µ•M½ÕÉ”¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€™¥¹…°%¹Ù•¹Ñ½ÉåM­¥±±ÑÕ…Ñ½È¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€™¥¹…°	É¥‘•5…Ñ•É¥…±ÑÕ…Ñ½È‰É¥‘•5…Ñ•É¥…±Ì°(€€€€€€€€€€€™¥¹…°É…½¹Y¥Ñ½ÉåM½ÕÉ”Ù¥Ñ½Éä°(€€€€€€€€€€€™¥¹…°1½¹MÕÁÁ±¥•ÈÍ•ÍÍ¥½¹•¹•É…Ñ¥½¸(€€€€¤ì(€€€€€€€Ñ¡¥Ì¹•áÁ•Ñ•‘A±…å•É%€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€€‰•áÁ•Ñ•‘A±…å•É%ˆ(€€€€€€€€¤ì(€€€€€€€Ñ¡¥Ì¹½É”€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡½É”°€‰½É”ˆ¤ì(€€€€€€€Ñ¡¥Ì¹½É•É…µ•Ì€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€€‰½É•É…µ•Ìˆ(€€€€€€€€¤ì(€€€€€€€Ñ¡¥Ì¹¥¹Ñ•É…Ñ¥½¹Ì€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹Ì°(€€€€€€€€€€€€€€€€‰¥¹Ñ•É…Ñ¥½¹Ìˆ(€€€€€€€€¤ì(€€€€€€€Ñ¡¥Ì¹¥¹Ñ•É…Ñ¥½¹É…µ•Ì€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€€‰¥¹Ñ•É…Ñ¥½¹É…µ•Ìˆ(€€€€€€€€¤ì(€€€€€€€Ñ¡¥Ì¹¥¹Ù•¹Ñ½Éä€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€€€€€€‰¥¹Ù•¹Ñ½Éäˆ(€€€€€€€€¤ì(€€€€€€€Ñ¡¥Ì¹‰É¥‘•5…Ñ•É¥…±Ì€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€‰É¥‘•5…Ñ•É¥…±Ì°(€€€€€€€€€€€€€€€€‰‰É¥‘•5…Ñ•É¥…±Ìˆ(€€€€€€€€¤ì(€€€€€€€Ñ¡¥Ì¹Ù¥Ñ½Éä€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Ù¥Ñ½Éä°€‰Ù¥Ñ½Éäˆ¤ì(€€€€€€€Ñ¡¥Ì¹Í•ÍÍ¥½¹•¹•É…Ñ¥½¸€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€Í•ÍÍ¥½¹•¹•É…Ñ¥½¸°(€€€€€€€€€€€€€€€€‰Í•ÍÍ¥½¹•¹•É…Ñ¥½¸ˆ(€€€€€€€€¤ì(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥ŒM­¥±±A…É…µ•Ñ•ÉA…ÉÍ•Èñ¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌøÁ…É…µ•Ñ•ÉÌ ¤ì(€€€€€€€É•ÑÕÉ¸É…½¹½µ‰…ÑM­¥±±A…É…µ•Ñ•ÉÌèéÁ…ÉÍ”ì(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥Œ‰½½±•…¸…±±½ÝÍ]½É±‘I•Ù¥Í¥½¹QÉ…¹Í¥Ñ¥½¸ ¤ì(€€€€€€€€¼¨(€€€€€€€€€¨É…½¸‘•…Ñ ¥Ì„Í•ÉÙ•ÈµÙ•É¥™¥•½µÁ±•Ñ¥½¸‰½Õ¹‘…Éä¸€Q¡”Í­¥±°(€€€€€€€€€¨µÕÍÐÉ••¥Ù”½¹”µ½É”½É‘¥¹…ÉäÑ¥¬Ñ¼½‰Í•ÉÙ”Ù¥Ñ½Éä…¹™¥¹¥Í ì(€€€€€€€€€¨¥¹Ù…±¥‘…Ñ¥¹œ¥ÑÌ‰½Õ¹•Á½ ™¥ÉÍÐÝ½Õ±ÑÕÉ¸„É•…°­¥±°¥¹Ñ¼„(€€€€€€€€€¨ÍÑ…±”µÝ½É±™…¥±ÕÉ”¸(€€€€€€€€€¨¼(€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥Œ‰½½±•…¸µ…¹…•ÍY¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñä ¤ì(€€€€€€€É•ÑÕÉ¸Á¡…Í”€„ôA¡…Í”¹%1(€€€€€€€€€€€€€€€€˜˜Á¡…Í”€„ôA¡…Í”¹=5A1Q(€€€€€€€€€€€€€€€€˜˜Á¡…Í”€„ôA¡…Í”¹911(€€€€€€€€€€€€€€€€˜˜Á¡…Í”€„ôA¡…Í”¹%1(€€€€€€€€€€€€€€€€˜˜€…É•½Ù•É¥¹M…™•ÑåI•Í•ÉÙ”ì(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥Œ‰½½±•…¸µ…¹…•ÍY¥Í¥‰±•AÉ½©•Ñ¥±•Q¡É•…ÑÌ ¤ì(€€€€€€€É•ÑÕÉ¸Á¡…Í”€„ôA¡…Í”¹%1(€€€€€€€€€€€€€€€€˜˜Á¡…Í”€„ôA¡…Í”¹=5A1Q(€€€€€€€€€€€€€€€€˜˜Á¡…Í”€„ôA¡…Í”¹911(€€€€€€€€€€€€€€€€˜˜Á¡…Í”€„ôA¡…Í”¹%1(€€€€€€€€€€€€€€€€˜˜€…É•½Ù•É¥¹M…™•ÑåI•Í•ÉÙ”ì(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥Œ‰½½±•…¸µ…¹…•ÍA¡åÍ¥…±½¹Ñ…ÑQ¡É•…ÑÌ ¤ì(€€€€€€€É•ÑÕÉ¸Á¡…Í”€„ôA¡…Í”¹%1(€€€€€€€€€€€€€€€€˜˜Á¡…Í”€„ôA¡…Í”¹=5A1Q(€€€€€€€€€€€€€€€€˜˜Á¡…Í”€„ôA¡…Í”¹911(€€€€€€€€€€€€€€€€˜˜Á¡…Í”€„ôA¡…Í”¹%1(€€€€€€€€€€€€€€€€˜˜€…É•½Ù•É¥¹M…™•ÑåI•Í•ÉÙ”ì(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥Œ=ÁÑ¥½¹…±½Õ‰±”¡…É‘½É•I¥Í­Q¡É•Í¡½±‘=Ù•ÉÉ¥‘” (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ(€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ½É•M­¥±±É…µ”ø™É…µ”€ô½É•É…µ•Ì¹ÕÉÉ•¹Ð ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡ÕÉÉ•¹Ð€´ø(€€€€€€€€€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%¹•ÅÕ…±Ì¡ÕÉÉ•¹Ð¹Á±…å•É% ¤¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹¥ÍµÁÑä ¤(€€€€€€€€€€€€€€€€ü=ÁÑ¥½¹…±½Õ‰±”¹•µÁÑä ¤(€€€€€€€€€€€€€€€€è½µ‰…Ñ!…É‘½É•I¥Í¬¹Ñ¡É•Í¡½± (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€€Ä¸À(€€€€€€€€€€€€€€€€¤ì(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥Œ=ÁÑ¥½¹…°ñM­¥±±…¥±ÕÉ”øÁÉ•½¹‘¥Ñ¥½¹Ì (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ(€€€€¤ì(€€€€€€€™¥¹…°M¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸Ù…±¥‘…Ñ¥½¸€ô(€€€€€€€€€€€€€€€Ù…±¥‘…Ñ•M¹…ÁÍ¡½Ð¡Á…É…µ•Ñ•ÉÌ¤ì(€€€€€€€¥˜€¡Ù…±¥‘…Ñ¥½¸¹™…¥±ÕÉ” ¤¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸Ù…±¥‘…Ñ¥½¸¹™…¥±ÕÉ” ¤ì(€€€€€€€ô(€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”€ôÙ…±¥‘…Ñ¥½¸¹Í¹…ÁÍ¡½Ð ¤(€€€€€€€€€€€€€€€€¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€¹½É” ¤ì(€€€€€€€¥˜€ …¥µ•¹Í¥½¹I•˜¹9¹•ÅÕ…±Ì¡Á…É…µ•Ñ•ÉÌ¹‘¥µ•¹Í¥½¸ ¤¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡M­¥±±…¥±ÕÉ”¹½˜ (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹•¹‘}‘¥µ•¹Í¥½¹}É•ÅÕ¥É•ˆ(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€€€€€¥˜€¡¡•…±Ñ¡Q½½1½Ü¡½¹Ñ•áÐ°™É…µ”¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡M­¥±±…¥±ÕÉ”¹½˜ (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹¡•…±Ñ¡}É•Í•ÉÙ•}É•ÅÕ¥É•ˆ(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€€€€€¥˜€¡™É…µ”¹™½½‘1•Ù•° ¤€ð€¡½¹Ñ•áÐ¹¡…É‘½É” ¤€ü€ÄÀ€è€Ð¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡M­¥±±…¥±ÕÉ”¹½˜ (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹™½½‘}É•Í•ÉÙ•}É•ÅÕ¥É•ˆ(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€€€€€¥˜€¡¥¹Ù•¹Ñ½Éå½Õ¹Ð¡™É…µ”°	=\¤(€€€€€€€€€€€€€€€€ð½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ¹9}	=]L¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡M­¥±±…¥±ÕÉ”¹½˜ (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹‰½Ý}É•ÅÕ¥É•ˆ(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€€€€€¥˜€¡¥¹Ù•¹Ñ½Éå½Õ¹Ð¡™É…µ”°II=\¤(€€€€€€€€€€€€€€€€ð½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ¹9}II=]L¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡M­¥±±…¥±ÕÉ”¹½˜ (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…ÉÉ½ÝÍ}É•ÅÕ¥É•ˆ(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€€€€€¥˜€ …¹‘%Í±…¹‘I…±±åÙ¥‘•¹”¹ÍÕÁÁ½ÉÑÍÕÉÉ•¹ÑA½Í” (€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€¹‘É•¹…Q½Á½±½ä¹I9}Ie}I%UL(€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡M­¥±±…¥±ÕÉ”¹½˜ (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹•¹‘}¥Í±…¹‘}¥¹É•ÍÍ}É•ÅÕ¥É•ˆ(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥ŒÙ½¥ÍÑ…ÉÐ (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ(€€€€¤ì(€€€€€€€™¥¹…°M¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð€ôÙ…±¥‘…Ñ•M¹…ÁÍ¡½Ð¡Á…É…µ•Ñ•ÉÌ¤(€€€€€€€€€€€€€€€€¹Í¹…ÁÍ¡½Ð ¤(€€€€€€€€€€€€€€€€¹½É±Í•Q¡É½Ü  ¤€´ø¹•Ü%±±•…±MÑ…Ñ•á•ÁÑ¥½¸ (€€€€€€€€€€€€€€€€€€€€€€€€‰É…½¸µ™¥¡Ð‰½‘ä¡…¹•‰•™½É”ÍÑ…ÉÐˆ(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€™…¥±ÕÉ”€ô¹Õ±°ì(€€€€€€€ÍÑ…ÉÑ•‘ÑQ¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€±…ÍÑ•™•¹Í¥Ù•½‘•Q¥¬€ô€´Äì(€€€€€€€±…ÍÑ=‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸€ô€´Äì(€€€€€€€‰½Õ¹‘M•ÍÍ¥½¹•¹•É…Ñ¥½¸€ô(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹¥¹Ñ•É…Ñ¥½¸ ¤¹Í•ÍÍ¥½¹•¹•É…Ñ¥½¸ ¤ì(€€€€€€€Í¡½ÑÍ¥ÍÁ…Ñ¡•€ô€Àì(€€€€€€€µ•±••ÑÑ…­Ì€ô€Àì(€€€€€€€µ•±••I•…¡5¥ÍÍ•Ì€ô€Àì(€€€€€€€É…¹•‘É…½¹M¡½ÑÍM¥¹•5•±••I•ÑÉä€ô€Àì(€€€€€€€‘É…½¹I•ÑÉ•…ÑQ¥­ÍI•µ…¥¹¥¹œ€ô€Àì(€€€€€€€Í…¹QÕÉ¹Ì€ô€Àì(€€€€€€€É…±±åÑÑ•µÁÑÌ€ô€Àì(€€€€€€€…•M…¹QÕÉ¹Ì€ô€Àì(€€€€€€€…•	…ÉÍ5¥¹•€ô€Àì(€€€€€€€…•ÁÁÉ½…¡ÑÑ•µÁÑÌ€ô€Àì(€€€€€€€…••Í•¹ÑM…¹Ì€ô€Àì(€€€€€€€…•1…¹‘¥¹M…¹Ì€ô€Àì(€€€€€€€Í…¹	…Í•e…Ü€ô±½½­e…Ü¡Í¹…ÁÍ¡½Ð¹½É” ¤¤ì(€€€€€€€±…ÍÑQ¡É•…Ñ¥É•Ñ¥½¸€ô¹Õ±°ì(€€€€€€€€¼¨(€€€€€€€€€¨Q¡¥Ì•á…ÐÁ½Í”‰•±½¹ÌÑ¼Ñ¡”±¥Ù”…ÕÑ¡½É¥Ñ…Ñ¥Ù”‰½‘ä…¹ÁÉ½Ù•Ì„(€€€€€€€€€¨É•…¡…‰±”ÍÑ…¹‘¥¹œÁ½¥¹Ð¸%ÐÉ•Á±…•ÌÑ¡”½±µ½‘•°µÍÕÁÁ±¥•É…±±ä(€€€€€€€€€¨½½É‘¥¹…Ñ•Ì°Ý¡¥ ½Õ±‰”¥¹Ù•¹Ñ•½ÈÍÑ…±”¸(€€€€€€€€€¨¼(€€€€€€€±½…±I…±±åA½¥¹Ð€ôÍ¹…ÁÍ¡½Ð¹½É” ¤¹Á½Í¥Ñ¥½¸ ¤ì(€€€€€€€É•½Ù•É¥¹M…™•ÑåI•Í•ÉÙ”€ô™…±Í”ì(€€€€€€€‘É…½¹I…¹•‘5½‘”€ô™…±Í”ì(€€€€€€€‘É…½¹I•ÑÉ•…Ñ¥É•Ñ¥½¸€ô¹Õ±°ì(€€€€€€€Í…Ý…•	…É	•å½¹‘I•… €ô™…±Í”ì(€€€€€€€…•Q½Ý•É•€ô™…±Í”ì(€€€€€€€…•1…¹‘¥¹Y•É¥™¥•€ô™…±Í”ì(€€€€€€€…•1…¹‘¥¹Y•É¥™¥•‘I•Ù¥Í¥½¸€ô€´Äì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™M…¹Ì€ô€Àì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™ÑÑ•µÁÑÌ€ô€Àì(€€€€€€€ÉåÍÑ…±…•%¹ÍÁ•Ñ¥½¹QÕÉ¹Ì€ô€Àì(€€€€€€€ÉåÍÑ…±1…¹•ÑÑ•µÁÑÌ€ô€Àì(€€€€€€€ÉåÍÑ…±1…¹•M…¹QÕÉ¹Ì€ô€Àì(€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹9=9ì(€€€€€€€ÑÉ…Ù•±AÕÉÁ½Í”€ôQÉ…Ù•±AÕÉÁ½Í”¹9=9ì(€€€€€€€…•ÉåÍÑ…±%€ô¹Õ±°ì(€€€€€€€…•1…ÍÑM••¹A½Í¥Ñ¥½¸€ô¹Õ±°ì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A½Í¥Ñ¥½¸€ô¹Õ±°ì(€€€€€€€…•A±…¸€ô¹Õ±°ì(€€€€€€€Í¡½Ð€ô¹Õ±°ì(€€€€€€€Í¡½ÑA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€Í¡½ÑQ…É•ÑÉ…½¸€ô™…±Í”ì(€€€€€€€ÑÉ…Ù•°€ô¹Õ±°ì(€€€€€€€ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™˜€ô¹Õ±°ì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€ÉåÍÑ…±1…¹”€ô¹Õ±°ì(€€€€€€€ÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€…•	É•…¬€ô¹Õ±°ì(€€€€€€€…•	É•…­A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€…•Q½Ý•È€ô¹Õ±°ì(€€€€€€€…•Q½Ý•ÉA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€…••Í•¹Ð€ô¹Õ±°ì(€€€€€€€…••Í•¹ÑA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥ŒM­¥±±Q¥­I•ÍÕ±ÐÑ¥¬ (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ(€€€€¤ì(€€€€€€€¥˜€ …Á¡…Í”¹…Ñ¥Ù” ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹™…¥±•¡95€¬€ˆ¹¥¹Ù…±¥‘}ÍÑ…Ñ”ˆ¤ì(€€€€€€€ô(€€€€€€€ÑÉäì(€€€€€€€€€€€É•ÑÕÉ¸Ñ¥­M…™•±ä¡½¹Ñ•áÐ°Á…É…µ•Ñ•ÉÌ¤ì(€€€€€€€ô…Ñ €¡IÕ¹Ñ¥µ•á•ÁÑ¥½¸•á•ÁÑ¥½¸¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹¥¹Ñ•É¹…±}™…¥±ÕÉ”ˆ¤ì(€€€€€€€ô(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥ŒM­¥±±¡•­Á½¥¹Ð¡•­Á½¥¹Ð (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¹•ÜM­¥±±¡•­Á½¥¹Ð (€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€MÑÉ¥¹œ¹™½Éµ…Ð (€€€€€€€€€€€€€€€€€€€€€€€1½…±”¹I==P°(€€€€€€€€€€€€€€€€€€€€€€€€‰íp‰Á¡…Í•pˆépˆ•Ípˆ±p‰Í¡½ÑÍpˆè•±p‰µ•±••pˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰µ•±••I•…¡5¥ÍÍ•Ípˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰É…¹•‘É…½¹M¡½ÑÍM¥¹•5•±••I•ÑÉåpˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰‘É…½¹I…¹•‘5½‘•pˆè•Ì°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰‘É…½¹I•ÑÉ•…ÑQ¥­ÍI•µ…¥¹¥¹pˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰Í…¹QÕÉ¹Ípˆè•±p‰É…±±åÑÑ•µÁÑÍpˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰…•	…ÉÍ5¥¹•‘pˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰…•ÁÁÉ½…¡•Ípˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰…•I•½Ù•ÉåQÕÉ¹Ípˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰…•Q½Ý•É	±½­Ípˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰…•1…¹‘¥¹Y•É¥™¥•‘pˆè•Ì°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰ÉåÍÑ…±MÑ…¹‘=™™M…¹Ípˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰ÉåÍÑ…±MÑ…¹‘=™™ÑÑ•µÁÑÍpˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰ÉåÍÑ…±…•%¹ÍÁ•Ñ¥½¹QÕÉ¹Ípˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰ÉåÍÑ…±1…¹•ÑÑ•µÁÑÍpˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰ÉåÍÑ…±1…¹•M…¹QÕÉ¹Ípˆè•°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰É•½Ù•É¥¹M…™•ÑåI•Í•ÉÙ•pˆè•Ì°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰…•MÑ…ÑÕÍpˆépˆ•Ípˆ°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰Ù¥Í¥‰±•¹Ñ¥ÑåQåÁ•Ípˆépˆ•Ípˆ°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰p‰‰½‘åA½Í¥Ñ¥½¹pˆépˆ•Íp‰ôˆ°(€€€€€€€€€€€€€€€€€€€€€€€Á¡…Í”¹¹…µ” ¤°(€€€€€€€€€€€€€€€€€€€€€€€Í¡½ÑÍ¥ÍÁ…Ñ¡•°(€€€€€€€€€€€€€€€€€€€€€€€µ•±••ÑÑ…­Ì°(€€€€€€€€€€€€€€€€€€€€€€€µ•±••I•…¡5¥ÍÍ•Ì°(€€€€€€€€€€€€€€€€€€€€€€€É…¹•‘É…½¹M¡½ÑÍM¥¹•5•±••I•ÑÉä°(€€€€€€€€€€€€€€€€€€€€€€€‘É…½¹I…¹•‘5½‘”°(€€€€€€€€€€€€€€€€€€€€€€€‘É…½¹I•ÑÉ•…ÑQ¥­ÍI•µ…¥¹¥¹œ°(€€€€€€€€€€€€€€€€€€€€€€€Í…¹QÕÉ¹Ì°(€€€€€€€€€€€€€€€€€€€€€€€É…±±åÑÑ•µÁÑÌ°(€€€€€€€€€€€€€€€€€€€€€€€…•	…ÉÍ5¥¹•°(€€€€€€€€€€€€€€€€€€€€€€€…•ÁÁÉ½…¡ÑÑ•µÁÑÌ°(€€€€€€€€€€€€€€€€€€€€€€€…•M…¹QÕÉ¹Ì°(€€€€€€€€€€€€€€€€€€€€€€€…•A±…¸€ôô¹Õ±°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ü€À(€€€€€€€€€€€€€€€€€€€€€€€€€€€€è…•A±…¸¹Ñ½Ý•É	±½­Ì ¤°(€€€€€€€€€€€€€€€€€€€€€€€…•1…¹‘¥¹Y•É¥™¥•°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™M…¹Ì°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™ÑÑ•µÁÑÌ°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±…•%¹ÍÁ•Ñ¥½¹QÕÉ¹Ì°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±1…¹•ÑÑ•µÁÑÌ°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±1…¹•M…¹QÕÉ¹Ì°(€€€€€€€€€€€€€€€€€€€€€€€É•½Ù•É¥¹M…™•ÑåI•Í•ÉÙ”°(€€€€€€€€€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ¹¹…µ” ¤°(€€€€€€€€€€€€€€€€€€€€€€€Ù¥Í¥‰±•¹Ñ¥ÑåQåÁ•Ì ¤°(€€€€€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ñ	½‘åA½Í¥Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”MÑÉ¥¹œÙ¥Í¥‰±•¹Ñ¥ÑåQåÁ•Ì ¤ì(€€€€€€€É•ÑÕÉ¸½É•É…µ•Ì¹ÕÉÉ•¹Ð ¤(€€€€€€€€€€€€€€€€¹µ…À¡™É…µ”€´ø™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹±¥µ¥Ð ÄÈ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹µ…À¡•¹Ñ¥Ñä€´ø•¹Ñ¥Ñä¹•¹Ñ¥ÑåQåÁ•% ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€¹‘¥ÍÑ¥¹Ð ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹Í½ÉÑ• ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹É•‘Õ” ¡±•™Ð°É¥¡Ð¤€´ø±•™Ð€¬€‰ðˆ€¬É¥¡Ð¤(€€€€€€€€€€€€€€€€€€€€€€€€¹½É±Í” ˆˆ¤¤(€€€€€€€€€€€€€€€€¹½É±Í” ˆˆ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”MÑÉ¥¹œÕÉÉ•¹Ñ	½‘åA½Í¥Ñ¥½¸ ¤ì(€€€€€€€É•ÑÕÉ¸½É•É…µ•Ì¹ÕÉÉ•¹Ð ¤(€€€€€€€€€€€€€€€€¹µ…À¡™É…µ”€´øMÑÉ¥¹œ¹™½Éµ…Ð (€€€€€€€€€€€€€€€€€€€€€€€1½…±”¹I==P°(€€€€€€€€€€€€€€€€€€€€€€€€ˆ”¸Å˜°”¸Å˜°”¸Å˜ˆ°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹à ¤°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹ä ¤°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹è ¤(€€€€€€€€€€€€€€€€¤¤(€€€€€€€€€€€€€€€€¹½É±Í” ˆˆ¤ì(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥ŒÙ½¥…¹•° (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ(€€€€¤ì(€€€€€€€…¹•±¡¥±‘É•¸¡½¹Ñ•áÐ¤ì(€€€€€€€ÅÕ¥•Í” ¤ì(€€€€€€€Á¡…Í”€ôA¡…Í”¹911ì(€€€ô((€€€=Ù•ÉÉ¥‘”(€€€ÁÕ‰±¥ŒM­¥±±I•ÍÕ±ÐÉ•ÍÕ±Ð (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ(€€€€¤ì(€€€€€€€É•ÑÕÉ¸ÍÝ¥Ñ €¡Á¡…Í”¤ì(€€€€€€€€€€€…Í”=5A1Q€´øM­¥±±I•ÍÕ±Ð¹½µÁ±•Ñ• ¤ì(€€€€€€€€€€€…Í”911€´øM­¥±±I•ÍÕ±Ð¹…¹•±±• ¤ì(€€€€€€€€€€€…Í”%1€´øM­¥±±I•ÍÕ±Ð¹™…¥±• (€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡™…¥±ÕÉ”¤(€€€€€€€€€€€€¤ì(€€€€€€€€€€€‘•™…Õ±Ð€´øM­¥±±I•ÍÕ±Ð¹™…¥±• (€€€€€€€€€€€€€€€€€€€M­¥±±…¥±ÕÉ”¹½˜¡95€¬€ˆ¹¥¹Ù…±¥‘}ÍÑ…Ñ”ˆ¤(€€€€€€€€€€€€¤ì(€€€€€€€ôì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÑ¥­M…™•±ä (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ(€€€€¤ì(€€€€€€€¥˜€¡Ù¥Ñ½Éä¹‘É…½¹-¥±±•¡½¹Ñ•áÐ¹½…±I•Ù¥Í¥½¸ ¤¤¤ì(€€€€€€€€€€€…¹•±¡¥±‘É•¸¡½¹Ñ•áÐ¤ì(€€€€€€€€€€€ÅÕ¥•Í” ¤ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹=5A1Qì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹½µÁ±•Ñ• ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡½¹Ñ•áÐ¹…µ•Q¥¬ ¤€´ÍÑ…ÉÑ•‘ÑQ¥¬(€€€€€€€€€€€€€€€€øôÁ…É…µ•Ñ•ÉÌ¹Ñ¥µ•½ÕÑQ¥­Ì ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹Ñ¥µ•‘}½ÕÐˆ¤ì(€€€€€€€ô(€€€€€€€™¥¹…°M¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸Ù…±¥‘…Ñ¥½¸€ô(€€€€€€€€€€€€€€€Ù…±¥‘…Ñ•M¹…ÁÍ¡½Ð¡Á…É…µ•Ñ•ÉÌ¤ì(€€€€€€€¥˜€¡Ù…±¥‘…Ñ¥½¸¹™…¥±ÕÉ” ¤¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Ù…±¥‘…Ñ¥½¸¹™…¥±ÕÉ” ¤¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°M¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð€ô(€€€€€€€€€€€€€€€Ù…±¥‘…Ñ¥½¸¹Í¹…ÁÍ¡½Ð ¤¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”€ôÍ¹…ÁÍ¡½Ð¹½É” ¤ì(€€€€€€€¥˜€¡™É…µ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤€ð±…ÍÑ=‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹ÍÑ…±•}½‰Í•ÉÙ…Ñ¥½¸ˆ¤ì(€€€€€€€ô(€€€€€€€™¥¹…°‰½½±•…¸™É•Í €ô™É…µ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€ø±…ÍÑ=‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ì(€€€€€€€±…ÍÑ=‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸€ô5…Ñ ¹µ…à (€€€€€€€€€€€€€€€±…ÍÑ=‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸°(€€€€€€€€€€€€€€€™É…µ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñM­¥±±Q¥­I•ÍÕ±ÐøÁÉ½©•Ñ¥±•I•ÍÁ½¹Í”€ô(€€€€€€€€€€€€€€€•Ù…‘•Y¥Í¥‰±•AÉ½©•Ñ¥±”¡½¹Ñ•áÐ°™É…µ”°™É•Í ¤ì(€€€€€€€¥˜€¡ÁÉ½©•Ñ¥±•I•ÍÁ½¹Í”¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÁÉ½©•Ñ¥±•I•ÍÁ½¹Í”¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñM­¥±±Q¥­I•ÍÕ±Ðø‘…µ…•I•ÍÁ½¹Í”€ô(€€€€€€€€€€€€€€€•Ù…‘•I••¹Ñ…µ…”¡½¹Ñ•áÐ°™É…µ”¤ì(€€€€€€€¥˜€¡‘…µ…•I•ÍÁ½¹Í”¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸‘…µ…•I•ÍÁ½¹Í”¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡Á¡…Í”€ôôA¡…Í”¹=A9%9}(€€€€€€€€€€€€€€€€˜˜¥µµ•‘¥…Ñ•É…½¹%¹‘•à¡™É…µ”¤¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€…‰½ÉÑ…•	É•…¬¡½¹Ñ•áÐ¤ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹M-%9}Y%M%	1}	Hì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡¡•…±Ñ¡Q½½1½Ü¡½¹Ñ•áÐ°™É…µ”¤(€€€€€€€€€€€€€€€ñð™É…µ”¹™½½‘1•Ù•° ¤(€€€€€€€€€€€€€€€€€€€€ð€¡½¹Ñ•áÐ¹¡…É‘½É” ¤€ü€Ø€è€È¤¤ì(€€€€€€€€€€€É•½Ù•É¥¹M…™•ÑåI•Í•ÉÙ”€ôÑÉÕ”ì(€€€€€€€€€€€¥˜€ …½É”¹ÍÑ½À ¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹É•½Ù•Éå}ÍÑ½Á}É•©•Ñ•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€¨MÕÉÙ¥Ù…°½¹ÑÉ½°•á•ÕÑ•Ì…™Ñ•ÈÑ¡”Í­¥±°±•…Í”¸I•±¥¹ÅÕ¥Í¡¥¹œ(€€€€€€€€€€€€€¨¡½ÍÑ¥±”µÁÉ½á¥µ¥Ñä½Ý¹•ÉÍ¡¥À¡•É”±•ÑÌ¥Ð•…Ð°Õ…É°½È•Ù…‘”(€€€€€€€€€€€€€¨…Ð€ÈÀQALìÑ¡”‘É…½¸½½É‘¥¹…Ñ½È­••ÁÌ¥ÑÌ‰½Õ¹‘•‘•…‘±¥¹”(€€€€€€€€€€€€€¨…¹É•ÍÕµ•Ì½¹±äÝ¡•¸‰½Ñ É•Í•ÉÙ•Ì…É”Í…™”……¥¸¸(€€€€€€€€€€€€€¨¼(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡™É•Í °ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€É•½Ù•É¥¹M…™•ÑåI•Í•ÉÙ”€ô™…±Í”ì(€€€€€€€É•ÑÕÉ¸ÍÝ¥Ñ €¡Á¡…Í”¤ì(€€€€€€€€€€€…Í”MI!%9€´øÍ•…É  (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€€€€€…Í”M!==Q%9€´øÑ¥­M¡½Ð¡½¹Ñ•áÐ°™É•Í ¤ì(€€€€€€€€€€€…Í”IQIQ%9}I=8€´øÑ¥­É…½¹I…¹•‘I•ÑÉ•…Ð (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€€€€€…Í”IA=M%Q%=9%9}IeMQ0€´ø(€€€€€€€€€€€€€€€€€€€Ñ¥­ÉåÍÑ…±MÑ…¹‘=™˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€…Í”IA=M%Q%=9%9}IeMQ1}19€´ø(€€€€€€€€€€€€€€€€€€€Ñ¥­ÉåÍÑ…±1…¹”¡½¹Ñ•áÐ°™É•Í ¤ì(€€€€€€€€€€€…Í”QIY11%9€´øÑ¥­QÉ…Ù•°¡½¹Ñ•áÐ°™É•Í ¤ì(€€€€€€€€€€€…Í”=A9%9}€´øÑ¥­…•	É•…¬ (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€€€€€…Í”Q=]I%9}€´øÑ¥­…•Q½Ý•È (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€€€€€…Í”AIAI%9}}Q=]H€´ø(€€€€€€€€€€€€€€€€€€€ÁÉ•Á…É•…•Q½Ý•È (€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€…Í”AIAI%9}}M9P€´ø(€€€€€€€€€€€€€€€€€€€ÁÉ•Á…É•…••Í•¹Ð (€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€…Í”M9%9}€´øÑ¥­…••Í•¹Ð (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€€€€€‘•™…Õ±Ð€´øM­¥±±Q¥­I•ÍÕ±Ð¹™…¥±• (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹¥¹Ù…±¥‘}ÍÑ…Ñ”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ôì(€€€ô((€€€€¼¨¨(€€€€€¨É…½¸™¥É•‰…±±Ì…É”™…¥È™¥ÉÍÐµÁ•ÉÍ½¸ÁÉ½©•Ñ¥±”½‰Í•ÉÙ…Ñ¥½¹Ì°¹½Ð„(€€€€€¨É•…Í½¸™½ÈÑ¡”•µ•É•¹ä±…¹”Ñ¼™É••é”Ñ¡”•¹Ñ¥É”™¥¡Ð¸€=¸„™É•Í (€€€€€¨Ù¥Í¥‰±”ÁÉ½©•Ñ¥±”Í¥¹…°°ÑÕÉ¸…Ý…ä…¹¥ÍÍÕ”½¹”‰½Õ¹‘•ÍÁÉ¥¹Ð½ÍÑÉ…™”(€€€€€¨¥¹ÁÕÐ¸€%˜Ñ¡”ÁÉ½©•Ñ¥±”¥Ì¹½Ð¥¸Ñ¡”ÕÉÉ•¹ÐÍ•µ…¹Ñ¥Œ±¥ÍÐ°Ñ¡”(€€€€€¨‘¥É•Ñ¥½¹±•ÍÌ‘…¹•ÈÍ¥¹…°ÍÑ¥±°ÑÉ¥•ÉÌ„Í¡½ÉÐ…±Ñ•É¹…Ñ¥¹œÍÑÉ…™”ì(€€€€€¨¹¼¡¥‘‘•¸ÁÉ½©•Ñ¥±”Á½Í¥Ñ¥½¸½ÈÝ½É±Í…¸¥ÌÕÍ•¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”=ÁÑ¥½¹…°ñM­¥±±Q¥­I•ÍÕ±Ðø•Ù…‘•Y¥Í¥‰±•AÉ½©•Ñ¥±” (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñY¥Í¥‰±•¹Ñ¥ÑäøÁÉ½©•Ñ¥±”€ô™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤(€€€€€€€€€€€€€€€€¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Y¥Í¥‰±•¹Ñ¥ÑäèéÁÉ½©•Ñ¥±”¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥¡Ñ¹‘•ÉÉ…½¹M­¥±°èéÁÉ½©•Ñ¥±•Q¡É•…Ñ•¹Í	½‘ä¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±”¡Y¥Í¥‰±•¹Ñ¥Ñäèé‘¥ÍÑ…¹”¤¤ì(€€€€€€€™¥¹…°‰½½±•…¸‘…¹•È€ô™É…µ”¹‘…¹•ÉM¥¹…±Ì ¤¹ÍÑÉ•…´ ¤¹…¹å5…Ñ  (€€€€€€€€€€€€€€€Í¥¹…°€´øÍ¥¹…°¹­¥¹ ¤(€€€€€€€€€€€€€€€€€€€€€€€€ôô‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹…¹•É-¥¹(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹AI=)Q%1}AI=a%5%Qd(€€€€€€€€€€€€€€€€€€€€˜˜Í¥¹…°¹Í•Ù•É¥Ñä ¤€øô€À¸ÌÔ(€€€€€€€€¤ì(€€€€€€€¥˜€¡ÁÉ½©•Ñ¥±”¹¥ÍµÁÑä ¤€˜˜€…‘…¹•È¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡±…ÍÑ•™•¹Í¥Ù•½‘•Q¥¬€øô€À(€€€€€€€€€€€€€€€€˜˜½¹Ñ•áÐ¹…µ•Q¥¬ ¤€´±…ÍÑ•™•¹Í¥Ù•½‘•Q¥¬(€€€€€€€€€€€€€€€€€€€€ð9M%Y}=}==1=]9}Q%-L¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä€ôÁÉ½©•Ñ¥±”(€€€€€€€€€€€€€€€€¹µ…À¡•¹Ñ¥Ñä€´ø™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹ÍÕ‰ÑÉ…Ð¡•¹Ñ¥Ñä¹Á½Í¥Ñ¥½¸ ¤¤¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Ù•Ñ½È€´øÙ•Ñ½È¹±•¹Ñ¡MÅÕ…É• ¤€ø€Ä¸Á´ÄÈ¤(€€€€€€€€€€€€€€€€¹½É±Í••Ð  ¤€´ø¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€€ ¡™É…µ”¹…µ•Q¥µ” ¤€¼€Ù0¤€˜€Å0¤€ôô€Á0€ü€Ä¸À€è€´Ä¸À°(€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€À¸ÌÔ(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€™¥¹…°1½½­%¹Ñ•¹Ð±½½¬€ô±½½­Ð (€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¹…‘¡…Ý…ä¤(€€€€€€€€¤ì(€€€€€€€¥˜€ …½É”¹±½½¬¡±½½¬¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹ÁÉ½©•Ñ¥±•}‘½‘•}±½½­}É•©•Ñ•ˆ(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¡½É¥é½¹Ñ…°€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€…Ý…ä¹à ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€…Ý…ä¹è ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ‘•Í¥É•€ô¡½É¥é½¹Ñ…°¹±•¹Ñ¡MÅÕ…É• ¤€ø€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€ü¡½É¥é½¹Ñ…°¹¹½Éµ…±¥é• ¤(€€€€€€€€€€€€€€€€è¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ Ä¸À°€À¸À°€À¸À¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¡½É¥é½¹Ñ…±½ÉÝ…É€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤¹à ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤¹è ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ™½ÉÝ…É€ô¡½É¥é½¹Ñ…±½ÉÝ…É¹±•¹Ñ¡MÅÕ…É• ¤(€€€€€€€€€€€€€€€€ø€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€ü¡½É¥é½¹Ñ…±½ÉÝ…É¹¹½Éµ…±¥é• ¤(€€€€€€€€€€€€€€€€è¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ À¸À°€À¸À°€Ä¸À¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ±•™Ð€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€™½ÉÝ…É¹è ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€µ™½ÉÝ…É¹à ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”µ½Ù•€ô½É”¹µ½Ù”¡¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€‘•Í¥É•¹‘½Ð¡™½ÉÝ…É¤°(€€€€€€€€€€€€€€€‘•Í¥É•¹‘½Ð¡±•™Ð¤°(€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤¤ì(€€€€€€€¥˜€ …µ½Ù•¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹ÁÉ½©•Ñ¥±•}‘½‘•}µ½Ù•}É•©•Ñ•ˆ(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€€€€€±…ÍÑ•™•¹Í¥Ù•½‘•Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤€¬€Äì(€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤¤ì(€€€ô((€€€€¼¨¨(€€€€€¨É…½¸‰É•…Ñ …¹µÕ±Ñ¥Á…ÉÐ½¹Ñ…Ð…¸…ÉÉ¥Ù”…Ì„™…¥ÈÉ••¹Ðµ‘…µ…”(€€€€€¨Õ”Ý¥Ñ¡½ÕÐ„ÁÉ½©•Ñ¥±”•¹Ñ¥Ñä¥¸Ñ¡”ÕÉÉ•¹ÐÍ•µ…¹Ñ¥ŒÍ…µÁ±”¸€-••À(€€€€€¨Ñ¡”™¥¡Ð…±¥Ù”Ý¥Ñ ½¹”‰½Õ¹‘•™¥ÉÍÐµÁ•ÉÍ½¸Í¥‘”½‰…¬ÍÑ•À°Ñ¡•¸±•Ð(€€€€€¨Ñ¡”½É‘¥¹…Éä½µ‰…ÐÁ¡…Í”É•ÍÕµ”ìÑ¡¥Ì¹•Ù•ÈÍ•±•ÑÌ…¸Õ¹Í••¸Ñ…É•Ð(€€€€€¨½È•‘¥ÑÌÑ¡”Ý½É±¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”=ÁÑ¥½¹…°ñM­¥±±Q¥­I•ÍÕ±Ðø•Ù…‘•I••¹Ñ…µ…” (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹…¹•ÉM¥¹…°ø‘…µ…”€ô(€€€€€€€€€€€€€€€™É…µ”¹‘…¹•ÉM¥¹…±Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Í¥¹…°¹­¥¹ ¤€ôô…¹•É-¥¹¹Q!IQ}=9QP¤(€€€€€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Í¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹I9Q}5}Y9P(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ñðÍ¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹A!eM%1}=9QP¤(€€€€€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹Í•Ù•É¥Ñä ¤€øô€À¸ÌÔ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹µ…à¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹…¹•ÉM¥¹…°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€èéÍ•Ù•É¥Ñä(€€€€€€€€€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€¥˜€¡‘…µ…”¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡±…ÍÑ•™•¹Í¥Ù•½‘•Q¥¬€øô€À(€€€€€€€€€€€€€€€€˜˜½¹Ñ•áÐ¹…µ•Q¥¬ ¤€´±…ÍÑ•™•¹Í¥Ù•½‘•Q¥¬(€€€€€€€€€€€€€€€€€€€€ð9M%Y}=}==1=]9}Q%-L¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÑ½Ý…É€ô‘…µ…”¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€¹½¹Ñ…Ñ¥É•Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Ù•Ñ½È€´øÙ•Ñ½È¹±•¹Ñ¡MÅÕ…É• ¤€ø€Ä¸Á´ÄÈ¤(€€€€€€€€€€€€€€€€¹½É±Í••Ð  ¤€´ø¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€€ ¡½¹Ñ•áÐ¹…µ•Q¥¬ ¤€¼9M%Y}=}==1=]9}Q%-L¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€˜€Å0¤€ôô€Á0€ü€Ä¸À€è€´Ä¸À°(€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€À¸ÌÔ(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¡½É¥é½¹Ñ…±Q½Ý…É€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€Ñ½Ý…É¹à ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€Ñ½Ý…É¹è ¤(€€€€€€€€¤ì(€€€€€€€¥˜€¡¡½É¥é½¹Ñ…±Q½Ý…É¹±•¹Ñ¡MÅÕ…É• ¤€ø€Ä¸Á´ÄÈ¤ì(€€€€€€€€€€€±…ÍÑQ¡É•…Ñ¥É•Ñ¥½¸€ô¡½É¥é½¹Ñ…±Q½Ý…É¹¹½Éµ…±¥é• ¤ì(€€€€€€€€€€€Í…¹	…Í•e…Ü€ôå…ÝÉ½µ¥É•Ñ¥½¸¡±…ÍÑQ¡É•…Ñ¥É•Ñ¥½¸¤ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¡½É¥é½¹Ñ…±Ý…ä€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€µÑ½Ý…É¹à ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€µÑ½Ý…É¹è ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä€ô¡½É¥é½¹Ñ…±Ý…ä¹±•¹Ñ¡MÅÕ…É• ¤€ø€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€ü¡½É¥é½¹Ñ…±Ý…ä¹¹½Éµ…±¥é• ¤(€€€€€€€€€€€€€€€€è¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€€ ¡½¹Ñ•áÐ¹…µ•Q¥¬ ¤€¼9M%Y}=}==1=]9}Q%-L¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€˜€Å0¤€ôô€Á0€ü€Ä¸À€è€´Ä¸À°(€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€À¸À(€€€€€€€€€€€€€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¡½É¥é½¹Ñ…±½ÉÝ…É€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤¹à ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤¹è ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ™½ÉÝ…É€ô¡½É¥é½¹Ñ…±½ÉÝ…É¹±•¹Ñ¡MÅÕ…É• ¤(€€€€€€€€€€€€€€€€ø€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€ü¡½É¥é½¹Ñ…±½ÉÝ…É¹¹½Éµ…±¥é• ¤(€€€€€€€€€€€€€€€€è¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ À¸À°€À¸À°€Ä¸À¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ±•™Ð€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€™½ÉÝ…É¹è ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€µ™½ÉÝ…É¹à ¤(€€€€€€€€¤ì(€€€€€€€¥˜€ …½É”¹±½½¬¡±½½­Ð (€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¹…‘¡…Ý…ä¤(€€€€€€€€¤¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹‘…µ…•}‘½‘•}±½½­}É•©•Ñ•ˆ(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”µ½Ù•€ô½É”¹µ½Ù”¡¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€…Ý…ä¹‘½Ð¡™½ÉÝ…É¤°(€€€€€€€€€€€€€€€…Ý…ä¹‘½Ð¡±•™Ð¤°(€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤¤ì(€€€€€€€¥˜€ …µ½Ù•¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹‘…µ…•}‘½‘•}µ½Ù•}É•©•Ñ•ˆ(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€€€€€±…ÍÑ•™•¹Í¥Ù•½‘•Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤€¬€Äì(€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥…‰½ÉÑ…•	É•…¬¡™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ¤ì(€€€€€€€¥˜€¡…•	É•…¬€„ô¹Õ±°€˜˜…•	É•…­A…É…µ•Ñ•ÉÌ€„ô¹Õ±°¤ì(€€€€€€€€€€€ÑÉäì(€€€€€€€€€€€€€€€…•	É•…¬¹…¹•°¡½¹Ñ•áÐ°…•	É•…­A…É…µ•Ñ•ÉÌ¤ì(€€€€€€€€€€€ô…Ñ €¡IÕ¹Ñ¥µ•á•ÁÑ¥½¸¥¹½É•¤ì(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹Ì¹…‰½ÉÑ5¥¹¥¹œ ¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€…•	É•…¬€ô¹Õ±°ì(€€€€€€€…•	É•…­A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÍ•…É  (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°M¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”€ôÍ¹…ÁÍ¡½Ð¹½É” ¤ì(€€€€€€€¥˜€¡½¹Ñ•áÐ¹…µ•Q¥¬ ¤€ð¹•áÑÑ¥½¹Q¥¬¤ì(€€€€€€€€€€€½É”¹ÍÑ½À ¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡™É•Í °ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€¥˜€¡Í¡½Õ±‘•Í•¹‘É½µ…”¡™É…µ”¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑ=ÉAÉ•Á…É•…••Í•¹Ð (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ%¹Ñ••Èø¥µµ•‘¥…Ñ•É…½¸€ô(€€€€€€€€€€€€€€€¥µµ•‘¥…Ñ•É…½¹%¹‘•à¡™É…µ”¤ì(€€€€€€€¥˜€¡¥µµ•‘¥…Ñ•É…½¸¹¥ÍµÁÑä ¤(€€€€€€€€€€€€€€€€˜˜€¡±½Í•ÍÑÉåÍÑ…±]¥Ñ¡±¥¹•‘…•	…È¡™É…µ”¤¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€ñð‰½Õ¹‘	±½­•‘ÉåÍÑ…°¡™É…µ”¤¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€ñð±•…ÉÉåÍÑ…±%¹‘•à¡™É…µ”¤¹¥ÍµÁÑä ¤(€€€€€€€€€€€€€€€€€€€€˜˜¡…Í	±½­•‘ÉåÍÑ…°¡™É…µ”¤¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸¡…¹‘±•	±½­•‘ÉåÍÑ…° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•µ•µ‰•ÉU¹Í…™•±•…ÉÉåÍÑ…°¡™É…µ”¤ì(€€€€€€€¥˜€¡ÉåÍÑ…±MÑ…¹‘=™™A½Í¥Ñ¥½¸€„ô¹Õ±°¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÁÉ•Á…É•ÉåÍÑ…±MÑ…¹‘=™˜ (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€ ……•Q½Ý•É•€˜˜…•A±…¸€„ô¹Õ±°¤ì(€€€€€€€€€€€±•…É…•QÉ…Ù•ÉÍ…±A±…¸ ¤ì(€€€€€€€ô(€€€€€€€…•M…¹QÕÉ¹Ì€ô€Àì(€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹9=9ì(€€€€€€€Í…Ý…•	…É	•å½¹‘I•… €ô™…±Í”ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ%¹Ñ••Èø±•…ÉÉåÍÑ…°€ô±•…ÉÉåÍÑ…±%¹‘•à¡™É…µ”¤ì(€€€€€€€™¥¹…°‰½½±•…¸…Ñ¥Ù•É…½¹Q¡É•…Ð€ô™É…µ”¹‘…¹•ÉM¥¹…±Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹…¹å5…Ñ ¡Í¥¹…°€´ø(€€€€€€€€€€€€€€€€€€€€€€€€¡Í¥¹…°¹­¥¹ ¤€ôô…¹•É-¥¹¹Q!IQ}=9QP(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ñðÍ¥¹…°¹­¥¹ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ôô…¹•É-¥¹¹AI=)Q%1}AI=a%5%Qd¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€˜˜Í¥¹…°¹Í•Ù•É¥Ñä ¤€øô€À¸ÌÔ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€‰½½±•…¸ÉåÍÑ…±1…¹•	±½­•€ô™…±Í”ì(€€€€€€€¥˜€ ……Ñ¥Ù•É…½¹Q¡É•…Ð€˜˜±•…ÉÉåÍÑ…°¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÉåÍÑ…°€ô™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤(€€€€€€€€€€€€€€€€€€€€¹•Ð¡±•…ÉÉåÍÑ…°¹½É±Í•Q¡É½Ü ¤¤ì(€€€€€€€€€€€ÉåÍÑ…±1…¹•	±½­•€ô¹‘ÉåÍÑ…±MÑ…¹‘=™™A±…¹¹•È¹‘É…½¹	±½­Í¥É¥¹1…¹” (€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€ÉåÍÑ…°(€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€ …ÉåÍÑ…±1…¹•	±½­•¤ì(€€€€€€€€€€€€€€€ÉåÍÑ…±1…¹•ÑÑ•µÁÑÌ€ô€Àì(€€€€€€€€€€€€€€€ÉåÍÑ…±1…¹•M…¹QÕÉ¹Ì€ô€Àì(€€€€€€€€€€€ô•±Í”¥˜€¡ÉåÍÑ…±1…¹•ÑÑ•µÁÑÌ(€€€€€€€€€€€€€€€€€€€€ð5a%5U5}IeMQ1}19}QQ5AQL¤ì(€€€€€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñÉ¥‘A½Ìø±…¹”€ô(€€€€€€€€€€€€€€€€€€€€€€€¹‘ÉåÍÑ…±MÑ…¹‘=™™A±…¹¹•È¹Í•±•Ñ¥É¥¹1…¹” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…°¹Á½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ¹¡…É‘½É” ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤¹™¥±Ñ•È¡…¹‘¥‘…Ñ”€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€……¹‘¥‘…Ñ”¹•ÅÕ…±Ì¡™É…µ”¹™••Ð ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€¥˜€¡±…¹”¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑÉåÍÑ…±1…¹” (€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€±…¹”¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€¥˜€¡ÉåÍÑ…±1…¹•M…¹QÕÉ¹Ì(€€€€€€€€€€€€€€€€€€€€€€€€ð5a%5U5}IeMQ1}19}M9L¤ì(€€€€€€€€€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÑ½ÉåÍÑ…°€ôÉåÍÑ…°¹Á½Í¥Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹ÍÕ‰ÑÉ…Ð¡™É…µ”¹Á½Í¥Ñ¥½¸ ¤¤ì(€€€€€€€€€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¡½É¥é½¹Ñ…°€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€Ñ½ÉåÍÑ…°¹à ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€Ñ½ÉåÍÑ…°¹è ¤(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ™½ÉÝ…É€ô¡½É¥é½¹Ñ…°¹±•¹Ñ¡MÅÕ…É• ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ø€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ü¡½É¥é½¹Ñ…°¹¹½Éµ…±¥é• ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€è¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ À¸À°€À¸À°€Ä¸À¤ì(€€€€€€€€€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÍ¥‘”€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€™½ÉÝ…É¹è ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€µ™½ÉÝ…É¹à ¤(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€€€€€™¥¹…°‘½Õ‰±”Í¥¸€ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¡ÉåÍÑ…±1…¹•M…¹QÕÉ¹Ì€˜€Ä¤€ôô€À€ü€À¸àÔ€è€´À¸àÔì(€€€€€€€€€€€€€€€€€€€¥˜€ …½É”¹µ½Ù”¡5½Ù•µ•¹Ñ%¹Ñ•¹Ð¹MQ=AA¤¹…•ÁÑ• ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€ñð€…½É”¹±½½¬¡±½½­Ð (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¹…‘ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™½ÉÝ…É¹…‘¡Í¥‘”¹Í…±”¡Í¥¸¤¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹ÉåÍÑ…±}±…¹•}Í…¹}É•©•Ñ•ˆ(€€€€€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€¥˜€¡™É•Í ¤ì(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±1…¹•M…¹QÕÉ¹Ì¬¬ì(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€€¼¨(€€€€€€€€€¨¹•…É‰ä‘É…½¸¥Ì¹½ÐÍÕ™™¥¥•¹ÐÉ•…Í½¸Ñ¼¥¹½É”…¸•áÁ½Í•(€€€€€€€€€¨ÉåÍÑ…°¸Y…¹¥±±„ÉåÍÑ…±Ì½¹Ñ¥¹Õ½ÕÍ±ä¡•…°Ñ¡”‘É…½¸°Í¼„(€€€€€€€€€¨±•…ÈÉåÍÑ…°µÕÍÐ‰”É•µ½Ù•™¥ÉÍÐÝ¡•¹•Ù•ÈÑ¡”‰½‘ä¥Ì¹½Ð(€€€€€€€€€¨ÕÉÉ•¹Ñ±äÕ¹‘•È½¹Ñ…Ð½ÈÁÉ½©•Ñ¥±”ÁÉ•ÍÍÕÉ”¸ÕÉ¥¹œ…¸…Ñ¥Ù”(€€€€€€€€€¨Ñ¡É•…Ð°­••ÀÑ¡”‘É…½¸…ÌÑ¡”¥µµ•‘¥…Ñ”Ñ…É•ÐÍ¼•µ•É•¹ä(€€€€€€€€€¨µ•±•”½É…¹•¡…¹‘±¥¹œ…¸Ñ…­”½Ù•ÈÝ¥Ñ¡½ÕÐÁ…ÕÍ¥¹œ™½È„ÉåÍÑ…°¸(€€€€€€€€€¨¼(€€€€€€€€¼¨(€€€€€€€€€¨‘É…½¸…¸¡½Ù•È‘¥É•Ñ±ä‰•ÑÝ••¸Ñ¡”‰½‘ä…¹…¸•áÁ½Í•(€€€€€€€€€¨ÉåÍÑ…°¸™Ñ•ÈÑ¡”‰½Õ¹‘•±…¹”½‰Í•ÉÙ…Ñ¥½¹Ì…‰½Ù”°Ñ¡•É”µ…ä‰”¹¼(€€€€€€€€€¨™…¥ÈÍÑ…¹‘¥¹œ•±°™É½´Ý¡¥ Ñ¡”ÉåÍÑ…°É…ä¥Ì±•…È…Ð…±°¸¼(€€€€€€€€€¨¹½ÐÍÑ…É”…ÐÑ¡…ÐÉåÍÑ…°™½É•Ù•Èè¡½½Í”Ñ¡”¹•…É•ÍÐ½‰Í•ÉÙ•(€€€€€€€€€¨‘É…½¸Á…ÉÐ…¹ÕÍ”Ñ¡”½É‘¥¹…ÉäÉ…¹•Á…Ñ Õ¹Ñ¥°Ñ¡”‘É…½¸µ½Ù•Ì(€€€€€€€€€¨½È¥ÑÌ¡•…±Ñ ¡…¹•Ì¸Q¡¥Ì¥ÌÍÑ¥±°„¹½Éµ…°™¥ÉÍÐµÁ•ÉÍ½¸Ñ…É•Ðì(€€€€€€€€€¨¥Ð¹•Ù•ÈÉ•…‘Ì¡¥‘‘•¸•¹Ñ¥ÑäÍÑ…Ñ”½È™…‰É¥…Ñ•Ì„ÁÉ½©•Ñ¥±”¡¥Ð¸(€€€€€€€€€¨¼(€€€€€€€™¥¹…°‰½½±•…¸ÕÍ•É…½¹…±±‰…¬€ôÉåÍÑ…±1…¹•	±½­•(€€€€€€€€€€€€€€€€˜˜ÉåÍÑ…±1…¹•M…¹QÕÉ¹Ì€øô5a%5U5}IeMQ1}19}M9Lì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ%¹Ñ••ÈøÑ…É•Ñ%¹‘•à€ô(€€€€€€€€€€€€€€€€……Ñ¥Ù•É…½¹Q¡É•…Ð(€€€€€€€€€€€€€€€€€€€€€€€€˜˜±•…ÉÉåÍÑ…°¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€€€€€€€€€˜˜€…ÕÍ•É…½¹…±±‰…¬(€€€€€€€€€€€€€€€€€€€€€€€€ü±•…ÉÉåÍÑ…°(€€€€€€€€€€€€€€€€€€€€€€€€è¥µµ•‘¥…Ñ•É…½¸¹½È  ¤€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÕÍ•É…½¹…±±‰…¬(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ü¹•…É•ÍÑÉ…½¹%¹‘•à¡™É…µ”¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€èÍ•±•ÑQ…É•Ñ%¹‘•à¡™É…µ”¤(€€€€€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡Ñ…É•Ñ%¹‘•à¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸Í…¸ (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°¥¹Ð¥¹‘•à€ôÑ…É•Ñ%¹‘•à¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð€ô(€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹•Ð¡¥¹‘•à¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌµ•±••¥´€ô(€€€€€€€€€€€€€€€µ•±••¥µA½¥¹Ð¡Ñ…É•Ð¤ì(€€€€€€€¥˜€¡9I}I=8¹•ÅÕ…±Ì¡Ñ…É•Ð¹•¹Ñ¥ÑåQåÁ•% ¤¤(€€€€€€€€€€€€€€€€˜˜µ•±••ÑÑ…­Ì€øô51}QQ-M}	=I}I9(€€€€€€€€€€€€€€€€˜˜€…‘É…½¹I…¹•‘5½‘”¤ì(€€€€€€€€€€€‘É…½¹I…¹•‘5½‘”€ôÑÉÕ”ì(€€€€€€€€€€€‘É…½¹I•ÑÉ•…Ñ¥É•Ñ¥½¸€ô¡½É¥é½¹Ñ…±Ý…å¥É•Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€µ•±••¥´°(€€€€€€€€€€€€€€€€€€€™É…µ”¹Á½Í¥Ñ¥½¸ ¤(€€€€€€€€€€€€¤ì(€€€€€€€€€€€‘É…½¹I•ÑÉ•…ÑQ¥­ÍI•µ…¥¹¥¹œ€ô(€€€€€€€€€€€€€€€€€€€I=9}I9}IQIQ}Q%-Lì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹IQIQ%9}I=8ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€¥˜€¡9I}I=8¹•ÅÕ…±Ì¡Ñ…É•Ð¹•¹Ñ¥ÑåQåÁ•% ¤¤(€€€€€€€€€€€€€€€€˜˜µ•±••I•…¡5¥ÍÍ•Ì(€€€€€€€€€€€€€€€€€€€€ð51}I!}5%MMM}	=I}I9(€€€€€€€€€€€€€€€€˜˜€…‘É…½¹I…¹•‘5½‘”(€€€€€€€€€€€€€€€€˜˜µ•±••ÑÑ…­Ì€ð51}QQ-M}	=I}I9(€€€€€€€€€€€€€€€€˜˜µ•±••¥´¹ÍÕ‰ÑÉ…Ð¡™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¤¹±•¹Ñ  ¤(€€€€€€€€€€€€€€€€€€€€ðô51}I=9}%MQ9(€€€€€€€€€€€€€€€€˜˜¥¹Ñ•É…Ñ¥½¹1¥¹•±•…È¡Ñ…É•Ð¤¤ì(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñMÑÉ¥¹œøµ•±••]•…Á½¸€ô(€€€€€€€€€€€€€€€€€€€ÁÉ•™•ÉÉ•‘5•±••]•…Á½¸¡™É…µ”¤ì(€€€€€€€€€€€¥˜€¡µ•±••]•…Á½¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸µ•±••É…½¸ (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€Ñ…É•Ð°(€€€€€€€€€€€€€€€€€€€€€€€µ•±••]•…Á½¸¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€¥˜€¡Í¡½ÑÍ¥ÍÁ…Ñ¡•€øôÁ…É…µ•Ñ•ÉÌ¹µ…á¥µÕµM¡½ÑÌ ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹Í¡½Ñ}‰Õ‘•Ñ}•á¡…ÕÍÑ•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€ …	=\¹•ÅÕ…±Ì¡™É…µ”¹µ…¥¹!…¹ ¤¹¥Ñ•µ% ¤¤¤ì(€€€€€€€€€€€™¥¹…°%¹Ù•¹Ñ½Éå=Á•É…Ñ¥½¹I•ÍÕ±Ð•ÅÕ¥ÁÁ•€ô(€€€€€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä¹•ÅÕ¥À¡¹•ÜÅÕ¥Á%Ñ•µA…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€	=\°(€€€€€€€€€€€€€€€€€€€€€€€€€€€ÅÕ¥Áµ•¹ÑQ…É•Ð¹5%9!9(€€€€€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€¥˜€ …•ÅÕ¥ÁÁ•¹ÍÕ••‘• ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€•ÅÕ¥ÁÁ•¹™…¥±ÕÉ” ¤¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€¥˜€¡¥¹Ù•¹Ñ½Éå½Õ¹Ð¡™É…µ”°II=\¤€ð€Ä¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹…ÉÉ½ÝÍ}•á¡…ÕÍÑ•ˆ¤ì(€€€€€€€ô(€€€€€€€Í¡½ÑA…É…µ•Ñ•ÉÌ€ô¹•ÜM¡½½Ñ=‰Í•ÉÙ•‘¹Ñ¥ÑåA…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€™É…µ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€€€€€€‰Ù¥Í¥‰±”´ˆ€¬¥¹‘•à°(€€€€€€€€€€€€€€€Ñ¥½¹!…¹¹5%9}!9°(€€€€€€€€€€€€€€€€Ä(€€€€€€€€¤ì(€€€€€€€Í¡½ÑQ…É•ÑÉ…½¸€ô9I}I=8¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€Ñ…É•Ð¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€¤ì(€€€€€€€Í¡½Ð€ô¹•ÜM¡½½Ñ=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±° (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€I…¹•‘½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñM­¥±±…¥±ÕÉ”øÁÉ•½¹‘¥Ñ¥½¸€ô(€€€€€€€€€€€€€€€Í¡½Ð¹ÁÉ•½¹‘¥Ñ¥½¹Ì¡½¹Ñ•áÐ°Í¡½ÑA…É…µ•Ñ•ÉÌ¤ì(€€€€€€€¥˜€¡ÁÉ•½¹‘¥Ñ¥½¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€Í¡½Ð€ô¹Õ±°ì(€€€€€€€€€€€Í¡½ÑA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€Í¡½ÑQ…É•ÑÉ…½¸€ô™…±Í”ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€É•ÑÕÉ¸Í…¸ (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€Í¡½Ð¹ÍÑ…ÉÐ¡½¹Ñ•áÐ°Í¡½ÑA…É…µ•Ñ•ÉÌ¤ì(€€€€€€€Á¡…Í”€ôA¡…Í”¹M!==Q%9ì(€€€€€€€Í…¹QÕÉ¹Ì€ô€Àì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±Ð¡…¹‘±•	±½­•‘ÉåÍÑ…° (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°M¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”€ôÍ¹…ÁÍ¡½Ð¹½É” ¤ì(€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÉåÍÑ…°€ô(€€€€€€€€€€€€€€€±½Í•ÍÑÉåÍÑ…±]¥Ñ¡±¥¹•‘…•	…È¡™É…µ”¤(€€€€€€€€€€€€€€€€¹½È  ¤€´ø‰½Õ¹‘	±½­•‘ÉåÍÑ…°¡™É…µ”¤¤(€€€€€€€€€€€€€€€€¹½È  ¤€´ø±½Í•ÍÑ	±½­•‘ÉåÍÑ…°¡™É…µ”¤¤(€€€€€€€€€€€€€€€€¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñY¥Í¥‰±•	±½­…”øµ…å‰•	…È€ô(€€€€€€€€€€€€€€€…±¥¹•‘…•	…È¡™É…µ”°ÉåÍÑ…°¤ì(€€€€€€€¥˜€¡µ…å‰•	…È¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•	±½­…”‰…È€ôµ…å‰•	…È¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€€€€€¥˜€¡‰…È¹‘¥ÍÑ…¹” ¤€ðô}	I-}I ¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑ…•	É•…¬ (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€‰…È°(€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€Í…Ý…•	…É	•å½¹‘I•… €ôÑÉÕ”ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô(€€€€€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ¹AAI=!}=I}1YQ%=9}IEU%Iì(€€€€€€€€€€€¥˜€¡…•Q½Ý•É•¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑ=ÉAÉ•Á…É•…••Í•¹Ð (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ…•‘ÉåÍÑ…±QÉ…Ù•ÉÍ…±A±…¹¹•È¹A±…¸ø(€€€€€€€€€€€€€€€€€€€Á±…¹¹•€ô(€€€€€€€€€€€€€€€€€€€…•‘ÉåÍÑ…±QÉ…Ù•ÉÍ…±A±…¹¹•È¹Á±…¸ (€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€‰…È(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€¡Á±…¹¹•¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑ…•QÉ…Ù•ÉÍ…° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…°°(€€€€€€€€€€€€€€€€€€€€€€€Á±…¹¹•¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô(€€€€€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ¹M}QIYIM1}U9Y%1	1ì(€€€€€€€ô•±Í”ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹M-%9}Y%M%	1}	Hì(€€€€€€€€€€€¥˜€¡…•Q½Ý•É•¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑ=ÉAÉ•Á…É•…••Í•¹Ð (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸É•½Ù•É…•Y¥•Ü (€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€ÉåÍÑ…°°(€€€€€€€€€€€€€€€™É•Í (€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÍÑ…ÉÑ…•QÉ…Ù•ÉÍ…° (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÉåÍÑ…°°(€€€€€€€€€€€™¥¹…°…•‘ÉåÍÑ…±QÉ…Ù•ÉÍ…±A±…¹¹•È¹A±…¸Á±…¸°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€¥˜€ ……•QÉ…Ù•ÉÍ…±M…™•Ñä¡½¹Ñ•áÐ°™É…µ”¤¤ì(€€€€€€€€€€€€¼¨‘¥ÍÑ…¹Ð…”¥Ì½ÁÑ¥½¹…°Ý¡¥±”Ñ¡”Á±…å•È¥ÌÕ¹‘•ÈÁÉ•ÍÍÕÉ”¸(€€€€€€€€€€€€€¨I•™ÕÍ¥¹œ„É¥Í­äÑ½Ý•È½‘•Í•¹ÐµÕÍÐ¹½ÐÑ•Éµ¥¹…Ñ”Ñ¡”•¹Ñ¥É”(€€€€€€€€€€€€€¨‘É…½¸™¥¡ÐÝ¡•¸…¸½É‘¥¹…ÉäÙ¥Í¥‰±”‘É…½¸Ñ…É•Ð…¸ÍÑ¥±°(€€€€€€€€€€€€€¨‰”É•…ÅÕ¥É•¸€±•…ÈÑ¡”Ñ•¹Ñ…Ñ¥Ù”ÑÉ…Ù•ÉÍ…°…ÕÑ¡½É¥Ñä…¹(€€€€€€€€€€€€€¨É•ÍÕµ”Ñ¡”‰½Õ¹‘•™¥ÉÍÐµÁ•ÉÍ½¸ÍÝ••Àì„±…Ñ•ÈÍ…™”™É…µ”µ…ä(€€€€€€€€€€€€€¨Á±…¸Ñ¡”…”……¥¸¸€¨¼(€€€€€€€€€€€±•…É…•QÉ…Ù•ÉÍ…±A±…¸ ¤ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹MQe}IMIY}IEU%Iì(€€€€€€€€€€€É•ÑÕÉ¸Í…¸ (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡¥¹Ù•¹Ñ½Éå½Õ¹Ð (€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™ÐéÝ…Ñ•É}‰Õ­•Ðˆ(€€€€€€€€¤€ð€Ä¤ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹]QI}	U-Q}IEU%Iì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}Ý…Ñ•É}‰Õ­•Ñ}É•ÅÕ¥É•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡ÁÉ•™•ÉÉ•‘…•5¥¹¥¹Q½½°¡™É…µ”¤¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹A%-a}IEU%Iì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}Á¥­…á•}É•ÅÕ¥É•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡…•ÉåÍÑ…±%€„ô¹Õ±°(€€€€€€€€€€€€€€€€˜˜€……•ÉåÍÑ…±%¹•ÅÕ…±Ì¡ÉåÍÑ…°¹•¹Ñ¥Ñå% ¤¤¤ì(€€€€€€€€€€€±•…É…•QÉ…Ù•ÉÍ…±A±…¸ ¤ì(€€€€€€€ô(€€€€€€€…•ÉåÍÑ…±%€ôÉåÍÑ…°¹•¹Ñ¥Ñå% ¤ì(€€€€€€€…•1…ÍÑM••¹A½Í¥Ñ¥½¸€ôÉåÍÑ…°¹Á½Í¥Ñ¥½¸ ¤ì(€€€€€€€…•A±…¸€ôÁ±…¸ì(€€€€€€€¥˜€ …™É…µ”¹™••Ð ¤¹•ÅÕ…±Ì¡Á±…¸¹…ÁÁÉ½…  ¤¤¤ì(€€€€€€€€€€€¥˜€¡…•ÁÁÉ½…¡ÑÑ•µÁÑÌ(€€€€€€€€€€€€€€€€€€€€øô5a%5U5}}AAI=!}QQ5AQL¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}…ÁÁÉ½…¡}™…¥±•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑ…•ÁÁÉ½…  (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€Á±…¸°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•µ•µ‰•ÉY¥Í¥‰±•1…¹‘¥¹œ¡™É…µ”°Á±…¸¹±…¹‘¥¹œ ¤¤ì(€€€€€€€¥˜€ …É••¹Ñ1…¹‘¥¹Y•É¥™¥…Ñ¥½¸¡™É…µ”¤¤ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹AIAI%9}}Q=]Hì(€€€€€€€€€€€…•1…¹‘¥¹M…¹Ì€ô€Àì(€€€€€€€€€€€É•ÑÕÉ¸ÁÉ•Á…É•…•Q½Ý•È (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€…•1…¹‘¥¹M…¹Ì€ô€Àì(€€€€€€€™¥¹…°	É¥‘•5…Ñ•É¥…±I•ÍÕ±Ðµ…Ñ•É¥…°€ô(€€€€€€€€€€€€€€€‰É¥‘•5…Ñ•É¥…±Ì¹•¹ÍÕÉ•ÅÕ¥ÁÁ• ¤ì(€€€€€€€¥˜€ …µ…Ñ•É¥…°¹É•…‘ä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}Ñ½Ý•É}µ…Ñ•É¥…±}Õ¹…Ù…¥±…‰±”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡µ…Ñ•É¥…°¹…Ù…¥±…‰±•½Õ¹Ð ¤€ðÁ±…¸¹Ñ½Ý•É	±½­Ì ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}Ñ½Ý•É}µ…Ñ•É¥…±}¥¹ÍÕ™™¥¥•¹Ðˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€…•Q½Ý•ÉA…É…µ•Ñ•ÉÌ€ô¹•ÜQ½Ý•ÉUÁA…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ¹‘¥µ•¹Í¥½¸ ¤°(€€€€€€€€€€€€€€€Á±…¸¹Ñ…É•Ñd ¤°(€€€€€€€€€€€€€€€€À¸È°(€€€€€€€€€€€€€€€Á±…¸¹Ñ½Ý•É	±½­Ì ¤(€€€€€€€€¤ì(€€€€€€€…•Q½Ý•È€ô¹•ÜQ½Ý•ÉUÁM­¥±° (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€‰É¥‘•5…Ñ•É¥…±Ì(€€€€€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñM­¥±±…¥±ÕÉ”øÁÉ•½¹‘¥Ñ¥½¸€ô(€€€€€€€€€€€€€€€…•Q½Ý•È¹ÁÉ•½¹‘¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€…•Q½Ý•ÉA…É…µ•Ñ•ÉÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡ÁÉ•½¹‘¥Ñ¥½¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€…•Q½Ý•È€ô¹Õ±°ì(€€€€€€€€€€€…•Q½Ý•ÉA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}Ñ½Ý•É}ÁÉ•½¹‘¥Ñ¥½¹}™…¥±•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€…•Q½Ý•È¹ÍÑ…ÉÐ¡½¹Ñ•áÐ°…•Q½Ý•ÉA…É…µ•Ñ•ÉÌ¤ì(€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹Q=]I%9ì(€€€€€€€Á¡…Í”€ôA¡…Í”¹Q=]I%9}ì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°™…±Í”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÍÑ…ÉÑ…•ÁÁÉ½…  (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°…•‘ÉåÍÑ…±QÉ…Ù•ÉÍ…±A±…¹¹•È¹A±…¸Á±…¸°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ€ô¹•ÜQÉ…Ù•±Q½A…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ¹‘¥µ•¹Í¥½¸ ¤°(€€€€€€€€€€€€€€€Á±…¸¹…ÁÁÉ½…  ¤¹à ¤€¬€À¸Ô°(€€€€€€€€€€€€€€€Á±…¸¹…ÁÁÉ½…  ¤¹ä ¤°(€€€€€€€€€€€€€€€Á±…¸¹…ÁÁÉ½…  ¤¹è ¤€¬€À¸Ô°(€€€€€€€€€€€€€€€€À¸ÐÔ(€€€€€€€€¤ì(€€€€€€€ÑÉ…Ù•°€ô¹•ÜQÉ…Ù•±Q½M­¥±° (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€Í•ÍÍ¥½¹•¹•É…Ñ¥½¸(€€€€€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñM­¥±±…¥±ÕÉ”øÁÉ•½¹‘¥Ñ¥½¸€ô(€€€€€€€€€€€€€€€ÑÉ…Ù•°¹ÁÉ•½¹‘¥Ñ¥½¹Ì¡½¹Ñ•áÐ°ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ¤ì(€€€€€€€¥˜€¡ÁÉ•½¹‘¥Ñ¥½¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€ÑÉ…Ù•°€ô¹Õ±°ì(€€€€€€€€€€€ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€…•ÁÁÉ½…¡ÑÑ•µÁÑÌ¬¬ì(€€€€€€€€€€€…•A±…¸€ô¹Õ±°ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹AAI=!}11}U9Y%1	1ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡™É•Í °ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€ÑÉ…Ù•°¹ÍÑ…ÉÐ¡½¹Ñ•áÐ°ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ¤ì(€€€€€€€…•ÁÁÉ½…¡ÑÑ•µÁÑÌ¬¬ì(€€€€€€€ÑÉ…Ù•±AÕÉÁ½Í”€ôQÉ…Ù•±AÕÉÁ½Í”¹}AAI= ì(€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹AAI=!%9ì(€€€€€€€Á¡…Í”€ôA¡…Í”¹QIY11%9ì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÍÑ…ÉÑ…•	É•…¬ (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•	±½­…”‰…È°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€¥˜€¡…•	…ÉÍ5¥¹•€øô5a%5U5}}	IM}5%9¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}‰±½­}‰Õ‘•Ñ}•á¡…ÕÍÑ•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñMÑÉ¥¹œøÑ½½°€ô(€€€€€€€€€€€€€€€ÁÉ•™•ÉÉ•‘…•5¥¹¥¹Q½½°¡™É…µ”¤ì(€€€€€€€¥˜€¡Ñ½½°¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹A%-a}IEU%Iì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}Á¥­…á•}É•ÅÕ¥É•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€ …Ñ½½°¹½É±Í•Q¡É½Ü ¤¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€™É…µ”¹µ…¥¹!…¹ ¤¹¥Ñ•µ% ¤(€€€€€€€€¤¤ì(€€€€€€€€€€€™¥¹…°%¹Ù•¹Ñ½Éå=Á•É…Ñ¥½¹I•ÍÕ±Ð•ÅÕ¥ÁÁ•€ô(€€€€€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä¹•ÅÕ¥À¡¹•ÜÅÕ¥Á%Ñ•µA…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€Ñ½½°¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€ÅÕ¥Áµ•¹ÑQ…É•Ð¹5%9!9(€€€€€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€¥˜€ …•ÅÕ¥ÁÁ•¹ÍÕ••‘• ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€•ÅÕ¥ÁÁ•¹™…¥±ÕÉ” ¤¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹EU%AA%9}A%-aì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ‰…É¥É•Ñ¥½¸€ô(€€€€€€€€€€€€€€€‰…È¹¡¥ÑA½Í¥Ñ¥½¸ ¤¹ÍÕ‰ÑÉ…Ð¡™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¤ì(€€€€€€€¥˜€¡…¹Õ±…ÉÉÉ½È (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€‰…É¥É•Ñ¥½¸(€€€€€€€€¤€ø}5%9%9}1%959Q}IL¤ì(€€€€€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”ÍÑ½ÁÁ•€ô½É”¹ÍÑ½À ¤ì(€€€€€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”±½½­¥¹œ€ô½É”¹±½½¬¡±½½­Ð (€€€€€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€‰…È¹¡¥ÑA½Í¥Ñ¥½¸ ¤(€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€¥˜€ …ÍÑ½ÁÁ•¹…•ÁÑ• ¤ñð€…±½½­¥¹œ¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}µ¥¹¥¹}…±¥¹µ•¹Ñ}É•©•Ñ•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹1%9%9}Y%M%	1}	Hì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤€¬€Äì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ	±½­…”ø™…”€ô‰±½­…”¡‰…È¹™…” ¤¤ì(€€€€€€€¥˜€¡™…”¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹M-%9}Y%M%	1}	Hì(€€€€€€€€€€€É•ÑÕÉ¸É•½Ù•É…•Y¥•Ü (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€±½Í•ÍÑ	±½­•‘ÉåÍÑ…°¡™É…µ”¤¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€…•	É•…­A…É…µ•Ñ•ÉÌ€ô¹•Ü	É•…­	±½­A…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ¹‘¥µ•¹Í¥½¸ ¤°(€€€€€€€€€€€€€€€¹•Ü=‰Í•ÉÙ•‘	±½­Q…É•Ð (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€€€€€‰…È¹‰±½¬ ¤¹à ¤°(€€€€€€€€€€€€€€€€€€€€€€€‰…È¹‰±½¬ ¤¹ä ¤°(€€€€€€€€€€€€€€€€€€€€€€€‰…È¹‰±½¬ ¤¹è ¤°(€€€€€€€€€€€€€€€€€€€€€€€™…”¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€…•	É•…¬€ô¹•Ü	É•…­	±½­M­¥±° (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€%¹Ñ•É…Ñ¥½¹M­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñM­¥±±…¥±ÕÉ”øÁÉ•½¹‘¥Ñ¥½¸€ô(€€€€€€€€€€€€€€€…•	É•…¬¹ÁÉ•½¹‘¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€…•	É•…­A…É…µ•Ñ•ÉÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡ÁÉ•½¹‘¥Ñ¥½¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ½‘”€ô(€€€€€€€€€€€€€€€€€€€ÁÉ•½¹‘¥Ñ¥½¸¹½É±Í•Q¡É½Ü ¤¹½‘” ¤ì(€€€€€€€€€€€…•	É•…¬€ô¹Õ±°ì(€€€€€€€€€€€…•	É•…­A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€¥˜€¡ÑÉ…¹Í¥•¹Ñ…•	É•…­…¥±ÕÉ”¡½‘”¤¤ì(€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ€ô(€€€€€€€€€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ¹M-%9}Y%M%	1}	Hì(€€€€€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ (€€€€€€€€€€€€€€€€€€€€€€€™É•Í °(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}µ¥¹¥¹}Õ¹…Ù…¥±…‰±”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€…•	É•…¬¹ÍÑ…ÉÐ¡½¹Ñ•áÐ°…•	É•…­A…É…µ•Ñ•ÉÌ¤ì(€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹5%9%9}Y%M%	1}	Hì(€€€€€€€Á¡…Í”€ôA¡…Í”¹=A9%9}ì(€€€€€€€…•M…¹QÕÉ¹Ì€ô€Àì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÉ•½Ù•É…•Y¥•Ü (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÉåÍÑ…°°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€¥˜€ …½É”¹µ½Ù”¡5½Ù•µ•¹Ñ%¹Ñ•¹Ð¹MQ=AA¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹ÍÑ½Á}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡…•M…¹QÕÉ¹Ì€øô}M9M}	=I}I11d¤ì(€€€€€€€€€€€…•M…¹QÕÉ¹Ì€ô€Àì(€€€€€€€€€€€¥˜€¡É…±±åÑÑ•µÁÑÌ€øô5a%5U5}I11e}QQ5AQL¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ôô…•MÑ…ÑÕÌ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹M}QIYIM1}U9Y%1	1(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ü95(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€ˆ¹…•}Í…™•}ÑÉ…Ù•ÉÍ…±}Õ¹…Ù…¥±…‰±”ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€èÍ…Ý…•	…É	•å½¹‘I•… (€€€€€€€€€€€€€€€€€€€€€€€€€€€€ü95(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€ˆ¹…•}É•ÅÕ¥É•Í}…ÁÁÉ½…¡}½É}Ñ½Ý•Èˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€è95(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€ˆ¹…•}½‰ÍÑÉÕÑ¥½¹}Õ¹É•Í½±Ù•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑI…±±åQÉ…Ù•° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ½™™Í•Ð€ô…•1½½­=™™Í•Ð (€€€€€€€€€€€€€€€…•M…¹QÕÉ¹Ì(€€€€€€€€¤ì(€€€€€€€¥˜€ …½É”¹±½½¬¡±½½­Ð (€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€ÉåÍÑ…°¹Á½Í¥Ñ¥½¸ ¤¹…‘¡½™™Í•Ð¤(€€€€€€€€¤¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹±½½­}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€…•M…¹QÕÉ¹Ì¬¬ì(€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÑ¥­…•	É•…¬ (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€™¥¹…°M­¥±±Q¥­I•ÍÕ±ÐÉ•ÍÕ±Ð€ô…•	É•…¬¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€…•	É•…­A…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤(€€€€€€€€€€€€€€€€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹=5A1Q¤ì(€€€€€€€€€€€…•	…ÉÍ5¥¹•¬¬ì(€€€€€€€€€€€…•	É•…¬€ô¹Õ±°ì(€€€€€€€€€€€…•	É•…­A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹YI%e%9}=A9%9ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤(€€€€€€€€€€€€€€€€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹%1¤ì(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ½‘”€ôÉ•ÍÕ±Ð¹™…¥±ÕÉ” ¤(€€€€€€€€€€€€€€€€€€€€¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€€€€€¹½‘” ¤ì(€€€€€€€€€€€…•	É•…¬€ô¹Õ±°ì(€€€€€€€€€€€…•	É•…­A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€¥˜€¡ÑÉ…¹Í¥•¹Ñ…•	É•…­…¥±ÕÉ”¡½‘”¤¤ì(€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ€ô(€€€€€€€€€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ¹M-%9}Y%M%	1}	Hì(€€€€€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}µ¥¹¥¹}™…¥±•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ (€€€€€€€€€€€€€€€É•ÍÕ±Ð¹µ…‘•AÉ½É•ÍÌ ¤ñð™É•Í °(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹Í…™•¡•­Á½¥¹Ð ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÑ¥­…•Q½Ý•È (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€™¥¹…°M­¥±±Q¥­I•ÍÕ±ÐÉ•ÍÕ±Ð€ô…•Q½Ý•È¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€…•Q½Ý•ÉA…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤(€€€€€€€€€€€€€€€€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹=5A1Q¤ì(€€€€€€€€€€€…•Q½Ý•È€ô¹Õ±°ì(€€€€€€€€€€€…•Q½Ý•ÉA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€…•Q½Ý•É•€ôÑÉÕ”ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹1YQì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°™…±Í”¤ì(€€€€€€€ô(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤(€€€€€€€€€€€€€€€€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹%1¤ì(€€€€€€€€€€€…•Q½Ý•È€ô¹Õ±°ì(€€€€€€€€€€€…•Q½Ý•ÉA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ½É•M­¥±±É…µ”øÕÉÉ•¹Ð€ô(€€€€€€€€€€€€€€€€€€€½É•É…µ•Ì¹ÕÉÉ•¹Ð ¤ì(€€€€€€€€€€€¥˜€¡ÕÉÉ•¹Ð¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€€€€€˜˜…•É½À¡ÕÉÉ•¹Ð¹½É±Í•Q¡É½Ü ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€øô€Ì¸Ô¤ì(€€€€€€€€€€€€€€€…•Q½Ý•É•€ôÑÉÕ”ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑ=ÉAÉ•Á…É•…••Í•¹Ð (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ð¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}Ñ½Ý•É}™…¥±•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ (€€€€€€€€€€€€€€€É•ÍÕ±Ð¹µ…‘•AÉ½É•ÍÌ ¤ñð™É•Í °(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹Í…™•¡•­Á½¥¹Ð ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÁÉ•Á…É•…•Q½Ý•È (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€¥˜€¡…•A±…¸€ôô¹Õ±°(€€€€€€€€€€€€€€€ñð…•ÉåÍÑ…±%€ôô¹Õ±°(€€€€€€€€€€€€€€€ñð…•1…ÍÑM••¹A½Í¥Ñ¥½¸€ôô¹Õ±°¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}Ñ½Ý•É}Á±…¹}Õ¹…Ù…¥±…‰±”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•µ•µ‰•ÉY¥Í¥‰±•1…¹‘¥¹œ (€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€…•A±…¸¹±…¹‘¥¹œ ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñY¥Í¥‰±•¹Ñ¥ÑäøÕÉÉ•¹ÑÉåÍÑ…°€ô(€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…•ÉåÍÑ…±%¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹Ñ¥Ñä¹•¹Ñ¥Ñå% ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€9}IeMQ0¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹Ñ¥Ñä¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¹™¥¹‘¥ÉÍÐ ¤ì(€€€€€€€¥˜€¡ÕÉÉ•¹ÑÉåÍÑ…°¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÉåÍÑ…°€ô(€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹ÑÉåÍÑ…°¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€€€€€…•1…ÍÑM••¹A½Í¥Ñ¥½¸€ôÉåÍÑ…°¹Á½Í¥Ñ¥½¸ ¤ì(€€€€€€€€€€€¥˜€¡¥¹Ñ•É…Ñ¥½¹1¥¹•±•…È¡ÉåÍÑ…°¤¤ì(€€€€€€€€€€€€€€€…•Q½Ý•É•€ô™…±Í”ì(€€€€€€€€€€€€€€€±•…É…•QÉ…Ù•ÉÍ…±A±…¸ ¤ì(€€€€€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñY¥Í¥‰±•	±½­…”ø‰…È€ô(€€€€€€€€€€€€€€€€€€€…±¥¹•‘…•	…È¡™É…µ”°ÉåÍÑ…°¤ì(€€€€€€€€€€€¥˜€¡É••¹Ñ1…¹‘¥¹Y•É¥™¥…Ñ¥½¸¡™É…µ”¤(€€€€€€€€€€€€€€€€€€€€˜˜‰…È¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€¥˜€¡‰…È¹½É±Í•Q¡É½Ü ¤¹‘¥ÍÑ…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ðô}	I-}I ¤ì(€€€€€€€€€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑ…•	É•…¬ (€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€‰…È¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑ…•QÉ…Ù•ÉÍ…° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…°°(€€€€€€€€€€€€€€€€€€€€€€€…•A±…¸°(€€€€€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€¥˜€¡…•1…¹‘¥¹M…¹Ì(€€€€€€€€€€€€€€€€øô}M9Q}M9}1%5%P¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}±…¹‘¥¹}¹½Ñ}Ù¥Í¥‰±”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ð€ô(€€€€€€€€€€€€€€€É••¹Ñ1…¹‘¥¹Y•É¥™¥…Ñ¥½¸¡™É…µ”¤(€€€€€€€€€€€€€€€€€€€€ü…•1…ÍÑM••¹A½Í¥Ñ¥½¸(€€€€€€€€€€€€€€€€€€€€è±…¹‘¥¹Q½À¡…•A±…¸¹±…¹‘¥¹œ ¤¤ì(€€€€€€€¥˜€ …½É”¹µ½Ù”¡5½Ù•µ•¹Ñ%¹Ñ•¹Ð¹MQ=AA¤¹…•ÁÑ• ¤(€€€€€€€€€€€€€€€ñð€…½É”¹±½½¬ (€€€€€€€€€€€€€€€€€€€€€€€±½½­Ð¡™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°Ñ…É•Ð¤(€€€€€€€€€€€€€€€€¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹±½½­}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡™É•Í ¤ì(€€€€€€€€€€€…•1…¹‘¥¹M…¹Ì¬¬ì(€€€€€€€ô(€€€€€€€…•MÑ…ÑÕÌ€ôÉ••¹Ñ1…¹‘¥¹Y•É¥™¥…Ñ¥½¸¡™É…µ”¤(€€€€€€€€€€€€€€€€ü…•MÑ…ÑÕÌ¹IEU%I%9}(€€€€€€€€€€€€€€€€è…•MÑ…ÑÕÌ¹YI%e%9}19%9ì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡™É•Í °ÑÉÕ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÍÑ…ÉÑ=ÉAÉ•Á…É•…••Í•¹Ð (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€¥˜€¡…•A±…¸€ôô¹Õ±°¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}‘•Í•¹Ñ}Á±…¹}Õ¹…Ù…¥±…‰±”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°‘½Õ‰±”‘É½À€ô…•É½À¡™É…µ”¤ì(€€€€€€€¥˜€¡‘É½À€ð€Ì¸Ô¤ì(€€€€€€€€€€€…•Q½Ý•É•€ô™…±Í”ì(€€€€€€€€€€€±•…É…•QÉ…Ù•ÉÍ…±A±…¸ ¤ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°¥¹Ðµ…á¥µÕµÉ½À€ô5…Ñ ¹µ…à (€€€€€€€€€€€€€€€€Ð°(€€€€€€€€€€€€€€€5…Ñ ¹µ¥¸ ÌÈ°€¡¥¹Ð¤5…Ñ ¹•¥°¡‘É½À¤€¬€Ä¤(€€€€€€€€¤ì(€€€€€€€…••Í•¹ÑA…É…µ•Ñ•ÉÌ€ô(€€€€€€€€€€€€€€€¹•Ü]…Ñ•É±ÕÑ¡•Í•¹‘A…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ¹‘¥µ•¹Í¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€€€€€…•A±…¸¹±…¹‘¥¹œ ¤¹à ¤€¬€À¸Ô°(€€€€€€€€€€€€€€€€€€€€€€€…•A±…¸¹±…¹‘¥¹œ ¤¹ä ¤°(€€€€€€€€€€€€€€€€€€€€€€€…•A±…¸¹±…¹‘¥¹œ ¤¹è ¤€¬€À¸Ô°(€€€€€€€€€€€€€€€€€€€€€€€€À¸Ø°(€€€€€€€€€€€€€€€€€€€€€€€µ…á¥µÕµÉ½À(€€€€€€€€€€€€€€€€¤ì(€€€€€€€…••Í•¹Ð€ô¹•Ü]…Ñ•É±ÕÑ¡•Í•¹‘M­¥±° (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì(€€€€€€€€¤ì(€€€€€€€…••Í•¹ÑM…¹Ì€ô€Àì(€€€€€€€…•1…¹‘¥¹M…¹Ì€ô€Àì(€€€€€€€Á¡…Í”€ôA¡…Í”¹AIAI%9}}M9Pì(€€€€€€€É•ÑÕÉ¸ÁÉ•Á…É•…••Í•¹Ð (€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€™É•Í (€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÁÉ•Á…É•…••Í•¹Ð (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€¥˜€¡…••Í•¹Ð€ôô¹Õ±°(€€€€€€€€€€€€€€€ñð…••Í•¹ÑA…É…µ•Ñ•ÉÌ€ôô¹Õ±°(€€€€€€€€€€€€€€€ñð…•A±…¸€ôô¹Õ±°¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}‘•Í•¹Ñ}Á±…¹}Õ¹…Ù…¥±…‰±”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñM­¥±±…¥±ÕÉ”øÁÉ•½¹‘¥Ñ¥½¸€ô(€€€€€€€€€€€€€€€…••Í•¹Ð¹ÁÉ•½¹‘¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€…••Í•¹ÑA…É…µ•Ñ•ÉÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡ÁÉ•½¹‘¥Ñ¥½¸¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€…••Í•¹Ð¹ÍÑ…ÉÐ (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€…••Í•¹ÑA…É…µ•Ñ•ÉÌ(€€€€€€€€€€€€¤ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹M9%9ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹M9%9}ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°™…±Í”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°MÑÉ¥¹œ½‘”€ô(€€€€€€€€€€€€€€€ÁÉ•½¹‘¥Ñ¥½¸¹½É±Í•Q¡É½Ü ¤¹½‘” ¤ì(€€€€€€€¥˜€ …½‘”¹•¹‘Í]¥Ñ  (€€€€€€€€€€€€€€€€ˆ¹Ù¥Í¥‰±•}Í…™•}±…¹‘¥¹}É•ÅÕ¥É•ˆ(€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}Í…™•}‘•Í•¹Ñ}Õ¹…Ù…¥±…‰±”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡™É•Í ¤ì(€€€€€€€€€€€…••Í•¹ÑM…¹Ì¬¬ì(€€€€€€€ô(€€€€€€€¥˜€¡…••Í•¹ÑM…¹Ì(€€€€€€€€€€€€€€€€øô}M9Q}M9}1%5%P¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}±…¹‘¥¹}¹½Ñ}Ù¥Í¥‰±”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ±…¹‘¥¹œ€ô(€€€€€€€€€€€€€€€¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€…•A±…¸¹±…¹‘¥¹œ ¤¹à ¤€¬€À¸Ô°(€€€€€€€€€€€€€€€€€€€€€€€…•A±…¸¹±…¹‘¥¹œ ¤¹ä ¤°(€€€€€€€€€€€€€€€€€€€€€€€…•A±…¸¹±…¹‘¥¹œ ¤¹è ¤€¬€À¸Ô(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€ …½É”¹µ½Ù”¡5½Ù•µ•¹Ñ%¹Ñ•¹Ð¹MQ=AA¤¹…•ÁÑ• ¤(€€€€€€€€€€€€€€€ñð€…½É”¹±½½¬ (€€€€€€€€€€€€€€€€€€€€€€€±½½­Ð¡™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°±…¹‘¥¹œ¤(€€€€€€€€€€€€€€€€¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹±½½­}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹M99%9}19%9ì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡™É•Í °ÑÉÕ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÑ¥­…••Í•¹Ð (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€™¥¹…°M­¥±±Q¥­I•ÍÕ±ÐÉ•ÍÕ±Ð€ô…••Í•¹Ð¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€…••Í•¹ÑA…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤(€€€€€€€€€€€€€€€€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹=5A1Q¤ì(€€€€€€€€€€€…••Í•¹Ð€ô¹Õ±°ì(€€€€€€€€€€€…••Í•¹ÑA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€…•Q½Ý•É•€ô™…±Í”ì(€€€€€€€€€€€±•…É…•QÉ…Ù•ÉÍ…±A±…¸ ¤ì(€€€€€€€€€€€…•MÑ…ÑÕÌ€ô…•MÑ…ÑÕÌ¹M9Q}=5A1Qì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤(€€€€€€€€€€€€€€€€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹%1¤ì(€€€€€€€€€€€…••Í•¹Ð€ô¹Õ±°ì(€€€€€€€€€€€…••Í•¹ÑA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…•}‘•Í•¹Ñ}™…¥±•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ (€€€€€€€€€€€€€€€É•ÍÕ±Ð¹µ…‘•AÉ½É•ÍÌ ¤ñð™É•Í °(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹Í…™•¡•­Á½¥¹Ð ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±Ðµ•±••É…½¸ (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð°(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œµ•±••]•…Á½¸°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€¥˜€ …µ•±••]•…Á½¸¹•ÅÕ…±Ì¡™É…µ”¹µ…¥¹!…¹ ¤¹¥Ñ•µ% ¤¤¤ì(€€€€€€€€€€€™¥¹…°%¹Ù•¹Ñ½Éå=Á•É…Ñ¥½¹I•ÍÕ±Ð•ÅÕ¥ÁÁ•€ô(€€€€€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä¹•ÅÕ¥À¡¹•ÜÅÕ¥Á%Ñ•µA…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€µ•±••]•…Á½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€ÅÕ¥Áµ•¹ÑQ…É•Ð¹5%9!9(€€€€€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€¥˜€ …•ÅÕ¥ÁÁ•¹ÍÕ••‘• ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€•ÅÕ¥ÁÁ•¹™…¥±ÕÉ” ¤¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¥¹Ñ•É…Ñ¥½¹¥´€ô(€€€€€€€€€€€€€€€µ•±••¥µA½¥¹Ð¡Ñ…É•Ð¤ì(€€€€€€€¥˜€ …½É”¹µ½Ù”¡5½Ù•µ•¹Ñ%¹Ñ•¹Ð¹MQ=AA¤¹…•ÁÑ• ¤(€€€€€€€€€€€€€€€ñð€…½É”¹±½½¬ (€€€€€€€€€€€€€€€€€€€€€€€±½½­Ð¡™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°¥¹Ñ•É…Ñ¥½¹¥´¤(€€€€€€€€€€€€€€€€¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹µ•±••}…¥µ}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡…¹Õ±…ÉÉÉ½È (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹¥´¹ÍÕ‰ÑÉ…Ð¡™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¤(€€€€€€€€¤€ø51}1%959Q}IL¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°™…±Í”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…±½Õ‰±”ÍÑÉ•¹Ñ €ô(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹Ì¹…ÑÑ…­MÑÉ•¹Ñ¡M…±” ¤ì(€€€€€€€¥˜€¡ÍÑÉ•¹Ñ ¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹…ÑÑ…­}ÍÑÉ•¹Ñ¡}Õ¹…Ù…¥±…‰±”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡ÍÑÉ•¹Ñ ¹½É±Í•Q¡É½Ü ¤€ð51}QQ-}MQI9Q ¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡™É•Í °™…±Í”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”…ÑÑ…­•€ô(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹Ì¹…ÑÑ…¬¡Ñ…É•Ð¹•¹Ñ¥Ñå% ¤¤ì(€€€€€€€¥˜€ ……ÑÑ…­•¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€¥˜€¡ÑÉ…¹Í¥•¹Ñ5•±••Q…É•Ñ…¥±ÕÉ”¡…ÑÑ…­•¤¤ì(€€€€€€€€€€€€€€€¥˜€¡…ÑÑ…­•(€€€€€€€€€€€€€€€€€€€€€€€€ôôÑ¥½¹=ÕÑ½µ”¹QIQ}=UQ}=}I ¤ì(€€€€€€€€€€€€€€€€€€€µ•±••I•…¡5¥ÍÍ•Ì¬¬ì(€€€€€€€€€€€€€€€€€€€¥˜€¡™É…µ”¹½¹É½Õ¹ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€˜˜¥¹Ñ•É…Ñ¥½¹¥´¹ä ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€´™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¹ä ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€øô€À¸ÜÔ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€˜˜€…½É”¹©ÕµÀ ¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹µ•±••}©ÕµÁ}É•©•Ñ•ˆ(€€€€€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤€¬€Äì(€€€€€€€€€€€€€€€Í…¹QÕÉ¹Ì€ô€Àì(€€€€€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹µ•±••}…ÑÑ…­}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€µ•±••I•…¡5¥ÍÍ•Ì€ô€Àì(€€€€€€€É…¹•‘É…½¹M¡½ÑÍM¥¹•5•±••I•ÑÉä€ô€Àì(€€€€€€€µ•±••ÑÑ…­Ì¬¬ì(€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤€¬€Èì(€€€€€€€Í…¹QÕÉ¹Ì€ô€Àì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°™…±Í”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒA•É•ÁÑ¥½¹Y•ŒÌµ•±••¥µA½¥¹Ð (€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð(€€€€¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°MÑÉ¥¹œøÁÉ½Á•ÉÑ¥•Ì€ô(€€€€€€€€€€€€€€€Ñ…É•Ð¹Ù¥Í¥‰±•AÉ½Á•ÉÑ¥•Ì ¤ì(€€€€€€€¥˜€ ‰ÑÉÕ”ˆ¹•ÅÕ…±Ì¡ÁÉ½Á•ÉÑ¥•Ì¹•Ð ‰µÕ±Ñ¥Á…ÉÑA…É•¹Ðˆ¤¤¤ì(€€€€€€€€€€€ÑÉäì(€€€€€€€€€€€€€€€™¥¹…°‘½Õ‰±”à€ô½Õ‰±”¹Á…ÉÍ•½Õ‰±” (€€€€€€€€€€€€€€€€€€€€€€€ÁÉ½Á•ÉÑ¥•Ì¹•Ð ‰¥¹Ñ•É…Ñ¥½¹¥µ`ˆ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€™¥¹…°‘½Õ‰±”ä€ô½Õ‰±”¹Á…ÉÍ•½Õ‰±” (€€€€€€€€€€€€€€€€€€€€€€€ÁÉ½Á•ÉÑ¥•Ì¹•Ð ‰¥¹Ñ•É…Ñ¥½¹¥µdˆ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€™¥¹…°‘½Õ‰±”è€ô½Õ‰±”¹Á…ÉÍ•½Õ‰±” (€€€€€€€€€€€€€€€€€€€€€€€ÁÉ½Á•ÉÑ¥•Ì¹•Ð ‰¥¹Ñ•É…Ñ¥½¹¥µhˆ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€¥˜€¡½Õ‰±”¹¥Í¥¹¥Ñ”¡à¤(€€€€€€€€€€€€€€€€€€€€€€€€˜˜½Õ‰±”¹¥Í¥¹¥Ñ”¡ä¤(€€€€€€€€€€€€€€€€€€€€€€€€˜˜½Õ‰±”¹¥Í¥¹¥Ñ”¡è¤¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ¡à°ä°è¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô…Ñ €¡9Õ±±A½¥¹Ñ•Éá•ÁÑ¥½¸(€€€€€€€€€€€€€€€€€€€ð9Õµ‰•É½Éµ…Ñá•ÁÑ¥½¸¥¹½É•¤ì(€€€€€€€€€€€€€€€€¼¼…¥°±½Í•Ñ¼Ñ¡”½É‘¥¹…ÉäÍ•µ…¹Ñ¥Œ•¹Ñ¥ÑäÁ½Í¥Ñ¥½¸¸(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Ñ…É•Ð¹Á½Í¥Ñ¥½¸ ¤¹…‘ (€€€€€€€€€€€€€€€¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ À¸À°€È¸À°€À¸À¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸ÑÉ…¹Í¥•¹Ñ5•±••Q…É•Ñ…¥±ÕÉ” (€€€€€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”½ÕÑ½µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸½ÕÑ½µ”€ôôÑ¥½¹=ÕÑ½µ”¹QIQ}9=Q}=U9(€€€€€€€€€€€€€€€ñð½ÕÑ½µ”€ôôÑ¥½¹=ÕÑ½µ”¹QIQ}U91=(€€€€€€€€€€€€€€€ñð½ÕÑ½µ”€ôôÑ¥½¹=ÕÑ½µ”¹QIQ}=UQ}=}I (€€€€€€€€€€€€€€€ñð½ÕÑ½µ”€ôôÑ¥½¹=ÕÑ½µ”¹QIQ}=1U(€€€€€€€€€€€€€€€ñð½ÕÑ½µ”€ôôÑ¥½¹=ÕÑ½µ”¹QIQ}!9ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÍ…¸ (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€€¼¨(€€€€€€€€€¨É•…°™¥ÉÍÐµÁ•ÉÍ½¸Á±…å•È‘½•Ì¹½ÐÁ±…¹ÐÑ¡•¥È™••ÐÝ¡¥±”(€€€€€€€€€¨Í•…É¡¥¹œÑ¡”Í­ä¸€Q¡”½±MQ=AA¥¹ÁÕÐ±•™ÐÑ¡”‰½‘ä•áÁ½Í•Ñ¼(€€€€€€€€€¨‘É…½¸‰É•…Ñ ‘ÕÉ¥¹œ•Ù•Éä€ÐàµÙ¥•ÜÍÝ••À°…¹…±Í¼ÁÉ½‘Õ•Ñ¡”(€€€€€€€€€¨•á…Ð€‰±½½­Ì…É½Õ¹‰ÕÐ‘½•Ì¹½Ñ¡¥¹œˆ™…¥±ÕÉ”Í••¸¥¸±¥Ù”ÉÕ¹Ì¸(€€€€€€€€€¨UÍ”„Íµ…±°…±Ñ•É¹…Ñ¥¹œÍÑÉ…™”½¹±äÝ¡¥±”¹¼±•…°Ñ…É•Ð¥Ì(€€€€€€€€€¨Ù¥Í¥‰±”¸€%ÐÉ•µ…¥¹Ì„¹½Éµ…°Á±…å•ÈµÉ•±…Ñ¥Ù”¥¹ÁÕÐì½±±¥Í¥½¸°(€€€€€€€€€¨™…±°°…¹•µ•É•¹äµÍÕÉÙ¥Ù…°¡•­ÌÍÑ¥±°½Ý¸Ñ¡”™¥¹…°µ½Ù•µ•¹Ð¸(€€€€€€€€€¨¼(€€€€€€€™¥¹…°‘½Õ‰±”Í•…É¡MÑÉ…™”€ô(€€€€€€€€€€€€€€€€ ¡Í…¹QÕÉ¹Ì€¼M9}A%Q!L¹±•¹Ñ ¤€˜€Ä¤€ôô€À(€€€€€€€€€€€€€€€€€€€€€€€€ü€À¸ÌÔ(€€€€€€€€€€€€€€€€€€€€€€€€è€´À¸ÌÔì(€€€€€€€¥˜€ …½É”¹µ½Ù”¡¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€Í•…É¡MÑÉ…™”°(€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹Í•…É¡}µ½Ù•}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡Í…¹QÕÉ¹Ì€øôM9M}	=I}I11d¤ì(€€€€€€€€€€€¥˜€¡É…±±åÑÑ•µÁÑÌ€øô5a%5U5}I11e}QQ5AQL¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹¹½}Ù¥Í¥‰±•}½µ‰…Ñ}Ñ…É•Ðˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑI…±±åQÉ…Ù•° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€€€€€€€€€™É•Í (€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°¥¹ÐÁ¥Ñ¡%¹‘•à€ô(€€€€€€€€€€€€€€€Í…¹QÕÉ¹Ì€”M9}A%Q!L¹±•¹Ñ ì(€€€€€€€™¥¹…°¥¹Ðå…ÝMÑ•À€ô(€€€€€€€€€€€€€€€Í…¹QÕÉ¹Ì€¼M9}A%Q!L¹±•¹Ñ ì(€€€€€€€™¥¹…°1½½­%¹Ñ•¹Ð±½½¬€ô¹•Ü1½½­%¹Ñ•¹Ð (€€€€€€€€€€€€€€€Ñ¥½¹5…Ñ ¹ÝÉ…Á•É••Ì (€€€€€€€€€€€€€€€€€€€€€€€Í…¹	…Í•e…Ü€¬å…ÝMÑ•À€¨€ÌÀ¸Á(€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€M9}A%Q!MmÁ¥Ñ¡%¹‘•át(€€€€€€€€¤ì(€€€€€€€¥˜€ …½É”¹±½½¬¡±½½¬¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹±½½­}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€Í…¹QÕÉ¹Ì¬¬ì(€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€ô((€€€€¼¨¨(€€€€€¨5½Ù”½ÕÐ½˜„±½Í”µÕ±Ñ¥Á…ÉÐ¡¥Ñ‰½à‰•™½É”ÍÝ¥Ñ¡¥¹œÑ¼Ñ¡”‰½Ü¸€(€€€€€¨¹½Éµ…°Á±…å•È‰…­Ì…Ý…ä™É½´„‘É…½¸Ñ…¥°¥¹ÍÑ•…½˜½¹Ñ¥¹Õ¥¹œÑ¼(€€€€€¨ÍÝ¥¹œ…ÐÑ¡”Í…µ”Íµ…±°Á…ÉÐ™É½´¥¹Í¥‘”¥ÑÌ½±±¥‘•È¸€Q¡”‘•ÍÑ¥¹…Ñ¥½¸(€€€€€¨¥Ì‘•±¥‰•É…Ñ•±ä¹½ÐÑ•±•Á½ÉÑ•½ÈÁ…Ñ µ¥¹©•Ñ•èÑ¡¥Ì¥Ì½¹±ä„(€€€€€¨‰½Õ¹‘•™½ÉÝ…É¥¹ÁÕÐ…™Ñ•È„™¥ÉÍÐµÁ•ÉÍ½¸±½½¬°Í¼Ù…¹¥±±„½±±¥Í¥½¸°(€€€€€¨Ù½¥…¹•µ•É•¹äµÍÕÉÙ¥Ù…°ÉÕ±•ÌÍÑ¥±°‘•¥‘”Ñ¡”É•ÍÕ±Ð¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÑ¥­É…½¹I…¹•‘I•ÑÉ•…Ð (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€¥˜€¡‘É…½¹I•ÑÉ•…ÑQ¥­ÍI•µ…¥¹¥¹œ€ðô€À(€€€€€€€€€€€€€€€ñð‘É…½¹I•ÑÉ•…Ñ¥É•Ñ¥½¸€ôô¹Õ±°¤ì(€€€€€€€€€€€‘É…½¹I•ÑÉ•…Ñ¥É•Ñ¥½¸€ô¹Õ±°ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä€ô‘É…½¹I•ÑÉ•…Ñ¥É•Ñ¥½¸¹±•¹Ñ¡MÅÕ…É• ¤(€€€€€€€€€€€€€€€€ø€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€ü‘É…½¹I•ÑÉ•…Ñ¥É•Ñ¥½¸¹¹½Éµ…±¥é• ¤(€€€€€€€€€€€€€€€€è¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€€ ¡½¹Ñ•áÐ¹…µ•Q¥¬ ¤€¼€Ù0¤€˜€Å0¤€ôô€Á0(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ü€Ä¸À(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€è€´Ä¸À°(€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€À¸À(€€€€€€€€€€€€€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¡½É¥é½¹Ñ…±½ÉÝ…É€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤¹à ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤¹è ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ™½ÉÝ…É€ô¡½É¥é½¹Ñ…±½ÉÝ…É¹±•¹Ñ¡MÅÕ…É• ¤(€€€€€€€€€€€€€€€€ø€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€ü¡½É¥é½¹Ñ…±½ÉÝ…É¹¹½Éµ…±¥é• ¤(€€€€€€€€€€€€€€€€è¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ À¸À°€À¸À°€Ä¸À¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ±•™Ð€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€™½ÉÝ…É¹è ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€µ™½ÉÝ…É¹à ¤(€€€€€€€€¤ì(€€€€€€€¥˜€ …½É”¹±½½¬¡±½½­Ð (€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¹…‘¡…Ý…ä¤(€€€€€€€€¤¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹É…¹•‘}É•ÑÉ•…Ñ}±½½­}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€¥˜€ …½É”¹µ½Ù”¡¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€…Ý…ä¹‘½Ð¡™½ÉÝ…É¤°(€€€€€€€€€€€€€€€…Ý…ä¹‘½Ð¡±•™Ð¤°(€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹É…¹•‘}É•ÑÉ•…Ñ}µ½Ù•}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡™É•Í ¤ì(€€€€€€€€€€€‘É…½¹I•ÑÉ•…ÑQ¥­ÍI•µ…¥¹¥¹œ´´ì(€€€€€€€ô(€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤€¬€Äì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥É•µ•µ‰•ÉU¹Í…™•±•…ÉÉåÍÑ…° (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€±½Í•ÍÑ±•…ÉÉåÍÑ…°¡™É…µ”¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡ÉåÍÑ…°€´ø(€€€€€€€€€€€€€€€€€€€€€€€¹‘ÉåÍÑ…±MÑ…¹‘=™™A±…¹¹•È(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹¡½É¥é½¹Ñ…±¥ÍÑ…¹” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Á½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…°¹Á½Í¥Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ð¹‘ÉåÍÑ…±MÑ…¹‘=™™A±…¹¹•È(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹5%9%5U5}%I}%MQ9(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹¥™AÉ•Í•¹Ð¡ÉåÍÑ…°€´øì(€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A½Í¥Ñ¥½¸€ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…°¹Á½Í¥Ñ¥½¸ ¤ì(€€€€€€€€€€€€€€€ô¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÁÉ•Á…É•ÉåÍÑ…±MÑ…¹‘=™˜ (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÉåÍÑ…°€ô(€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A½Í¥Ñ¥½¸(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡¹‘ÉåÍÑ…±MÑ…¹‘=™™A±…¹¹•È¹¡½É¥é½¹Ñ…±¥ÍÑ…¹” (€€€€€€€€€€€€€€€™É…µ”¹Á½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€ÉåÍÑ…°(€€€€€€€€¤€øô¹‘ÉåÍÑ…±MÑ…¹‘=™™A±…¹¹•È¹5%9%5U5}%I}%MQ9¤ì(€€€€€€€€€€€±•…ÉÉåÍÑ…±MÑ…¹‘=™™5•µ½Éä ¤ì(€€€€€€€€€€€Í…¹QÕÉ¹Ì€ô€Àì(€€€€€€€€€€€Í…¹	…Í•e…Ü€ô±½½­e…Ü¡™É…µ”¤ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€¥˜€¡ÉåÍÑ…±…•%¹ÍÁ•Ñ¥½¹QÕÉ¹Ì(€€€€€€€€€€€€€€€€ðIeMQ1}}%9MAQ%=9}M9L¤ì(€€€€€€€€€€€¥˜€ …½É”¹µ½Ù”¡5½Ù•µ•¹Ñ%¹Ñ•¹Ð¹MQ=AA¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹ÉåÍÑ…±}…•}¥¹ÍÁ•Ñ¥½¹}ÍÑ½Á}É•©•Ñ•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¥¹ÍÁ•Ñ¥½¹Q…É•Ð€ô(€€€€€€€€€€€€€€€€€€€ÉåÍÑ…°¹…‘ (€€€€€€€€€€€€€€€€€€€€€€€€€€€…•1½½­=™™Í•Ð (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±…•%¹ÍÁ•Ñ¥½¹QÕÉ¹Ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€ …½É”¹±½½¬ (€€€€€€€€€€€€€€€€€€€±½½­Ð (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹ÍÁ•Ñ¥½¹Q…É•Ð(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹ÉåÍÑ…±}…•}¥¹ÍÁ•Ñ¥½¹}±½½­}É•©•Ñ•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡™É•Í ¤ì(€€€€€€€€€€€€€€€ÉåÍÑ…±…•%¹ÍÁ•Ñ¥½¹QÕÉ¹Ì¬¬ì(€€€€€€€€€€€ô(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñÉ¥‘A½ÌøÉ•ÑÉ•…Ð€ô(€€€€€€€€€€€€€€€¹‘ÉåÍÑ…±MÑ…¹‘=™™A±…¹¹•È¹Í•±•Ð (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…°°(€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ¹¡…É‘½É” ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡É•ÑÉ•…Ð¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€¥˜€¡ÉåÍÑ…±MÑ…¹‘=™™M…¹Ì(€€€€€€€€€€€€€€€€€€€€øô5a%5U5}IeMQ1}MQ9=}M9L¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹ÉåÍÑ…±}ÍÑ…¹‘½™™}Õ¹½‰Í•ÉÙ•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€ …½É”¹ÍÑ½À ¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹ÉåÍÑ…±}ÍÑ…¹‘½™™}ÍÑ½Á}É•©•Ñ•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä€ô(€€€€€€€€€€€€€€€€€€€¡½É¥é½¹Ñ…±Ý…å¥É•Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…°°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Á½Í¥Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¥¹ÍÁ•Ñ¥½¹Q…É•Ð€ô(€€€€€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¹…‘ (€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ý…ä¹±•¹Ñ¡MÅÕ…É• ¤€ðô€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ü¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€´È¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€´à¸À(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€è¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ý…ä¹à ¤€¨€à¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€´È¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ý…ä¹è ¤€¨€à¸À(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€ …½É”¹±½½¬ (€€€€€€€€€€€€€€€€€€€±½½­Ð (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹ÍÁ•Ñ¥½¹Q…É•Ð(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹ÉåÍÑ…±}ÍÑ…¹‘½™™}±½½­}É•©•Ñ•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™M…¹Ì¬¬ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°É¥‘A½Ì‘•ÍÑ¥¹…Ñ¥½¸€ôÉ•ÑÉ•…Ð¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A…É…µ•Ñ•ÉÌ€ô¹•Ü5½Ù•Q½A…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ¹‘¥µ•¹Í¥½¸ ¤°(€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸¹à ¤€¬€À¸Ô°(€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸¹ä ¤°(€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸¹è ¤€¬€À¸Ô°(€€€€€€€€€€€€€€€€À¸ÌÀ(€€€€€€€€¤ì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™˜€ô¹•Ü5½Ù•Q½M­¥±° (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€€¡…ÕÑ¡½É¥é•‘½¹Ñ•áÐ°…ÕÑ¡½É¥é•‘É…µ”°Ñ…É•Ð¤€´ø(€€€€€€€€€€€€€€€€€€€¹‘ÉåÍÑ…±MÑ…¹‘=™™A±…¹¹•È(€€€€€€€€€€€€€€€€€€€€€€€€¹…ÕÑ¡½É¥é•ÍÉ•…Ñ•I¥Í¬ (€€€€€€€€€€€€€€€€€€€€€€€€€€€…ÕÑ¡½É¥é•‘É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€Ñ…É•Ð°(€€€€€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…°(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñM­¥±±…¥±ÕÉ”øÁÉ•½¹‘¥Ñ¥½¸€ô(€€€€€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™˜¹ÁÉ•½¹‘¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A…É…µ•Ñ•ÉÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡ÁÉ•½¹‘¥Ñ¥½¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™˜€ô¹Õ±°ì(€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹ÉåÍÑ…±}ÍÑ…¹‘½™™}ÁÉ•½¹‘¥Ñ¥½¸ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™˜¹ÍÑ…ÉÐ (€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™ÑÑ•µÁÑÌ¬¬ì(€€€€€€€Á¡…Í”€ôA¡…Í”¹IA=M%Q%=9%9}IeMQ0ì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡™É•Í °ÑÉÕ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÑ¥­ÉåÍÑ…±MÑ…¹‘=™˜ (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€™¥¹…°M­¥±±Q¥­I•ÍÕ±ÐÉ•ÍÕ±Ð€ô(€€€€€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™˜¹Ñ¥¬ (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A…É…µ•Ñ•ÉÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤(€€€€€€€€€€€€€€€€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹=5A1Q¤ì(€€€€€€€€€€€±•…ÉÉåÍÑ…±MÑ…¹‘=™™¡¥± ¤ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€Í…¹QÕÉ¹Ì€ô€Àì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤(€€€€€€€€€€€€€€€€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹%1¤ì(€€€€€€€€€€€±•…ÉÉåÍÑ…±MÑ…¹‘=™™¡¥± ¤ì(€€€€€€€€€€€¥˜€¡ÉåÍÑ…±MÑ…¹‘=™™ÑÑ•µÁÑÌ(€€€€€€€€€€€€€€€€€€€€øô5a%5U5}IeMQ1}MQ9=}QQ5AQL¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸™…¥° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹ÉåÍÑ…±}ÍÑ…¹‘½™™}™…¥±•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™M…¹Ì€ô€Àì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ (€€€€€€€€€€€€€€€É•ÍÕ±Ð¹µ…‘•AÉ½É•ÍÌ ¤ñð™É•Í °(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹Í…™•¡•­Á½¥¹Ð ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÍÑ…ÉÑÉåÍÑ…±1…¹” (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°É¥‘A½Ì‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€ÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ€ô¹•Ü5½Ù•Q½A…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ¹‘¥µ•¹Í¥½¸ ¤°(€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸¹à ¤€¬€À¸Ô°(€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸¹ä ¤°(€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸¹è ¤€¬€À¸Ô°(€€€€€€€€€€€€€€€€À¸ÌÔ(€€€€€€€€¤ì(€€€€€€€ÉåÍÑ…±1…¹”€ô¹•Ü5½Ù•Q½M­¥±° (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì(€€€€€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñM­¥±±…¥±ÕÉ”øÁÉ•½¹‘¥Ñ¥½¸€ô(€€€€€€€€€€€€€€€ÉåÍÑ…±1…¹”¹ÁÉ•½¹‘¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡ÁÉ•½¹‘¥Ñ¥½¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€ÉåÍÑ…±1…¹”€ô¹Õ±°ì(€€€€€€€€€€€ÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€ÉåÍÑ…±1…¹•ÑÑ•µÁÑÌ¬¬ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡™É•Í °ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€ÉåÍÑ…±1…¹”¹ÍÑ…ÉÐ¡½¹Ñ•áÐ°ÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ¤ì(€€€€€€€ÉåÍÑ…±1…¹•ÑÑ•µÁÑÌ¬¬ì(€€€€€€€ÉåÍÑ…±1…¹•M…¹QÕÉ¹Ì€ô€Àì(€€€€€€€Á¡…Í”€ôA¡…Í”¹IA=M%Q%=9%9}IeMQ1}19ì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÑ¥­ÉåÍÑ…±1…¹” (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€¥˜€¡ÉåÍÑ…±1…¹”€ôô¹Õ±°ñðÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ€ôô¹Õ±°¤ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°M­¥±±Q¥­I•ÍÕ±ÐÉ•ÍÕ±Ð€ôÉåÍÑ…±1…¹”¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€ÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹=5A1Q¤ì(€€€€€€€€€€€ÉåÍÑ…±1…¹”€ô¹Õ±°ì(€€€€€€€€€€€ÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€Í…¹QÕÉ¹Ì€ô€Àì(€€€€€€€€€€€ÉåÍÑ…±1…¹•M…¹QÕÉ¹Ì€ô€Àì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹%1¤ì(€€€€€€€€€€€ÉåÍÑ…±1…¹”€ô¹Õ±°ì(€€€€€€€€€€€ÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ (€€€€€€€€€€€€€€€É•ÍÕ±Ð¹µ…‘•AÉ½É•ÍÌ ¤ñð™É•Í °(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹Í…™•¡•­Á½¥¹Ð ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñY¥Í¥‰±•¹Ñ¥Ñäø±½Í•ÍÑ±•…ÉÉåÍÑ…° (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤(€€€€€€€€€€€€€€€€¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€9}IeMQ0¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹Ñ¥Ñä¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È (€€€€€€€€€€€€€€€€€€€€€€€¥¡Ñ¹‘•ÉÉ…½¹M­¥±°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€èé¥¹Ñ•É…Ñ¥½¹1¥¹•±•…È(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±” (€€€€€€€€€€€€€€€€€€€€€€€Y¥Í¥‰±•¹Ñ¥Ñäèé‘¥ÍÑ…¹”(€€€€€€€€€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒA•É•ÁÑ¥½¹Y•ŒÌ¡½É¥é½¹Ñ…±Ý…å¥É•Ñ¥½¸ (€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÉåÍÑ…°°(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ‰½‘ä(€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€‰½‘ä¹à ¤€´ÉåÍÑ…°¹à ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€‰½‘ä¹è ¤€´ÉåÍÑ…°¹è ¤(€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸…Ý…ä¹±•¹Ñ¡MÅÕ…É• ¤€ðô€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€ü…Ý…ä(€€€€€€€€€€€€€€€€è…Ý…ä¹¹½Éµ…±¥é• ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥±•…ÉÉåÍÑ…±MÑ…¹‘=™™¡¥± ¤ì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™˜€ô¹Õ±°ì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥±•…ÉÉåÍÑ…±MÑ…¹‘=™™5•µ½Éä ¤ì(€€€€€€€±•…ÉÉåÍÑ…±MÑ…¹‘=™™¡¥± ¤ì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A½Í¥Ñ¥½¸€ô¹Õ±°ì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™M…¹Ì€ô€Àì(€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™ÑÑ•µÁÑÌ€ô€Àì(€€€€€€€ÉåÍÑ…±…•%¹ÍÁ•Ñ¥½¹QÕÉ¹Ì€ô€Àì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÑ¥­M¡½Ð (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€™¥¹…°M­¥±±Q¥­I•ÍÕ±ÐÉ•ÍÕ±Ð€ô(€€€€€€€€€€€€€€€Í¡½Ð¹Ñ¥¬¡½¹Ñ•áÐ°Í¡½ÑA…É…µ•Ñ•ÉÌ¤ì(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹=5A1Q¤ì(€€€€€€€€€€€Í¡½ÑÍ¥ÍÁ…Ñ¡•¬¬ì(€€€€€€€€€€€¥˜€¡Í¡½ÑQ…É•ÑÉ…½¸¤ì(€€€€€€€€€€€€€€€É•½É‘½µÁ±•Ñ•‘É…½¹M¡½Ð ¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€Í¡½Ð€ô¹Õ±°ì(€€€€€€€€€€€Í¡½ÑA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€Í¡½ÑQ…É•ÑÉ…½¸€ô™…±Í”ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬AI=)Q%1}MQQ1}Q%-Lì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹%1¤ì(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ½‘”€ôÉ•ÍÕ±Ð¹™…¥±ÕÉ” ¤(€€€€€€€€€€€€€€€€€€€€¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€€€€€¹½‘” ¤ì(€€€€€€€€€€€Í¡½Ð€ô¹Õ±°ì(€€€€€€€€€€€Í¡½ÑA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€Í¡½ÑQ…É•ÑÉ…½¸€ô™…±Í”ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤(€€€€€€€€€€€€€€€€€€€€¬M9}%9QIY1}Q%-Lì(€€€€€€€€€€€¥˜€¡ÑÉ…¹Í¥•¹ÑM¡½Ñ…¥±ÕÉ”¡½‘”¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°95€¬€ˆ¹Í¡½Ñ}™…¥±•ˆ¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ (€€€€€€€€€€€€€€€É•ÍÕ±Ð¹µ…‘•AÉ½É•ÍÌ ¤ñð™É•Í °(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹Í…™•¡•­Á½¥¹Ð ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥É•½É‘½µÁ±•Ñ•‘É…½¹M¡½Ð ¤ì(€€€€€€€É…¹•‘É…½¹M¡½ÑÍM¥¹•5•±••I•ÑÉä¬¬ì(€€€€€€€¥˜€¡É…¹•‘É…½¹M¡½ÑÍM¥¹•5•±••I•ÑÉä(€€€€€€€€€€€€€€€€ðI9}M!=QM}	=I}51}IQId¤ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô(€€€€€€€€¼¨(€€€€€€€€€¨™±å¥¹œ‘É…½¸µ…ä‰•½µ”Í…™•±äÉ•…¡…‰±”…™Ñ•È¥ÐÁ•É¡•Ì¸Q¡”(€€€€€€€€€¨½±…½Õ¹Ñ¥¹œ±•…É•½¹±äÉ•… µ¥ÍÍ•Ì°±•…Ù¥¹œµ•±••ÑÑ…­Ì…Ð(€€€€€€€€€¨¥ÑÌ‰ÕÉÍÐ±¥µ¥Ð…¹‘É…½¹I…¹•‘5½‘”Á•Éµ…¹•¹Ñ±äÑÉÕ”¸Ù•Éä±…Ñ•È(€€€€€€€€€¨±½Í”½‰Í•ÉÙ…Ñ¥½¸Ñ¡•É•™½É”Í­¥ÁÁ•Ñ¡”ÍÝ½É™½É•Ù•È¸I•½Á•¸½¹”(€€€€€€€€€¨‰½Õ¹‘•µ•±•”‰ÕÉÍÐ…™Ñ•È™½ÕÈ½É‘¥¹…Éä…ÉÉ½ÝÌì‘¥ÍÑ…¹”°±¥¹”½˜(€€€€€€€€€¨Í¥¡Ð°…¥´…¹…ÑÑ…¬½½±‘½Ý¸ÍÑ¥±°…Ñ”•Ù•ÉäÍÝ¥¹œ¸(€€€€€€€€€¨¼(€€€€€€€µ•±••I•…¡5¥ÍÍ•Ì€ô€Àì(€€€€€€€µ•±••ÑÑ…­Ì€ô€Àì(€€€€€€€É…¹•‘É…½¹M¡½ÑÍM¥¹•5•±••I•ÑÉä€ô€Àì(€€€€€€€‘É…½¹I…¹•‘5½‘”€ô™…±Í”ì(€€€€€€€‘É…½¹I•ÑÉ•…Ñ¥É•Ñ¥½¸€ô¹Õ±°ì(€€€€€€€‘É…½¹I•ÑÉ•…ÑQ¥­ÍI•µ…¥¹¥¹œ€ô€Àì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÍÑ…ÉÑI…±±åQÉ…Ù•° (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ€ô¹•ÜQÉ…Ù•±Q½A…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ¹‘¥µ•¹Í¥½¸ ¤°(€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡±½…±I…±±åA½¥¹Ð¤¹à ¤°(€€€€€€€€€€€€€€€±½…±I…±±åA½¥¹Ð¹ä ¤°(€€€€€€€€€€€€€€€±½…±I…±±åA½¥¹Ð¹è ¤°(€€€€€€€€€€€€€€€€Ì¸À(€€€€€€€€¤ì(€€€€€€€ÑÉ…Ù•°€ô¹•ÜQÉ…Ù•±Q½M­¥±° (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€Í•ÍÍ¥½¹•¹•É…Ñ¥½¸(€€€€€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñM­¥±±…¥±ÕÉ”øÁÉ•½¹‘¥Ñ¥½¸€ô(€€€€€€€€€€€€€€€ÑÉ…Ù•°¹ÁÉ•½¹‘¥Ñ¥½¹Ì¡½¹Ñ•áÐ°ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ¤ì(€€€€€€€¥˜€¡ÁÉ•½¹‘¥Ñ¥½¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€ÑÉ…Ù•°€ô¹Õ±°ì(€€€€€€€€€€€ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€É…±±åÑÑ•µÁÑÌ¬¬ì(€€€€€€€€€€€Í…¹QÕÉ¹Ì€ô€Àì(€€€€€€€€€€€Í…¹	…Í•e…Ü€ôÑ¥½¹5…Ñ ¹ÝÉ…Á•É••Ì (€€€€€€€€€€€€€€€€€€€Í…¹	…Í•e…Ü€¬€ÄÔ¸Á(€€€€€€€€€€€€¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€ÑÉ…Ù•°¹ÍÑ…ÉÐ¡½¹Ñ•áÐ°ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ¤ì(€€€€€€€É…±±åÑÑ•µÁÑÌ¬¬ì(€€€€€€€ÑÉ…Ù•±AÕÉÁ½Í”€ôQÉ…Ù•±AÕÉÁ½Í”¹I11dì(€€€€€€€Á¡…Í”€ôA¡…Í”¹QIY11%9ì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡™É•Í °ÑÉÕ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±ÐÑ¥­QÉ…Ù•° (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°‰½½±•…¸™É•Í (€€€€¤ì(€€€€€€€™¥¹…°M­¥±±Q¥­I•ÍÕ±ÐÉ•ÍÕ±Ð€ô(€€€€€€€€€€€€€€€ÑÉ…Ù•°¹Ñ¥¬¡½¹Ñ•áÐ°ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ¤ì(€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤€„ôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9¤ì(€€€€€€€€€€€™¥¹…°QÉ…Ù•±AÕÉÁ½Í”½µÁ±•Ñ•‘AÕÉÁ½Í”€ô(€€€€€€€€€€€€€€€€€€€ÑÉ…Ù•±AÕÉÁ½Í”ì(€€€€€€€€€€€ÑÉ…Ù•°€ô¹Õ±°ì(€€€€€€€€€€€ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€€€€€ÑÉ…Ù•±AÕÉÁ½Í”€ôQÉ…Ù•±AÕÉÁ½Í”¹9=9ì(€€€€€€€€€€€Á¡…Í”€ôA¡…Í”¹MI!%9ì(€€€€€€€€€€€Í…¹QÕÉ¹Ì€ô€Àì(€€€€€€€€€€€¹•áÑÑ¥½¹Q¥¬€ô½¹Ñ•áÐ¹…µ•Q¥¬ ¤ì(€€€€€€€€€€€¥˜€¡½µÁ±•Ñ•‘AÕÉÁ½Í”(€€€€€€€€€€€€€€€€€€€€ôôQÉ…Ù•±AÕÉÁ½Í”¹}AAI= ¤ì(€€€€€€€€€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤(€€€€€€€€€€€€€€€€€€€€€€€€ôôM­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹=5A1Q¤ì(€€€€€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ€ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ¹AAI=!}I!ì(€€€€€€€€€€€€€€€ô•±Í”ì(€€€€€€€€€€€€€€€€€€€…•A±…¸€ô¹Õ±°ì(€€€€€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ€ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€…•MÑ…ÑÕÌ¹AAI=!}11}U9Y%1	1ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€€€€€½É•É…µ•Ì¹ÕÉÉ•¹Ð ¤¹¥™AÉ•Í•¹Ð¡™É…µ”€´ø(€€€€€€€€€€€€€€€€€€€Í…¹	…Í•e…Ü€ô±½½­e…Ü¡™É…µ”¤(€€€€€€€€€€€€¤ì(€€€€€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ¡ÑÉÕ”°ÑÉÕ”¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹ÉÕ¹¹¥¹œ (€€€€€€€€€€€€€€€É•ÍÕ±Ð¹µ…‘•AÉ½É•ÍÌ ¤ñð™É•Í °(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹Í…™•¡•­Á½¥¹Ð ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñ%¹Ñ••ÈøÍ•±•ÑQ…É•Ñ%¹‘•à (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ%¹Ñ••ÈøÉåÍÑ…°€ô(€€€€€€€€€€€€€€€±•…ÉÉåÍÑ…±%¹‘•à¡™É…µ”¤ì(€€€€€€€¥˜€¡ÉåÍÑ…°¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÉåÍÑ…°ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸©…Ù„¹ÕÑ¥°¹ÍÑÉ•…´¹%¹ÑMÑÉ•…´¹É…¹” (€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹Í¥é” ¤(€€€€€€€€¤(€€€€€€€€€€€€€€€€¹‰½á• ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥¹‘•à€´ø(€€€€€€€€€€€€€€€€€€€€€€€9I}I=8¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•Ð¡¥¹‘•à¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±”¡¥¹‘•à€´ø(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•Ð¡¥¹‘•à¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹‘¥ÍÑ…¹” ¤(€€€€€€€€€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñ%¹Ñ••Èø¥µµ•‘¥…Ñ•É…½¹%¹‘•à (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€™¥¹…°‰½½±•…¸‘…µ…•9•…É‰ä€ô™É…µ”¹‘…¹•ÉM¥¹…±Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹…¹å5…Ñ ¡Í¥¹…°€´ø(€€€€€€€€€€€€€€€€€€€€€€€€¡Í¥¹…°¹­¥¹ ¤€ôô…¹•É-¥¹¹Q!IQ}=9QP(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ñðÍ¥¹…°¹­¥¹ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ôô…¹•É-¥¹¹AI=)Q%1}AI=a%5%Qd¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€˜˜Í¥¹…°¹Í•Ù•É¥Ñä ¤€øô€À¸ÌÔ¤ì(€€€€€€€É•ÑÕÉ¸©…Ù„¹ÕÑ¥°¹ÍÑÉ•…´¹%¹ÑMÑÉ•…´¹É…¹” (€€€€€€€€€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹Í¥é” ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹‰½á• ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥¹‘•à€´ø9I}I=8¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹•Ð¡¥¹‘•à¤¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€€€€€€€€€¤¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥¹‘•à€´ø(€€€€€€€€€€€€€€€€€€€€€€€‘…µ…•9•…É‰ä(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ñð™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹•Ð¡¥¹‘•à¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹‘¥ÍÑ…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ðô%55%Q}I=9}%MQ9(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±”¡¥¹‘•à€´ø(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹•Ð¡¥¹‘•à¤¹‘¥ÍÑ…¹” ¤(€€€€€€€€€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñ%¹Ñ••Èø¹•…É•ÍÑÉ…½¹%¹‘•à (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸©…Ù„¹ÕÑ¥°¹ÍÑÉ•…´¹%¹ÑMÑÉ•…´¹É…¹” (€€€€€€€€€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹Í¥é” ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹‰½á• ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥¹‘•à€´ø9I}I=8¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹•Ð¡¥¹‘•à¤¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€€€€€€€€€¤¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±”¡¥¹‘•à€´ø(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹•Ð¡¥¹‘•à¤¹‘¥ÍÑ…¹” ¤(€€€€€€€€€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñ%¹Ñ••Èø±•…ÉÉåÍÑ…±%¹‘•à (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸©…Ù„¹ÕÑ¥°¹ÍÑÉ•…´¹%¹ÑMÑÉ•…´¹É…¹” (€€€€€€€€€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹Í¥é” ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¹‰½á• ¤(€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥¹‘•à€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€9}IeMQ0¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•Ð¡¥¹‘•à¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥¹‘•à€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•Ð¡¥¹‘•à¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹‘¥ÍÑ…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€øô¹‘ÉåÍÑ…±MÑ…¹‘=™™A±…¹¹•È(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹5%9%5U5}%I}%MQ9(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥¹‘•à€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹1¥¹•±•…È (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹•Ð¡¥¹‘•à¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±”¡¥¹‘•à€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•Ð¡¥¹‘•à¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹‘¥ÍÑ…¹” ¤(€€€€€€€€€€€€€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¡…Í	±½­•‘ÉåÍÑ…° (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤¹…¹å5…Ñ ¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€9}IeMQ0¹•ÅÕ…±Ì¡•¹Ñ¥Ñä¹•¹Ñ¥ÑåQåÁ•% ¤¤(€€€€€€€€€€€€€€€€€€€€˜˜€…¥¹Ñ•É…Ñ¥½¹1¥¹•±•…È¡•¹Ñ¥Ñä¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”‰½½±•…¸Í¡½Õ±‘•Í•¹‘É½µ…” (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€¥˜€ ……•Q½Ý•É•ñð…•A±…¸€ôô¹Õ±°¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì(€€€€€€€ô(€€€€€€€¥˜€¡…•ÉåÍÑ…±%€ôô¹Õ±°¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€…•ÉåÍÑ…±%¹•ÅÕ…±Ì¡•¹Ñ¥Ñä¹•¹Ñ¥Ñå% ¤¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥¹‘¥ÉÍÐ ¤(€€€€€€€€€€€€€€€€¹µ…À¡¥¡Ñ¹‘•ÉÉ…½¹M­¥±°èé¥¹Ñ•É…Ñ¥½¹1¥¹•±•…È¤(€€€€€€€€€€€€€€€€¹½É±Í”¡ÑÉÕ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”=ÁÑ¥½¹…°ñY¥Í¥‰±•¹Ñ¥Ñäø‰½Õ¹‘	±½­•‘ÉåÍÑ…° (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€¥˜€¡…•ÉåÍÑ…±%€ôô¹Õ±°¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€…•ÉåÍÑ…±%¹•ÅÕ…±Ì¡•¹Ñ¥Ñä¹•¹Ñ¥Ñå% ¤¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€9}IeMQ0¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹Ñ¥Ñä¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€€…¥¹Ñ•É…Ñ¥½¹1¥¹•±•…È¡•¹Ñ¥Ñä¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥¹‘¥ÉÍÐ ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñY¥Í¥‰±•¹Ñ¥Ñäø±½Í•ÍÑ	±½­•‘ÉåÍÑ…° (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€9}IeMQ0¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹Ñ¥Ñä¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€€…¥¹Ñ•É…Ñ¥½¹1¥¹•±•…È¡•¹Ñ¥Ñä¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±” (€€€€€€€€€€€€€€€€€€€€€€€Y¥Í¥‰±•¹Ñ¥Ñäèé‘¥ÍÑ…¹”(€€€€€€€€€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñY¥Í¥‰±•¹Ñ¥Ñäø(€€€€€€€€€€€±½Í•ÍÑÉåÍÑ…±]¥Ñ¡±¥¹•‘…•	…È (€€€€€€€€€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€9}IeMQ0¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹Ñ¥Ñä¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€…±¥¹•‘…•	…È (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹Ñ¥Ñä(€€€€€€€€€€€€€€€€€€€€€€€€¤¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±” (€€€€€€€€€€€€€€€€€€€€€€€Y¥Í¥‰±•¹Ñ¥Ñäèé‘¥ÍÑ…¹”(€€€€€€€€€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”‘½Õ‰±”…•É½À¡™¥¹…°½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€É•ÑÕÉ¸…•A±…¸€ôô¹Õ±°(€€€€€€€€€€€€€€€€ü€À¸À(€€€€€€€€€€€€€€€€è™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹ä ¤(€€€€€€€€€€€€€€€€€€€€´…•A±…¸¹±…¹‘¥¹œ ¤¹ä ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸Ù¥Í¥‰±•1…¹‘¥¹MÕÁÁ½ÉÐ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°É¥‘A½Ì±…¹‘¥¹œ(€€€€¤ì(€€€€€€€™¥¹…°É¥‘A½ÌÍÕÁÁ½ÉÐ€ô±…¹‘¥¹œ¹‰•±½Ü ¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•	±½­…•Ì ¤¹ÍÑÉ•…´ ¤¹…¹å5…Ñ ¡™…”€´ø(€€€€€€€€€€€€€€€™…”¹‰±½¬ ¤¹à ¤€ôôÍÕÁÁ½ÉÐ¹à ¤(€€€€€€€€€€€€€€€€€€€€˜˜™…”¹‰±½¬ ¤¹ä ¤€ôôÍÕÁÁ½ÉÐ¹ä ¤(€€€€€€€€€€€€€€€€€€€€˜˜™…”¹‰±½¬ ¤¹è ¤€ôôÍÕÁÁ½ÉÐ¹è ¤(€€€€€€€€€€€€€€€€€€€€˜˜‰±½­…”¡™…”¹™…” ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Ù…±Õ”€´øÙ…±Õ”€ôô	±½­…”¹U@¤(€€€€€€€€€€€€€€€€€€€€€€€€¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥É•µ•µ‰•ÉY¥Í¥‰±•1…¹‘¥¹œ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°É¥‘A½Ì±…¹‘¥¹œ(€€€€¤ì(€€€€€€€¥˜€¡Ù¥Í¥‰±•1…¹‘¥¹MÕÁÁ½ÉÐ¡™É…µ”°±…¹‘¥¹œ¤¤ì(€€€€€€€€€€€…•1…¹‘¥¹Y•É¥™¥•€ôÑÉÕ”ì(€€€€€€€€€€€…•1…¹‘¥¹Y•É¥™¥•‘I•Ù¥Í¥½¸€ô(€€€€€€€€€€€€€€€€€€€™É…µ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤ì(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”‰½½±•…¸É••¹Ñ1…¹‘¥¹Y•É¥™¥…Ñ¥½¸ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸…•1…¹‘¥¹Y•É¥™¥•(€€€€€€€€€€€€€€€€˜˜…•1…¹‘¥¹Y•É¥™¥•‘I•Ù¥Í¥½¸€øô€À(€€€€€€€€€€€€€€€€˜˜™É…µ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€øô…•1…¹‘¥¹Y•É¥™¥•‘I•Ù¥Í¥½¸(€€€€€€€€€€€€€€€€˜˜™É…µ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€´…•1…¹‘¥¹Y•É¥™¥•‘I•Ù¥Í¥½¸€ðô€Ðì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒA•É•ÁÑ¥½¹Y•ŒÌ±…¹‘¥¹Q½À (€€€€€€€€€€€™¥¹…°É¥‘A½Ì±…¹‘¥¹œ(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€±…¹‘¥¹œ¹à ¤€¬€À¸Ô°(€€€€€€€€€€€€€€€±…¹‘¥¹œ¹ä ¤°(€€€€€€€€€€€€€€€±…¹‘¥¹œ¹è ¤€¬€À¸Ô(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥±•…É…•QÉ…Ù•ÉÍ…±A±…¸ ¤ì(€€€€€€€…•ÉåÍÑ…±%€ô¹Õ±°ì(€€€€€€€…•1…ÍÑM••¹A½Í¥Ñ¥½¸€ô¹Õ±°ì(€€€€€€€…•A±…¸€ô¹Õ±°ì(€€€€€€€…•ÁÁÉ½…¡ÑÑ•µÁÑÌ€ô€Àì(€€€€€€€…••Í•¹ÑM…¹Ì€ô€Àì(€€€€€€€…•1…¹‘¥¹M…¹Ì€ô€Àì(€€€€€€€…•1…¹‘¥¹Y•É¥™¥•€ô™…±Í”ì(€€€€€€€…•1…¹‘¥¹Y•É¥™¥•‘I•Ù¥Í¥½¸€ô€´Äì(€€€€€€€Í…Ý…•	…É	•å½¹‘I•… €ô™…±Í”ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñY¥Í¥‰±•	±½­…”ø…±¥¹•‘…•	…È (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÉåÍÑ…°(€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ½É¥¥¸€ô™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÉ…ä€ô(€€€€€€€€€€€€€€€ÉåÍÑ…°¹Á½Í¥Ñ¥½¸ ¤¹ÍÕ‰ÑÉ…Ð¡½É¥¥¸¤ì(€€€€€€€™¥¹…°‘½Õ‰±”É…å1•¹Ñ¡MÅÕ…É•€ôÉ…ä¹±•¹Ñ¡MÅÕ…É• ¤ì(€€€€€€€¥˜€¡É…å1•¹Ñ¡MÅÕ…É•€ðô€Ä¸Á´ÄÈ¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•	±½­…•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡™…”€´ø(€€€€€€€€€€€€€€€€€€€€€€€%I=9}	IL¹•ÅÕ…±Ì¡™…”¹‰±½­QåÁ•% ¤¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡™…”€´øì(€€€€€€€€€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ™É½µ=É¥¥¸€ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€™…”¹¡¥ÑA½Í¥Ñ¥½¸ ¤¹ÍÕ‰ÑÉ…Ð¡½É¥¥¸¤ì(€€€€€€€€€€€€€€€€€€€™¥¹…°‘½Õ‰±”™É…Ñ¥½¸€ô™É½µ=É¥¥¸¹‘½Ð¡É…ä¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¼É…å1•¹Ñ¡MÅÕ…É•ì(€€€€€€€€€€€€€€€€€€€¥˜€¡™É…Ñ¥½¸€ðô€À¸Àñð™É…Ñ¥½¸€øô€Ä¸ÀÔ¤ì(€€€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ±½Í•ÍÐ€ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€½É¥¥¸¹…‘¡É…ä¹Í…±”¡™É…Ñ¥½¸¤¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸™…”¹¡¥ÑA½Í¥Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹ÍÕ‰ÑÉ…Ð¡±½Í•ÍÐ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹±•¹Ñ  ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ðô}1%9}I%ULì(€€€€€€€€€€€€€€€ô¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±” (€€€€€€€€€€€€€€€€€€€€€€€Y¥Í¥‰±•	±½­…”èé‘¥ÍÑ…¹”(€€€€€€€€€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¥¹Ñ•É…Ñ¥½¹1¥¹•±•…È (€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥Ñä•¹Ñ¥Ñä(€€€€¤ì(€€€€€€€É•ÑÕÉ¸€„‰™…±Í”ˆ¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€•¹Ñ¥Ñä¹Ù¥Í¥‰±•AÉ½Á•ÉÑ¥•Ì ¤¹•Ð (€€€€€€€€€€€€€€€€€€€€‰¥¹Ñ•É…Ñ¥½¹1¥¹•±•…Èˆ(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸ÁÉ½©•Ñ¥±•Q¡É•…Ñ•¹Í	½‘ä (€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÁÉ½©•Ñ¥±”(€€€€¤ì(€€€€€€€€¼¨(€€€€€€€€€¨Q¡”™…¥ÈÍ…µÁ±•Èµ…É­ÌÑ¡”½µÁ…¹¥½¸Ì½Ý¸…ÉÉ½ÝÌ…ÌÙ¥Í¥‰±”‰ÕÐ(€€€€€€€€€¨¹½¸µÑ¡É•…Ñ•¹¥¹œ¸=±‘•È™¥áÑÕÉ•ÌÝ¥Ñ¡½ÕÐÑ¡¥ÌÁÉ½Á•ÉÑäÉ•µ…¥¸(€€€€€€€€€¨½¹Í•ÉÙ…Ñ¥Ù”…¹…É”ÑÉ•…Ñ•…ÌÑ¡É•…ÑÌ¸(€€€€€€€€€¨¼(€€€€€€€É•ÑÕÉ¸€„‰™…±Í”ˆ¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€ÁÉ½©•Ñ¥±”¹Ù¥Í¥‰±•AÉ½Á•ÉÑ¥•Ì ¤¹•Ð ‰ÁÉ½©•Ñ¥±•Q¡É•…Ðˆ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñMÑÉ¥¹œøÁÉ•™•ÉÉ•‘5•±••]•…Á½¸ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸51}]A=9L¹ÍÑÉ•…´ ¤¹™¥±Ñ•È¡¥Ñ•µ%€´ø(€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éå½Õ¹Ð¡™É…µ”°¥Ñ•µ%¤€ø€À(€€€€€€€€¤¹™¥¹‘¥ÉÍÐ ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñMÑÉ¥¹œøÁÉ•™•ÉÉ•‘…•5¥¹¥¹Q½½° (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸}5%9%9}Q==1L¹ÍÑÉ•…´ ¤¹™¥±Ñ•È¡¥Ñ•µ%€´ø(€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éå½Õ¹Ð¡™É…µ”°¥Ñ•µ%¤€ø€À(€€€€€€€€¤¹™¥¹‘¥ÉÍÐ ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñ	±½­…”ø‰±½­…” (€€€€€€€€€€€™¥¹…°MÑÉ¥¹œÍ•É¥…±¥é•(€€€€¤ì(€€€€€€€™¥¹…°¥¹ÐÍ•Á…É…Ñ½È€ôÍ•É¥…±¥é•¹±…ÍÑ%¹‘•á=˜ œèœ¤ì(€€€€€€€™¥¹…°MÑÉ¥¹œÑ½­•¸€ôÍ•Á…É…Ñ½È€øô€À(€€€€€€€€€€€€€€€€üÍ•É¥…±¥é•¹ÍÕ‰ÍÑÉ¥¹œ¡Í•Á…É…Ñ½È€¬€Ä¤(€€€€€€€€€€€€€€€€èÍ•É¥…±¥é•ì(€€€€€€€ÑÉäì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡	±½­…”¹Ù…±Õ•=˜ (€€€€€€€€€€€€€€€€€€€Ñ½­•¸¹Ñ½UÁÁ•É…Í”¡1½…±”¹I==P¤(€€€€€€€€€€€€¤¤ì(€€€€€€€ô…Ñ €¡%±±•…±ÉÕµ•¹Ñá•ÁÑ¥½¸•á•ÁÑ¥½¸¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒA•É•ÁÑ¥½¹Y•ŒÌ…•1½½­=™™Í•Ð (€€€€€€€€€€€™¥¹…°¥¹ÐÍ…¹QÕÉ¸(€€€€¤ì(€€€€€€€É•ÑÕÉ¸ÍÝ¥Ñ €¡Í…¹QÕÉ¸€”€Ø¤ì(€€€€€€€€€€€…Í”€À€´ø¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ À¸À°€À¸À°€À¸À¤ì(€€€€€€€€€€€…Í”€Ä€´ø¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ À¸À°€Ä¸ÈÔ°€À¸À¤ì(€€€€€€€€€€€…Í”€È€´ø¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ À¸À°€´À¸ÜÔ°€À¸À¤ì(€€€€€€€€€€€…Í”€Ì€´ø¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ À¸ÜÔ°€À¸ÈÔ°€À¸À¤ì(€€€€€€€€€€€…Í”€Ð€´ø¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ ´À¸ÜÔ°€À¸ÈÔ°€À¸À¤ì(€€€€€€€€€€€‘•™…Õ±Ð€´ø¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ À¸À°€À¸ÈÔ°€À¸ÜÔ¤ì(€€€€€€€ôì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ1½½­%¹Ñ•¹Ð±½½­Ð (€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ•å”°(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ð(€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ‘•±Ñ„€ôÑ…É•Ð¹ÍÕ‰ÑÉ…Ð¡•å”¤ì(€€€€€€€É•ÑÕÉ¸¹•Ü1½½­%¹Ñ•¹Ð (€€€€€€€€€€€€€€€€¡™±½…Ð¤5…Ñ ¹Ñ½•É••Ì (€€€€€€€€€€€€€€€€€€€€€€€5…Ñ ¹…Ñ…¸È µ‘•±Ñ„¹à ¤°‘•±Ñ„¹è ¤¤(€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€¡™±½…Ð¤5…Ñ ¹Ñ½•É••Ì¡5…Ñ ¹…Ñ…¸È (€€€€€€€€€€€€€€€€€€€€€€€€µ‘•±Ñ„¹ä ¤°(€€€€€€€€€€€€€€€€€€€€€€€5…Ñ ¹¡åÁ½Ð¡‘•±Ñ„¹à ¤°‘•±Ñ„¹è ¤¤(€€€€€€€€€€€€€€€€¤¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‘½Õ‰±”…¹Õ±…ÉÉÉ½È (€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÕÉÉ•¹Ð°(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ‘•Í¥É•(€€€€¤ì(€€€€€€€¥˜€¡‘•Í¥É•¹±•¹Ñ¡MÅÕ…É• ¤€ðô€Ä¸Á´ÄÈ¤ì(€€€€€€€€€€€É•ÑÕÉ¸€ÄàÀ¸Àì(€€€€€€€ô(€€€€€€€™¥¹…°‘½Õ‰±”‘½Ð€ôÕÉÉ•¹Ð¹¹½Éµ…±¥é• ¤(€€€€€€€€€€€€€€€€¹‘½Ð¡‘•Í¥É•¹¹½Éµ…±¥é• ¤¤ì(€€€€€€€É•ÑÕÉ¸5…Ñ ¹Ñ½•É••Ì¡5…Ñ ¹…½Ì (€€€€€€€€€€€€€€€5…Ñ ¹µ…à ´Ä¸À°5…Ñ ¹µ¥¸ Ä¸À°‘½Ð¤¤(€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸Ù…±¥‘…Ñ•M¹…ÁÍ¡½Ð (€€€€€€€€€€€™¥¹…°¥¡Ñ¹‘•ÉÉ…½¹A…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ(€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ½É•M­¥±±É…µ”øµ…å‰•½É”€ô(€€€€€€€€€€€€€€€½É•É…µ•Ì¹ÕÉÉ•¹Ð ¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ%¹Ñ•É…Ñ¥½¹M­¥±±É…µ”øµ…å‰•%¹Ñ•É…Ñ¥½¸€ô(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì¹ÕÉÉ•¹Ð ¤ì(€€€€€€€¥˜€¡µ…å‰•½É”¹¥ÍµÁÑä ¤ñðµ…å‰•%¹Ñ•É…Ñ¥½¸¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸M¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸¹™…¥±• (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹½‰Í•ÉÙ…Ñ¥½¹}Õ¹…Ù…¥±…‰±”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°½É•M­¥±±É…µ”½É•É…µ”€ôµ…å‰•½É”¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€™¥¹…°%¹Ñ•É…Ñ¥½¹M­¥±±É…µ”¥¹Ñ•É…Ñ¥½¸€ô(€€€€€€€€€€€€€€€µ…å‰•%¹Ñ•É…Ñ¥½¸¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€¥˜€ …•áÁ•Ñ•‘A±…å•É%¹•ÅÕ…±Ì¡½É•É…µ”¹Á±…å•É% ¤¤(€€€€€€€€€€€€€€€ñð€…•áÁ•Ñ•‘A±…å•É%¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¸¹Á±…å•É% ¤(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸M¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸¹™…¥±• (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹‰½‘å}µ¥Íµ…Ñ ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€ …Á…É…µ•Ñ•ÉÌ¹‘¥µ•¹Í¥½¸ ¤¹•ÅÕ…±Ì¡½É•É…µ”¹‘¥µ•¹Í¥½¸ ¤¤(€€€€€€€€€€€€€€€ñð€…½É•É…µ”¹‘¥µ•¹Í¥½¸ ¤¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¸¹‘¥µ•¹Í¥½¸ ¤(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸M¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸¹™…¥±• (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹ÝÉ½¹}‘¥µ•¹Í¥½¸ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡½É•É…µ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€„ô¥¹Ñ•É…Ñ¥½¸¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸M¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸¹™…¥±• (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹½‰Í•ÉÙ…Ñ¥½¹}‘•Íå¹¡É½¹¥é•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…±1½¹œÍ•ÍÍ¥½¸€ô(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹Ì¹Í•ÍÍ¥½¹•¹•É…Ñ¥½¸ ¤ì(€€€€€€€¥˜€¡Í•ÍÍ¥½¸¹¥ÍµÁÑä ¤(€€€€€€€€€€€€€€€ñðÍ•ÍÍ¥½¸¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€€€€€„ô¥¹Ñ•É…Ñ¥½¸¹Í•ÍÍ¥½¹•¹•É…Ñ¥½¸ ¤(€€€€€€€€€€€€€€€ñð‰½Õ¹‘M•ÍÍ¥½¹•¹•É…Ñ¥½¸€øô€À(€€€€€€€€€€€€€€€€€€€€˜˜Í•ÍÍ¥½¸¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€€€€€€€€€„ô‰½Õ¹‘M•ÍÍ¥½¹•¹•É…Ñ¥½¸¤ì(€€€€€€€€€€€É•ÑÕÉ¸M¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸¹™…¥±• (€€€€€€€€€€€€€€€€€€€95€¬€ˆ¹Í•ÍÍ¥½¹}µ¥Íµ…Ñ ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸M¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸¹…Ù…¥±…‰±” (€€€€€€€€€€€€€€€¹•ÜM¹…ÁÍ¡½Ð¡½É•É…µ”°¥¹Ñ•É…Ñ¥½¸¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¡•…±Ñ¡Q½½1½Ü (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€™¥¹…°‘½Õ‰±”É…Ñ¥¼€ô™É…µ”¹¡•…±Ñ  ¤€¼™É…µ”¹µ…á!•…±Ñ  ¤ì(€€€€€€€É•ÑÕÉ¸É…Ñ¥¼€ð€¡½¹Ñ•áÐ¹¡…É‘½É” ¤€ü€À¸ÔÀ€è€À¸ÈÔ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸…•QÉ…Ù•ÉÍ…±M…™•Ñä (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€™¥¹…°‘½Õ‰±”µ…á¥µÕµ…¹•È€ô(€€€€€€€€€€€€€€€½¹Ñ•áÐ¹¡…É‘½É” ¤€ü€À¸ÀÐ€è€À¸ÄÈì(€€€€€€€™¥¹…°‘½Õ‰±”µ¥¹¥µÕµ!•…±Ñ €ô(€€€€€€€€€€€€€€€½¹Ñ•áÐ¹¡…É‘½É” ¤€ü€À¸äÔ€è€À¸àÀì(€€€€€€€É•ÑÕÉ¸½¹Ñ•áÐ¹É¥Í­M½É” ¤€ðôµ…á¥µÕµ…¹•È(€€€€€€€€€€€€€€€€˜˜™É…µ”¹‘…¹•È ¤€ðôµ…á¥µÕµ…¹•È(€€€€€€€€€€€€€€€€˜˜™É…µ”¹¡•…±Ñ  ¤€¼™É…µ”¹µ…á!•…±Ñ  ¤(€€€€€€€€€€€€€€€€€€€€øôµ¥¹¥µÕµ!•…±Ñ (€€€€€€€€€€€€€€€€˜˜™É…µ”¹™½½‘1•Ù•° ¤€øô€à(€€€€€€€€€€€€€€€€˜˜™É…µ”¹½¹É½Õ¹ ¤(€€€€€€€€€€€€€€€€˜˜€…™É…µ”¹¥¹]…Ñ•È ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¥¹Ð¥¹Ù•¹Ñ½Éå½Õ¹Ð (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ¥Ñ•µ%(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹¥¹Ù•¹Ñ½Éä ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥Ñ•´€´ø¥Ñ•´¹¥Ñ•µ% ¤¹•ÅÕ…±Ì¡¥Ñ•µ%¤¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½%¹Ð¡%¹Ù•¹Ñ½Éå%Ñ•µMÕµµ…Éäèé½Õ¹Ð¤(€€€€€€€€€€€€€€€€¹ÍÕ´ ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™±½…Ð±½½­e…Ü¡™¥¹…°½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€É•ÑÕÉ¸€¡™±½…Ð¤5…Ñ ¹Ñ½•É••Ì¡5…Ñ ¹…Ñ…¸È (€€€€€€€€€€€€€€€€µ™É…µ”¹±½½­¥É•Ñ¥½¸ ¤¹à ¤°(€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤¹è ¤(€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™±½…Ðå…ÝÉ½µ¥É•Ñ¥½¸ (€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ‘¥É•Ñ¥½¸(€€€€¤ì(€€€€€€€É•ÑÕÉ¸€¡™±½…Ð¤5…Ñ ¹Ñ½•É••Ì¡5…Ñ ¹…Ñ…¸È (€€€€€€€€€€€€€€€€µ‘¥É•Ñ¥½¸¹à ¤°(€€€€€€€€€€€€€€€‘¥É•Ñ¥½¸¹è ¤(€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸ÑÉ…¹Í¥•¹ÑM¡½Ñ…¥±ÕÉ” (€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ½‘”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸½‘”¹•¹‘Í]¥Ñ  ˆ¹Ñ…É•Ñ}±½ÍÐˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹ÍÑ…±•}½‰Í•ÉÙ…Ñ¥½¸ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹ÍÑ…±•}½‰Í•ÉÙ…Ñ¥½¹}¥ˆ¤(€€€€€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€€€€€¨Q¡”€ÈÀQALÍÕÉÙ¥Ù…°ÍÕÁ•ÉÙ¥Í½Èµ…ä™…¥É±äÁÉ”µ•µÁÐÑ¡”(€€€€€€€€€€€€€€€€€¨‰½ÜÝ¥Ñ ™½½…™Ñ•È„ÉåÍÑ…°•áÁ±½Í¥½¸¸Q¡”¡¥±¡…Ì(€€€€€€€€€€€€€€€€€¨…±É•…‘äÉ•±•…Í•¥ÑÌÕÍ”…Ñ¥½¸½¸™…¥±ÕÉ”ìÉ•½‰Í•ÉÙ”…¹(€€€€€€€€€€€€€€€€€¨•ÅÕ¥À……¥¸…™Ñ•ÈÑ¡”Í…™•Ñä…Ñ¥½¸¥¹ÍÑ•…½˜½¹Ù•ÉÑ¥¹œ(€€€€€€€€€€€€€€€€€¨Ñ¡…Ð•áÁ•Ñ•ÁÉ”µ•µÁÑ¥½¸¥¹Ñ¼„Ñ•Éµ¥¹…°‘É…½¸™…¥±ÕÉ”¸(€€€€€€€€€€€€€€€€€¨¼(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹Ý•…Á½¹}¡…¹•ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹ÉåÍÑ…±}Ñ½½}±½Í”ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹Ñ…É•Ñ}½ÕÑ}½™}É•… ˆ¤(€€€€€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€€€€€¨‘É…½¸Á…ÉÐ…¸µ½Ù”‰•ÑÝ••¸Ñ¡”Í…µÁ±•½‰Í•ÉÙ…Ñ¥½¸(€€€€€€€€€€€€€€€€€¨…¹Ñ¡”Ù…¹¥±±„ÕÍ”Á…­•Ð¸€±¥¹µ•¹Ð°±¥¹”µ½˜µÍ¥¡Ð°(€€€€€€€€€€€€€€€€€¨…¹ÕÍ”µÍÑ…ÉÐ™…¥±ÕÉ•Ì…É”Ñ¡•É•™½É”½É‘¥¹…ÉäÉ•ÑÉå…‰±”(€€€€€€€€€€€€€€€€€¨™¥ÉÍÐµÁ•ÉÍ½¸É…•Ì°¹½ÐÉ•…Í½¹ÌÑ¼¡…¹Ñ¡”Ý¡½±”™¥¡Ð(€€€€€€€€€€€€€€€€€¨‰…¬Ñ¼Ñ¡”±…¹Õ…”µ½‘•°¸€I•±•…Í¥¹œÑ¡”¡¥±‰•±½Ü(€€€€€€€€€€€€€€€€€¨…±Ý…åÌÉ•ÑÕÉ¹ÌÑ¡”Í­¥±°Ñ¼MI!%9°Ý¡•É”„™É•Í (€€€€€€€€€€€€€€€€€¨½‰Í•ÉÙ…Ñ¥½¸µÕÍÐÁÉ½Ù”Ñ¡”¹•áÐÍ¡½Ð¸(€€€€€€€€€€€€€€€€€¨¼(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹¥¹Ñ•É…Ñ¥½¹}±¥¹•}‰±½­•ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹±½½­}É•©•Ñ•ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹ÍÑ½Á}É•©•Ñ•ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹ÕÍ•}ÍÑ…ÉÑ}É•©•Ñ•ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹ÕÍ•}¥¹Ñ•ÉÉÕÁÑ•ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹É•±•…Í•}É•©•Ñ•ˆ¤(€€€€€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€€€€€¨‘É…½¸Ý¥¹œ½½¹Ñ…ÐÁÕ±Í”…¸É…¥Í”Ñ¡”Í…µÁ±•‘…¹•È(€€€€€€€€€€€€€€€€€¨…™Ñ•ÈÑ¡”¡¥±¡…Ì…±É•…‘ä‰•Õ¸…¥µ¥¹œ¸€Q¡”•µ•É•¹ä(€€€€€€€€€€€€€€€€€¨ÍÕÁ•ÉÙ¥Í½È½Ý¹ÌÑ¡”¥µµ•‘¥…Ñ”É•ÑÉ•…Ð½Õ…ÉÉ•ÍÁ½¹Í”ìÑ¡”(€€€€€€€€€€€€€€€€€¨‘É…½¸Í­¥±°µÕÍÐÉ•½‰Í•ÉÙ”…¹É•ÑÉä¥¹ÍÑ•…½˜•¹‘¥¹œ(€€€€€€€€€€€€€€€€€¨Ñ¡”•¹Ñ¥É”Ù¥Ñ½Éä½…°½¸Ñ¡…Ð½¹”™…¥ÈÍ…™•ÑäÉ•©•Ñ¥½¸¸(€€€€€€€€€€€€€€€€€¨¼(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹‘…¹•É}Ñ½½}¡¥ ˆ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸ÑÉ…¹Í¥•¹Ñ…•	É•…­…¥±ÕÉ” (€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ½‘”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸½‘”¹•¹‘Í]¥Ñ  ˆ¹½‰Í•ÉÙ…Ñ¥½¹}•áÁ¥É•ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹Ñ…É•Ñ}¹½Ñ}Ù¥Í¥‰±”ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹Ñ…É•Ñ}½ÕÑ}½™}É…¹”ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹ÍÑ…±•}½‰Í•ÉÙ…Ñ¥½¸ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹Ñ…É•Ñ}¡…¹•ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹…Ñ¥½¹}Ñ…É•Ñ}½±Õ‘•ˆ¤(€€€€€€€€€€€€€€€ñð½‘”¹•¹‘Í]¥Ñ  ˆ¹…Ñ¥½¹}Ñ…É•Ñ}½ÕÑ}½™}É•… ˆ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥…¹•±¡¥±‘É•¸¡™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ¤ì(€€€€€€€¥˜€¡Í¡½Ð€„ô¹Õ±°€˜˜Í¡½ÑA…É…µ•Ñ•ÉÌ€„ô¹Õ±°¤ì(€€€€€€€€€€€ÑÉäì(€€€€€€€€€€€€€€€Í¡½Ð¹…¹•°¡½¹Ñ•áÐ°Í¡½ÑA…É…µ•Ñ•ÉÌ¤ì(€€€€€€€€€€€ô…Ñ €¡IÕ¹Ñ¥µ•á•ÁÑ¥½¸¥¹½É•¤ì(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹Ì¹É•±•…Í•UÍ” ¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€Í¡½Ð€ô¹Õ±°ì(€€€€€€€Í¡½ÑA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€Í¡½ÑQ…É•ÑÉ…½¸€ô™…±Í”ì(€€€€€€€¥˜€¡ÑÉ…Ù•°€„ô¹Õ±°€˜˜ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ€„ô¹Õ±°¤ì(€€€€€€€€€€€ÑÉäì(€€€€€€€€€€€€€€€ÑÉ…Ù•°¹…¹•°¡½¹Ñ•áÐ°ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ¤ì(€€€€€€€€€€€ô…Ñ €¡IÕ¹Ñ¥µ•á•ÁÑ¥½¸¥¹½É•¤ì(€€€€€€€€€€€€€€€½É”¹ÍÑ½À ¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€ÑÉ…Ù•°€ô¹Õ±°ì(€€€€€€€ÑÉ…Ù•±A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€ÑÉ…Ù•±AÕÉÁ½Í”€ôQÉ…Ù•±AÕÉÁ½Í”¹9=9ì(€€€€€€€¥˜€¡ÉåÍÑ…±MÑ…¹‘=™˜€„ô¹Õ±°(€€€€€€€€€€€€€€€€˜˜ÉåÍÑ…±MÑ…¹‘=™™A…É…µ•Ñ•ÉÌ€„ô¹Õ±°¤ì(€€€€€€€€€€€ÑÉäì(€€€€€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™˜¹…¹•° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€ÉåÍÑ…±MÑ…¹‘=™™A…É…µ•Ñ•ÉÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô…Ñ €¡IÕ¹Ñ¥µ•á•ÁÑ¥½¸¥¹½É•¤ì(€€€€€€€€€€€€€€€½É”¹ÍÑ½À ¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€±•…ÉÉåÍÑ…±MÑ…¹‘=™™¡¥± ¤ì(€€€€€€€¥˜€¡ÉåÍÑ…±1…¹”€„ô¹Õ±°€˜˜ÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ€„ô¹Õ±°¤ì(€€€€€€€€€€€ÑÉäì(€€€€€€€€€€€€€€€ÉåÍÑ…±1…¹”¹…¹•°¡½¹Ñ•áÐ°ÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ¤ì(€€€€€€€€€€€ô…Ñ €¡IÕ¹Ñ¥µ•á•ÁÑ¥½¸¥¹½É•¤ì(€€€€€€€€€€€€€€€½É”¹ÍÑ½À ¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€ÉåÍÑ…±1…¹”€ô¹Õ±°ì(€€€€€€€ÉåÍÑ…±1…¹•A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€¥˜€¡…•	É•…¬€„ô¹Õ±°(€€€€€€€€€€€€€€€€˜˜…•	É•…­A…É…µ•Ñ•ÉÌ€„ô¹Õ±°¤ì(€€€€€€€€€€€ÑÉäì(€€€€€€€€€€€€€€€…•	É•…¬¹…¹•° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€…•	É•…­A…É…µ•Ñ•ÉÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô…Ñ €¡IÕ¹Ñ¥µ•á•ÁÑ¥½¸¥¹½É•¤ì(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹Ì¹…‰½ÉÑ5¥¹¥¹œ ¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€…•	É•…¬€ô¹Õ±°ì(€€€€€€€…•	É•…­A…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€¥˜€¡…•Q½Ý•È€„ô¹Õ±°(€€€€€€€€€€€€€€€€˜˜…•Q½Ý•ÉA…É…µ•Ñ•ÉÌ€„ô¹Õ±°¤ì(€€€€€€€€€€€ÑÉäì(€€€€€€€€€€€€€€€…•Q½Ý•È¹…¹•° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€…•Q½Ý•ÉA…É…µ•Ñ•ÉÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô…Ñ €¡IÕ¹Ñ¥µ•á•ÁÑ¥½¸¥¹½É•¤ì(€€€€€€€€€€€€€€€½É”¹ÍÑ½À ¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€…•Q½Ý•È€ô¹Õ±°ì(€€€€€€€…•Q½Ý•ÉA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€€€€€¥˜€¡…••Í•¹Ð€„ô¹Õ±°(€€€€€€€€€€€€€€€€˜˜…••Í•¹ÑA…É…µ•Ñ•ÉÌ€„ô¹Õ±°¤ì(€€€€€€€€€€€ÑÉäì(€€€€€€€€€€€€€€€…••Í•¹Ð¹…¹•° (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ°(€€€€€€€€€€€€€€€€€€€€€€€…••Í•¹ÑA…É…µ•Ñ•ÉÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô…Ñ €¡IÕ¹Ñ¥µ•á•ÁÑ¥½¸¥¹½É•¤ì(€€€€€€€€€€€€€€€½É”¹ÍÑ½À ¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€…••Í•¹Ð€ô¹Õ±°ì(€€€€€€€…••Í•¹ÑA…É…µ•Ñ•ÉÌ€ô¹Õ±°ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥ÅÕ¥•Í” ¤ì(€€€€€€€¥¹Ñ•É…Ñ¥½¹Ì¹É•±•…Í•UÍ” ¤ì(€€€€€€€½É”¹É•±•…Í•UÍ” ¤ì(€€€€€€€½É”¹ÍÑ½À ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±Ð™…¥° (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ½‘”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™…¥°¡½¹Ñ•áÐ°M­¥±±…¥±ÕÉ”¹½˜¡½‘”¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”M­¥±±Q¥­I•ÍÕ±Ð™…¥° (€€€€€€€€€€€™¥¹…°M­¥±±½¹Ñ•áÐ½¹Ñ•áÐ°(€€€€€€€€€€€™¥¹…°M­¥±±…¥±ÕÉ”É•…Í½¸(€€€€¤ì(€€€€€€€…¹•±¡¥±‘É•¸¡½¹Ñ•áÐ¤ì(€€€€€€€ÅÕ¥•Í” ¤ì(€€€€€€€™…¥±ÕÉ”€ôÉ•…Í½¸ì(€€€€€€€Á¡…Í”€ôA¡…Í”¹%1ì(€€€€€€€É•ÑÕÉ¸M­¥±±Q¥­I•ÍÕ±Ð¹™…¥±•¡É•…Í½¸¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”•¹Õ´A¡…Í”ì(€€€€€€€%1°(€€€€€€€MI!%9°(€€€€€€€M!==Q%9°(€€€€€€€IQIQ%9}I=8°(€€€€€€€IA=M%Q%=9%9}IeMQ0°(€€€€€€€IA=M%Q%=9%9}IeMQ1}19°(€€€€€€€QIY11%9°(€€€€€€€=A9%9}°(€€€€€€€AIAI%9}}Q=]H°(€€€€€€€Q=]I%9}°(€€€€€€€AIAI%9}}M9P°(€€€€€€€M9%9}°(€€€€€€€=5A1Q°(€€€€€€€%1°(€€€€€€€911ì((€€€€€€€ÁÉ¥Ù…Ñ”‰½½±•…¸…Ñ¥Ù” ¤ì(€€€€€€€€€€€É•ÑÕÉ¸Ñ¡¥Ì€ôôMI!%9(€€€€€€€€€€€€€€€€€€€ñðÑ¡¥Ì€ôôM!==Q%9(€€€€€€€€€€€€€€€€€€€ñðÑ¡¥Ì€ôôIQIQ%9}I=8(€€€€€€€€€€€€€€€€€€€ñðÑ¡¥Ì€ôôIA=M%Q%=9%9}IeMQ0(€€€€€€€€€€€€€€€€€€€ñðÑ¡¥Ì€ôôIA=M%Q%=9%9}IeMQ1}19(€€€€€€€€€€€€€€€€€€€ñðÑ¡¥Ì€ôôQIY11%9(€€€€€€€€€€€€€€€€€€€ñðÑ¡¥Ì€ôô=A9%9}(€€€€€€€€€€€€€€€€€€€ñðÑ¡¥Ì€ôôAIAI%9}}Q=]H(€€€€€€€€€€€€€€€€€€€ñðÑ¡¥Ì€ôôQ=]I%9}(€€€€€€€€€€€€€€€€€€€ñðÑ¡¥Ì€ôôAIAI%9}}M9P(€€€€€€€€€€€€€€€€€€€ñðÑ¡¥Ì€ôôM9%9}ì(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”•¹Õ´…•MÑ…ÑÕÌì(€€€€€€€9=9°(€€€€€€€M-%9}Y%M%	1}	H°(€€€€€€€AAI=!}=I}1YQ%=9}IEU%I°(€€€€€€€M}QIYIM1}U9Y%1	1°(€€€€€€€MQe}IMIY}IEU%I°(€€€€€€€A%-a}IEU%I°(€€€€€€€]QI}	U-Q}IEU%I°(€€€€€€€EU%AA%9}A%-a°(€€€€€€€AAI=!}11}U9Y%1	1°(€€€€€€€AAI=!%9°(€€€€€€€AAI=!}I!°(€€€€€€€YI%e%9}19%9°(€€€€€€€IEU%I%9}°(€€€€€€€Q=]I%9°(€€€€€€€1YQ°(€€€€€€€1%9%9}Y%M%	1}	H°(€€€€€€€5%9%9}Y%M%	1}	H°(€€€€€€€YI%e%9}=A9%9°(€€€€€€€M99%9}19%9°(€€€€€€€M9%9°(€€€€€€€M9Q}=5A1Q(€€€ô((€€€ÁÉ¥Ù…Ñ”•¹Õ´QÉ…Ù•±AÕÉÁ½Í”ì(€€€€€€€9=9°(€€€€€€€I11d°(€€€€€€€}AAI= (€€€ô((€€€ÁÉ¥Ù…Ñ”É•½ÉM¹…ÁÍ¡½Ð (€€€€€€€€€€€½É•M­¥±±É…µ”½É”°(€€€€€€€€€€€%¹Ñ•É…Ñ¥½¹M­¥±±É…µ”¥¹Ñ•É…Ñ¥½¸(€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”É•½ÉM¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸ (€€€€€€€€€€€=ÁÑ¥½¹…°ñM¹…ÁÍ¡½ÐøÍ¹…ÁÍ¡½Ð°(€€€€€€€€€€€=ÁÑ¥½¹…°ñM­¥±±…¥±ÕÉ”ø™…¥±ÕÉ”(€€€€¤ì(€€€€€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒM¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸…Ù…¥±…‰±” (€€€€€€€€€€€€€€€™¥¹…°M¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð(€€€€€€€€¤ì(€€€€€€€€€€€É•ÑÕÉ¸¹•ÜM¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹½˜¡Í¹…ÁÍ¡½Ð¤°(€€€€€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹•µÁÑä ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒM¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸™…¥±• (€€€€€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ½‘”(€€€€€€€€¤ì(€€€€€€€€€€€É•ÑÕÉ¸¹•ÜM¹…ÁÍ¡½ÑY…±¥‘…Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹•µÁÑä ¤°(€€€€€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹½˜¡M­¥±±…¥±ÕÉ”¹½˜¡½‘”¤¤(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€ô)ô(

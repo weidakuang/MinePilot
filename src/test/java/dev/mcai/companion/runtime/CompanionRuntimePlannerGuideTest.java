@@ -1,60 +1,2 @@
-package dev.mcai.companion.runtime;
-
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import dev.mcai.companion.brain.BrainObservation;
-import dev.mcai.companion.control.GoalSnapshot;
-import dev.mcai.companion.control.GoalSource;
-import dev.mcai.companion.control.GoalStatus;
-import dev.mcai.companion.skill.SkillContext;
-import dev.mcai.companion.skill.SkillRegistry;
-import java.time.Instant;
-import java.util.Optional;
-import org.junit.jupiter.api.Test;
-
-final class CompanionRuntimePlannerGuideTest {
-    @Test
-    void productionSkillGuideFitsPlannerBoundary() {
-        final String guide = CompanionRuntime.coreSkillGuide();
-
-        assertTrue(
-                guide.length()
-                        <= MinecraftPlannerInputFactory
-                            .MAX_SKILL_GUIDE_CHARACTERS,
-                () -> "Production skill guide length was " + guide.length()
-        );
-        final MinecraftPlannerInputFactory factory = assertDoesNotThrow(
-                () -> new MinecraftPlannerInputFactory(
-                        new SkillRegistry(),
-                        guide
-                )
-        );
-        assertDoesNotThrow(() -> factory.create(
-                "production-foundation-prompt",
-                new GoalSnapshot(
-                        Optional.empty(),
-                        1,
-                        GoalStatus.RUNNING,
-                        GoalSource.PLAYER_CHAT,
-                        "å»ºç«‹å®‰å…¨æ®ç‚¹å¹¶ç”Ÿå­˜åˆ°ç¬¬äºŒå¤©",
-                        "",
-                        Instant.EPOCH,
-                        false
-                ),
-                new BrainObservation(
-                        1,
-                        new SkillContext(
-                                1,
-                                1,
-                                1,
-                                true,
-                                true,
-                                0.0
-                        ),
-                        "{}",
-                        "{}"
-                )
-        ));
-    }
-}
+ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹ÉÕ¹Ñ¥µ”ì()¥µÁ½ÉÐÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑ½•Í9½ÑQ¡É½Üì)¥µÁ½ÉÐÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑQÉÕ”ì()¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹‰É…¥¸¹	É…¥¹=‰Í•ÉÙ…Ñ¥½¸ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹½¹ÑÉ½°¹½…±M¹…ÁÍ¡½Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹½¹ÑÉ½°¹½…±M½ÕÉ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹½¹ÑÉ½°¹½…±MÑ…ÑÕÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±½¹Ñ•áÐì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±I•¥ÍÑÉäì)¥µÁ½ÉÐ©…Ù„¹Ñ¥µ”¹%¹ÍÑ…¹Ðì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=ÁÑ¥½¹…°ì)¥µÁ½ÉÐ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹Q•ÍÐì()™¥¹…°±…ÍÌ½µÁ…¹¥½¹IÕ¹Ñ¥µ•A±…¹¹•ÉÕ¥‘•Q•ÍÐì(€€€Q•ÍÐ(€€€Ù½¥ÁÉ½‘ÕÑ¥½¹M­¥±±Õ¥‘•¥ÑÍA±…¹¹•É	½Õ¹‘…Éä ¤ì(€€€€€€€™¥¹…°MÑÉ¥¹œÕ¥‘”€ô½µÁ…¹¥½¹IÕ¹Ñ¥µ”¹½É•M­¥±±Õ¥‘” ¤ì((€€€€€€€…ÍÍ•ÉÑQÉÕ”¡Õ¥‘”¹½¹Ñ…¥¹Ì ‰É•…¡}•¹‘}¥Í±…¹ˆ¤¤ì((€€€€€€€…ÍÍ•ÉÑQÉÕ” (€€€€€€€€€€€€€€€Õ¥‘”¹±•¹Ñ  ¤(€€€€€€€€€€€€€€€€€€€€€€€€ðô5¥¹•É…™ÑA±…¹¹•É%¹ÁÕÑ…Ñ½Éä(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹5a}M-%11}U%}!IQIL°(€€€€€€€€€€€€€€€€ ¤€´ø€‰AÉ½‘ÕÑ¥½¸Í­¥±°Õ¥‘”±•¹Ñ Ý…Ì€ˆ€¬Õ¥‘”¹±•¹Ñ  ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°5¥¹•É…™ÑA±…¹¹•É%¹ÁÕÑ…Ñ½Éä™…Ñ½Éä€ô…ÍÍ•ÉÑ½•Í9½ÑQ¡É½Ü (€€€€€€€€€€€€€€€€ ¤€´ø¹•Ü5¥¹•É…™ÑA±…¹¹•É%¹ÁÕÑ…Ñ½Éä (€€€€€€€€€€€€€€€€€€€€€€€¹•ÜM­¥±±I•¥ÍÑÉä ¤°(€€€€€€€€€€€€€€€€€€€€€€€Õ¥‘”(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑ½•Í9½ÑQ¡É½Ü  ¤€´ø™…Ñ½Éä¹É•…Ñ” (€€€€€€€€€€€€€€€€‰ÁÉ½‘ÕÑ¥½¸µ™½Õ¹‘…Ñ¥½¸µÁÉ½µÁÐˆ°(€€€€€€€€€€€€€€€¹•Ü½…±M¹…ÁÍ¡½Ð (€€€€€€€€€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹•µÁÑä ¤°(€€€€€€€€€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€€€€€€€€€½…±MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€€€€€€€€€½…±M½ÕÉ”¹A1eI}!P°(€€€€€€€€€€€€€€€€€€€€€€€€‹–îëž®/–º'–£š6»ž
+ç–æÛžR–¶c–"Ãž²³’ê3–’¤ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€ˆˆ°(€€€€€€€€€€€€€€€€€€€€€€€%¹ÍÑ…¹Ð¹A= °(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€¹•Ü	É…¥¹=‰Í•ÉÙ…Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€€€€€€€€€¹•ÜM­¥±±½¹Ñ•áÐ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€À¸À(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€€‰íôˆ°(€€€€€€€€€€€€€€€€€€€€€€€€‰íôˆ(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤¤ì(€€€ô)ô

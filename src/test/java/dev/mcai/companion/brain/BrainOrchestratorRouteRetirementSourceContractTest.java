@@ -1,43 +1,1 @@
-package dev.mcai.companion.brain;
-
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import org.junit.jupiter.api.Test;
-
-/**
- * Locks the completion-route retirement boundary that prevents a verified
- * dragon milestone from being misreported as a stale active-skill failure.
- */
-final class BrainOrchestratorRouteRetirementSourceContractTest {
-    @Test
-    void completionRouteRetiresOnlyTheTwoDimensionCompletionSkills() throws Exception {
-        final String source = Files.readString(
-                Path.of(
-                        "src/main/java/dev/mcai/companion/brain/"
-                                + "BrainOrchestrator.java"
-                ),
-                StandardCharsets.UTF_8
-        );
-        assertTrue(
-                source.contains("final boolean completionRoute")
-                        && source.contains(
-                                "completionRoute && completionSkill"
-                        ),
-                "completion retirement must stay on the trusted route"
-        );
-        assertTrue(
-                source.contains("case \"fight_ender_dragon\" -> \"DRAGON_KILLED\""),
-                "dragon skill must retire at the server milestone"
-        );
-        assertTrue(
-                source.contains(
-                        "case \"find_and_enter_observed_portal\" ->"
-                                + " \"RETURNED_FROM_END\""
-                ),
-                "portal skill must retire only after the verified return"
-        );
-    }
-}
+ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹‰É…¥¸ì()¥µÁ½ÉÐÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑ…±Í”ì)¥µÁ½ÉÐÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑQÉÕ”ì()¥µÁ½ÉÐ©…Ù„¹¹¥¼¹¡…ÉÍ•Ð¹MÑ…¹‘…É‘¡…ÉÍ•ÑÌì)¥µÁ½ÉÐ©…Ù„¹¹¥¼¹™¥±”¹¥±•Ìì)¥µÁ½ÉÐ©…Ù„¹¹¥¼¹™¥±”¹A…Ñ ì)¥µÁ½ÉÐ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹Q•ÍÐì((¼¨¨(€¨1½­ÌÑ¡”½µÁ±•Ñ¥½¸µÉ½ÕÑ”É•Ñ¥É•µ•¹Ð‰½Õ¹‘…ÉäÑ¡…ÐÁÉ•Ù•¹ÑÌ„Ù•É¥™¥•(€¨‘É…½¸µ¥±•ÍÑ½¹”™É½´‰•¥¹œµ¥ÍÉ•Á½ÉÑ•…Ì„ÍÑ…±”…Ñ¥Ù”µÍ­¥±°™…¥±ÕÉ”¸(€¨¼)™¥¹…°±…ÍÌ	É…¥¹=É¡•ÍÑÉ…Ñ½ÉI½ÕÑ•I•Ñ¥É•µ•¹ÑM½ÕÉ•½¹ÑÉ…ÑQ•ÍÐì(€€€Q•ÍÐ(€€€Ù½¥½µÁ±•Ñ¥½¹I½ÕÑ•I•Ñ¥É•Í=¹±åY•É¥™¥•‘¥µ•¹Í¥½¹½µÁ±•Ñ¥½¹M­¥±±Ì ¤Ñ¡É½ÝÌá•ÁÑ¥½¸ì(€€€€€€€™¥¹…°MÑÉ¥¹œÍ½ÕÉ”€ô¥±•Ì¹É•…‘MÑÉ¥¹œ (€€€€€€€€€€€€€€€A…Ñ ¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€‰ÍÉŒ½µ…¥¸½©…Ù„½‘•Ø½µ…¤½½µÁ…¹¥½¸½‰É…¥¸¼ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€‰	É…¥¹=É¡•ÍÑÉ…Ñ½È¹©…Ù„ˆ(€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€MÑ…¹‘…É‘¡…ÉÍ•ÑÌ¹UQ|à(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ” (€€€€€€€€€€€€€€€Í½ÕÉ”¹½¹Ñ…¥¹Ì ‰™¥¹…°‰½½±•…¸½µÁ±•Ñ¥½¹I½ÕÑ”ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€€˜˜Í½ÕÉ”¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰½µÁ±•Ñ¥½¹I½ÕÑ”€˜˜½µÁ±•Ñ¥½¹M­¥±°ˆ(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€‰½µÁ±•Ñ¥½¸É•Ñ¥É•µ•¹ÐµÕÍÐÍÑ…ä½¸Ñ¡”ÑÉÕÍÑ•É½ÕÑ”ˆ(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í” (€€€€€€€€€€€€€€€Í½ÕÉ”¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€€‰…Í”p‰É•…¡}•¹‘}¥Í±…¹‘pˆ€´øp‰9}%M19}I!pˆˆ(€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€‰„É•½Á•¹•¥¹É•ÍÌµÕÍÐÉÕ¸•Ù•¸Ý¡•¸¥ÑÌÍÑ¥­äµ¥±•ÍÑ½¹”€ˆ(€€€€€€€€€€€€€€€€€€€€€€€€¬€‰Ý…ÌÁÉ•Ù¥½ÕÍ±ä•…É¹•ˆ(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ” (€€€€€€€€€€€€€€€Í½ÕÉ”¹½¹Ñ…¥¹Ì ‰…Í”p‰™¥¡Ñ}•¹‘•É}‘É…½¹pˆ€´øp‰I=9}-%11pˆˆ¤°(€€€€€€€€€€€€€€€€‰‘É…½¸Í­¥±°µÕÍÐÉ•Ñ¥É”…ÐÑ¡”Í•ÉÙ•Èµ¥±•ÍÑ½¹”ˆ(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ” (€€€€€€€€€€€€€€€Í½ÕÉ”¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€€‰…Í”p‰™¥¹‘}…¹‘}•¹Ñ•É}½‰Í•ÉÙ•‘}Á½ÉÑ…±pˆ€´øˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬€ˆp‰IQUI9}I=5}9pˆˆ(€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€‰Á½ÉÑ…°Í­¥±°µÕÍÐÉ•Ñ¥É”½¹±ä…™Ñ•ÈÑ¡”Ù•É¥™¥•É•ÑÕÉ¸ˆ(€€€€€€€€¤ì(€€€ô)ô(

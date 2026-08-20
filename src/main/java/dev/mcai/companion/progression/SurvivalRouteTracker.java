@@ -1,854 +1,2 @@
-package dev.mcai.companion.progression;
-
-import dev.mcai.companion.control.GoalSnapshot;
-import dev.mcai.companion.control.GoalSource;
-import dev.mcai.companion.skills.building.DynamicShelterPlanner;
-import dev.mcai.companion.skills.core.VanillaFoodItems;
-import dev.mcai.companion.skills.foundation.PrepareBasicCraftingSkill;
-import dev.mcai.companion.skills.stronghold.EyeTraceHistorySnapshot;
-import dev.mcai.companion.waypoint.DimensionRef;
-import dev.mcai.companion.world.CompanionWorldData;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TreeMap;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
-
-/**
- * Updates route evidence from the companion's own inventory/dimension and
- * event-backed world audit. It never locates structures or scans blocks.
- */
-public final class SurvivalRouteTracker {
-    private static final List<SurvivalMilestone> FOUNDATION_GUIDANCE_ORDER =
-            List.of(
-                    SurvivalMilestone.BODY_ACTIVE,
-                    SurvivalMilestone.WOOD_OBTAINED,
-                    SurvivalMilestone.BASIC_CRAFTING_READY,
-                    SurvivalMilestone.STONE_TOOL_OBTAINED,
-                    SurvivalMilestone.FOOD_SECURED,
-                    SurvivalMilestone.IRON_TOOLKIT_OBTAINED,
-                    SurvivalMilestone.WORKSTATIONS_ESTABLISHED,
-                    SurvivalMilestone.SUPPLIES_STORED,
-                    SurvivalMilestone.SHELTER_MATERIALS_PREPARED,
-                    SurvivalMilestone.SHELTER_COMPLETED,
-                    SurvivalMilestone.FIRST_NIGHT_SURVIVED
-            );
-    private static final List<SurvivalMilestone> COMPLETION_GUIDANCE_ORDER =
-            List.of(
-                    SurvivalMilestone.BODY_ACTIVE,
-                    SurvivalMilestone.WOOD_OBTAINED,
-                    SurvivalMilestone.BASIC_CRAFTING_READY,
-                    SurvivalMilestone.STONE_TOOL_OBTAINED,
-                    SurvivalMilestone.FOOD_SECURED,
-                    SurvivalMilestone.IRON_TOOLKIT_OBTAINED,
-                    SurvivalMilestone.NETHER_ENTERED,
-                    SurvivalMilestone.BLAZE_MATERIAL_OBTAINED,
-                    SurvivalMilestone.ENDER_PEARL_OBTAINED,
-                    SurvivalMilestone.EYE_OF_ENDER_CRAFTED,
-                    SurvivalMilestone.STRONGHOLD_BEARING_MEASURED,
-                    SurvivalMilestone
-                            .STRONGHOLD_SEARCH_AREA_TRIANGULATED,
-                    SurvivalMilestone.END_ENTERED,
-                    SurvivalMilestone.DRAGON_KILLED,
-                    SurvivalMilestone.RETURNED_FROM_END
-    );
-    private static final int FOUNDATION_FOOD_RESERVE = 8;
-    /**
-     * One log is not a usable foundation handoff: the next vanilla phase
-     * needs a table, sticks, and a wooden pickaxe while retaining a small
-     * reserve.  Advancing the route on the first pickup made the model
-     * planner retire its gatherer before the body had enough material for
-     * basic crafting.
-     */
-    private static final int FOUNDATION_WOOD_RESERVE = 5;
-    private static final int FOUNDATION_CHEST_PLANKS = 8;
-    static final int COMPLETION_BLAZE_ROUTE_UNITS =
-            CompletionResourceReadiness.BLAZE_ROUTE_UNITS;
-    static final int COMPLETION_ENDER_ROUTE_UNITS =
-            CompletionResourceReadiness.ENDER_ROUTE_UNITS;
-    static final int COMPLETION_EYES_READY =
-            CompletionResourceReadiness.EYES_READY;
-    private static final int MAX_PROJECTED_INVENTORY_COUNT = 36 * 64;
-    private static final Set<String> BUILDING_BLOCK_IDS = Set.of(
-            "minecraft:cobblestone",
-            "minecraft:cobbled_deepslate",
-            "minecraft:stone",
-            "minecraft:dirt",
-            "minecraft:netherrack",
-            "minecraft:blackstone"
-    );
-    private static final Set<String> STRONG_PICKAXES = Set.of(
-            "minecraft:iron_pickaxe",
-            "minecraft:diamond_pickaxe",
-            "minecraft:netherite_pickaxe"
-    );
-    private static final Set<String> STONE_OR_BETTER_PICKAXES = Set.of(
-            "minecraft:stone_pickaxe",
-            "minecraft:iron_pickaxe",
-            "minecraft:golden_pickaxe",
-            "minecraft:diamond_pickaxe",
-            "minecraft:netherite_pickaxe"
-    );
-    private static final Set<String> WOOD_OR_BETTER_PICKAXES = Set.of(
-            "minecraft:wooden_pickaxe",
-            "minecraft:stone_pickaxe",
-            "minecraft:iron_pickaxe",
-            "minecraft:golden_pickaxe",
-            "minecraft:diamond_pickaxe",
-            "minecraft:netherite_pickaxe"
-    );
-
-    private final CompanionWorldData worldData;
-
-    public SurvivalRouteTracker(final CompanionWorldData worldData) {
-        this.worldData = Objects.requireNonNull(worldData, "worldData");
-    }
-
-    public Optional<SurvivalRouteSnapshot> snapshot(
-            final GoalSnapshot goal,
-            final ServerPlayer player,
-            final Optional<EyeTraceHistorySnapshot> eyeHistory
-    ) {
-        Objects.requireNonNull(goal, "goal");
-        Objects.requireNonNull(player, "player");
-        Objects.requireNonNull(eyeHistory, "eyeHistory");
-        final Optional<SurvivalRouteProfile> selectedProfile =
-                profile(goal);
-        if (selectedProfile.isEmpty()) {
-            return Optional.empty();
-        }
-        final SurvivalRouteProfile profile =
-                selectedProfile.orElseThrow();
-        if (!worldData.companionUuid().equals(player.getUUID())) {
-            throw new IllegalArgumentException(
-                    "Route tracker received another player"
-            );
-        }
-        final Map<String, Integer> inventory = inventory(player);
-        final Map<String, Integer> criticalCounts =
-                criticalCounts(inventory);
-        final EnumSet<SurvivalMilestone> observed =
-                EnumSet.of(SurvivalMilestone.BODY_ACTIVE);
-        if (hasWood(inventory)) {
-            observed.add(SurvivalMilestone.WOOD_OBTAINED);
-        }
-        final boolean basicCraftingReady = hasAny(
-                inventory,
-                WOOD_OR_BETTER_PICKAXES
-        ) && (
-                count(inventory, "minecraft:crafting_table") > 0
-                || worldData
-                    .verifiedFoundationEvidence(goal.revision())
-                    .flatMap(VerifiedFoundationEvidence::craftingTable)
-                    .isPresent()
-        );
-        if (basicCraftingReady) {
-            observed.add(SurvivalMilestone.BASIC_CRAFTING_READY);
-        }
-        if (safeFoodCount(inventory) >= FOUNDATION_FOOD_RESERVE) {
-            observed.add(SurvivalMilestone.FOOD_SECURED);
-        }
-        if (hasAny(inventory, STONE_OR_BETTER_PICKAXES)) {
-            observed.add(SurvivalMilestone.STONE_TOOL_OBTAINED);
-        }
-        if (hasAny(inventory, STRONG_PICKAXES)
-                && count(inventory, "minecraft:bucket")
-                    + count(inventory, "minecraft:water_bucket")
-                    + count(inventory, "minecraft:lava_bucket") > 0
-                && count(inventory, "minecraft:shield") > 0) {
-            observed.add(SurvivalMilestone.IRON_TOOLKIT_OBTAINED);
-        }
-        if (criticalCounts.get("same_structural_item")
-                        >= DynamicShelterPlanner
-                                .structuralBlockCount(3, 3)
-                && criticalCounts.get("safe_doors") >= 1
-                && criticalCounts.get("shelter_lights") >= 1) {
-            observed.add(
-                    SurvivalMilestone.SHELTER_MATERIALS_PREPARED
-            );
-        }
-        if (player.level().dimension().equals(Level.NETHER)) {
-            observed.add(SurvivalMilestone.NETHER_ENTERED);
-        }
-        if (blazeRouteUnits(inventory)
-                >= COMPLETION_BLAZE_ROUTE_UNITS) {
-            observed.add(
-                    SurvivalMilestone.BLAZE_MATERIAL_OBTAINED
-            );
-        }
-        if (enderRouteUnits(inventory)
-                >= COMPLETION_ENDER_ROUTE_UNITS) {
-            observed.add(SurvivalMilestone.ENDER_PEARL_OBTAINED);
-        }
-        if (count(inventory, "minecraft:ender_eye")
-                >= COMPLETION_EYES_READY) {
-            observed.add(SurvivalMilestone.EYE_OF_ENDER_CRAFTED);
-        }
-        eyeHistory.ifPresent(history -> {
-            observed.add(
-                    SurvivalMilestone.STRONGHOLD_BEARING_MEASURED
-            );
-            if (history.estimatedIntersection().isPresent()) {
-                observed.add(
-                        SurvivalMilestone
-                                .STRONGHOLD_SEARCH_AREA_TRIANGULATED
-                );
-            }
-        });
-        if (player.level().dimension().equals(Level.END)) {
-            observed.add(SurvivalMilestone.END_ENTERED);
-        }
-        if (worldData.evaluationDragonKilled()) {
-            observed.add(SurvivalMilestone.DRAGON_KILLED);
-        }
-        if (worldData.evaluationReturnedFromEnd()) {
-            observed.add(SurvivalMilestone.RETURNED_FROM_END);
-        }
-        if (profile == SurvivalRouteProfile.FOUNDATION) {
-            final long currentDay = Math.floorDiv(
-                    player.level().getServer()
-                            .overworld()
-                            .getOverworldClockTime(),
-                    24_000L
-            );
-            final long startedDay = worldData.initializeRouteStartDay(
-                    goal.revision(),
-                    currentDay
-            );
-            if (currentDay > startedDay) {
-                observed.add(
-                        SurvivalMilestone.FIRST_NIGHT_SURVIVED
-                );
-            }
-            final boolean shelterStillValid = worldData
-                    .verifiedShelterEvidence(goal.revision())
-                    .filter(evidence ->
-                            ServerShelterEvidenceVerifier.verify(
-                                    player.level().getServer(),
-                                    evidence
-                            )
-                    )
-                    .isPresent();
-            worldData.updateShelterVerification(
-                    goal.revision(),
-                    shelterStillValid
-            );
-            final ServerFoundationEvidenceVerifier.Result
-                    foundationVerification = worldData
-                            .verifiedFoundationEvidence(goal.revision())
-                            .map(evidence ->
-                                    ServerFoundationEvidenceVerifier.verify(
-                                            player.level().getServer(),
-                                            evidence
-                                    )
-                            )
-                            .orElseGet(() ->
-                                    new ServerFoundationEvidenceVerifier
-                                            .Result(false, false)
-                            );
-            worldData.updateFoundationVerification(
-                    goal.revision(),
-                    foundationVerification.workstationsEstablished(),
-                    foundationVerification.suppliesStored()
-            );
-            worldData.updateFoundationInventoryVerification(
-                    goal.revision(),
-                    basicCraftingReady,
-                    observed.contains(SurvivalMilestone.FOOD_SECURED),
-                    observed.contains(
-                            SurvivalMilestone.STONE_TOOL_OBTAINED
-                    ),
-                    observed.contains(
-                            SurvivalMilestone.IRON_TOOLKIT_OBTAINED
-                    )
-            );
-        }
-        worldData.markVerifiedRouteMilestones(
-                goal.revision(),
-                observed
-        );
-        final VerifiedRouteProgress progress =
-                worldData.verifiedRouteProgress(goal.revision());
-        final List<SurvivalMilestone> verified =
-                progress.milestones().stream().sorted().toList();
-        final List<SurvivalMilestone> guidanceOrder =
-                profile == SurvivalRouteProfile.FOUNDATION
-                        ? FOUNDATION_GUIDANCE_ORDER
-                        : COMPLETION_GUIDANCE_ORDER;
-        final Optional<SurvivalMilestone> next =
-                nextMilestone(
-                        profile,
-                        guidanceOrder,
-                        progress.milestones(),
-                        player.level().dimension().equals(Level.END),
-                        progress.milestones().contains(
-                                SurvivalMilestone.DRAGON_KILLED
-                        ),
-                        progress.milestones().contains(
-                                SurvivalMilestone.RETURNED_FROM_END
-                        )
-                );
-        return Optional.of(new SurvivalRouteSnapshot(
-                goal.revision(),
-                profile,
-                DimensionRef.parse(
-                        player.level().dimension().identifier().toString()
-                ),
-                verified,
-                next,
-                safetyDeficits(
-                        profile,
-                        progress.milestones(),
-                        inventory,
-                        player
-                ),
-                next.map(SurvivalRouteTracker::objectiveFor)
-                        .map(List::of)
-                        .orElseGet(List::of),
-                criticalCounts,
-                minimumTargets(profile, progress.milestones()),
-                player.getHealth(),
-                player.getFoodData().getFoodLevel(),
-                player.level().getServer().isHardcore(),
-                worldData.evaluationElapsedTicks(
-                        player.level().getServer()
-                                .overworld()
-                                .getGameTime()
-                )
-        ));
-    }
-
-    /**
-     * Irreversible late-game state controls the active completion phase
-     * without manufacturing earlier resource milestones. This matters when a
-     * player creates or resumes a goal while the companion is already in the
-     * End, after consumable prerequisites have legitimately disappeared from
-     * inventory.
-     */
-    static Optional<SurvivalMilestone> nextMilestone(
-            final SurvivalRouteProfile profile,
-            final List<SurvivalMilestone> guidanceOrder,
-            final Set<SurvivalMilestone> verified,
-            final boolean currentlyInEnd,
-            final boolean dragonKilled,
-            final boolean returnedFromEnd
-    ) {
-        Objects.requireNonNull(profile, "profile");
-        Objects.requireNonNull(guidanceOrder, "guidanceOrder");
-        Objects.requireNonNull(verified, "verified");
-        if (profile == SurvivalRouteProfile.COMPLETION) {
-            if (returnedFromEnd) {
-                return Optional.empty();
-            }
-            if (dragonKilled) {
-                return Optional.of(
-                        SurvivalMilestone.RETURNED_FROM_END
-                );
-            }
-            if (currentlyInEnd) {
-                return Optional.of(
-                        SurvivalMilestone.DRAGON_KILLED
-                );
-            }
-        }
-        return guidanceOrder.stream()
-                .filter(milestone -> !verified.contains(milestone))
-                .findFirst();
-    }
-
-    private static List<SurvivalSafetyDeficit> safetyDeficits(
-            final SurvivalRouteProfile profile,
-            final Set<SurvivalMilestone> progress,
-            final Map<String, Integer> inventory,
-            final ServerPlayer player
-    ) {
-        final EnumSet<SurvivalSafetyDeficit> result =
-                EnumSet.noneOf(SurvivalSafetyDeficit.class);
-        if (player.getHealth() < 10.0F) {
-            result.add(SurvivalSafetyDeficit.LOW_HEALTH);
-        }
-        if (player.getFoodData().getFoodLevel() < 8) {
-            result.add(SurvivalSafetyDeficit.LOW_HUNGER);
-        }
-        if (progress.contains(SurvivalMilestone.STONE_TOOL_OBTAINED)
-                && safeFoodCount(inventory)
-                        < (profile == SurvivalRouteProfile.FOUNDATION
-                                ? FOUNDATION_FOOD_RESERVE
-                                : 8)) {
-            result.add(SurvivalSafetyDeficit.FOOD_RESERVE_LOW);
-        }
-        if (progress.contains(SurvivalMilestone.IRON_TOOLKIT_OBTAINED)) {
-            if (count(inventory, "minecraft:shield") == 0) {
-                result.add(SurvivalSafetyDeficit.SHIELD_MISSING);
-            }
-            if (count(inventory, "minecraft:water_bucket") == 0) {
-                result.add(
-                        SurvivalSafetyDeficit.WATER_BUCKET_MISSING
-                );
-            }
-        }
-        if (profile == SurvivalRouteProfile.COMPLETION
-                && progress.contains(
-                        SurvivalMilestone.IRON_TOOLKIT_OBTAINED
-                )
-                && buildingBlocks(inventory) < 32) {
-            result.add(
-                    SurvivalSafetyDeficit
-                            .BUILDING_BLOCK_RESERVE_LOW
-            );
-        }
-        if (profile == SurvivalRouteProfile.COMPLETION
-                && progress.contains(
-                        SurvivalMilestone.EYE_OF_ENDER_CRAFTED
-                )
-                && criticalCounts(inventory).get("armor_pieces") < 3) {
-            result.add(SurvivalSafetyDeficit.END_ARMOR_LOW);
-        }
-        return result.stream().sorted().toList();
-    }
-
-    private static SurvivalRouteObjective objectiveFor(
-            final SurvivalMilestone milestone
-    ) {
-        return switch (milestone) {
-            case BODY_ACTIVE, WOOD_OBTAINED ->
-                    SurvivalRouteObjective.GATHER_VISIBLE_WOOD;
-            case BASIC_CRAFTING_READY ->
-                    SurvivalRouteObjective.PREPARE_BASIC_CRAFTING;
-            case FOOD_SECURED ->
-                    SurvivalRouteObjective.SECURE_FOOD_RESERVE;
-            case STONE_TOOL_OBTAINED ->
-                    SurvivalRouteObjective.CRAFT_AND_MINE_STONE;
-            case IRON_TOOLKIT_OBTAINED ->
-                    SurvivalRouteObjective.ACQUIRE_IRON_TOOLKIT;
-            case WORKSTATIONS_ESTABLISHED ->
-                    SurvivalRouteObjective
-                            .ESTABLISH_FOUNDATION_WORKSTATIONS;
-            case SUPPLIES_STORED ->
-                    SurvivalRouteObjective.STORE_SURPLUS_SUPPLIES;
-            case SHELTER_MATERIALS_PREPARED,
-                    SHELTER_COMPLETED ->
-                    SurvivalRouteObjective.BUILD_DYNAMIC_SHELTER;
-            case FIRST_NIGHT_SURVIVED ->
-                    SurvivalRouteObjective
-                            .SURVIVE_OR_SLEEP_THROUGH_NIGHT;
-            case NETHER_ENTERED ->
-                    SurvivalRouteObjective
-                            .BUILD_AND_VERIFY_NETHER_ROUTE;
-            case BLAZE_MATERIAL_OBTAINED ->
-                    SurvivalRouteObjective
-                            .FIND_AND_ACQUIRE_BLAZE_MATERIAL;
-            case ENDER_PEARL_OBTAINED ->
-                    SurvivalRouteObjective.ACQUIRE_ENDER_PEARLS;
-            case EYE_OF_ENDER_CRAFTED ->
-                    SurvivalRouteObjective.CRAFT_EYES_OF_ENDER;
-            case STRONGHOLD_BEARING_MEASURED ->
-                    SurvivalRouteObjective
-                            .TRACE_STRONGHOLD_BEARING;
-            case STRONGHOLD_SEARCH_AREA_TRIANGULATED ->
-                    SurvivalRouteObjective
-                            .TRIANGULATE_STRONGHOLD_SEARCH_AREA;
-            case END_ENTERED ->
-                    SurvivalRouteObjective
-                            .ACTIVATE_AND_ENTER_END_PORTAL;
-            case DRAGON_KILLED ->
-                    SurvivalRouteObjective.DEFEAT_ENDER_DRAGON;
-            case RETURNED_FROM_END ->
-                    SurvivalRouteObjective.ENTER_RETURN_PORTAL;
-        };
-    }
-
-    public static boolean isCompletionGoal(final GoalSnapshot goal) {
-        if (goal.source() == GoalSource.HARDCORE_EVALUATION) {
-            return true;
-        }
-        final String normalized = goal.goal()
-                .toLowerCase(Locale.ROOT);
-        return normalized.contains("é€šå…³")
-                || normalized.contains("æœ«å½±é¾™")
-                || normalized.contains("beat minecraft")
-                || normalized.contains("ender dragon");
-    }
-
-    public static boolean isFoundationGoal(final GoalSnapshot goal) {
-        return isFoundationGoalText(goal.goal());
-    }
-
-    public static boolean isFoundationGoalText(final String goal) {
-        final String normalized = Objects.requireNonNull(goal, "goal")
-                .toLowerCase(Locale.ROOT);
-        return normalized.contains("åŸºç¡€ç”Ÿå­˜")
-                || normalized.contains("å®‰å…¨æ®ç‚¹")
-                || normalized.contains("ç”Ÿå­˜åˆ°ç¬¬äºŒå¤©")
-                || normalized.contains("å»ºç«‹åº‡æŠ¤æ‰€")
-                || normalized.contains("safe base")
-                || normalized.contains("survive until the second day")
-                || normalized.contains("survive to the second day")
-                || normalized.contains("establish a shelter");
-    }
-
-    public static Optional<SurvivalRouteProfile> profile(
-            final GoalSnapshot goal
-    ) {
-        if (isFoundationGoal(goal)) {
-            return Optional.of(SurvivalRouteProfile.FOUNDATION);
-        }
-        if (isCompletionGoal(goal)) {
-            return Optional.of(SurvivalRouteProfile.COMPLETION);
-        }
-        return Optional.empty();
-    }
-
-    private static Map<String, Integer> inventory(
-            final ServerPlayer player
-    ) {
-        final Map<String, Integer> counts = new TreeMap<>();
-        for (int slot = 0;
-                slot < player.getInventory().getContainerSize();
-                slot++) {
-            final ItemStack stack = player.getInventory().getItem(slot);
-            if (stack.isEmpty()) {
-                continue;
-            }
-            counts.merge(
-                    BuiltInRegistries.ITEM.getKey(stack.getItem())
-                            .toString(),
-                    stack.getCount(),
-                    Math::addExact
-            );
-        }
-        return counts;
-    }
-
-    static Map<String, Integer> criticalCounts(
-            final Map<String, Integer> inventory
-    ) {
-        final Map<String, Integer> result = new TreeMap<>();
-        result.put("food", safeFoodCount(inventory));
-        result.put("building_blocks", buildingBlocks(inventory));
-        result.put("iron_ingots", count(
-                inventory,
-                "minecraft:iron_ingot"
-        ));
-        result.put("obsidian", count(inventory, "minecraft:obsidian"));
-        result.put("blaze_rods", count(
-                inventory,
-                "minecraft:blaze_rod"
-        ));
-        result.put("blaze_powder", count(
-                inventory,
-                "minecraft:blaze_powder"
-        ));
-        result.put("ender_pearls", count(
-                inventory,
-                "minecraft:ender_pearl"
-        ));
-        result.put("eyes_of_ender", count(
-                inventory,
-                "minecraft:ender_eye"
-        ));
-        result.put(
-                "blaze_route_units",
-                blazeRouteUnits(inventory)
-        );
-        result.put(
-                "ender_route_units",
-                enderRouteUnits(inventory)
-        );
-        result.put("beds", inventory.entrySet().stream()
-                .filter(entry -> entry.getKey().endsWith("_bed"))
-                .mapToInt(Map.Entry::getValue)
-                .sum());
-        result.put("arrows", count(inventory, "minecraft:arrow"));
-        result.put("water_buckets", count(
-                inventory,
-                "minecraft:water_bucket"
-        ));
-        result.put("shields", count(inventory, "minecraft:shield"));
-        result.put(
-                "crafting_tables",
-                count(inventory, "minecraft:crafting_table")
-        );
-        result.put(
-                "chest_plank_potential",
-                chestPlankPotential(inventory)
-        );
-        result.put("buckets", count(inventory, "minecraft:bucket")
-                + count(inventory, "minecraft:water_bucket")
-                + count(inventory, "minecraft:lava_bucket"));
-        result.put(
-                "wood_or_better_pickaxes",
-                sum(inventory, WOOD_OR_BETTER_PICKAXES)
-        );
-        result.put(
-                "stone_or_better_pickaxes",
-                sum(inventory, STONE_OR_BETTER_PICKAXES)
-        );
-        result.put(
-                "iron_or_better_pickaxes",
-                sum(inventory, STRONG_PICKAXES)
-        );
-        result.put(
-                "same_structural_item",
-                inventory.entrySet().stream()
-                        .filter(entry ->
-                                DynamicShelterPlanner.isStructuralItem(
-                                        entry.getKey()
-                                )
-                        )
-                        .mapToInt(Map.Entry::getValue)
-                        .max()
-                        .orElse(0)
-        );
-        result.put(
-                "safe_doors",
-                inventory.entrySet().stream()
-                        .filter(entry ->
-                                DynamicShelterPlanner.isSafeDoorItem(
-                                        entry.getKey()
-                                )
-                        )
-                        .mapToInt(Map.Entry::getValue)
-                        .sum()
-        );
-        result.put(
-                "shelter_lights",
-                inventory.entrySet().stream()
-                        .filter(entry ->
-                                DynamicShelterPlanner.isLightItem(
-                                        entry.getKey()
-                                )
-                        )
-                        .mapToInt(Map.Entry::getValue)
-                        .sum()
-        );
-        result.put("armor_pieces", inventory.entrySet().stream()
-                .filter(entry ->
-                        entry.getKey().endsWith("_helmet")
-                            || entry.getKey().endsWith("_chestplate")
-                            || entry.getKey().endsWith("_leggings")
-                            || entry.getKey().endsWith("_boots")
-                )
-                .mapToInt(Map.Entry::getValue)
-                .sum());
-        return result;
-    }
-
-    /**
-     * One Blaze rod supplies two powder units, while every already-crafted eye
-     * is proof that one powder unit was lawfully consumed earlier. Counting
-     * both prevents early crafting from revoking route readiness without
-     * treating one lucky rod as enough for a full unknown-seed run.
-     */
-    static int blazeRouteUnits(
-            final Map<String, Integer> inventory
-    ) {
-        return CompletionResourceReadiness.blazeRouteUnits(
-                count(inventory, "minecraft:blaze_rod"),
-                count(inventory, "minecraft:blaze_powder"),
-                count(inventory, "minecraft:ender_eye")
-        );
-    }
-
-    /**
-     * Crafted eyes retain the evidence of a consumed pearl. The route still
-     * requires fourteen total pearl-derived units before stronghold work, so
-     * the body has a twelve-eye portal reserve plus bounded tracing slack.
-     */
-    static int enderRouteUnits(
-            final Map<String, Integer> inventory
-    ) {
-        return CompletionResourceReadiness.enderRouteUnits(
-                count(inventory, "minecraft:ender_pearl"),
-                count(inventory, "minecraft:ender_eye")
-        );
-    }
-
-    static Map<String, Integer> minimumTargets(
-            final SurvivalRouteProfile profile
-    ) {
-        return minimumTargets(profile, Set.of());
-    }
-
-    static Map<String, Integer> minimumTargets(
-            final SurvivalRouteProfile profile,
-            final Set<SurvivalMilestone> verifiedMilestones
-    ) {
-        Objects.requireNonNull(profile, "profile");
-        Objects.requireNonNull(
-                verifiedMilestones,
-                "verifiedMilestones"
-        );
-        if (profile == SurvivalRouteProfile.FOUNDATION) {
-            final Map<String, Integer> targets = new TreeMap<>();
-            targets.put("food", FOUNDATION_FOOD_RESERVE);
-            if (!verifiedMilestones.contains(
-                    SurvivalMilestone.BASIC_CRAFTING_READY
-            )) {
-                targets.put("crafting_tables", 1);
-                targets.put("wood_or_better_pickaxes", 1);
-            }
-            targets.put("stone_or_better_pickaxes", 1);
-            targets.put("iron_or_better_pickaxes", 1);
-            targets.put("buckets", 1);
-            targets.put("shields", 1);
-            if (!verifiedMilestones.contains(
-                    SurvivalMilestone.WORKSTATIONS_ESTABLISHED
-            )) {
-                targets.put(
-                        "chest_plank_potential",
-                        FOUNDATION_CHEST_PLANKS
-                );
-            }
-            /*
-             * Door, light and structural blocks are construction inputs, so
-             * the running build consumes them by design. Once the route has
-             * independently verified SHELTER_MATERIALS_PREPARED, requiring
-             * all 55 blocks to remain in inventory creates an impossible
-             * replenish-after-every-placement loop. The persistent builder
-             * owns the exact plan and its confirmed placements from this
-             * milestone until SHELTER_COMPLETED.
-             */
-            if (!verifiedMilestones.contains(
-                        SurvivalMilestone.SHELTER_MATERIALS_PREPARED
-                    )
-                    && !verifiedMilestones.contains(
-                        SurvivalMilestone.SHELTER_COMPLETED
-                    )) {
-                targets.put(
-                        "same_structural_item",
-                        DynamicShelterPlanner.structuralBlockCount(3, 3)
-                );
-                targets.put("safe_doors", 1);
-                targets.put("shelter_lights", 1);
-            }
-            return Map.copyOf(targets);
-        }
-        final Map<String, Integer> targets = new TreeMap<>();
-        targets.put("food", 8);
-        targets.put("building_blocks", 32);
-        targets.put("iron_or_better_pickaxes", 1);
-        targets.put("buckets", 1);
-        targets.put("shields", 1);
-        targets.put("armor_pieces", 3);
-        if (!verifiedMilestones.contains(
-                SurvivalMilestone.BLAZE_MATERIAL_OBTAINED
-        )) {
-            targets.put(
-                    "blaze_route_units",
-                    COMPLETION_BLAZE_ROUTE_UNITS
-            );
-        }
-        if (!verifiedMilestones.contains(
-                SurvivalMilestone.ENDER_PEARL_OBTAINED
-        )) {
-            targets.put(
-                    "ender_route_units",
-                    COMPLETION_ENDER_ROUTE_UNITS
-            );
-        }
-        if (!verifiedMilestones.contains(
-                SurvivalMilestone.EYE_OF_ENDER_CRAFTED
-        )) {
-            targets.put(
-                    "eyes_of_ender",
-                    COMPLETION_EYES_READY
-            );
-        }
-        return Map.copyOf(targets);
-    }
-
-    private static boolean hasWood(
-            final Map<String, Integer> inventory
-    ) {
-        final long rawLogs = inventory.entrySet().stream()
-                .filter(entry -> {
-                    final String id = entry.getKey();
-                    return id.endsWith("_log")
-                            || id.endsWith("_stem")
-                            || id.endsWith("_hyphae");
-                })
-                .mapToLong(Map.Entry::getValue)
-                .sum();
-        final long planks = inventory.entrySet().stream()
-                .filter(entry -> entry.getKey().endsWith("_planks"))
-                .mapToLong(Map.Entry::getValue)
-                .sum();
-        return rawLogs >= FOUNDATION_WOOD_RESERVE
-                || planks >= FOUNDATION_WOOD_RESERVE * 4L;
-    }
-
-    private static int chestPlankPotential(
-            final Map<String, Integer> inventory
-    ) {
-        final long ownedPlanks = inventory.entrySet().stream()
-                .filter(entry -> entry.getKey().endsWith("_planks"))
-                .mapToLong(Map.Entry::getValue)
-                .sum();
-        final long convertibleWood = inventory.entrySet().stream()
-                .filter(entry ->
-                        PrepareBasicCraftingSkill.plankRecipeFor(
-                                entry.getKey()
-                        ).isPresent()
-                )
-                .mapToLong(Map.Entry::getValue)
-                .sum();
-        return (int) Math.min(
-                MAX_PROJECTED_INVENTORY_COUNT,
-                ownedPlanks + convertibleWood * 4L
-        );
-    }
-
-    private static boolean hasAny(
-            final Map<String, Integer> inventory,
-            final Set<String> ids
-    ) {
-        return ids.stream().anyMatch(id -> count(inventory, id) > 0);
-    }
-
-    private static int buildingBlocks(
-            final Map<String, Integer> inventory
-    ) {
-        return inventory.entrySet().stream()
-                .filter(entry ->
-                        BUILDING_BLOCK_IDS.contains(entry.getKey())
-                            || entry.getKey().endsWith("_planks")
-                )
-                .mapToInt(Map.Entry::getValue)
-                .sum();
-    }
-
-    private static int safeFoodCount(
-            final Map<String, Integer> inventory
-    ) {
-        return inventory.entrySet().stream()
-                .filter(entry ->
-                        VanillaFoodItems.isSafeFood(entry.getKey())
-                )
-                .mapToInt(Map.Entry::getValue)
-                .sum();
-    }
-
-    private static int sum(
-            final Map<String, Integer> inventory,
-            final Set<String> ids
-    ) {
-        return ids.stream()
-                .mapToInt(id -> count(inventory, id))
-                .sum();
-    }
-
-    private static int count(
-            final Map<String, Integer> inventory,
-            final String id
-    ) {
-        return inventory.getOrDefault(id, 0);
-    }
-}
+ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹ÁÉ½É•ÍÍ¥½¸ì()¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹½¹ÑÉ½°¹½…±M¹…ÁÍ¡½Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹½¹ÑÉ½°¹½…±M½ÕÉ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹‰Õ¥±‘¥¹œ¹å¹…µ¥M¡•±Ñ•ÉA±…¹¹•Èì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹Y…¹¥±±…½½‘%Ñ•µÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹™½Õ¹‘…Ñ¥½¸¹AÉ•Á…É•	…Í¥É…™Ñ¥¹M­¥±°ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹ÍÑÉ½¹¡½±¹å•QÉ…•!¥ÍÑ½ÉåM¹…ÁÍ¡½Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Ý…åÁ½¥¹Ð¹¥µ•¹Í¥½¹I•˜ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Ý½É±¹½µÁ…¹¥½¹]½É±‘…Ñ„ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹¹ÕµM•Ðì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹1¥ÍÐì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹1½…±”ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹5…Àì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=‰©•ÑÌì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=ÁÑ¥½¹…°ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹M•Ðì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹QÉ••5…Àì)¥µÁ½ÉÐ¹•Ð¹µ¥¹•É…™Ð¹½É”¹É•¥ÍÑÉ¥•Ì¹	Õ¥±Ñ%¹I•¥ÍÑÉ¥•Ìì)¥µÁ½ÉÐ¹•Ð¹µ¥¹•É…™Ð¹Í•ÉÙ•È¹±•Ù•°¹M•ÉÙ•ÉA±…å•Èì)¥µÁ½ÉÐ¹•Ð¹µ¥¹•É…™Ð¹Ý½É±¹¥Ñ•´¹%Ñ•µMÑ…¬ì)¥µÁ½ÉÐ¹•Ð¹µ¥¹•É…™Ð¹Ý½É±¹±•Ù•°¹1•Ù•°ì((¼¨¨(€¨UÁ‘…Ñ•ÌÉ½ÕÑ”•Ù¥‘•¹”™É½´Ñ¡”½µÁ…¹¥½¸Ì½Ý¸¥¹Ù•¹Ñ½Éä½‘¥µ•¹Í¥½¸…¹(€¨•Ù•¹Ðµ‰…­•Ý½É±…Õ‘¥Ð¸%Ð¹•Ù•È±½…Ñ•ÌÍÑÉÕÑÕÉ•Ì½ÈÍ…¹Ì‰±½­Ì¸(€¨¼)ÁÕ‰±¥Œ™¥¹…°±…ÍÌMÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•Èì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°1¥ÍÐñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”ø=U9Q%=9}U%9}=IH€ô(€€€€€€€€€€€1¥ÍÐ¹½˜ (€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	=e}Q%Y°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹]==}=	Q%9°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	M%}IQ%9}Id°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹MQ=9}Q==1}=	Q%9°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹==}MUI°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹%I=9}Q==1-%Q}=	Q%9°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹]=I-MQQ%=9M}MQ	1%M!°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹MUAA1%M}MQ=I°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹M!1QI}5QI%1M}AIAI°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹M!1QI}=5A1Q°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹%IMQ}9%!Q}MUIY%Y(€€€€€€€€€€€€¤ì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°1¥ÍÐñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”ø=5A1Q%=9}U%9}=IH€ô(€€€€€€€€€€€1¥ÍÐ¹½˜ (€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	=e}Q%Y°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹]==}=	Q%9°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	M%}IQ%9}Id°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹MQ=9}Q==1}=	Q%9°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹==}MUI°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹%I=9}Q==1-%Q}=	Q%9°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9Q!I}9QI°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	1i}5QI%1}=	Q%9°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9I}AI1}=	Q%9°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹e}=}9I}IQ°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹MQI=9!=1}	I%9}5MUI°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹MQI=9!=1}MI!}I}QI%9U1Q°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}9QI°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}%M19}I!°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹I=9}-%11°(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹IQUI9}I=5}9(€€€€¤ì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð=U9Q%=9}==}IMIY€ô€àì(€€€€¼¨¨(€€€€€¨=¹”±½œ¥Ì¹½Ð„ÕÍ…‰±”™½Õ¹‘…Ñ¥½¸¡…¹‘½™˜èÑ¡”¹•áÐÙ…¹¥±±„Á¡…Í”(€€€€€¨¹••‘Ì„Ñ…‰±”°ÍÑ¥­Ì°…¹„Ý½½‘•¸Á¥­…á”Ý¡¥±”É•Ñ…¥¹¥¹œ„Íµ…±°(€€€€€¨É•Í•ÉÙ”¸€‘Ù…¹¥¹œÑ¡”É½ÕÑ”½¸Ñ¡”™¥ÉÍÐÁ¥­ÕÀµ…‘”Ñ¡”µ½‘•°(€€€€€¨Á±…¹¹•ÈÉ•Ñ¥É”¥ÑÌ…Ñ¡•É•È‰•™½É”Ñ¡”‰½‘ä¡…•¹½Õ µ…Ñ•É¥…°™½È(€€€€€¨‰…Í¥ŒÉ…™Ñ¥¹œ¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð=U9Q%=9}]==}IMIY€ô€Ôì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð=U9Q%=9}!MQ}A19-L€ô€àì(€€€ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð=5A1Q%=9}	1i}I=UQ}U9%QL€ô(€€€€€€€€€€€½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ¹	1i}I=UQ}U9%QLì(€€€ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð=5A1Q%=9}9I}I=UQ}U9%QL€ô(€€€€€€€€€€€½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ¹9I}I=UQ}U9%QLì(€€€ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð=5A1Q%=9}eM}Id€ô(€€€€€€€€€€€½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ¹eM}Idì(€€€ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð=5A1Q%=9}9}	U%1%9}	1=-L€ô(€€€€€€€€€€€½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ¹9}	U%1%9}	1=-Lì(€€€ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð=5A1Q%=9}9}	=]L€ô½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ¹9}	=]Lì(€€€ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð=5A1Q%=9}9}II=]L€ô(€€€€€€€€€€€½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ¹9}II=]Lì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a}AI=)Q}%9Y9Q=Ie}=U9P€ô€ÌØ€¨€ØÐì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°M•ÐñMÑÉ¥¹œø	U%1%9}	1=-}%L€ôM•Ð¹½˜ (€€€€€€€€€€€€‰µ¥¹•É…™Ðé½‰‰±•ÍÑ½¹”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé½‰‰±•‘}‘••ÁÍ±…Ñ”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™ÐéÍÑ½¹”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé‘¥ÉÐˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¹•Ñ¡•ÉÉ…¬ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé‰±…­ÍÑ½¹”ˆ(€€€€¤ì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°M•ÐñMÑÉ¥¹œøMQI=9}A%-aL€ôM•Ð¹½˜ (€€€€€€€€€€€€‰µ¥¹•É…™Ðé¥É½¹}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé‘¥…µ½¹‘}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¹•Ñ¡•É¥Ñ•}Á¥­…á”ˆ(€€€€¤ì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°M•ÐñMÑÉ¥¹œøMQ=9}=I}	QQI}A%-aL€ôM•Ð¹½˜ (€€€€€€€€€€€€‰µ¥¹•É…™ÐéÍÑ½¹•}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¥É½¹}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé½±‘•¹}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé‘¥…µ½¹‘}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¹•Ñ¡•É¥Ñ•}Á¥­…á”ˆ(€€€€¤ì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°M•ÐñMÑÉ¥¹œø]==}=I}	QQI}A%-aL€ôM•Ð¹½˜ (€€€€€€€€€€€€‰µ¥¹•É…™ÐéÝ½½‘•¹}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™ÐéÍÑ½¹•}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¥É½¹}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé½±‘•¹}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé‘¥…µ½¹‘}Á¥­…á”ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¹•Ñ¡•É¥Ñ•}Á¥­…á”ˆ(€€€€¤ì((€€€ÁÉ¥Ù…Ñ”™¥¹…°½µÁ…¹¥½¹]½É±‘…Ñ„Ý½É±‘…Ñ„ì((€€€ÁÕ‰±¥ŒMÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¡™¥¹…°½µÁ…¹¥½¹]½É±‘…Ñ„Ý½É±‘…Ñ„¤ì(€€€€€€€Ñ¡¥Ì¹Ý½É±‘…Ñ„€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Ý½É±‘…Ñ„°€‰Ý½É±‘…Ñ„ˆ¤ì(€€€ô((€€€ÁÕ‰±¥Œ=ÁÑ¥½¹…°ñMÕÉÙ¥Ù…±I½ÕÑ•M¹…ÁÍ¡½ÐøÍ¹…ÁÍ¡½Ð (€€€€€€€€€€€™¥¹…°½…±M¹…ÁÍ¡½Ð½…°°(€€€€€€€€€€€™¥¹…°M•ÉÙ•ÉA±…å•ÈÁ±…å•È°(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñå•QÉ…•!¥ÍÑ½ÉåM¹…ÁÍ¡½Ðø•å•!¥ÍÑ½Éä(€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡½…°°€‰½…°ˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Á±…å•È°€‰Á±…å•Èˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡•å•!¥ÍÑ½Éä°€‰•å•!¥ÍÑ½Éäˆ¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñMÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”øÍ•±•Ñ•‘AÉ½™¥±”€ô(€€€€€€€€€€€€€€€ÁÉ½™¥±”¡½…°¤ì(€€€€€€€¥˜€¡Í•±•Ñ•‘AÉ½™¥±”¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€ô(€€€€€€€™¥¹…°MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”ÁÉ½™¥±”€ô(€€€€€€€€€€€€€€€Í•±•Ñ•‘AÉ½™¥±”¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€¥˜€ …Ý½É±‘…Ñ„¹½µÁ…¹¥½¹UÕ¥ ¤¹•ÅÕ…±Ì¡Á±…å•È¹•ÑUU% ¤¤¤ì(€€€€€€€€€€€Ñ¡É½Ü¹•Ü%±±•…±ÉÕµ•¹Ñá•ÁÑ¥½¸ (€€€€€€€€€€€€€€€€€€€€‰I½ÕÑ”ÑÉ…­•ÈÉ••¥Ù•…¹½Ñ¡•ÈÁ±…å•Èˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä€ô¥¹Ù•¹Ñ½Éä¡Á±…å•È¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÉ¥Ñ¥…±½Õ¹ÑÌ€ô(€€€€€€€€€€€€€€€É¥Ñ¥…±½Õ¹ÑÌ¡¥¹Ù•¹Ñ½Éä¤ì(€€€€€€€™¥¹…°¹ÕµM•ÐñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”ø½‰Í•ÉÙ•€ô(€€€€€€€€€€€€€€€¹ÕµM•Ð¹½˜¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	=e}Q%Y¤ì(€€€€€€€¥˜€¡¡…Í]½½¡¥¹Ù•¹Ñ½Éä¤¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹]==}=	Q%9¤ì(€€€€€€€ô(€€€€€€€™¥¹…°‰½½±•…¸‰…Í¥É…™Ñ¥¹I•…‘ä€ô¡…Í¹ä (€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€€€€€]==}=I}	QQI}A%-aL(€€€€€€€€¤€˜˜€ (€€€€€€€€€€€€€€€½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™ÐéÉ…™Ñ¥¹}Ñ…‰±”ˆ¤€ø€À(€€€€€€€€€€€€€€€ñðÝ½É±‘…Ñ„(€€€€€€€€€€€€€€€€€€€€¹Ù•É¥™¥•‘½Õ¹‘…Ñ¥½¹Ù¥‘•¹”¡½…°¹É•Ù¥Í¥½¸ ¤¤(€€€€€€€€€€€€€€€€€€€€¹™±…Ñ5…À¡Y•É¥™¥•‘½Õ¹‘…Ñ¥½¹Ù¥‘•¹”èéÉ…™Ñ¥¹Q…‰±”¤(€€€€€€€€€€€€€€€€€€€€¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€¤ì(€€€€€€€¥˜€¡‰…Í¥É…™Ñ¥¹I•…‘ä¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	M%}IQ%9}Id¤ì(€€€€€€€ô(€€€€€€€¥˜€¡Í…™•½½‘½Õ¹Ð¡¥¹Ù•¹Ñ½Éä¤€øô=U9Q%=9}==}IMIY¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹==}MUI¤ì(€€€€€€€ô(€€€€€€€¥˜€¡¡…Í¹ä¡¥¹Ù•¹Ñ½Éä°MQ=9}=I}	QQI}A%-aL¤¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹MQ=9}Q==1}=	Q%9¤ì(€€€€€€€ô(€€€€€€€¥˜€¡¡…Í¹ä¡¥¹Ù•¹Ñ½Éä°MQI=9}A%-aL¤(€€€€€€€€€€€€€€€€˜˜½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé‰Õ­•Ðˆ¤(€€€€€€€€€€€€€€€€€€€€¬½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™ÐéÝ…Ñ•É}‰Õ­•Ðˆ¤(€€€€€€€€€€€€€€€€€€€€¬½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé±…Ù…}‰Õ­•Ðˆ¤€ø€À(€€€€€€€€€€€€€€€€˜˜½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™ÐéÍ¡¥•±ˆ¤€ø€À¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹%I=9}Q==1-%Q}=	Q%9¤ì(€€€€€€€ô(€€€€€€€¥˜€¡É¥Ñ¥…±½Õ¹ÑÌ¹•Ð ‰Í…µ•}ÍÑÉÕÑÕÉ…±}¥Ñ•´ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€€øôå¹…µ¥M¡•±Ñ•ÉA±…¹¹•È(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹ÍÑÉÕÑÕÉ…±	±½­½Õ¹Ð Ì°€Ì¤(€€€€€€€€€€€€€€€€˜˜É¥Ñ¥…±½Õ¹ÑÌ¹•Ð ‰Í…™•}‘½½ÉÌˆ¤€øô€Ä(€€€€€€€€€€€€€€€€˜˜É¥Ñ¥…±½Õ¹ÑÌ¹•Ð ‰Í¡•±Ñ•É}±¥¡ÑÌˆ¤€øô€Ä¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘ (€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹M!1QI}5QI%1M}AIAI(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡Á±…å•È¹±•Ù•° ¤¹‘¥µ•¹Í¥½¸ ¤¹•ÅÕ…±Ì¡1•Ù•°¹9Q!H¤¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9Q!I}9QI¤ì(€€€€€€€ô(€€€€€€€¥˜€¡‰±…é•I½ÕÑ•U¹¥ÑÌ¡¥¹Ù•¹Ñ½Éä¤(€€€€€€€€€€€€€€€€øô=5A1Q%=9}	1i}I=UQ}U9%QL¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘ (€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	1i}5QI%1}=	Q%9(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡•¹‘•ÉI½ÕÑ•U¹¥ÑÌ¡¥¹Ù•¹Ñ½Éä¤(€€€€€€€€€€€€€€€€øô=5A1Q%=9}9I}I=UQ}U9%QL¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9I}AI1}=	Q%9¤ì(€€€€€€€ô(€€€€€€€¥˜€¡½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé•¹‘•É}•å”ˆ¤(€€€€€€€€€€€€€€€€øô=5A1Q%=9}eM}Id¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹e}=}9I}IQ¤ì(€€€€€€€ô(€€€€€€€•å•!¥ÍÑ½Éä¹¥™AÉ•Í•¹Ð¡¡¥ÍÑ½Éä€´øì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘ (€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹MQI=9!=1}	I%9}5MUI(€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€¡¡¥ÍÑ½Éä¹•ÍÑ¥µ…Ñ•‘%¹Ñ•ÉÍ•Ñ¥½¸ ¤¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€½‰Í•ÉÙ•¹…‘ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹MQI=9!=1}MI!}I}QI%9U1Q(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô¤ì(€€€€€€€™¥¹…°‰½½±•…¸ÑÉ¥…¹Õ±…Ñ•‘MÑÉ½¹¡½±€ô½‰Í•ÉÙ•¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹MQI=9!=1}MI!}I}QI%9U1Q(€€€€€€€€¤ñðÝ½É±‘…Ñ„¹Ù•É¥™¥•‘I½ÕÑ•AÉ½É•ÍÌ¡½…°¹É•Ù¥Í¥½¸ ¤¤(€€€€€€€€€€€€€€€€¹µ¥±•ÍÑ½¹•Ì ¤(€€€€€€€€€€€€€€€€¹½¹Ñ…¥¹Ì¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹MQI=9!=1}MI!}I}QI%9U1Q¤ì(€€€€€€€¥˜€¡ÑÉ¥…¹Õ±…Ñ•‘MÑÉ½¹¡½±€˜˜•¹‘1½…‘½ÕÑI•…‘ä¡Á±…å•È¤¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI¤ì(€€€€€€€ô(€€€€€€€¥˜€¡Á±…å•È¹±•Ù•° ¤¹‘¥µ•¹Í¥½¸ ¤¹•ÅÕ…±Ì¡1•Ù•°¹9¤¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}9QI¤ì(€€€€€€€ô(€€€€€€€™¥¹…°‰½½±•…¸¥¹¹€ôÁ±…å•È¹±•Ù•° ¤¹‘¥µ•¹Í¥½¸ ¤¹•ÅÕ…±Ì¡1•Ù•°¹9¤ì(€€€€€€€¥˜€¡Ý½É±‘…Ñ„¹•Ù…±Õ…Ñ¥½¹É…½¹-¥±±• ¤¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹I=9}-%11¤ì(€€€€€€€ô(€€€€€€€¥˜€¡Ý½É±‘…Ñ„¹•Ù…±Õ…Ñ¥½¹I•ÑÕÉ¹•‘É½µ¹ ¤¤ì(€€€€€€€€€€€½‰Í•ÉÙ•¹…‘¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹IQUI9}I=5}9¤ì(€€€€€€€ô(€€€€€€€¥˜€¡ÁÉ½™¥±”€ôôMÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=U9Q%=8¤ì(€€€€€€€€€€€™¥¹…°±½¹œÕÉÉ•¹Ñ…ä€ô5…Ñ ¹™±½½É¥Ø (€€€€€€€€€€€€€€€€€€€Á±…å•È¹±•Ù•° ¤¹•ÑM•ÉÙ•È ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹½Ù•ÉÝ½É± ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•Ñ=Ù•ÉÝ½É±‘±½­Q¥µ” ¤°(€€€€€€€€€€€€€€€€€€€€ÈÑ|ÀÀÁ0(€€€€€€€€€€€€¤ì(€€€€€€€€€€€™¥¹…°±½¹œÍÑ…ÉÑ•‘…ä€ôÝ½É±‘…Ñ„¹¥¹¥Ñ¥…±¥é•I½ÕÑ•MÑ…ÉÑ…ä (€€€€€€€€€€€€€€€€€€€½…°¹É•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ñ…ä(€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€¡ÕÉÉ•¹Ñ…ä€øÍÑ…ÉÑ•‘…ä¤ì(€€€€€€€€€€€€€€€½‰Í•ÉÙ•¹…‘ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹%IMQ}9%!Q}MUIY%Y(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€™¥¹…°‰½½±•…¸Í¡•±Ñ•ÉMÑ¥±±Y…±¥€ôÝ½É±‘…Ñ„(€€€€€€€€€€€€€€€€€€€€¹Ù•É¥™¥•‘M¡•±Ñ•ÉÙ¥‘•¹”¡½…°¹É•Ù¥Í¥½¸ ¤¤(€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•Ù¥‘•¹”€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€M•ÉÙ•ÉM¡•±Ñ•ÉÙ¥‘•¹•Y•É¥™¥•È¹Ù•É¥™ä (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Á±…å•È¹±•Ù•° ¤¹•ÑM•ÉÙ•È ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•Ù¥‘•¹”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¹¥ÍAÉ•Í•¹Ð ¤ì(€€€€€€€€€€€Ý½É±‘…Ñ„¹ÕÁ‘…Ñ•M¡•±Ñ•ÉY•É¥™¥…Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€½…°¹É•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€Í¡•±Ñ•ÉMÑ¥±±Y…±¥(€€€€€€€€€€€€¤ì(€€€€€€€€€€€™¥¹…°M•ÉÙ•É½Õ¹‘…Ñ¥½¹Ù¥‘•¹•Y•É¥™¥•È¹I•ÍÕ±Ð(€€€€€€€€€€€€€€€€€€€™½Õ¹‘…Ñ¥½¹Y•É¥™¥…Ñ¥½¸€ôÝ½É±‘…Ñ„(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹Ù•É¥™¥•‘½Õ¹‘…Ñ¥½¹Ù¥‘•¹”¡½…°¹É•Ù¥Í¥½¸ ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹µ…À¡•Ù¥‘•¹”€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€M•ÉÙ•É½Õ¹‘…Ñ¥½¹Ù¥‘•¹•Y•É¥™¥•È¹Ù•É¥™ä (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Á±…å•È¹±•Ù•° ¤¹•ÑM•ÉÙ•È ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•Ù¥‘•¹”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹½É±Í••Ð  ¤€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•ÜM•ÉÙ•É½Õ¹‘…Ñ¥½¹Ù¥‘•¹•Y•É¥™¥•È(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹I•ÍÕ±Ð¡™…±Í”°™…±Í”¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€Ý½É±‘…Ñ„¹ÕÁ‘…Ñ•½Õ¹‘…Ñ¥½¹Y•É¥™¥…Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€½…°¹É•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€™½Õ¹‘…Ñ¥½¹Y•É¥™¥…Ñ¥½¸¹Ý½É­ÍÑ…Ñ¥½¹ÍÍÑ…‰±¥Í¡• ¤°(€€€€€€€€€€€€€€€€€€€™½Õ¹‘…Ñ¥½¹Y•É¥™¥…Ñ¥½¸¹ÍÕÁÁ±¥•ÍMÑ½É• ¤(€€€€€€€€€€€€¤ì(€€€€€€€€€€€Ý½É±‘…Ñ„¹ÕÁ‘…Ñ•½Õ¹‘…Ñ¥½¹%¹Ù•¹Ñ½ÉåY•É¥™¥…Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€½…°¹É•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€‰…Í¥É…™Ñ¥¹I•…‘ä°(€€€€€€€€€€€€€€€€€€€½‰Í•ÉÙ•¹½¹Ñ…¥¹Ì¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹==}MUI¤°(€€€€€€€€€€€€€€€€€€€½‰Í•ÉÙ•¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹MQ=9}Q==1}=	Q%9(€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€½‰Í•ÉÙ•¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹%I=9}Q==1-%Q}=	Q%9(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€Ý½É±‘…Ñ„¹µ…É­Y•É¥™¥•‘I½ÕÑ•5¥±•ÍÑ½¹•Ì (€€€€€€€€€€€€€€€½…°¹É•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€€€€€½‰Í•ÉÙ•(€€€€€€€€¤ì(€€€€€€€™¥¹…°Y•É¥™¥•‘I½ÕÑ•AÉ½É•ÍÌÁÉ½É•ÍÌ€ô(€€€€€€€€€€€€€€€Ý½É±‘…Ñ„¹Ù•É¥™¥•‘I½ÕÑ•AÉ½É•ÍÌ¡½…°¹É•Ù¥Í¥½¸ ¤¤ì(€€€€€€€™¥¹…°1¥ÍÐñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”øÙ•É¥™¥•€ô(€€€€€€€€€€€€€€€ÁÉ½É•ÍÌ¹µ¥±•ÍÑ½¹•Ì ¤¹ÍÑÉ•…´ ¤¹Í½ÉÑ• ¤¹Ñ½1¥ÍÐ ¤ì(€€€€€€€™¥¹…°1¥ÍÐñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”øÕ¥‘…¹•=É‘•È€ô(€€€€€€€€€€€€€€€ÁÉ½™¥±”€ôôMÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=U9Q%=8(€€€€€€€€€€€€€€€€€€€€€€€€ü=U9Q%=9}U%9}=IH(€€€€€€€€€€€€€€€€€€€€€€€€è=5A1Q%=9}U%9}=IHì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”ø¹•áÐ€ô(€€€€€€€€€€€€€€€¹•áÑ5¥±•ÍÑ½¹” (€€€€€€€€€€€€€€€€€€€€€€€ÁÉ½™¥±”°(€€€€€€€€€€€€€€€€€€€€€€€Õ¥‘…¹•=É‘•È°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ½É•ÍÌ¹µ¥±•ÍÑ½¹•Ì ¤°(€€€€€€€€€€€€€€€€€€€€€€€¥¹¹°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ½É•ÍÌ¹µ¥±•ÍÑ½¹•Ì ¤¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹I=9}-%11(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ½É•ÍÌ¹µ¥±•ÍÑ½¹•Ì ¤¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹IQUI9}I=5}9(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€•¹‘1½…‘½ÕÑI•…‘ä¡Á±…å•È¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡¹•ÜMÕÉÙ¥Ù…±I½ÕÑ•M¹…ÁÍ¡½Ð (€€€€€€€€€€€€€€€½…°¹É•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€€€€€ÁÉ½™¥±”°(€€€€€€€€€€€€€€€¥µ•¹Í¥½¹I•˜¹Á…ÉÍ” (€€€€€€€€€€€€€€€€€€€€€€€Á±…å•È¹±•Ù•° ¤¹‘¥µ•¹Í¥½¸ ¤¹¥‘•¹Ñ¥™¥•È ¤¹Ñ½MÑÉ¥¹œ ¤(€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€Ù•É¥™¥•°(€€€€€€€€€€€€€€€¹•áÐ°(€€€€€€€€€€€€€€€Í…™•Ñå•™¥¥ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€ÁÉ½™¥±”°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ½É•ÍÌ¹µ¥±•ÍÑ½¹•Ì ¤°(€€€€€€€€€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€€€€€€€€€€€€€Á±…å•È(€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€¹•áÐ¹µ…À¡MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•Èèé½‰©•Ñ¥Ù•½È¤(€€€€€€€€€€€€€€€€€€€€€€€€¹µ…À¡1¥ÍÐèé½˜¤(€€€€€€€€€€€€€€€€€€€€€€€€¹½É±Í••Ð¡1¥ÍÐèé½˜¤°(€€€€€€€€€€€€€€€É¥Ñ¥…±½Õ¹ÑÌ°(€€€€€€€€€€€€€€€µ¥¹¥µÕµQ…É•ÑÌ¡ÁÉ½™¥±”°ÁÉ½É•ÍÌ¹µ¥±•ÍÑ½¹•Ì ¤¤°(€€€€€€€€€€€€€€€Á±…å•È¹•Ñ!•…±Ñ  ¤°(€€€€€€€€€€€€€€€Á±…å•È¹•Ñ½½‘…Ñ„ ¤¹•Ñ½½‘1•Ù•° ¤°(€€€€€€€€€€€€€€€Á±…å•È¹±•Ù•° ¤¹•ÑM•ÉÙ•È ¤¹¥Í!…É‘½É” ¤°(€€€€€€€€€€€€€€€Ý½É±‘…Ñ„¹•Ù…±Õ…Ñ¥½¹±…ÁÍ•‘Q¥­Ì (€€€€€€€€€€€€€€€€€€€€€€€Á±…å•È¹±•Ù•° ¤¹•ÑM•ÉÙ•È ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹½Ù•ÉÝ½É± ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•Ñ…µ•Q¥µ” ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤¤ì(€€€ô((€€€€¼¨¨(€€€€€¨%ÉÉ•Ù•ÉÍ¥‰±”±…Ñ”µ…µ”ÍÑ…Ñ”½¹ÑÉ½±ÌÑ¡”…Ñ¥Ù”½µÁ±•Ñ¥½¸Á¡…Í”(€€€€€¨Ý¥Ñ¡½ÕÐµ…¹Õ™…ÑÕÉ¥¹œ•…É±¥•ÈÉ•Í½ÕÉ”µ¥±•ÍÑ½¹•Ì¸Q¡¥Ìµ…ÑÑ•ÉÌÝ¡•¸„(€€€€€¨Á±…å•ÈÉ•…Ñ•Ì½ÈÉ•ÍÕµ•Ì„½…°Ý¡¥±”Ñ¡”½µÁ…¹¥½¸¥Ì…±É•…‘ä¥¸Ñ¡”(€€€€€¨¹°…™Ñ•È½¹ÍÕµ…‰±”ÁÉ•É•ÅÕ¥Í¥Ñ•Ì¡…Ù”±•¥Ñ¥µ…Ñ•±ä‘¥Í…ÁÁ•…É•™É½´(€€€€€¨¥¹Ù•¹Ñ½Éä¸(€€€€€¨¼(€€€ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”ø¹•áÑ5¥±•ÍÑ½¹” (€€€€€€€€€€€™¥¹…°MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”ÁÉ½™¥±”°(€€€€€€€€€€€™¥¹…°1¥ÍÐñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”øÕ¥‘…¹•=É‘•È°(€€€€€€€€€€€™¥¹…°M•ÐñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”øÙ•É¥™¥•°(€€€€€€€€€€€™¥¹…°‰½½±•…¸ÕÉÉ•¹Ñ±å%¹¹°(€€€€€€€€€€€™¥¹…°‰½½±•…¸‘É…½¹-¥±±•°(€€€€€€€€€€€™¥¹…°‰½½±•…¸É•ÑÕÉ¹•‘É½µ¹°(€€€€€€€€€€€™¥¹…°‰½½±•…¸•¹‘1½…‘½ÕÑÕÉÉ•¹Ñ±åI•…‘ä(€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡ÁÉ½™¥±”°€‰ÁÉ½™¥±”ˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Õ¥‘…¹•=É‘•È°€‰Õ¥‘…¹•=É‘•Èˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Ù•É¥™¥•°€‰Ù•É¥™¥•ˆ¤ì(€€€€€€€¥˜€¡ÁÉ½™¥±”€ôôMÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8¤ì(€€€€€€€€€€€¥˜€¡É•ÑÕÉ¹•‘É½µ¹¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡‘É…½¹-¥±±•¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹IQUI9}I=5}9(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡ÕÉÉ•¹Ñ±å%¹¹¤ì(€€€€€€€€€€€€€€€¥˜€ …Ù•É¥™¥•¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€¥˜€ …Ù•É¥™¥•¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}%M19}I!(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}%M19}I!(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹I=9}-%11(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡Ù•É¥™¥•¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€˜˜€…•¹‘1½…‘½ÕÑÕÉÉ•¹Ñ±åI•…‘ä¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Õ¥‘…¹•=É‘•È¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡µ¥±•ÍÑ½¹”€´ø€…Ù•É¥™¥•¹½¹Ñ…¥¹Ì¡µ¥±•ÍÑ½¹”¤¤(€€€€€€€€€€€€€€€€¹™¥¹‘¥ÉÍÐ ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ1¥ÍÐñMÕÉÙ¥Ù…±M…™•Ñå•™¥¥ÐøÍ…™•Ñå•™¥¥ÑÌ (€€€€€€€€€€€™¥¹…°MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”ÁÉ½™¥±”°(€€€€€€€€€€€™¥¹…°M•ÐñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”øÁÉ½É•ÍÌ°(€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€™¥¹…°M•ÉÙ•ÉA±…å•ÈÁ±…å•È(€€€€¤ì(€€€€€€€™¥¹…°¹ÕµM•ÐñMÕÉÙ¥Ù…±M…™•Ñå•™¥¥ÐøÉ•ÍÕ±Ð€ô(€€€€€€€€€€€€€€€¹ÕµM•Ð¹¹½¹•=˜¡MÕÉÙ¥Ù…±M…™•Ñå•™¥¥Ð¹±…ÍÌ¤ì(€€€€€€€¥˜€¡Á±…å•È¹•Ñ!•…±Ñ  ¤€ð€ÄÀ¸Á¤ì(€€€€€€€€€€€É•ÍÕ±Ð¹…‘¡MÕÉÙ¥Ù…±M…™•Ñå•™¥¥Ð¹1=]}!1Q ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡Á±…å•È¹•Ñ½½‘…Ñ„ ¤¹•Ñ½½‘1•Ù•° ¤€ð€à¤ì(€€€€€€€€€€€É•ÍÕ±Ð¹…‘¡MÕÉÙ¥Ù…±M…™•Ñå•™¥¥Ð¹1=]}!U9H¤ì(€€€€€€€ô(€€€€€€€¥˜€¡ÁÉ½É•ÍÌ¹½¹Ñ…¥¹Ì¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹MQ=9}Q==1}=	Q%9¤(€€€€€€€€€€€€€€€€˜˜Í…™•½½‘½Õ¹Ð¡¥¹Ù•¹Ñ½Éä¤(€€€€€€€€€€€€€€€€€€€€€€€€ð€¡ÁÉ½™¥±”€ôôMÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=U9Q%=8(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ü=U9Q%=9}==}IMIY(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€è€à¤¤ì(€€€€€€€€€€€É•ÍÕ±Ð¹…‘¡MÕÉÙ¥Ù…±M…™•Ñå•™¥¥Ð¹==}IMIY}1=\¤ì(€€€€€€€ô(€€€€€€€¥˜€¡ÁÉ½É•ÍÌ¹½¹Ñ…¥¹Ì¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹%I=9}Q==1-%Q}=	Q%9¤¤ì(€€€€€€€€€€€¥˜€¡½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™ÐéÍ¡¥•±ˆ¤€ôô€À¤ì(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹…‘¡MÕÉÙ¥Ù…±M…™•Ñå•™¥¥Ð¹M!%1}5%MM%9¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™ÐéÝ…Ñ•É}‰Õ­•Ðˆ¤€ôô€À¤ì(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹…‘ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±M…™•Ñå•™¥¥Ð¹]QI}	U-Q}5%MM%9(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€¥˜€¡ÁÉ½™¥±”€ôôMÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8(€€€€€€€€€€€€€€€€˜˜ÁÉ½É•ÍÌ¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹%I=9}Q==1-%Q}=	Q%9(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€˜˜€…ÁÉ½É•ÍÌ¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€˜˜‰Õ¥±‘¥¹	±½­Ì¡¥¹Ù•¹Ñ½Éä¤(€€€€€€€€€€€€€€€€€€€€€€€€ð=5A1Q%=9}9}	U%1%9}	1=-L¤ì(€€€€€€€€€€€É•ÍÕ±Ð¹…‘ (€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±M…™•Ñå•™¥¥Ð(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹	U%1%9}	1=-}IMIY}1=\(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡ÁÉ½™¥±”€ôôMÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8(€€€€€€€€€€€€€€€€˜˜ÁÉ½É•ÍÌ¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹e}=}9I}IQ(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€˜˜É¥Ñ¥…±½Õ¹ÑÌ¡¥¹Ù•¹Ñ½Éä¤¹•Ð ‰…Éµ½É}Á¥••Ìˆ¤€ð€Ì¤ì(€€€€€€€€€€€É•ÍÕ±Ð¹…‘¡MÕÉÙ¥Ù…±M…™•Ñå•™¥¥Ð¹9}I5=I}1=\¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸É•ÍÕ±Ð¹ÍÑÉ•…´ ¤¹Í½ÉÑ• ¤¹Ñ½1¥ÍÐ ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒMÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”½‰©•Ñ¥Ù•½È (€€€€€€€€€€€™¥¹…°MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”µ¥±•ÍÑ½¹”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸ÍÝ¥Ñ €¡µ¥±•ÍÑ½¹”¤ì(€€€€€€€€€€€…Í”	=e}Q%Y°]==}=	Q%9€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹Q!I}Y%M%	1}]==ì(€€€€€€€€€€€…Í”	M%}IQ%9}Id€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹AIAI}	M%}IQ%9ì(€€€€€€€€€€€…Í”==}MUI€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹MUI}==}IMIYì(€€€€€€€€€€€…Í”MQ=9}Q==1}=	Q%9€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹IQ}9}5%9}MQ=9ì(€€€€€€€€€€€…Í”%I=9}Q==1-%Q}=	Q%9€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹EU%I}%I=9}Q==1-%Pì(€€€€€€€€€€€…Í”]=I-MQQ%=9M}MQ	1%M!€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹MQ	1%M!}=U9Q%=9}]=I-MQQ%=9Lì(€€€€€€€€€€€…Í”MUAA1%M}MQ=I€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹MQ=I}MUIA1UM}MUAA1%Lì(€€€€€€€€€€€…Í”M!1QI}5QI%1M}AIAI°(€€€€€€€€€€€€€€€€€€€M!1QI}=5A1Q€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹	U%1}e95%}M!1QHì(€€€€€€€€€€€…Í”%IMQ}9%!Q}MUIY%Y€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹MUIY%Y}=I}M1A}Q!I=U!}9%!Pì(€€€€€€€€€€€…Í”9Q!I}9QI€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹	U%1}9}YI%e}9Q!I}I=UQì(€€€€€€€€€€€…Í”	1i}5QI%1}=	Q%9€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹%9}9}EU%I}	1i}5QI%0ì(€€€€€€€€€€€…Í”9I}AI1}=	Q%9€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹EU%I}9I}AI1Lì(€€€€€€€€€€€…Í”e}=}9I}IQ€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹IQ}eM}=}9Hì(€€€€€€€€€€€…Í”MQI=9!=1}	I%9}5MUI€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹QI}MQI=9!=1}	I%9ì(€€€€€€€€€€€…Í”MQI=9!=1}MI!}I}QI%9U1Q€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹QI%9U1Q}MQI=9!=1}MI!}Iì(€€€€€€€€€€€…Í”9}1==UQ}AIAI€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹AIAI}9}1==UPì(€€€€€€€€€€€…Í”9}9QI€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹Q%YQ}9}9QI}9}A=IQ0ì(€€€€€€€€€€€…Í”9}%M19}I!€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹I!}9}%M19ì(€€€€€€€€€€€…Í”I=9}-%11€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹Q}9I}I=8ì(€€€€€€€€€€€…Í”IQUI9}I=5}9€´ø(€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”¹9QI}IQUI9}A=IQ0ì(€€€€€€€ôì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ‰½½±•…¸¥Í½µÁ±•Ñ¥½¹½…°¡™¥¹…°½…±M¹…ÁÍ¡½Ð½…°¤ì(€€€€€€€¥˜€¡½…°¹Í½ÕÉ” ¤€ôô½…±M½ÕÉ”¹!I=I}Y1UQ%=8¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì(€€€€€€€ô(€€€€€€€™¥¹…°MÑÉ¥¹œ¹½Éµ…±¥é•€ô½…°¹½…° ¤(€€€€€€€€€€€€€€€€¹Ñ½1½Ý•É…Í”¡1½…±”¹I==P¤ì(€€€€€€€É•ÑÕÉ¸¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‹¦k–Ìˆ¤(€€€€€€€€€€€€€€€ñð¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‹šr¯–öÇ¦údˆ¤(€€€€€€€€€€€€€€€ñð¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‰‰•…Ðµ¥¹•É…™Ðˆ¤(€€€€€€€€€€€€€€€ñð¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‰•¹‘•È‘É…½¸ˆ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ‰½½±•…¸¥Í½Õ¹‘…Ñ¥½¹½…°¡™¥¹…°½…±M¹…ÁÍ¡½Ð½…°¤ì(€€€€€€€É•ÑÕÉ¸¥Í½Õ¹‘…Ñ¥½¹½…±Q•áÐ¡½…°¹½…° ¤¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ‰½½±•…¸¥Í½Õ¹‘…Ñ¥½¹½…±Q•áÐ¡™¥¹…°MÑÉ¥¹œ½…°¤ì(€€€€€€€™¥¹…°MÑÉ¥¹œ¹½Éµ…±¥é•€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡½…°°€‰½…°ˆ¤(€€€€€€€€€€€€€€€€¹Ñ½1½Ý•É…Í”¡1½…±”¹I==P¤ì(€€€€€€€É•ÑÕÉ¸¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‹–~ëž†žR–¶`ˆ¤(€€€€€€€€€€€€€€€ñð¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‹–º'–£š6»ž
+äˆ¤(€€€€€€€€€€€€€€€ñð¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‹žR–¶c–"Ãž²³’ê3–’¤ˆ¤(€€€€€€€€€€€€€€€ñð¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‹–îëž®/–êš*“š& ˆ¤(€€€€€€€€€€€€€€€ñð¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‰Í…™”‰…Í”ˆ¤(€€€€€€€€€€€€€€€ñð¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‰ÍÕÉÙ¥Ù”Õ¹Ñ¥°Ñ¡”Í•½¹‘…äˆ¤(€€€€€€€€€€€€€€€ñð¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‰ÍÕÉÙ¥Ù”Ñ¼Ñ¡”Í•½¹‘…äˆ¤(€€€€€€€€€€€€€€€ñð¹½Éµ…±¥é•¹½¹Ñ…¥¹Ì ‰•ÍÑ…‰±¥Í „Í¡•±Ñ•Èˆ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñMÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”øÁÉ½™¥±” (€€€€€€€€€€€™¥¹…°½…±M¹…ÁÍ¡½Ð½…°(€€€€¤ì(€€€€€€€¥˜€¡¥Í½Õ¹‘…Ñ¥½¹½…°¡½…°¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=U9Q%=8¤ì(€€€€€€€ô(€€€€€€€¥˜€¡¥Í½µÁ±•Ñ¥½¹½…°¡½…°¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä (€€€€€€€€€€€™¥¹…°M•ÉÙ•ÉA±…å•ÈÁ±…å•È(€€€€¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø½Õ¹ÑÌ€ô¹•ÜQÉ••5…Àðø ¤ì(€€€€€€€™½È€¡¥¹ÐÍ±½Ð€ô€Àì(€€€€€€€€€€€€€€€Í±½Ð€ðÁ±…å•È¹•Ñ%¹Ù•¹Ñ½Éä ¤¹•Ñ½¹Ñ…¥¹•ÉM¥é” ¤ì(€€€€€€€€€€€€€€€Í±½Ð¬¬¤ì(€€€€€€€€€€€™¥¹…°%Ñ•µMÑ…¬ÍÑ…¬€ôÁ±…å•È¹•Ñ%¹Ù•¹Ñ½Éä ¤¹•Ñ%Ñ•´¡Í±½Ð¤ì(€€€€€€€€€€€¥˜€¡ÍÑ…¬¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì(€€€€€€€€€€€ô(€€€€€€€€€€€½Õ¹ÑÌ¹µ•É” (€€€€€€€€€€€€€€€€€€€	Õ¥±Ñ%¹I•¥ÍÑÉ¥•Ì¹%Q4¹•Ñ-•ä¡ÍÑ…¬¹•Ñ%Ñ•´ ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹Ñ½MÑÉ¥¹œ ¤°(€€€€€€€€€€€€€€€€€€€ÍÑ…¬¹•Ñ½Õ¹Ð ¤°(€€€€€€€€€€€€€€€€€€€5…Ñ èé…‘‘á…Ð(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸½Õ¹ÑÌì(€€€ô((€€€ÍÑ…Ñ¥Œ5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÉ¥Ñ¥…±½Õ¹ÑÌ (€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä(€€€€¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÉ•ÍÕ±Ð€ô¹•ÜQÉ••5…Àðø ¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰™½½ˆ°Í…™•½½‘½Õ¹Ð¡¥¹Ù•¹Ñ½Éä¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰‰Õ¥±‘¥¹}‰±½­Ìˆ°‰Õ¥±‘¥¹	±½­Ì¡¥¹Ù•¹Ñ½Éä¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰¥É½¹}¥¹½ÑÌˆ°½Õ¹Ð (€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé¥É½¹}¥¹½Ðˆ(€€€€€€€€¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰½‰Í¥‘¥…¸ˆ°½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé½‰Í¥‘¥…¸ˆ¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰‰±…é•}É½‘Ìˆ°½Õ¹Ð (€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé‰±…é•}É½ˆ(€€€€€€€€¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰‰±…é•}Á½Ý‘•Èˆ°½Õ¹Ð (€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé‰±…é•}Á½Ý‘•Èˆ(€€€€€€€€¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰•¹‘•É}Á•…É±Ìˆ°½Õ¹Ð (€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé•¹‘•É}Á•…É°ˆ(€€€€€€€€¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰•å•Í}½™}•¹‘•Èˆ°½Õ¹Ð (€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé•¹‘•É}•å”ˆ(€€€€€€€€¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ (€€€€€€€€€€€€€€€€‰‰±…é•}É½ÕÑ•}Õ¹¥ÑÌˆ°(€€€€€€€€€€€€€€€‰±…é•I½ÕÑ•U¹¥ÑÌ¡¥¹Ù•¹Ñ½Éä¤(€€€€€€€€¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ (€€€€€€€€€€€€€€€€‰•¹‘•É}É½ÕÑ•}Õ¹¥ÑÌˆ°(€€€€€€€€€€€€€€€•¹‘•ÉI½ÕÑ•U¹¥ÑÌ¡¥¹Ù•¹Ñ½Éä¤(€€€€€€€€¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰‰•‘Ìˆ°¥¹Ù•¹Ñ½Éä¹•¹ÑÉåM•Ð ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹ÑÉä€´ø•¹ÑÉä¹•Ñ-•ä ¤¹•¹‘Í]¥Ñ  ‰}‰•ˆ¤¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½%¹Ð¡5…À¹¹ÑÉäèé•ÑY…±Õ”¤(€€€€€€€€€€€€€€€€¹ÍÕ´ ¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰…ÉÉ½ÝÌˆ°½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé…ÉÉ½Üˆ¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰‰½ÝÌˆ°½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé‰½Üˆ¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰Ý…Ñ•É}‰Õ­•ÑÌˆ°½Õ¹Ð (€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™ÐéÝ…Ñ•É}‰Õ­•Ðˆ(€€€€€€€€¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰Í¡¥•±‘Ìˆ°½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™ÐéÍ¡¥•±ˆ¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ (€€€€€€€€€€€€€€€€‰É…™Ñ¥¹}Ñ…‰±•Ìˆ°(€€€€€€€€€€€€€€€½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™ÐéÉ…™Ñ¥¹}Ñ…‰±”ˆ¤(€€€€€€€€¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ (€€€€€€€€€€€€€€€€‰¡•ÍÑ}Á±…¹­}Á½Ñ•¹Ñ¥…°ˆ°(€€€€€€€€€€€€€€€¡•ÍÑA±…¹­A½Ñ•¹Ñ¥…°¡¥¹Ù•¹Ñ½Éä¤(€€€€€€€€¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰‰Õ­•ÑÌˆ°½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé‰Õ­•Ðˆ¤(€€€€€€€€€€€€€€€€¬½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™ÐéÝ…Ñ•É}‰Õ­•Ðˆ¤(€€€€€€€€€€€€€€€€¬½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé±…Ù…}‰Õ­•Ðˆ¤¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ (€€€€€€€€€€€€€€€€‰Ý½½‘}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ°(€€€€€€€€€€€€€€€ÍÕ´¡¥¹Ù•¹Ñ½Éä°]==}=I}	QQI}A%-aL¤(€€€€€€€€¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ (€€€€€€€€€€€€€€€€‰ÍÑ½¹•}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ°(€€€€€€€€€€€€€€€ÍÕ´¡¥¹Ù•¹Ñ½Éä°MQ=9}=I}	QQI}A%-aL¤(€€€€€€€€¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ (€€€€€€€€€€€€€€€€‰¥É½¹}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ°(€€€€€€€€€€€€€€€ÍÕ´¡¥¹Ù•¹Ñ½Éä°MQI=9}A%-aL¤(€€€€€€€€¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ (€€€€€€€€€€€€€€€€‰Í…µ•}ÍÑÉÕÑÕÉ…±}¥Ñ•´ˆ°(€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä¹•¹ÑÉåM•Ð ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹ÑÉä€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€å¹…µ¥M¡•±Ñ•ÉA±…¹¹•È¹¥ÍMÑÉÕÑÕÉ…±%Ñ•´ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹ÑÉä¹•Ñ-•ä ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¹µ…ÁQ½%¹Ð¡5…À¹¹ÑÉäèé•ÑY…±Õ”¤(€€€€€€€€€€€€€€€€€€€€€€€€¹µ…à ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹½É±Í” À¤(€€€€€€€€¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ (€€€€€€€€€€€€€€€€‰Í…™•}‘½½ÉÌˆ°(€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä¹•¹ÑÉåM•Ð ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹ÑÉä€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€å¹…µ¥M¡•±Ñ•ÉA±…¹¹•È¹¥ÍM…™•½½É%Ñ•´ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹ÑÉä¹•Ñ-•ä ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¹µ…ÁQ½%¹Ð¡5…À¹¹ÑÉäèé•ÑY…±Õ”¤(€€€€€€€€€€€€€€€€€€€€€€€€¹ÍÕ´ ¤(€€€€€€€€¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ (€€€€€€€€€€€€€€€€‰Í¡•±Ñ•É}±¥¡ÑÌˆ°(€€€€€€€€€€€€€€€¥¹Ù•¹Ñ½Éä¹•¹ÑÉåM•Ð ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹ÑÉä€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€å¹…µ¥M¡•±Ñ•ÉA±…¹¹•È¹¥Í1¥¡Ñ%Ñ•´ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹ÑÉä¹•Ñ-•ä ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¹µ…ÁQ½%¹Ð¡5…À¹¹ÑÉäèé•ÑY…±Õ”¤(€€€€€€€€€€€€€€€€€€€€€€€€¹ÍÕ´ ¤(€€€€€€€€¤ì(€€€€€€€É•ÍÕ±Ð¹ÁÕÐ ‰…Éµ½É}Á¥••Ìˆ°¥¹Ù•¹Ñ½Éä¹•¹ÑÉåM•Ð ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹ÑÉä€´ø(€€€€€€€€€€€€€€€€€€€€€€€•¹ÑÉä¹•Ñ-•ä ¤¹•¹‘Í]¥Ñ  ‰}¡•±µ•Ðˆ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€ñð•¹ÑÉä¹•Ñ-•ä ¤¹•¹‘Í]¥Ñ  ‰}¡•ÍÑÁ±…Ñ”ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€ñð•¹ÑÉä¹•Ñ-•ä ¤¹•¹‘Í]¥Ñ  ‰}±•¥¹Ìˆ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€ñð•¹ÑÉä¹•Ñ-•ä ¤¹•¹‘Í]¥Ñ  ‰}‰½½ÑÌˆ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½%¹Ð¡5…À¹¹ÑÉäèé•ÑY…±Õ”¤(€€€€€€€€€€€€€€€€¹ÍÕ´ ¤¤ì(€€€€€€€É•ÑÕÉ¸É•ÍÕ±Ðì(€€€ô((€€€€¼¨¨(€€€€€¨=¹”	±…é”É½ÍÕÁÁ±¥•ÌÑÝ¼Á½Ý‘•ÈÕ¹¥ÑÌ°Ý¡¥±”•Ù•Éä…±É•…‘äµÉ…™Ñ••å”(€€€€€¨¥ÌÁÉ½½˜Ñ¡…Ð½¹”Á½Ý‘•ÈÕ¹¥ÐÝ…Ì±…Ý™Õ±±ä½¹ÍÕµ••…É±¥•È¸½Õ¹Ñ¥¹œ(€€€€€¨‰½Ñ ÁÉ•Ù•¹ÑÌ•…É±äÉ…™Ñ¥¹œ™É½´É•Ù½­¥¹œÉ½ÕÑ”É•…‘¥¹•ÍÌÝ¥Ñ¡½ÕÐ(€€€€€¨ÑÉ•…Ñ¥¹œ½¹”±Õ­äÉ½…Ì•¹½Õ ™½È„™Õ±°Õ¹­¹½Ý¸µÍ••ÉÕ¸¸(€€€€€¨¼(€€€ÍÑ…Ñ¥Œ¥¹Ð‰±…é•I½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä(€€€€¤ì(€€€€€€€É•ÑÕÉ¸½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ¹‰±…é•I½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€€€€€½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé‰±…é•}É½ˆ¤°(€€€€€€€€€€€€€€€½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé‰±…é•}Á½Ý‘•Èˆ¤°(€€€€€€€€€€€€€€€½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé•¹‘•É}•å”ˆ¤(€€€€€€€€¤ì(€€€ô((€€€€¼¨¨(€€€€€¨É…™Ñ••å•ÌÉ•Ñ…¥¸Ñ¡”•Ù¥‘•¹”½˜„½¹ÍÕµ•Á•…É°¸Q¡”É½ÕÑ”ÍÑ¥±°(€€€€€¨É•ÅÕ¥É•Ì™½ÕÉÑ••¸Ñ½Ñ…°Á•…É°µ‘•É¥Ù•Õ¹¥ÑÌ‰•™½É”ÍÑÉ½¹¡½±Ý½É¬°Í¼(€€€€€¨Ñ¡”‰½‘ä¡…Ì„ÑÝ•±Ù”µ•å”Á½ÉÑ…°É•Í•ÉÙ”Á±ÕÌ‰½Õ¹‘•ÑÉ…¥¹œÍ±…¬¸(€€€€€¨¼(€€€ÍÑ…Ñ¥Œ¥¹Ð•¹‘•ÉI½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä(€€€€¤ì(€€€€€€€É•ÑÕÉ¸½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ¹•¹‘•ÉI½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€€€€€½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé•¹‘•É}Á•…É°ˆ¤°(€€€€€€€€€€€€€€€½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°€‰µ¥¹•É…™Ðé•¹‘•É}•å”ˆ¤(€€€€€€€€¤ì(€€€ô((€€€ÍÑ…Ñ¥Œ5…ÀñMÑÉ¥¹œ°%¹Ñ••Èøµ¥¹¥µÕµQ…É•ÑÌ (€€€€€€€€€€€™¥¹…°MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”ÁÉ½™¥±”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸µ¥¹¥µÕµQ…É•ÑÌ¡ÁÉ½™¥±”°M•Ð¹½˜ ¤¤ì(€€€ô((€€€ÍÑ…Ñ¥Œ5…ÀñMÑÉ¥¹œ°%¹Ñ••Èøµ¥¹¥µÕµQ…É•ÑÌ (€€€€€€€€€€€™¥¹…°MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”ÁÉ½™¥±”°(€€€€€€€€€€€™¥¹…°M•ÐñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”øÙ•É¥™¥•‘5¥±•ÍÑ½¹•Ì(€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡ÁÉ½™¥±”°€‰ÁÉ½™¥±”ˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€Ù•É¥™¥•‘5¥±•ÍÑ½¹•Ì°(€€€€€€€€€€€€€€€€‰Ù•É¥™¥•‘5¥±•ÍÑ½¹•Ìˆ(€€€€€€€€¤ì(€€€€€€€¥˜€¡ÁÉ½™¥±”€ôôMÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=U9Q%=8¤ì(€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÑ…É•ÑÌ€ô¹•ÜQÉ••5…Àðø ¤ì(€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰™½½ˆ°=U9Q%=9}==}IMIY¤ì(€€€€€€€€€€€¥˜€ …Ù•É¥™¥•‘5¥±•ÍÑ½¹•Ì¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	M%}IQ%9}Id(€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰É…™Ñ¥¹}Ñ…‰±•Ìˆ°€Ä¤ì(€€€€€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰Ý½½‘}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ°€Ä¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰ÍÑ½¹•}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ°€Ä¤ì(€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰¥É½¹}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ°€Ä¤ì(€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰‰Õ­•ÑÌˆ°€Ä¤ì(€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰Í¡¥•±‘Ìˆ°€Ä¤ì(€€€€€€€€€€€¥˜€ …Ù•É¥™¥•‘5¥±•ÍÑ½¹•Ì¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹]=I-MQQ%=9M}MQ	1%M!(€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ (€€€€€€€€€€€€€€€€€€€€€€€€‰¡•ÍÑ}Á±…¹­}Á½Ñ•¹Ñ¥…°ˆ°(€€€€€€€€€€€€€€€€€€€€€€€=U9Q%=9}!MQ}A19-L(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€¨½½È°±¥¡Ð…¹ÍÑÉÕÑÕÉ…°‰±½­Ì…É”½¹ÍÑÉÕÑ¥½¸¥¹ÁÕÑÌ°Í¼(€€€€€€€€€€€€€¨Ñ¡”ÉÕ¹¹¥¹œ‰Õ¥±½¹ÍÕµ•ÌÑ¡•´‰ä‘•Í¥¸¸=¹”Ñ¡”É½ÕÑ”¡…Ì(€€€€€€€€€€€€€¨¥¹‘•Á•¹‘•¹Ñ±äÙ•É¥™¥•M!1QI}5QI%1M}AIAI°É•ÅÕ¥É¥¹œ(€€€€€€€€€€€€€¨…±°€ÔÔ‰±½­ÌÑ¼É•µ…¥¸¥¸¥¹Ù•¹Ñ½ÉäÉ•…Ñ•Ì…¸¥µÁ½ÍÍ¥‰±”(€€€€€€€€€€€€€¨É•Á±•¹¥Í µ…™Ñ•Èµ•Ù•ÉäµÁ±…•µ•¹Ð±½½À¸Q¡”Á•ÉÍ¥ÍÑ•¹Ð‰Õ¥±‘•È(€€€€€€€€€€€€€¨½Ý¹ÌÑ¡”•á…ÐÁ±…¸…¹¥ÑÌ½¹™¥Éµ•Á±…•µ•¹ÑÌ™É½´Ñ¡¥Ì(€€€€€€€€€€€€€¨µ¥±•ÍÑ½¹”Õ¹Ñ¥°M!1QI}=5A1Q¸(€€€€€€€€€€€€€¨¼(€€€€€€€€€€€¥˜€ …Ù•É¥™¥•‘5¥±•ÍÑ½¹•Ì¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹M!1QI}5QI%1M}AIAI(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€˜˜€…Ù•É¥™¥•‘5¥±•ÍÑ½¹•Ì¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹M!1QI}=5A1Q(€€€€€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ (€€€€€€€€€€€€€€€€€€€€€€€€‰Í…µ•}ÍÑÉÕÑÕÉ…±}¥Ñ•´ˆ°(€€€€€€€€€€€€€€€€€€€€€€€å¹…µ¥M¡•±Ñ•ÉA±…¹¹•È¹ÍÑÉÕÑÕÉ…±	±½­½Õ¹Ð Ì°€Ì¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰Í…™•}‘½½ÉÌˆ°€Ä¤ì(€€€€€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰Í¡•±Ñ•É}±¥¡ÑÌˆ°€Ä¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸5…À¹½Áå=˜¡Ñ…É•ÑÌ¤ì(€€€€€€€ô(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÑ…É•ÑÌ€ô¹•ÜQÉ••5…Àðø ¤ì(€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰™½½ˆ°€à¤ì(€€€€€€€¥˜€ …Ù•É¥™¥•‘5¥±•ÍÑ½¹•Ì¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€ñð€…Ù•É¥™¥•‘5¥±•ÍÑ½¹•Ì¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}9QI(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ (€€€€€€€€€€€€€€€€€€€€‰‰Õ¥±‘¥¹}‰±½­Ìˆ°(€€€€€€€€€€€€€€€€€€€=5A1Q%=9}9}	U%1%9}	1=-L(€€€€€€€€€€€€¤ì(€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰‰½ÝÌˆ°=5A1Q%=9}9}	=]L¤ì(€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰…ÉÉ½ÝÌˆ°=5A1Q%=9}9}II=]L¤ì(€€€€€€€ô(€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰¥É½¹}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ°€Ä¤ì(€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰‰Õ­•ÑÌˆ°€Ä¤ì(€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰Í¡¥•±‘Ìˆ°€Ä¤ì(€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ ‰…Éµ½É}Á¥••Ìˆ°€Ì¤ì(€€€€€€€¥˜€ …Ù•É¥™¥•‘5¥±•ÍÑ½¹•Ì¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	1i}5QI%1}=	Q%9(€€€€€€€€¤¤ì(€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ (€€€€€€€€€€€€€€€€€€€€‰‰±…é•}É½ÕÑ•}Õ¹¥ÑÌˆ°(€€€€€€€€€€€€€€€€€€€=5A1Q%=9}	1i}I=UQ}U9%QL(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€ …Ù•É¥™¥•‘5¥±•ÍÑ½¹•Ì¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9I}AI1}=	Q%9(€€€€€€€€¤¤ì(€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ (€€€€€€€€€€€€€€€€€€€€‰•¹‘•É}É½ÕÑ•}Õ¹¥ÑÌˆ°(€€€€€€€€€€€€€€€€€€€=5A1Q%=9}9I}I=UQ}U9%QL(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€ …Ù•É¥™¥•‘5¥±•ÍÑ½¹•Ì¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹e}=}9I}IQ(€€€€€€€€¤¤ì(€€€€€€€€€€€Ñ…É•ÑÌ¹ÁÕÐ (€€€€€€€€€€€€€€€€€€€€‰•å•Í}½™}•¹‘•Èˆ°(€€€€€€€€€€€€€€€€€€€=5A1Q%=9}eM}Id(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸5…À¹½Áå=˜¡Ñ…É•ÑÌ¤ì(€€€ô((€€€ÍÑ…Ñ¥Œ‰½½±•…¸•¹‘1½…‘½ÕÑI•…‘ä (€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÉ¥Ñ¥…±½Õ¹ÑÌ(€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡É¥Ñ¥…±½Õ¹ÑÌ°€‰É¥Ñ¥…±½Õ¹ÑÌˆ¤ì(€€€€€€€É•ÑÕÉ¸É¥Ñ¥…±½Õ¹ÑÌ¹•Ñ=É•™…Õ±Ð ‰‰Õ¥±‘¥¹}‰±½­Ìˆ°€À¤(€€€€€€€€€€€€€€€€€€€€€€€€øô=5A1Q%=9}9}	U%1%9}	1=-L(€€€€€€€€€€€€€€€€˜˜É¥Ñ¥…±½Õ¹ÑÌ¹•Ñ=É•™…Õ±Ð ‰‰½ÝÌˆ°€À¤(€€€€€€€€€€€€€€€€€€€€€€€€øô=5A1Q%=9}9}	=]L(€€€€€€€€€€€€€€€€˜˜É¥Ñ¥…±½Õ¹ÑÌ¹•Ñ=É•™…Õ±Ð ‰…ÉÉ½ÝÌˆ°€À¤(€€€€€€€€€€€€€€€€€€€€€€€€øô=5A1Q%=9}9}II=]Lì(€€€ô((€€€€¼¨¨(€€€€€¨ÕÉÉ•¹Ð¥¹Ù•¹Ñ½ÉäÉ•…‘¥¹•ÍÌÕÍ•…ÐÑ¡”¥ÉÉ•Ù•ÉÍ¥‰±”¹¡…¹‘½™˜¸(€€€€€¨½Õ¹Ðµ½¹±äÍ¹…ÁÍ¡½Ð…¹¹½ÐÁÉ½Ù”Ñ¡…Ð„¹•…É±ä‰É½­•¸‰½Ü¥ÌÕÍ…‰±”°(€€€€€¨Í¼Ñ¡”±¥Ù”Á±…å•È¥¹Ù•¹Ñ½ÉäµÕÍÐ½¹Ñ…¥¸„‰½ÜÝ¥Ñ „‰½Õ¹‘•É•Í•ÉÙ”(€€€€€¨½˜‘ÕÉ…‰¥±¥Ñä…ÌÝ•±°…ÌÑ¡”Í¡…É•…ÉÉ½ÜÑ…É•Ð¸(€€€€€¨¼(€€€ÍÑ…Ñ¥Œ‰½½±•…¸•¹‘1½…‘½ÕÑI•…‘ä¡™¥¹…°M•ÉÙ•ÉA±…å•ÈÁ±…å•È¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Á±…å•È°€‰Á±…å•Èˆ¤ì(€€€€€€€¥˜€ …•¹‘1½…‘½ÕÑI•…‘ä¡É¥Ñ¥…±½Õ¹ÑÌ¡¥¹Ù•¹Ñ½Éä¡Á±…å•È¤¤¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸©…Ù„¹ÕÑ¥°¹ÍÑÉ•…´¹%¹ÑMÑÉ•…´¹É…¹” (€€€€€€€€€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€€€€€€€€€Á±…å•È¹•Ñ%¹Ù•¹Ñ½Éä ¤¹•Ñ½¹Ñ…¥¹•ÉM¥é” ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½=‰¨¡Á±…å•È¹•Ñ%¹Ù•¹Ñ½Éä ¤èé•Ñ%Ñ•´¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡ÍÑ…¬€´øÍÑ…¬¹¥Ì¡¹•Ð¹µ¥¹•É…™Ð¹Ý½É±¹¥Ñ•´¹%Ñ•µÌ¹	=\¤¤(€€€€€€€€€€€€€€€€¹…¹å5…Ñ ¡ÍÑ…¬€´øÍÑ…¬¹•Ñ5…á…µ…” ¤€ðô€À(€€€€€€€€€€€€€€€€€€€€€€€ñðÍÑ…¬¹•Ñ5…á…µ…” ¤€´ÍÑ…¬¹•Ñ…µ…•Y…±Õ” ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€øô=5A1Q%=9}9}II=]L¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¡…Í]½½ (€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä(€€€€¤ì(€€€€€€€™¥¹…°±½¹œÉ…Ý1½Ì€ô¥¹Ù•¹Ñ½Éä¹•¹ÑÉåM•Ð ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹ÑÉä€´øì(€€€€€€€€€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ¥€ô•¹ÑÉä¹•Ñ-•ä ¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸¥¹•¹‘Í]¥Ñ  ‰}±½œˆ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€ñð¥¹•¹‘Í]¥Ñ  ‰}ÍÑ•´ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€ñð¥¹•¹‘Í]¥Ñ  ‰}¡åÁ¡…”ˆ¤ì(€€€€€€€€€€€€€€€ô¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½1½¹œ¡5…À¹¹ÑÉäèé•ÑY…±Õ”¤(€€€€€€€€€€€€€€€€¹ÍÕ´ ¤ì(€€€€€€€™¥¹…°±½¹œÁ±…¹­Ì€ô¥¹Ù•¹Ñ½Éä¹•¹ÑÉåM•Ð ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹ÑÉä€´ø•¹ÑÉä¹•Ñ-•ä ¤¹•¹‘Í]¥Ñ  ‰}Á±…¹­Ìˆ¤¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½1½¹œ¡5…À¹¹ÑÉäèé•ÑY…±Õ”¤(€€€€€€€€€€€€€€€€¹ÍÕ´ ¤ì(€€€€€€€É•ÑÕÉ¸É…Ý1½Ì€øô=U9Q%=9}]==}IMIY(€€€€€€€€€€€€€€€ñðÁ±…¹­Ì€øô=U9Q%=9}]==}IMIY€¨€Ñ0ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¥¹Ð¡•ÍÑA±…¹­A½Ñ•¹Ñ¥…° (€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä(€€€€¤ì(€€€€€€€™¥¹…°±½¹œ½Ý¹•‘A±…¹­Ì€ô¥¹Ù•¹Ñ½Éä¹•¹ÑÉåM•Ð ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹ÑÉä€´ø•¹ÑÉä¹•Ñ-•ä ¤¹•¹‘Í]¥Ñ  ‰}Á±…¹­Ìˆ¤¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½1½¹œ¡5…À¹¹ÑÉäèé•ÑY…±Õ”¤(€€€€€€€€€€€€€€€€¹ÍÕ´ ¤ì(€€€€€€€™¥¹…°±½¹œ½¹Ù•ÉÑ¥‰±•]½½€ô¥¹Ù•¹Ñ½Éä¹•¹ÑÉåM•Ð ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹ÑÉä€´ø(€€€€€€€€€€€€€€€€€€€€€€€AÉ•Á…É•	…Í¥É…™Ñ¥¹M­¥±°¹Á±…¹­I•¥Á•½È (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹ÑÉä¹•Ñ-•ä ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½1½¹œ¡5…À¹¹ÑÉäèé•ÑY…±Õ”¤(€€€€€€€€€€€€€€€€¹ÍÕ´ ¤ì(€€€€€€€É•ÑÕÉ¸€¡¥¹Ð¤5…Ñ ¹µ¥¸ (€€€€€€€€€€€€€€€5a}AI=)Q}%9Y9Q=Ie}=U9P°(€€€€€€€€€€€€€€€½Ý¹•‘A±…¹­Ì€¬½¹Ù•ÉÑ¥‰±•]½½€¨€Ñ0(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¡…Í¹ä (€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€™¥¹…°M•ÐñMÑÉ¥¹œø¥‘Ì(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¥‘Ì¹ÍÑÉ•…´ ¤¹…¹å5…Ñ ¡¥€´ø½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°¥¤€ø€À¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¥¹Ð‰Õ¥±‘¥¹	±½­Ì (€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¥¹Ù•¹Ñ½Éä¹•¹ÑÉåM•Ð ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹ÑÉä€´ø(€€€€€€€€€€€€€€€€€€€€€€€	U%1%9}	1=-}%L¹½¹Ñ…¥¹Ì¡•¹ÑÉä¹•Ñ-•ä ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€ñð•¹ÑÉä¹•Ñ-•ä ¤¹•¹‘Í]¥Ñ  ‰}Á±…¹­Ìˆ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½%¹Ð¡5…À¹¹ÑÉäèé•ÑY…±Õ”¤(€€€€€€€€€€€€€€€€¹ÍÕ´ ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¥¹ÐÍ…™•½½‘½Õ¹Ð (€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¥¹Ù•¹Ñ½Éä¹•¹ÑÉåM•Ð ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹ÑÉä€´ø(€€€€€€€€€€€€€€€€€€€€€€€Y…¹¥±±…½½‘%Ñ•µÌ¹¥ÍM…™•½½¡•¹ÑÉä¹•Ñ-•ä ¤¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½%¹Ð¡5…À¹¹ÑÉäèé•ÑY…±Õ”¤(€€€€€€€€€€€€€€€€¹ÍÕ´ ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¥¹ÐÍÕ´ (€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€™¥¹…°M•ÐñMÑÉ¥¹œø¥‘Ì(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¥‘Ì¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½%¹Ð¡¥€´ø½Õ¹Ð¡¥¹Ù•¹Ñ½Éä°¥¤¤(€€€€€€€€€€€€€€€€¹ÍÕ´ ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¥¹Ð½Õ¹Ð (€€€€€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹Ù•¹Ñ½Éä°(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ¥(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¥¹Ù•¹Ñ½Éä¹•Ñ=É•™…Õ±Ð¡¥°€À¤ì(€€€ô)ô

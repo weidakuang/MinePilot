@@ -1,259 +1,1 @@
-# Real-client E2E harness
-
-This directory contains test-only infrastructure. None of it belongs in the
-production Mod JAR.
-
-## Rendered Observer evidence
-
-The Observer is a real Minecraft client running with an isolated Xvfb display,
-not a coordinate-only process. After its own world sample first contains the
-AI player, the test-only client captures exactly one first-person PNG into
-`screenshots/observer-rendered.png`. The verifier checks the PNG signature,
-bounded size and dimensions, and requires a matching
-`observer_screenshot_saved` event in the same run nonce and ordered client
-lifecycle. The image is audit evidence only: it is not sent to the model, and
-it does not replace manual visual acceptance for skin, HUD, animation or UI
-quality.
-
-## Prepare on any development machine
-
-```bash
-python3 e2e/orchestrator.py prepare
-```
-
-This builds the bundled product JAR and both test Mods, creates a new immutable
-run directory, copies the exact product JAR into the server/Actor/Observer
-instances, and records hashes. The result is `PREPARED_NOT_RUN`, not a pass.
-
-## Dedicated-server lifecycle smoke on any development machine
-
-```bash
-python3 e2e/orchestrator.py server-smoke
-```
-
-This launches the exact staged product JAR on a real dedicated server, with no
-human client. It checks that the AI `ServerPlayer` joins, its SQLite memory
-opens from the product Jar-in-Jar payload, and shutdown removes it cleanly.
-Its verdict is deliberately scoped to lifecycle infrastructure and sets
-`functionalAiClaim` to `false`; it is not evidence for chat, movement, combat,
-survival, M0, or M1.
-
-The exact product also writes secret-free `runtime_lifecycle_audit` and
-`connection_transport_audit` rows. A real restart archive must contain two
-ordered startup rows from two server boots; a single smoke is intentionally
-rejected:
-
-```bash
-MCAI_RESTART_RUN_ROOT=/path/to/two-boot-archive \
-  python3 e2e/formal_gates.py --gate e2eRestart --forge-version 65.1.0
-```
-
-Without that archived two-boot run the gate remains `NOT_RUN`.
-
-## Delayed first-human anchor smoke (no model)
-
-```bash
-python3 e2e/orchestrator.py anchor-smoke --forge-version 65.1.1
-```
-
-This is a separate lifecycle check for the production initial-spawn path. It
-starts the exact dedicated-server JAR with no human client, waits until the
-real headless `ServerPlayer` is `ACTIVE`, keeps the server human-free for at
-least 40 server ticks, and only then starts the real offscreen Actor and
-Observer clients. The Oracle changes only the vanilla respawn point for the
-later human login; it never teleports either production player after the
-scenario starts. The verifier requires the normal remove/relogin anchor path,
-same-dimension safe feet, distance no greater than 12 blocks, both clients'
-own rendered observation, and the exact product hash in all three instances.
-
-This smoke deliberately sends no chat and does not configure a model. Its
-scope is `real_client_delayed_first_human_anchor_non_model`; a pass is useful
-evidence for â€œserver ran before the first human joinedâ€ and initial body
-placement only. It cannot promote the chat-to-action causal chain, combat,
-survival, Hardcore, or any M0--M4 gate. On hosts without Linux/Xvfb it should
-remain an infrastructure `NOT_RUN` result.
-
-The release artifact is always built against the Forge 65.0.0 API floor. To
-run that same copied JAR on another official Forge 65 patch, select only the
-runtime:
-
-```bash
-python3 e2e/orchestrator.py server-smoke --forge-version 65.1.0
-```
-
-For the complete published Forge 65.x real-client matrix, manually trigger
-`.github/workflows/real-client-functional-e2e-matrix.yml`. It fans out one
-isolated Linux/Xvfb job for each of 65.0.0--65.0.9, 65.1.0, and 65.1.1, archives each
-nonce-bound result separately, and fails closed per patch. Defining this
-workflow does not count as running or passing the matrix; the progress state
-remains `NOT_RUN` until every patch has a real-model result.
-
-## Run offscreen on Linux
-
-Before launching any client, check the host without starting Minecraft or
-touching the physical display:
-
-```bash
-python3 e2e/orchestrator.py preflight --forge-version 65.1.0
-```
-
-This prints a machine-readable infrastructure report. A non-zero result means
-the functional gate is `NOT_RUN`; it is not a product or gameplay failure.
-
-Install Java 25, Xvfb, Mesa/llvmpipe, and the normal Forge build. The
-preflight executes the selected Java binary with `-version` and fails closed
-unless its major version is exactly 25; merely having a file named `java` is
-not sufficient for this gate. Inject the configured real model without
-writing its key into the repository:
-
-```bash
-export MCAI_API_KEY_FILE=/run/secrets/mcai-api-key
-export MCAI_BASE_URL=https://provider.example/v1
-export MCAI_MODEL=provider-model
-python3 e2e/orchestrator.py functional --forge-version 65.1.0
-```
-
-`MCAI_API_KEY` is also accepted, but a secret file is preferred. The
-orchestrator never starts real clients on macOS or Windows and never uses the
-physical display. Linux functional runs create an isolated Xvfb display and
-bind the insecure offline test server strictly to `127.0.0.1`.
-
-If preflight is not ready, `functional` exits with code 2 but still writes an
-immutable run directory containing `manifest.json` with `status=NOT_RUN`,
-`functional-preflight.json`, and a secret-safe `infrastructure-error.json`.
-This is intentionally different from a product failure or a gameplay pass.
-
-The current slice performs two player-style tasks in sequence. The real Actor
-first asks the AI to follow, waits until its own rendered world shows the AI
-arrive and it receives an AI reply, then sends a second normal chat asking the
-AI to collect a visible dropped oak-log stack. The independent server Oracle
-creates that ordinary item entity before the ready marker and becomes
-read-only after the first command.
-
-A pass requires two distinct, ordered production
-model/schema/revision/skill/action audit chains
-(`follow_entity -> move` and `collect_observed_item -> move`), Actor receipt
-of an AI reply after each command, TAB visibility, Observer-visible
-non-teleport motion, removal of the exact fixture item entity, and the
-corresponding inventory-count increase through vanilla pickup. It still does
-not constitute M0 or M1 completion.
-
-The formal Gradle entry points required by the project plan are available as
-`e2eFunctional`, `e2eRendered`, `e2eChat`, `e2eMovement`, `e2eInventory`,
-`e2eRestart`, `e2eXaero`, `e2eM1`, `e2eM2`, `e2eM3`, `e2eM4Shard`,
-`aggregateHiddenSeeds`, `soak24h`, `soak100h`, `recordHumanBaseline`,
-`naturalnessReport`, and `mutationGate`. The first five invoke the real
-external-client slice; the M3 entry additionally validates the real companion
-summary protocol in `e2e/m3_protocol.py`. The remaining entries record
-`NOT_RUN` until their gate-specific scenarios and statistical evidence exist.
-A dirty checkout, missing model, or fixture-only result cannot be promoted to
-`PASS`.
-
-For the hidden-seed statistical entry points, set an OS-path-separator list of
-executed public `summary.json` files and run the matching gate:
-
-* `MCAI_M1_FOUNDATION_SUMMARIES` â†’ `e2eM1` (at least 100 foundation cases);
-* `MCAI_M2_COMPLETION_SUMMARIES` â†’ `e2eM2` (at least 200 completion cases);
-* `MCAI_HIDDEN_SEED_SUMMARIES` â†’ `aggregateHiddenSeeds` (at least 1,000
-  completion cases).
-
-The aggregator is fail-closed: it rechecks terminal evidence and recomputes
-all rates, rejects duplicate cases or raw seed material, and applies the
-M1/M2/M4 thresholds. Each summary must also bind the exact product JAR
-SHA-256 and 40-hex source commit, and all shards must agree. Without the
-matching summaries or artifact binding the entry point remains `NOT_RUN` or
-fails closed.
-On a release-eligible checkout, set `MCAI_EXPECTED_PRODUCT_SHA256` as well;
-the formal gate compares the summary binding with that exact artifact and the
-current 40-hex Git commit before allowing `PASS`.
-
-## Provider-neutral Linux worker
-
-The exact-client slice can be handed to any isolated Linux/Xvfb worker without
-binding the project to a cloud provider. `e2e/worker_protocol.py` validates a
-public job manifest whose only seed material is a 64-hex commitment; API keys,
-raw seeds, world paths and player identities are rejected. The result bundle
-contains a canonical result hash and a SHA-256 inventory of every artifact.
-
-Create a job manifest in the coordinator, copy it to the worker, and run. The
-creator refuses a dirty checkout by default and accepts only a file of public
-64-hex seed commitments; it never reads an API key. `--allow-dirty` is for
-development diagnostics only and leaves `source.dirty=true` in the manifest.
-
-```bash
-python3 scripts/create-worker-job.py \
-  --job-id m4-20260810-01 \
-  --shard-id shard-01 \
-  --scenario-id real_client_chat_follow_inventory \
-  --case-count 1 \
-  --seed-commitments-file seed-commitments.txt \
-  --product-jar build/libs/mcai_companion-0.1.10-dev-mc26.2.jar \
-  --forge-version 65.1.0 \
-  --model mimo-v2.5 \
-  --base-url https://token-plan-cn.xiaomimimo.com/v1 \
-  --credential-present --credential-source injected \
-  --output job.json
-```
-
-The worker receives the public job and an independently injected credential:
-
-```bash
-python3 scripts/run-e2e-worker.py validate-job --manifest job.json
-python3 scripts/run-e2e-worker.py run \
-  --manifest job.json \
-  --output /var/lib/mcai-worker/results/job-001
-python3 scripts/verify-worker-result.py \
-  --job job.json \
-  --result /var/lib/mcai-worker/results/job-001
-```
-
-The worker reads `MCAI_API_KEY` or `MCAI_API_KEY_FILE` only from its injected
-environment. Before launch and after the child run it binds the actual public
-model name, endpoint host, credential presence, and credential source to the
-job; an `injected` job source accepts either the environment or file channel,
-but never the secret value. A missing Linux/Xvfb runtime or credential is
-recorded as `BLOCKED_INFRA`/`BLOCKED_CREDENTIAL`, not as a gameplay result. A child
-orchestrator run is `PASS` only when its real dedicated server, ChatActor,
-Observer, model audit and Oracle evidence pass; no fixture or fake model can
-upgrade the worker result. Use an immutable per-job output directory and send
-only the verified bundle to the coordinator.
-
-The worker currently implements only the one-case
-`real_client_chat_follow_inventory` slice. If a job names an unimplemented
-scenario (for example `m4_hidden_hardcore`) or supplies a different case
-count, the worker records `NOT_RUN` and does not execute a substitute
-scenario. M1/M2/M4 shards must wait for their dedicated real-world runners;
-their seed commitments are never treated as evidence that the scenario ran.
-For the supported slice, provide exactly one public commitment in
-`seed-commitments.txt`; it identifies the run without exposing the actual
-Minecraft seed.
-
-For M3, set an OS-path-separator list of public worker summaries in
-`MCAI_M3_SUMMARIES` and run `./gradlew e2eM3`. Every case must be a terminal
-PASS from a real dedicated server, normal client, configured model and
-read-only Observer, with explicit no-command/no-direct-mutation evidence.
-The aggregator requires at least 50 natural-language companion cases, 30
-unseen-site building cases, three unseen variants for every farm and machine
-capability label in the protocol, and a measured 100-hour/10,000-waypoint/
-100,000-asset memory run within the query budgets. Partial matrices and
-controlled GameTests remain `FAIL` or `NOT_RUN`; they are never promoted by
-the entry point.
-
-## Run on GitHub Actions
-
-The manually triggered
-`.github/workflows/real-client-functional-e2e.yml` workflow provisions
-Temurin Java 25, Xvfb, and Mesa software rendering on Ubuntu 24.04, then runs
-the same `functional` command. Configure the repository secret
-`MCAI_API_KEY`; the Base URL, model name, and any currently published Forge
-65.x patch (65.0.0 through 65.0.9, 65.1.0, or 65.1.1) are workflow inputs. The
-workflow has no pull-request trigger, so untrusted fork code cannot request
-the model secret. Selecting a patch runs one isolated real-client attempt;
-the full patch matrix is still a separate formal gate and is not implied by a
-single green run.
-
-Every attempt uploads `e2e/results`, logs, exact installed JAR copies,
-observations, the production SQLite causal audit, verifier output, and any
-infrastructure error before enforcing the exit status. A workflow file or a
-green build-only step is not a functional pass; the archived
-`e2e-verdict.json` must say `PASS`.
+ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÀŒI•…°µ±¥•¹ÐÉ¡…É¹•ÍÌ()Q¡¥Ì‘¥É•Ñ½Éä½¹Ñ…¥¹ÌÑ•ÍÐµ½¹±ä¥¹™É…ÍÑÉÕÑÕÉ”¸9½¹”½˜¥Ð‰•±½¹Ì¥¸Ñ¡”)ÁÉ½‘ÕÑ¥½¸5½)H¸((ŒŒI•¹‘•É•=‰Í•ÉÙ•È•Ù¥‘•¹”()Q¡”=‰Í•ÉÙ•È¥Ì„É•…°5¥¹•É…™Ð±¥•¹ÐÉÕ¹¹¥¹œÝ¥Ñ …¸¥Í½±…Ñ•aÙ™ˆ‘¥ÍÁ±…ä°)¹½Ð„½½É‘¥¹…Ñ”µ½¹±äÁÉ½•ÍÌ¸™Ñ•È¥ÑÌ½Ý¸Ý½É±Í…µÁ±”™¥ÉÍÐ½¹Ñ…¥¹ÌÑ¡”)$Á±…å•È°Ñ¡”Ñ•ÍÐµ½¹±ä±¥•¹Ð…ÁÑÕÉ•Ì•á…Ñ±ä½¹”™¥ÉÍÐµÁ•ÉÍ½¸A9¥¹Ñ¼)ÍÉ••¹Í¡½ÑÌ½½‰Í•ÉÙ•ÈµÉ•¹‘•É•¹Á¹€¸Q¡”Ù•É¥™¥•È¡•­ÌÑ¡”A9Í¥¹…ÑÕÉ”°)‰½Õ¹‘•Í¥é”…¹‘¥µ•¹Í¥½¹Ì°…¹É•ÅÕ¥É•Ì„µ…Ñ¡¥¹œ)½‰Í•ÉÙ•É}ÍÉ••¹Í¡½Ñ}Í…Ù•‘€•Ù•¹Ð¥¸Ñ¡”Í…µ”ÉÕ¸¹½¹”…¹½É‘•É•±¥•¹Ð)±¥™•å±”¸Q¡”¥µ…”¥Ì…Õ‘¥Ð•Ù¥‘•¹”½¹±äè¥Ð¥Ì¹½ÐÍ•¹ÐÑ¼Ñ¡”µ½‘•°°…¹)¥Ð‘½•Ì¹½ÐÉ•Á±…”µ…¹Õ…°Ù¥ÍÕ…°…•ÁÑ…¹”™½ÈÍ­¥¸°!U°…¹¥µ…Ñ¥½¸½ÈU$)ÅÕ…±¥Ñä¸((ŒŒAÉ•Á…É”½¸…¹ä‘•Ù•±½Áµ•¹Ðµ…¡¥¹”()‰…Í )ÁåÑ¡½¸Ì”É”½½É¡•ÍÑÉ…Ñ½È¹ÁäÁÉ•Á…É”)€()Q¡¥Ì‰Õ¥±‘ÌÑ¡”‰Õ¹‘±•ÁÉ½‘ÕÐ)H…¹‰½Ñ Ñ•ÍÐ5½‘Ì°É•…Ñ•Ì„¹•Ü¥µµÕÑ…‰±”)ÉÕ¸‘¥É•Ñ½Éä°½Á¥•ÌÑ¡”•á…ÐÁÉ½‘ÕÐ)H¥¹Ñ¼Ñ¡”Í•ÉÙ•È½Ñ½È½=‰Í•ÉÙ•È)¥¹ÍÑ…¹•Ì°…¹É•½É‘Ì¡…Í¡•Ì¸Q¡”É•ÍÕ±Ð¥ÌAIAI}9=Q}IU9€°¹½Ð„Á…ÍÌ¸((ŒŒ•‘¥…Ñ•µÍ•ÉÙ•È±¥™•å±”Íµ½­”½¸…¹ä‘•Ù•±½Áµ•¹Ðµ…¡¥¹”()‰…Í )ÁåÑ¡½¸Ì”É”½½É¡•ÍÑÉ…Ñ½È¹ÁäÍ•ÉÙ•ÈµÍµ½­”)€()Q¡¥Ì±…Õ¹¡•ÌÑ¡”•á…ÐÍÑ…•ÁÉ½‘ÕÐ)H½¸„É•…°‘•‘¥…Ñ•Í•ÉÙ•È°Ý¥Ñ ¹¼)¡Õµ…¸±¥•¹Ð¸%Ð¡•­ÌÑ¡…ÐÑ¡”$M•ÉÙ•ÉA±…å•É€©½¥¹Ì°¥ÑÌME1¥Ñ”µ•µ½Éä)½Á•¹Ì™É½´Ñ¡”ÁÉ½‘ÕÐ)…Èµ¥¸µ)…ÈÁ…å±½…°…¹Í¡ÕÑ‘½Ý¸É•µ½Ù•Ì¥Ð±•…¹±ä¸)%ÑÌÙ•É‘¥Ð¥Ì‘•±¥‰•É…Ñ•±äÍ½Á•Ñ¼±¥™•å±”¥¹™É…ÍÑÉÕÑÕÉ”…¹Í•ÑÌ)™Õ¹Ñ¥½¹…±¥±…¥µ€Ñ¼™…±Í•€ì¥Ð¥Ì¹½Ð•Ù¥‘•¹”™½È¡…Ð°µ½Ù•µ•¹Ð°½µ‰…Ð°)ÍÕÉÙ¥Ù…°°4À°½È4Ä¸()Q¡”•á…ÐÁÉ½‘ÕÐ…±Í¼ÝÉ¥Ñ•ÌÍ•É•Ðµ™É•”ÉÕ¹Ñ¥µ•}±¥™•å±•}…Õ‘¥Ñ€…¹)½¹¹•Ñ¥½¹}ÑÉ…¹ÍÁ½ÉÑ}…Õ‘¥Ñ€É½ÝÌ¸É•…°É•ÍÑ…ÉÐ…É¡¥Ù”µÕÍÐ½¹Ñ…¥¸ÑÝ¼)½É‘•É•ÍÑ…ÉÑÕÀÉ½ÝÌ™É½´ÑÝ¼Í•ÉÙ•È‰½½ÑÌì„Í¥¹±”Íµ½­”¥Ì¥¹Ñ•¹Ñ¥½¹…±±ä)É•©•Ñ•è()‰…Í )5%}IMQIQ}IU9}I==Pô½Á…Ñ ½Ñ¼½ÑÝ¼µ‰½½Ðµ…É¡¥Ù”p(€ÁåÑ¡½¸Ì”É”½™½Éµ…±}…Ñ•Ì¹Áä€´µ…Ñ””É•I•ÍÑ…ÉÐ€´µ™½É”µÙ•ÉÍ¥½¸€ØÔ¸Ä¸À)€()]¥Ñ¡½ÕÐÑ¡…Ð…É¡¥Ù•ÑÝ¼µ‰½½ÐÉÕ¸Ñ¡”…Ñ”É•µ…¥¹Ì9=Q}IU9€¸((ŒŒ•±…å•™¥ÉÍÐµ¡Õµ…¸…¹¡½ÈÍµ½­”€¡¹¼µ½‘•°¤()‰…Í )ÁåÑ¡½¸Ì”É”½½É¡•ÍÑÉ…Ñ½È¹Áä…¹¡½ÈµÍµ½­”€´µ™½É”µÙ•ÉÍ¥½¸€ØÔ¸Ä¸Ä)€()Q¡¥Ì¥Ì„Í•Á…É…Ñ”±¥™•å±”¡•¬™½ÈÑ¡”ÁÉ½‘ÕÑ¥½¸¥¹¥Ñ¥…°µÍÁ…Ý¸Á…Ñ ¸%Ð)ÍÑ…ÉÑÌÑ¡”•á…Ð‘•‘¥…Ñ•µÍ•ÉÙ•È)HÝ¥Ñ ¹¼¡Õµ…¸±¥•¹Ð°Ý…¥ÑÌÕ¹Ñ¥°Ñ¡”)É•…°¡•…‘±•ÍÌM•ÉÙ•ÉA±…å•É€¥ÌQ%Y€°­••ÁÌÑ¡”Í•ÉÙ•È¡Õµ…¸µ™É•”™½È…Ð)±•…ÍÐ€ÐÀÍ•ÉÙ•ÈÑ¥­Ì°…¹½¹±äÑ¡•¸ÍÑ…ÉÑÌÑ¡”É•…°½™™ÍÉ••¸Ñ½È…¹)=‰Í•ÉÙ•È±¥•¹ÑÌ¸Q¡”=É…±”¡…¹•Ì½¹±äÑ¡”Ù…¹¥±±„É•ÍÁ…Ý¸Á½¥¹Ð™½ÈÑ¡”)±…Ñ•È¡Õµ…¸±½¥¸ì¥Ð¹•Ù•ÈÑ•±•Á½ÉÑÌ•¥Ñ¡•ÈÁÉ½‘ÕÑ¥½¸Á±…å•È…™Ñ•ÈÑ¡”)Í•¹…É¥¼ÍÑ…ÉÑÌ¸Q¡”Ù•É¥™¥•ÈÉ•ÅÕ¥É•ÌÑ¡”¹½Éµ…°É•µ½Ù”½É•±½¥¸…¹¡½ÈÁ…Ñ °)Í…µ”µ‘¥µ•¹Í¥½¸Í…™”™••Ð°‘¥ÍÑ…¹”¹¼É•…Ñ•ÈÑ¡…¸€ÄÈ‰±½­Ì°‰½Ñ ±¥•¹ÑÌœ)½Ý¸É•¹‘•É•½‰Í•ÉÙ…Ñ¥½¸°…¹Ñ¡”•á…ÐÁÉ½‘ÕÐ¡…Í ¥¸…±°Ñ¡É•”¥¹ÍÑ…¹•Ì¸()Q¡¥ÌÍµ½­”‘•±¥‰•É…Ñ•±äÍ•¹‘Ì¹¼¡…Ð…¹‘½•Ì¹½Ð½¹™¥ÕÉ”„µ½‘•°¸%ÑÌ)Í½Á”¥ÌÉ•…±}±¥•¹Ñ}‘•±…å•‘}™¥ÉÍÑ}¡Õµ…¹}…¹¡½É}¹½¹}µ½‘•±€ì„Á…ÍÌ¥ÌÕÍ•™Õ°)•Ù¥‘•¹”™½ÈƒŠqÍ•ÉÙ•ÈÉ…¸‰•™½É”Ñ¡”™¥ÉÍÐ¡Õµ…¸©½¥¹•“Št…¹¥¹¥Ñ¥…°‰½‘ä)Á±…•µ•¹Ð½¹±ä¸%Ð…¹¹½ÐÁÉ½µ½Ñ”Ñ¡”¡…ÐµÑ¼µ…Ñ¥½¸…ÕÍ…°¡…¥¸°½µ‰…Ð°)ÍÕÉÙ¥Ù…°°!…É‘½É”°½È…¹ä4À´µ4Ð…Ñ”¸=¸¡½ÍÑÌÝ¥Ñ¡½ÕÐ1¥¹Õà½aÙ™ˆ¥ÐÍ¡½Õ±)É•µ…¥¸…¸¥¹™É…ÍÑÉÕÑÕÉ”9=Q}IU9€É•ÍÕ±Ð¸()Q¡”É•±•…Í”…ÉÑ¥™…Ð¥Ì…±Ý…åÌ‰Õ¥±Ð……¥¹ÍÐÑ¡”½É”€ØÔ¸À¸ÀA$™±½½È¸Q¼)ÉÕ¸Ñ¡…ÐÍ…µ”½Á¥•)H½¸…¹½Ñ¡•È½™™¥¥…°½É”€ØÔÁ…Ñ °Í•±•Ð½¹±äÑ¡”)ÉÕ¹Ñ¥µ”è()‰…Í )ÁåÑ¡½¸Ì”É”½½É¡•ÍÑÉ…Ñ½È¹ÁäÍ•ÉÙ•ÈµÍµ½­”€´µ™½É”µÙ•ÉÍ¥½¸€ØÔ¸Ä¸À)€()½ÈÑ¡”½µÁ±•Ñ”ÁÕ‰±¥Í¡•½É”€ØÔ¹àÉ•…°µ±¥•¹Ðµ…ÑÉ¥à°µ…¹Õ…±±äÑÉ¥•È)€¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½É•…°µ±¥•¹Ðµ™Õ¹Ñ¥½¹…°µ”É”µµ…ÑÉ¥à¹åµ±€¸%Ð™…¹Ì½ÕÐ½¹”)¥Í½±…Ñ•1¥¹Õà½aÙ™ˆ©½ˆ™½È•… ½˜€ØÔ¸À¸À´´ØÔ¸À¸ä°€ØÔ¸Ä¸À°…¹€ØÔ¸Ä¸Ä°…É¡¥Ù•Ì•… )¹½¹”µ‰½Õ¹É•ÍÕ±ÐÍ•Á…É…Ñ•±ä°…¹™…¥±Ì±½Í•Á•ÈÁ…Ñ ¸•™¥¹¥¹œÑ¡¥Ì)Ý½É­™±½Ü‘½•Ì¹½Ð½Õ¹Ð…ÌÉÕ¹¹¥¹œ½ÈÁ…ÍÍ¥¹œÑ¡”µ…ÑÉ¥àìÑ¡”ÁÉ½É•ÍÌÍÑ…Ñ”)É•µ…¥¹Ì9=Q}IU9€Õ¹Ñ¥°•Ù•ÉäÁ…Ñ ¡…Ì„É•…°µµ½‘•°É•ÍÕ±Ð¸((ŒŒIÕ¸½™™ÍÉ••¸½¸1¥¹Õà()	•™½É”±…Õ¹¡¥¹œ…¹ä±¥•¹Ð°¡•¬Ñ¡”¡½ÍÐÝ¥Ñ¡½ÕÐÍÑ…ÉÑ¥¹œ5¥¹•É…™Ð½È)Ñ½Õ¡¥¹œÑ¡”Á¡åÍ¥…°‘¥ÍÁ±…äè()‰…Í )ÁåÑ¡½¸Ì”É”½½É¡•ÍÑÉ…Ñ½È¹ÁäÁÉ•™±¥¡Ð€´µ™½É”µÙ•ÉÍ¥½¸€ØÔ¸Ä¸À)€()Q¡¥ÌÁÉ¥¹ÑÌ„µ…¡¥¹”µÉ•…‘…‰±”¥¹™É…ÍÑÉÕÑÕÉ”É•Á½ÉÐ¸¹½¸µé•É¼É•ÍÕ±Ðµ•…¹Ì)Ñ¡”™Õ¹Ñ¥½¹…°…Ñ”¥Ì9=Q}IU9€ì¥Ð¥Ì¹½Ð„ÁÉ½‘ÕÐ½È…µ•Á±…ä™…¥±ÕÉ”¸()%¹ÍÑ…±°)…Ù„€ÈÔ°aÙ™ˆ°5•Í„½±±ÙµÁ¥Á”°…¹Ñ¡”¹½Éµ…°½É”‰Õ¥±¸Q¡”)ÁÉ•™±¥¡Ð•á•ÕÑ•ÌÑ¡”Í•±•Ñ•)…Ù„‰¥¹…ÉäÝ¥Ñ €µÙ•ÉÍ¥½¹€…¹™…¥±Ì±½Í•)Õ¹±•ÍÌ¥ÑÌµ…©½ÈÙ•ÉÍ¥½¸¥Ì•á…Ñ±ä€ÈÔìµ•É•±ä¡…Ù¥¹œ„™¥±”¹…µ•©…Ù…€¥Ì)¹½ÐÍÕ™™¥¥•¹Ð™½ÈÑ¡¥Ì…Ñ”¸%¹©•ÐÑ¡”½¹™¥ÕÉ•É•…°µ½‘•°Ý¥Ñ¡½ÕÐ)ÝÉ¥Ñ¥¹œ¥ÑÌ­•ä¥¹Ñ¼Ñ¡”É•Á½Í¥Ñ½Éäè()‰…Í )•áÁ½ÉÐ5%}A%}-e}%1ô½ÉÕ¸½Í•É•ÑÌ½µ…¤µ…Á¤µ­•ä)•áÁ½ÉÐ5%}	M}UI0õ¡ÑÑÁÌè¼½ÁÉ½Ù¥‘•È¹•á…µÁ±”½ØÄ)•áÁ½ÉÐ5%}5=0õÁÉ½Ù¥‘•Èµµ½‘•°)ÁåÑ¡½¸Ì”É”½½É¡•ÍÑÉ…Ñ½È¹Áä™Õ¹Ñ¥½¹…°€´µ™½É”µÙ•ÉÍ¥½¸€ØÔ¸Ä¸À)€()5%}A%}-e€¥Ì…±Í¼…•ÁÑ•°‰ÕÐ„Í•É•Ð™¥±”¥ÌÁÉ•™•ÉÉ•¸Q¡”)½É¡•ÍÑÉ…Ñ½È¹•Ù•ÈÍÑ…ÉÑÌÉ•…°±¥•¹ÑÌ½¸µ…=L½È]¥¹‘½ÝÌ…¹¹•Ù•ÈÕÍ•ÌÑ¡”)Á¡åÍ¥…°‘¥ÍÁ±…ä¸1¥¹Õà™Õ¹Ñ¥½¹…°ÉÕ¹ÌÉ•…Ñ”…¸¥Í½±…Ñ•aÙ™ˆ‘¥ÍÁ±…ä…¹)‰¥¹Ñ¡”¥¹Í•ÕÉ”½™™±¥¹”Ñ•ÍÐÍ•ÉÙ•ÈÍÑÉ¥Ñ±äÑ¼€ÄÈÜ¸À¸À¸Å€¸()%˜ÁÉ•™±¥¡Ð¥Ì¹½ÐÉ•…‘ä°™Õ¹Ñ¥½¹…±€•á¥ÑÌÝ¥Ñ ½‘”€È‰ÕÐÍÑ¥±°ÝÉ¥Ñ•Ì…¸)¥µµÕÑ…‰±”ÉÕ¸‘¥É•Ñ½Éä½¹Ñ…¥¹¥¹œµ…¹¥™•ÍÐ¹©Í½¹€Ý¥Ñ ÍÑ…ÑÕÌõ9=Q}IU9€°)™Õ¹Ñ¥½¹…°µÁÉ•™±¥¡Ð¹©Í½¹€°…¹„Í•É•ÐµÍ…™”¥¹™É…ÍÑÉÕÑÕÉ”µ•ÉÉ½È¹©Í½¹€¸)Q¡¥Ì¥Ì¥¹Ñ•¹Ñ¥½¹…±±ä‘¥™™•É•¹Ð™É½´„ÁÉ½‘ÕÐ™…¥±ÕÉ”½È„…µ•Á±…äÁ…ÍÌ¸()Q¡”ÕÉÉ•¹ÐÍ±¥”Á•É™½ÉµÌÑÝ¼Á±…å•ÈµÍÑå±”Ñ…Í­Ì¥¸Í•ÅÕ•¹”¸Q¡”É•…°Ñ½È)™¥ÉÍÐ…Í­ÌÑ¡”$Ñ¼™½±±½Ü°Ý…¥ÑÌÕ¹Ñ¥°¥ÑÌ½Ý¸É•¹‘•É•Ý½É±Í¡½ÝÌÑ¡”$)…ÉÉ¥Ù”…¹¥ÐÉ••¥Ù•Ì…¸$É•Á±ä°Ñ¡•¸Í•¹‘Ì„Í•½¹¹½Éµ…°¡…Ð…Í­¥¹œÑ¡”)$Ñ¼½±±•Ð„Ù¥Í¥‰±”‘É½ÁÁ•½…¬µ±½œÍÑ…¬¸Q¡”¥¹‘•Á•¹‘•¹ÐÍ•ÉÙ•È=É…±”)É•…Ñ•ÌÑ¡…Ð½É‘¥¹…Éä¥Ñ•´•¹Ñ¥Ñä‰•™½É”Ñ¡”É•…‘äµ…É­•È…¹‰•½µ•Ì)É•…µ½¹±ä…™Ñ•ÈÑ¡”™¥ÉÍÐ½µµ…¹¸()Á…ÍÌÉ•ÅÕ¥É•ÌÑÝ¼‘¥ÍÑ¥¹Ð°½É‘•É•ÁÉ½‘ÕÑ¥½¸)µ½‘•°½Í¡•µ„½É•Ù¥Í¥½¸½Í­¥±°½…Ñ¥½¸…Õ‘¥Ð¡…¥¹Ì(¡™½±±½Ý}•¹Ñ¥Ñä€´øµ½Ù•€…¹½±±•Ñ}½‰Í•ÉÙ•‘}¥Ñ•´€´øµ½Ù•€¤°Ñ½ÈÉ••¥ÁÐ)½˜…¸$É•Á±ä…™Ñ•È•… ½µµ…¹°QÙ¥Í¥‰¥±¥Ñä°=‰Í•ÉÙ•ÈµÙ¥Í¥‰±”)¹½¸µÑ•±•Á½ÉÐµ½Ñ¥½¸°É•µ½Ù…°½˜Ñ¡”•á…Ð™¥áÑÕÉ”¥Ñ•´•¹Ñ¥Ñä°…¹Ñ¡”)½ÉÉ•ÍÁ½¹‘¥¹œ¥¹Ù•¹Ñ½Éäµ½Õ¹Ð¥¹É•…Í”Ñ¡É½Õ Ù…¹¥±±„Á¥­ÕÀ¸%ÐÍÑ¥±°‘½•Ì)¹½Ð½¹ÍÑ¥ÑÕÑ”4À½È4Ä½µÁ±•Ñ¥½¸¸()Q¡”™½Éµ…°É…‘±”•¹ÑÉäÁ½¥¹ÑÌÉ•ÅÕ¥É•‰äÑ¡”ÁÉ½©•ÐÁ±…¸…É”…Ù…¥±…‰±”…Ì)”É•Õ¹Ñ¥½¹…±€°”É•I•¹‘•É•‘€°”É•¡…Ñ€°”É•5½Ù•µ•¹Ñ€°”É•%¹Ù•¹Ñ½Éå€°)”É•I•ÍÑ…ÉÑ€°”É•a…•É½€°”É•4Å€°”É•4É€°”É•4Í€°”É•4ÑM¡…É‘€°)…É•…Ñ•!¥‘‘•¹M••‘Í€°Í½…¬ÈÑ¡€°Í½…¬ÄÀÁ¡€°É•½É‘!Õµ…¹	…Í•±¥¹•€°)¹…ÑÕÉ…±¹•ÍÍI•Á½ÉÑ€°…¹µÕÑ…Ñ¥½¹…Ñ•€¸Q¡”™¥ÉÍÐ™¥Ù”¥¹Ù½­”Ñ¡”É•…°)•áÑ•É¹…°µ±¥•¹ÐÍ±¥”ìÑ¡”4Ì•¹ÑÉä…‘‘¥Ñ¥½¹…±±äÙ…±¥‘…Ñ•ÌÑ¡”É•…°½µÁ…¹¥½¸)ÍÕµµ…ÉäÁÉ½Ñ½½°¥¸”É”½´Í}ÁÉ½Ñ½½°¹Áå€¸Q¡”É•µ…¥¹¥¹œ•¹ÑÉ¥•ÌÉ•½É)9=Q}IU9€Õ¹Ñ¥°Ñ¡•¥È…Ñ”µÍÁ•¥™¥ŒÍ•¹…É¥½Ì…¹ÍÑ…Ñ¥ÍÑ¥…°•Ù¥‘•¹”•á¥ÍÐ¸)‘¥ÉÑä¡•­½ÕÐ°µ¥ÍÍ¥¹œµ½‘•°°½È™¥áÑÕÉ”µ½¹±äÉ•ÍÕ±Ð…¹¹½Ð‰”ÁÉ½µ½Ñ•Ñ¼)AMM€¸()½ÈÑ¡”¡¥‘‘•¸µÍ••ÍÑ…Ñ¥ÍÑ¥…°•¹ÑÉäÁ½¥¹ÑÌ°Í•Ð…¸=LµÁ…Ñ µÍ•Á…É…Ñ½È±¥ÍÐ½˜)•á•ÕÑ•ÁÕ‰±¥ŒÍÕµµ…Éä¹©Í½¹€™¥±•Ì…¹ÉÕ¸Ñ¡”µ…Ñ¡¥¹œ…Ñ”è((¨5%}4Å}=U9Q%=9}MU55I%M€ƒŠH”É•4Å€€¡…Ð±•…ÍÐ€ÄÀÀ™½Õ¹‘…Ñ¥½¸…Í•Ì¤ì(¨5%}4É}=5A1Q%=9}MU55I%M€ƒŠH”É•4É€€¡…Ð±•…ÍÐ€ÈÀÀ½µÁ±•Ñ¥½¸…Í•Ì¤ì(¨5%}!%9}M}MU55I%M€ƒŠH…É•…Ñ•!¥‘‘•¹M••‘Í€€¡…Ð±•…ÍÐ€Ä°ÀÀÀ(€½µÁ±•Ñ¥½¸…Í•Ì¤¸()Q¡”…É•…Ñ½È¥Ì™…¥°µ±½Í•è¥ÐÉ•¡•­ÌÑ•Éµ¥¹…°•Ù¥‘•¹”…¹É•½µÁÕÑ•Ì)…±°É…Ñ•Ì°É•©•ÑÌ‘ÕÁ±¥…Ñ”…Í•Ì½ÈÉ…ÜÍ••µ…Ñ•É¥…°°…¹…ÁÁ±¥•ÌÑ¡”)4Ä½4È½4ÐÑ¡É•Í¡½±‘Ì¸… ÍÕµµ…ÉäµÕÍÐ…±Í¼‰¥¹Ñ¡”•á…ÐÁÉ½‘ÕÐ)H)M!´ÈÔØ…¹€ÐÀµ¡•àÍ½ÕÉ”½µµ¥Ð°…¹…±°Í¡…É‘ÌµÕÍÐ…É•”¸]¥Ñ¡½ÕÐÑ¡”)µ…Ñ¡¥¹œÍÕµµ…É¥•Ì½È…ÉÑ¥™…Ð‰¥¹‘¥¹œÑ¡”•¹ÑÉäÁ½¥¹ÐÉ•µ…¥¹Ì9=Q}IU9€½È)™…¥±Ì±½Í•¸)=¸„É•±•…Í”µ•±¥¥‰±”¡•­½ÕÐ°Í•Ð5%}aAQ}AI=UQ}M!ÈÔÙ€…ÌÝ•±°ì)Ñ¡”™½Éµ…°…Ñ”½µÁ…É•ÌÑ¡”ÍÕµµ…Éä‰¥¹‘¥¹œÝ¥Ñ Ñ¡…Ð•á…Ð…ÉÑ¥™…Ð…¹Ñ¡”)ÕÉÉ•¹Ð€ÐÀµ¡•à¥Ð½µµ¥Ð‰•™½É”…±±½Ý¥¹œAMM€¸((ŒŒAÉ½Ù¥‘•Èµ¹•ÕÑÉ…°1¥¹ÕàÝ½É­•È()Q¡”•á…Ðµ±¥•¹ÐÍ±¥”…¸‰”¡…¹‘•Ñ¼…¹ä¥Í½±…Ñ•1¥¹Õà½aÙ™ˆÝ½É­•ÈÝ¥Ñ¡½ÕÐ)‰¥¹‘¥¹œÑ¡”ÁÉ½©•ÐÑ¼„±½ÕÁÉ½Ù¥‘•È¸”É”½Ý½É­•É}ÁÉ½Ñ½½°¹Áå€Ù…±¥‘…Ñ•Ì„)ÁÕ‰±¥Œ©½ˆµ…¹¥™•ÍÐÝ¡½Í”½¹±äÍ••µ…Ñ•É¥…°¥Ì„€ØÐµ¡•à½µµ¥Ñµ•¹ÐìA$­•åÌ°)É…ÜÍ••‘Ì°Ý½É±Á…Ñ¡Ì…¹Á±…å•È¥‘•¹Ñ¥Ñ¥•Ì…É”É•©•Ñ•¸Q¡”É•ÍÕ±Ð‰Õ¹‘±”)½¹Ñ…¥¹Ì„…¹½¹¥…°É•ÍÕ±Ð¡…Í …¹„M!´ÈÔØ¥¹Ù•¹Ñ½Éä½˜•Ù•Éä…ÉÑ¥™…Ð¸()É•…Ñ”„©½ˆµ…¹¥™•ÍÐ¥¸Ñ¡”½½É‘¥¹…Ñ½È°½Áä¥ÐÑ¼Ñ¡”Ý½É­•È°…¹ÉÕ¸¸Q¡”)É•…Ñ½ÈÉ•™ÕÍ•Ì„‘¥ÉÑä¡•­½ÕÐ‰ä‘•™…Õ±Ð…¹…•ÁÑÌ½¹±ä„™¥±”½˜ÁÕ‰±¥Œ(ØÐµ¡•àÍ••½µµ¥Ñµ•¹ÑÌì¥Ð¹•Ù•ÈÉ•…‘Ì…¸A$­•ä¸€´µ…±±½Üµ‘¥ÉÑå€¥Ì™½È)‘•Ù•±½Áµ•¹Ð‘¥…¹½ÍÑ¥Ì½¹±ä…¹±•…Ù•ÌÍ½ÕÉ”¹‘¥ÉÑäõÑÉÕ•€¥¸Ñ¡”µ…¹¥™•ÍÐ¸()‰…Í )ÁåÑ¡½¸ÌÍÉ¥ÁÑÌ½É•…Ñ”µÝ½É­•Èµ©½ˆ¹Áäp(€€´µ©½ˆµ¥´Ð´ÈÀÈØÀàÄÀ´ÀÄp(€€´µÍ¡…Éµ¥Í¡…É´ÀÄp(€€´µÍ•¹…É¥¼µ¥É•…±}±¥•¹Ñ}¡…Ñ}™½±±½Ý}¥¹Ù•¹Ñ½Éäp(€€´µ…Í”µ½Õ¹Ð€Äp(€€´µÍ••µ½µµ¥Ñµ•¹ÑÌµ™¥±”Í••µ½µµ¥Ñµ•¹ÑÌ¹ÑáÐp(€€´µÁÉ½‘ÕÐµ©…È‰Õ¥±½±¥‰Ì½µ…¥}½µÁ…¹¥½¸´À¸Ä¸ÄÄµ‘•ØµµŒÈØ¸È¹©…Èp(€€´µ™½É”µÙ•ÉÍ¥½¸€ØÔ¸Ä¸Àp(€€´µµ½‘•°µ¥µ¼µØÈ¸Ôp(€€´µ‰…Í”µÕÉ°¡ÑÑÁÌè¼½Ñ½­•¸µÁ±…¸µ¸¹á¥…½µ¥µ¥µ¼¹½´½ØÄp(€€´µÉ•‘•¹Ñ¥…°µÁÉ•Í•¹Ð€´µÉ•‘•¹Ñ¥…°µÍ½ÕÉ”¥¹©•Ñ•p(€€´µ½ÕÑÁÕÐ©½ˆ¹©Í½¸)€()Q¡”Ý½É­•ÈÉ••¥Ù•ÌÑ¡”ÁÕ‰±¥Œ©½ˆ…¹…¸¥¹‘•Á•¹‘•¹Ñ±ä¥¹©•Ñ•É•‘•¹Ñ¥…°è()‰…Í )ÁåÑ¡½¸ÌÍÉ¥ÁÑÌ½ÉÕ¸µ”É”µÝ½É­•È¹ÁäÙ…±¥‘…Ñ”µ©½ˆ€´µµ…¹¥™•ÍÐ©½ˆ¹©Í½¸)ÁåÑ¡½¸ÌÍÉ¥ÁÑÌ½ÉÕ¸µ”É”µÝ½É­•È¹ÁäÉÕ¸p(€€´µµ…¹¥™•ÍÐ©½ˆ¹©Í½¸p(€€´µ½ÕÑÁÕÐ€½Ù…È½±¥ˆ½µ…¤µÝ½É­•È½É•ÍÕ±ÑÌ½©½ˆ´ÀÀÄ)ÁåÑ¡½¸ÌÍÉ¥ÁÑÌ½Ù•É¥™äµÝ½É­•ÈµÉ•ÍÕ±Ð¹Áäp(€€´µ©½ˆ©½ˆ¹©Í½¸p(€€´µÉ•ÍÕ±Ð€½Ù…È½±¥ˆ½µ…¤µÝ½É­•È½É•ÍÕ±ÑÌ½©½ˆ´ÀÀÄ)€()Q¡”Ý½É­•ÈÉ•…‘Ì5%}A%}-e€½È5%}A%}-e}%1€½¹±ä™É½´¥ÑÌ¥¹©•Ñ•)•¹Ù¥É½¹µ•¹Ð¸	•™½É”±…Õ¹ …¹…™Ñ•ÈÑ¡”¡¥±ÉÕ¸¥Ð‰¥¹‘ÌÑ¡”…ÑÕ…°ÁÕ‰±¥Œ)µ½‘•°¹…µ”°•¹‘Á½¥¹Ð¡½ÍÐ°É•‘•¹Ñ¥…°ÁÉ•Í•¹”°…¹É•‘•¹Ñ¥…°Í½ÕÉ”Ñ¼Ñ¡”)©½ˆì…¸¥¹©•Ñ•‘€©½ˆÍ½ÕÉ”…•ÁÑÌ•¥Ñ¡•ÈÑ¡”•¹Ù¥É½¹µ•¹Ð½È™¥±”¡…¹¹•°°)‰ÕÐ¹•Ù•ÈÑ¡”Í•É•ÐÙ…±Õ”¸µ¥ÍÍ¥¹œ1¥¹Õà½aÙ™ˆÉÕ¹Ñ¥µ”½ÈÉ•‘•¹Ñ¥…°¥Ì)É•½É‘•…Ì	1=-}%9I€½	1=-}I9Q%1€°¹½Ð…Ì„…µ•Á±…äÉ•ÍÕ±Ð¸¡¥±)½É¡•ÍÑÉ…Ñ½ÈÉÕ¸¥ÌAMM€½¹±äÝ¡•¸¥ÑÌÉ•…°‘•‘¥…Ñ•Í•ÉÙ•È°¡…ÑÑ½È°)=‰Í•ÉÙ•È°µ½‘•°…Õ‘¥Ð…¹=É…±”•Ù¥‘•¹”Á…ÍÌì¹¼™¥áÑÕÉ”½È™…­”µ½‘•°…¸)ÕÁÉ…‘”Ñ¡”Ý½É­•ÈÉ•ÍÕ±Ð¸UÍ”…¸¥µµÕÑ…‰±”Á•Èµ©½ˆ½ÕÑÁÕÐ‘¥É•Ñ½Éä…¹Í•¹)½¹±äÑ¡”Ù•É¥™¥•‰Õ¹‘±”Ñ¼Ñ¡”½½É‘¥¹…Ñ½È¸()Q¡”Ý½É­•ÈÕÉÉ•¹Ñ±ä¥µÁ±•µ•¹ÑÌ½¹±äÑ¡”½¹”µ…Í”)É•…±}±¥•¹Ñ}¡…Ñ}™½±±½Ý}¥¹Ù•¹Ñ½Éå€Í±¥”¸%˜„©½ˆ¹…µ•Ì…¸Õ¹¥µÁ±•µ•¹Ñ•)Í•¹…É¥¼€¡™½È•á…µÁ±”´Ñ}¡¥‘‘•¹}¡…É‘½É•€¤½ÈÍÕÁÁ±¥•Ì„‘¥™™•É•¹Ð…Í”)½Õ¹Ð°Ñ¡”Ý½É­•ÈÉ•½É‘Ì9=Q}IU9€…¹‘½•Ì¹½Ð•á•ÕÑ”„ÍÕ‰ÍÑ¥ÑÕÑ”)Í•¹…É¥¼¸4Ä½4È½4ÐÍ¡…É‘ÌµÕÍÐÝ…¥Ð™½ÈÑ¡•¥È‘•‘¥…Ñ•É•…°µÝ½É±ÉÕ¹¹•ÉÌì)Ñ¡•¥ÈÍ••½µµ¥Ñµ•¹ÑÌ…É”¹•Ù•ÈÑÉ•…Ñ•…Ì•Ù¥‘•¹”Ñ¡…ÐÑ¡”Í•¹…É¥¼É…¸¸)½ÈÑ¡”ÍÕÁÁ½ÉÑ•Í±¥”°ÁÉ½Ù¥‘”•á…Ñ±ä½¹”ÁÕ‰±¥Œ½µµ¥Ñµ•¹Ð¥¸)Í••µ½µµ¥Ñµ•¹ÑÌ¹ÑáÑ€ì¥Ð¥‘•¹Ñ¥™¥•ÌÑ¡”ÉÕ¸Ý¥Ñ¡½ÕÐ•áÁ½Í¥¹œÑ¡”…ÑÕ…°)5¥¹•É…™ÐÍ••¸()½È4Ì°Í•Ð…¸=LµÁ…Ñ µÍ•Á…É…Ñ½È±¥ÍÐ½˜ÁÕ‰±¥ŒÝ½É­•ÈÍÕµµ…É¥•Ì¥¸)5%}4Í}MU55I%M€…¹ÉÕ¸€¸½É…‘±•Ü”É•4Í€¸Ù•Éä…Í”µÕÍÐ‰”„Ñ•Éµ¥¹…°)AML™É½´„É•…°‘•‘¥…Ñ•Í•ÉÙ•È°¹½Éµ…°±¥•¹Ð°½¹™¥ÕÉ•µ½‘•°…¹)É•…µ½¹±ä=‰Í•ÉÙ•È°Ý¥Ñ •áÁ±¥¥Ð¹¼µ½µµ…¹½¹¼µ‘¥É•ÐµµÕÑ…Ñ¥½¸•Ù¥‘•¹”¸)Q¡”…É•…Ñ½ÈÉ•ÅÕ¥É•Ì…Ð±•…ÍÐ€ÔÀ¹…ÑÕÉ…°µ±…¹Õ…”½µÁ…¹¥½¸…Í•Ì°€ÌÀ)Õ¹Í••¸µÍ¥Ñ”‰Õ¥±‘¥¹œ…Í•Ì°Ñ¡É•”Õ¹Í••¸Ù…É¥…¹ÑÌ™½È•Ù•Éä™…É´…¹µ…¡¥¹”)…Á…‰¥±¥Ñä±…‰•°¥¸Ñ¡”ÁÉ½Ñ½½°°…¹„µ•…ÍÕÉ•€ÄÀÀµ¡½ÕÈ¼ÄÀ°ÀÀÀµÝ…åÁ½¥¹Ð¼(ÄÀÀ°ÀÀÀµ…ÍÍ•Ðµ•µ½ÉäÉÕ¸Ý¥Ñ¡¥¸Ñ¡”ÅÕ•Éä‰Õ‘•ÑÌ¸A…ÉÑ¥…°µ…ÑÉ¥•Ì…¹)½¹ÑÉ½±±•…µ•Q•ÍÑÌÉ•µ…¥¸%1€½È9=Q}IU9€ìÑ¡•ä…É”¹•Ù•ÈÁÉ½µ½Ñ•‰ä)Ñ¡”•¹ÑÉäÁ½¥¹Ð¸((ŒŒIÕ¸½¸¥Ñ!ÕˆÑ¥½¹Ì()Q¡”µ…¹Õ…±±äÑÉ¥•É•)€¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½É•…°µ±¥•¹Ðµ™Õ¹Ñ¥½¹…°µ”É”¹åµ±€Ý½É­™±½ÜÁÉ½Ù¥Í¥½¹Ì)Q•µÕÉ¥¸)…Ù„€ÈÔ°aÙ™ˆ°…¹5•Í„Í½™ÑÝ…É”É•¹‘•É¥¹œ½¸U‰Õ¹ÑÔ€ÈÐ¸ÀÐ°Ñ¡•¸ÉÕ¹Ì)Ñ¡”Í…µ”™Õ¹Ñ¥½¹…±€½µµ…¹¸½¹™¥ÕÉ”Ñ¡”É•Á½Í¥Ñ½ÉäÍ•É•Ð)5%}A%}-e€ìÑ¡”	…Í”UI0°µ½‘•°¹…µ”°…¹…¹äÕÉÉ•¹Ñ±äÁÕ‰±¥Í¡•½É”(ØÔ¹àÁ…Ñ € ØÔ¸À¸ÀÑ¡É½Õ €ØÔ¸À¸ä°€ØÔ¸Ä¸À°½È€ØÔ¸Ä¸Ä¤…É”Ý½É­™±½Ü¥¹ÁÕÑÌ¸Q¡”)Ý½É­™±½Ü¡…Ì¹¼ÁÕ±°µÉ•ÅÕ•ÍÐÑÉ¥•È°Í¼Õ¹ÑÉÕÍÑ•™½É¬½‘”…¹¹½ÐÉ•ÅÕ•ÍÐ)Ñ¡”µ½‘•°Í•É•Ð¸M•±•Ñ¥¹œ„Á…Ñ ÉÕ¹Ì½¹”¥Í½±…Ñ•É•…°µ±¥•¹Ð…ÑÑ•µÁÐì)Ñ¡”™Õ±°Á…Ñ µ…ÑÉ¥à¥ÌÍÑ¥±°„Í•Á…É…Ñ”™½Éµ…°…Ñ”…¹¥Ì¹½Ð¥µÁ±¥•‰ä„)Í¥¹±”É••¸ÉÕ¸¸()Ù•Éä…ÑÑ•µÁÐÕÁ±½…‘Ì”É”½É•ÍÕ±ÑÍ€°±½Ì°•á…Ð¥¹ÍÑ…±±•)H½Á¥•Ì°)½‰Í•ÉÙ…Ñ¥½¹Ì°Ñ¡”ÁÉ½‘ÕÑ¥½¸ME1¥Ñ”…ÕÍ…°…Õ‘¥Ð°Ù•É¥™¥•È½ÕÑÁÕÐ°…¹…¹ä)¥¹™É…ÍÑÉÕÑÕÉ”•ÉÉ½È‰•™½É”•¹™½É¥¹œÑ¡”•á¥ÐÍÑ…ÑÕÌ¸Ý½É­™±½Ü™¥±”½È„)É••¸‰Õ¥±µ½¹±äÍÑ•À¥Ì¹½Ð„™Õ¹Ñ¥½¹…°Á…ÍÌìÑ¡”…É¡¥Ù•)”É”µÙ•É‘¥Ð¹©Í½¹€µÕÍÐÍ…äAMM€¸

@@ -1,153 +1,1 @@
-package dev.mcai.companion.progression;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-
-import java.util.Map;
-import java.util.Set;
-import org.junit.jupiter.api.Test;
-
-final class SurvivalRouteReadinessTest {
-    @Test
-    void foundationReadinessUsesOneMaterialRatherThanSummingMaterials() {
-        final Map<String, Integer> counts =
-                SurvivalRouteTracker.criticalCounts(Map.ofEntries(
-                        Map.entry("minecraft:cobblestone", 40),
-                        Map.entry("minecraft:oak_planks", 20),
-                        Map.entry("minecraft:oak_log", 2),
-                        Map.entry(
-                                "minecraft:stripped_spruce_log",
-                                1
-                        ),
-                        Map.entry("minecraft:bamboo_block", 1),
-                        Map.entry("minecraft:oak_door", 3),
-                        Map.entry("minecraft:torch", 4),
-                        Map.entry("minecraft:stone_pickaxe", 1),
-                        Map.entry("minecraft:crafting_table", 1),
-                        Map.entry("minecraft:iron_pickaxe", 1),
-                        Map.entry("minecraft:bucket", 1),
-                        Map.entry("minecraft:shield", 1),
-                        Map.entry("minecraft:bread", 8)
-                ));
-
-        assertEquals(60, counts.get("building_blocks"));
-        assertEquals(40, counts.get("same_structural_item"));
-        assertEquals(3, counts.get("safe_doors"));
-        assertEquals(4, counts.get("shelter_lights"));
-        assertEquals(2, counts.get("stone_or_better_pickaxes"));
-        assertEquals(2, counts.get("wood_or_better_pickaxes"));
-        assertEquals(1, counts.get("crafting_tables"));
-        assertEquals(36, counts.get("chest_plank_potential"));
-        assertEquals(1, counts.get("iron_or_better_pickaxes"));
-        assertEquals(1, counts.get("buckets"));
-        assertEquals(1, counts.get("shields"));
-        assertEquals(8, counts.get("food"));
-    }
-
-    @Test
-    void foundationTargetsMatchTheMinimumDynamicShelterContract() {
-        final Map<String, Integer> targets =
-                SurvivalRouteTracker.minimumTargets(
-                        SurvivalRouteProfile.FOUNDATION
-                );
-
-        assertEquals(8, targets.get("food"));
-        assertEquals(1, targets.get("crafting_tables"));
-        assertEquals(1, targets.get("wood_or_better_pickaxes"));
-        assertEquals(55, targets.get("same_structural_item"));
-        assertEquals(1, targets.get("safe_doors"));
-        assertEquals(1, targets.get("shelter_lights"));
-        assertEquals(1, targets.get("iron_or_better_pickaxes"));
-        assertEquals(1, targets.get("buckets"));
-        assertEquals(1, targets.get("shields"));
-        assertEquals(8, targets.get("chest_plank_potential"));
-    }
-
-    @Test
-    void verifiedBasicCraftingStopsRequestingConsumedTableInput() {
-        final Map<String, Integer> targets =
-                SurvivalRouteTracker.minimumTargets(
-                        SurvivalRouteProfile.FOUNDATION,
-                        Set.of(
-                                SurvivalMilestone.BASIC_CRAFTING_READY
-                        )
-                );
-
-        assertFalse(targets.containsKey("crafting_tables"));
-        assertFalse(targets.containsKey("wood_or_better_pickaxes"));
-    }
-
-    @Test
-    void verifiedWorkstationsStopRequestingNewChestWood() {
-        final Map<String, Integer> targets =
-                SurvivalRouteTracker.minimumTargets(
-                        SurvivalRouteProfile.FOUNDATION,
-                        Set.of(
-                                SurvivalMilestone
-                                        .WORKSTATIONS_ESTABLISHED
-                        )
-                );
-
-        assertFalse(
-                targets.containsKey("chest_plank_potential")
-        );
-    }
-
-    @Test
-    void foodReadinessMatchesTheEmergencySafeFoodCatalog() {
-        final Map<String, Integer> counts =
-                SurvivalRouteTracker.criticalCounts(Map.of(
-                        "minecraft:cooked_salmon",
-                        3,
-                        "minecraft:pumpkin_pie",
-                        2,
-                        "minecraft:honey_bottle",
-                        3,
-                        "minecraft:rotten_flesh",
-                        64,
-                        "minecraft:pufferfish",
-                        64,
-                        "minecraft:poisonous_potato",
-                        64
-                ));
-
-        assertEquals(8, counts.get("food"));
-    }
-
-    @Test
-    void verifiedShelterStopsRequestingConsumedConstructionInputs() {
-        final Map<String, Integer> targets =
-                SurvivalRouteTracker.minimumTargets(
-                        SurvivalRouteProfile.FOUNDATION,
-                        Set.of(SurvivalMilestone.SHELTER_COMPLETED)
-                );
-
-        assertFalse(targets.containsKey("same_structural_item"));
-        assertFalse(targets.containsKey("safe_doors"));
-        assertFalse(targets.containsKey("shelter_lights"));
-        assertEquals(8, targets.get("food"));
-        assertEquals(1, targets.get("iron_or_better_pickaxes"));
-        assertEquals(1, targets.get("buckets"));
-        assertEquals(1, targets.get("shields"));
-    }
-
-    @Test
-    void preparedShelterMaterialsRemainSatisfiedWhileBuildingConsumesThem() {
-        final Map<String, Integer> targets =
-                SurvivalRouteTracker.minimumTargets(
-                        SurvivalRouteProfile.FOUNDATION,
-                        Set.of(
-                                SurvivalMilestone
-                                        .SHELTER_MATERIALS_PREPARED
-                        )
-                );
-
-        assertFalse(targets.containsKey("same_structural_item"));
-        assertFalse(targets.containsKey("safe_doors"));
-        assertFalse(targets.containsKey("shelter_lights"));
-        assertEquals(8, targets.get("food"));
-        assertEquals(1, targets.get("iron_or_better_pickaxes"));
-        assertEquals(1, targets.get("buckets"));
-        assertEquals(1, targets.get("shields"));
-    }
-}
+ıK®Ïğz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰n·°ı¸§ıºŞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹ÁÉ½É•ÍÍ¥½¸ì()¥µÁ½ÉĞÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ğ¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑÅÕ…±Ìì)¥µÁ½ÉĞÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ğ¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑ…±Í”ì()¥µÁ½ÉĞ©…Ù„¹ÕÑ¥°¹5…Àì)¥µÁ½ÉĞ©…Ù„¹ÕÑ¥°¹M•Ğì)¥µÁ½ÉĞ½Éœ¹©Õ¹¥Ğ¹©ÕÁ¥Ñ•È¹…Á¤¹Q•ÍĞì()™¥¹…°±…ÍÌMÕÉÙ¥Ù…±I½ÕÑ•I•…‘¥¹•ÍÍQ•ÍĞì(€€€Q•ÍĞ(€€€Ù½¥™½Õ¹‘…Ñ¥½¹I•…‘¥¹•ÍÍUÍ•Í=¹•5…Ñ•É¥…±I…Ñ¡•ÉQ¡…¹MÕµµ¥¹5…Ñ•É¥…±Ì ¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø½Õ¹ÑÌ€ô(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹É¥Ñ¥…±½Õ¹ÑÌ¡5…À¹½™¹ÑÉ¥•Ì (€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™Ğé½‰‰±•ÍÑ½¹”ˆ°€ĞÀ¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™Ğé½…­}Á±…¹­Ìˆ°€ÈÀ¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™Ğé½…­}±½œˆ°€È¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ĞéÍÑÉ¥ÁÁ•‘}ÍÁÉÕ•}±½œˆ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ä(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™Ğé‰…µ‰½½}‰±½¬ˆ°€Ä¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™Ğé½…­}‘½½Èˆ°€Ì¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™ĞéÑ½É ˆ°€Ğ¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™ĞéÍÑ½¹•}Á¥­…á”ˆ°€Ä¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™ĞéÉ…™Ñ¥¹}Ñ…‰±”ˆ°€Ä¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™Ğé¥É½¹}Á¥­…á”ˆ°€Ä¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™Ğé‰Õ­•Ğˆ°€Ä¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™ĞéÍ¡¥•±ˆ°€Ä¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™Ğé‰½Üˆ°€Ä¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™Ğé…ÉÉ½Üˆ°€ÄØ¤°(€€€€€€€€€€€€€€€€€€€€€€€5…À¹•¹ÑÉä ‰µ¥¹•É…™Ğé‰É•…ˆ°€à¤(€€€€€€€€€€€€€€€€¤¤ì((€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì ØÀ°½Õ¹ÑÌ¹•Ğ ‰‰Õ¥±‘¥¹}‰±½­Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì ĞÀ°½Õ¹ÑÌ¹•Ğ ‰Í…µ•}ÍÑÉÕÑÕÉ…±}¥Ñ•´ˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ì°½Õ¹ÑÌ¹•Ğ ‰Í…™•}‘½½ÉÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ğ°½Õ¹ÑÌ¹•Ğ ‰Í¡•±Ñ•É}±¥¡ÑÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì È°½Õ¹ÑÌ¹•Ğ ‰ÍÑ½¹•}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì È°½Õ¹ÑÌ¹•Ğ ‰İ½½‘}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°½Õ¹ÑÌ¹•Ğ ‰É…™Ñ¥¹}Ñ…‰±•Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì ÌØ°½Õ¹ÑÌ¹•Ğ ‰¡•ÍÑ}Á±…¹­}Á½Ñ•¹Ñ¥…°ˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°½Õ¹ÑÌ¹•Ğ ‰¥É½¹}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°½Õ¹ÑÌ¹•Ğ ‰‰Õ­•ÑÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°½Õ¹ÑÌ¹•Ğ ‰Í¡¥•±‘Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°½Õ¹ÑÌ¹•Ğ ‰‰½İÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì ÄØ°½Õ¹ÑÌ¹•Ğ ‰…ÉÉ½İÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì à°½Õ¹ÑÌ¹•Ğ ‰™½½ˆ¤¤ì(€€€ô((€€€Q•ÍĞ(€€€Ù½¥™½Õ¹‘…Ñ¥½¹Q…É•ÑÍ5…Ñ¡Q¡•5¥¹¥µÕµå¹…µ¥M¡•±Ñ•É½¹ÑÉ…Ğ ¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÑ…É•ÑÌ€ô(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹µ¥¹¥µÕµQ…É•ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=U9Q%=8(€€€€€€€€€€€€€€€€¤ì((€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì à°Ñ…É•ÑÌ¹•Ğ ‰™½½ˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰É…™Ñ¥¹}Ñ…‰±•Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰İ½½‘}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì ÔÔ°Ñ…É•ÑÌ¹•Ğ ‰Í…µ•}ÍÑÉÕÑÕÉ…±}¥Ñ•´ˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰Í…™•}‘½½ÉÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰Í¡•±Ñ•É}±¥¡ÑÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰¥É½¹}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰‰Õ­•ÑÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰Í¡¥•±‘Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì à°Ñ…É•ÑÌ¹•Ğ ‰¡•ÍÑ}Á±…¹­}Á½Ñ•¹Ñ¥…°ˆ¤¤ì(€€€ô((€€€Q•ÍĞ(€€€Ù½¥Ù•É¥™¥•‘	…Í¥É…™Ñ¥¹MÑ½ÁÍI•ÅÕ•ÍÑ¥¹½¹ÍÕµ•‘Q…‰±•%¹ÁÕĞ ¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÑ…É•ÑÌ€ô(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹µ¥¹¥µÕµQ…É•ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=U9Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€M•Ğ¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	M%}IQ%9}Id(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì((€€€€€€€…ÍÍ•ÉÑ…±Í”¡Ñ…É•ÑÌ¹½¹Ñ…¥¹Í-•ä ‰É…™Ñ¥¹}Ñ…‰±•Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡Ñ…É•ÑÌ¹½¹Ñ…¥¹Í-•ä ‰İ½½‘}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ¤¤ì(€€€ô((€€€Q•ÍĞ(€€€Ù½¥Ù•É¥™¥•‘]½É­ÍÑ…Ñ¥½¹ÍMÑ½ÁI•ÅÕ•ÍÑ¥¹9•İ¡•ÍÑ]½½ ¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÑ…É•ÑÌ€ô(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹µ¥¹¥µÕµQ…É•ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=U9Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€M•Ğ¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹]=I-MQQ%=9M}MQ	1%M!(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì((€€€€€€€…ÍÍ•ÉÑ…±Í” (€€€€€€€€€€€€€€€Ñ…É•ÑÌ¹½¹Ñ…¥¹Í-•ä ‰¡•ÍÑ}Á±…¹­}Á½Ñ•¹Ñ¥…°ˆ¤(€€€€€€€€¤ì(€€€ô((€€€Q•ÍĞ(€€€Ù½¥™½½‘I•…‘¥¹•ÍÍ5…Ñ¡•ÍQ¡•µ•É•¹åM…™•½½‘…Ñ…±½œ ¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø½Õ¹ÑÌ€ô(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹É¥Ñ¥…±½Õ¹ÑÌ¡5…À¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ğé½½­•‘}Í…±µ½¸ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€Ì°(€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ĞéÁÕµÁ­¥¹}Á¥”ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€È°(€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ğé¡½¹•å}‰½ÑÑ±”ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€Ì°(€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ĞéÉ½ÑÑ•¹}™±•Í ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€ØĞ°(€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ĞéÁÕ™™•É™¥Í ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€ØĞ°(€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ĞéÁ½¥Í½¹½ÕÍ}Á½Ñ…Ñ¼ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€ØĞ(€€€€€€€€€€€€€€€€¤¤ì((€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì à°½Õ¹ÑÌ¹•Ğ ‰™½½ˆ¤¤ì(€€€ô((€€€Q•ÍĞ(€€€Ù½¥Ù•É¥™¥•‘M¡•±Ñ•ÉMÑ½ÁÍI•ÅÕ•ÍÑ¥¹½¹ÍÕµ•‘½¹ÍÑÉÕÑ¥½¹%¹ÁÕÑÌ ¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÑ…É•ÑÌ€ô(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹µ¥¹¥µÕµQ…É•ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=U9Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€M•Ğ¹½˜¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹M!1QI}=5A1Q¤(€€€€€€€€€€€€€€€€¤ì((€€€€€€€…ÍÍ•ÉÑ…±Í”¡Ñ…É•ÑÌ¹½¹Ñ…¥¹Í-•ä ‰Í…µ•}ÍÑÉÕÑÕÉ…±}¥Ñ•´ˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡Ñ…É•ÑÌ¹½¹Ñ…¥¹Í-•ä ‰Í…™•}‘½½ÉÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡Ñ…É•ÑÌ¹½¹Ñ…¥¹Í-•ä ‰Í¡•±Ñ•É}±¥¡ÑÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì à°Ñ…É•ÑÌ¹•Ğ ‰™½½ˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰¥É½¹}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰‰Õ­•ÑÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰Í¡¥•±‘Ìˆ¤¤ì(€€€ô((€€€Q•ÍĞ(€€€Ù½¥ÁÉ•Á…É•‘M¡•±Ñ•É5…Ñ•É¥…±ÍI•µ…¥¹M…Ñ¥Í™¥•‘]¡¥±•	Õ¥±‘¥¹½¹ÍÕµ•ÍQ¡•´ ¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÑ…É•ÑÌ€ô(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹µ¥¹¥µÕµQ…É•ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=U9Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€M•Ğ¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹M!1QI}5QI%1M}AIAI(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì((€€€€€€€…ÍÍ•ÉÑ…±Í”¡Ñ…É•ÑÌ¹½¹Ñ…¥¹Í-•ä ‰Í…µ•}ÍÑÉÕÑÕÉ…±}¥Ñ•´ˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡Ñ…É•ÑÌ¹½¹Ñ…¥¹Í-•ä ‰Í…™•}‘½½ÉÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡Ñ…É•ÑÌ¹½¹Ñ…¥¹Í-•ä ‰Í¡•±Ñ•É}±¥¡ÑÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì à°Ñ…É•ÑÌ¹•Ğ ‰™½½ˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰¥É½¹}½É}‰•ÑÑ•É}Á¥­…á•Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰‰Õ­•ÑÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°Ñ…É•ÑÌ¹•Ğ ‰Í¡¥•±‘Ìˆ¤¤ì(€€€ô)ô(

@@ -1,54 +1,1 @@
-package dev.mcai.companion.progression;
-
-/**
- * Shared, loader-independent material targets for the ordinary completion
- * route. Counts are resource-equivalent units rather than direct evidence of
- * a structure or future drop.
- */
-public final class CompletionResourceReadiness {
-    public static final int BLAZE_ROUTE_UNITS = 14;
-    public static final int ENDER_ROUTE_UNITS = 14;
-    /**
-     * Twelve Eyes are the worst-case portal-frame reserve. Two additional
-     * Eyes are budgeted for fair, ordinary stronghold triangulation.
-     */
-    public static final int EYES_READY = 14;
-
-    private static final int MAX_UNITS = 36 * 64;
-
-    private CompletionResourceReadiness() {
-    }
-
-    public static int blazeRouteUnits(
-            final int blazeRods,
-            final int blazePowder,
-            final int craftedEyes
-    ) {
-        requireNonNegative(blazeRods, blazePowder, craftedEyes);
-        return bounded(
-                blazeRods * 2L + blazePowder + craftedEyes
-        );
-    }
-
-    public static int enderRouteUnits(
-            final int enderPearls,
-            final int craftedEyes
-    ) {
-        requireNonNegative(enderPearls, craftedEyes);
-        return bounded((long) enderPearls + craftedEyes);
-    }
-
-    private static int bounded(final long value) {
-        return (int) Math.min(MAX_UNITS, value);
-    }
-
-    private static void requireNonNegative(final int... counts) {
-        for (int count : counts) {
-            if (count < 0) {
-                throw new IllegalArgumentException(
-                        "Completion resource count is negative"
-                );
-            }
-        }
-    }
-}
+ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹ÁÉ½É•ÍÍ¥½¸ì((¼¨¨(€¨M¡…É•°±½…‘•Èµ¥¹‘•Á•¹‘•¹Ðµ…Ñ•É¥…°Ñ…É•ÑÌ™½ÈÑ¡”½É‘¥¹…Éä½µÁ±•Ñ¥½¸(€¨É½ÕÑ”¸½Õ¹ÑÌ…É”É•Í½ÕÉ”µ•ÅÕ¥Ù…±•¹ÐÕ¹¥ÑÌÉ…Ñ¡•ÈÑ¡…¸‘¥É•Ð•Ù¥‘•¹”½˜(€¨„ÍÑÉÕÑÕÉ”½È™ÕÑÕÉ”‘É½À¸(€¨¼)ÁÕ‰±¥Œ™¥¹…°±…ÍÌ½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ð	1i}I=UQ}U9%QL€ô€ÄÐì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ð9I}I=UQ}U9%QL€ô€ÄÐì(€€€€¼¨¨(€€€€€¨QÝ•±Ù”å•Ì…É”Ñ¡”Ý½ÉÍÐµ…Í”Á½ÉÑ…°µ™É…µ”É•Í•ÉÙ”¸QÝ¼…‘‘¥Ñ¥½¹…°(€€€€€¨å•Ì…É”‰Õ‘•Ñ•™½È™…¥È°½É‘¥¹…ÉäÍÑÉ½¹¡½±ÑÉ¥…¹Õ±…Ñ¥½¸¸(€€€€€¨¼(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹ÐeM}Id€ô€ÄÐì(€€€€¼¨¨I•Í•ÉÙ”™½È„‘å¹…µ¥Œ‘É…½¸™±¥¡ÐÉ…Ñ¡•ÈÑ¡…¸„½¹”µÍ¡½Ð‘•µ¼¸€¨¼(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ð9}	U%1%9}	1=-L€ô€ØÐì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ð9}	=]L€ô€Äì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ð9}II=]L€ô€ØÐì((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a}U9%QL€ô€ÌØ€¨€ØÐì((€€€ÁÉ¥Ù…Ñ”½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ¥¹Ð‰±…é•I½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€™¥¹…°¥¹Ð‰±…é•I½‘Ì°(€€€€€€€€€€€™¥¹…°¥¹Ð‰±…é•A½Ý‘•È°(€€€€€€€€€€€™¥¹…°¥¹ÐÉ…™Ñ•‘å•Ì(€€€€¤ì(€€€€€€€É•ÅÕ¥É•9½¹9•…Ñ¥Ù”¡‰±…é•I½‘Ì°‰±…é•A½Ý‘•È°É…™Ñ•‘å•Ì¤ì(€€€€€€€É•ÑÕÉ¸‰½Õ¹‘• (€€€€€€€€€€€€€€€‰±…é•I½‘Ì€¨€É0€¬‰±…é•A½Ý‘•È€¬É…™Ñ•‘å•Ì(€€€€€€€€¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ¥¹Ð•¹‘•ÉI½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€™¥¹…°¥¹Ð•¹‘•ÉA•…É±Ì°(€€€€€€€€€€€™¥¹…°¥¹ÐÉ…™Ñ•‘å•Ì(€€€€¤ì(€€€€€€€É•ÅÕ¥É•9½¹9•…Ñ¥Ù”¡•¹‘•ÉA•…É±Ì°É…™Ñ•‘å•Ì¤ì(€€€€€€€É•ÑÕÉ¸‰½Õ¹‘• ¡±½¹œ¤•¹‘•ÉA•…É±Ì€¬É…™Ñ•‘å•Ì¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¥¹Ð‰½Õ¹‘•¡™¥¹…°±½¹œÙ…±Õ”¤ì(€€€€€€€É•ÑÕÉ¸€¡¥¹Ð¤5…Ñ ¹µ¥¸¡5a}U9%QL°Ù…±Õ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÙ½¥É•ÅÕ¥É•9½¹9•…Ñ¥Ù”¡™¥¹…°¥¹Ð¸¸¸½Õ¹ÑÌ¤ì(€€€€€€€™½È€¡¥¹Ð½Õ¹Ð€è½Õ¹ÑÌ¤ì(€€€€€€€€€€€¥˜€¡½Õ¹Ð€ð€À¤ì(€€€€€€€€€€€€€€€Ñ¡É½Ü¹•Ü%±±•…±ÉÕµ•¹Ñá•ÁÑ¥½¸ (€€€€€€€€€€€€€€€€€€€€€€€€‰½µÁ±•Ñ¥½¸É•Í½ÕÉ”½Õ¹Ð¥Ì¹•…Ñ¥Ù”ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€ô)ô

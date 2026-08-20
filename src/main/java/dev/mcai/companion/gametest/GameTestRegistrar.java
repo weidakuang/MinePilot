@@ -1,99 +1,1 @@
-package dev.mcai.companion.gametest;
-
-import dev.mcai.companion.MinecraftAiCompanion;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
-import net.minecraftforge.gametest.ForgeGameTestHooks;
-import net.minecraftforge.registries.RegisterEvent;
-
-/**
- * Development-only bridge for Forge's two-part 26.1 GameTest registration.
- *
- * <p>The fixture class and its data-driven test instance are excluded from
- * release JARs. Reflection keeps the production entry point free of a hard
- * linkage to that absent fixture. Forge also reports GameTests disabled in a
- * production installation, so this registrar is inert there.</p>
- */
-public final class GameTestRegistrar {
-    private static final List<String> FIXTURE_CLASSES = List.of(
-        "dev.mcai.companion.embodiment.EmbodimentGameTests",
-        "dev.mcai.companion.skills.inventory.InventoryGameTests",
-        "dev.mcai.companion.skills.portal.PortalCastGameTests"
-    );
-    private static Map<Identifier, ForgeGameTestHooks.TestReference> tests =
-        Map.of();
-
-    private GameTestRegistrar() {
-    }
-
-    public static void register(final FMLJavaModLoadingContext context) {
-        if (!ForgeGameTestHooks.isGametestEnabled()) {
-            return;
-        }
-
-        final Map<Identifier, ForgeGameTestHooks.TestReference> gathered =
-            new LinkedHashMap<>();
-        for (final String fixtureClass : FIXTURE_CLASSES) {
-            final Class<?> fixture;
-            try {
-                fixture = Class.forName(fixtureClass);
-            } catch (ClassNotFoundException exception) {
-                MinecraftAiCompanion.LOGGER.debug(
-                    "GameTest fixture {} is not present on this runtime "
-                        + "classpath",
-                    fixtureClass
-                );
-                continue;
-            }
-            ForgeGameTestHooks.gatherTests(fixture, null)
-                .forEach((id, reference) -> {
-                    final var duplicate = gathered.putIfAbsent(
-                        id,
-                        reference
-                    );
-                    if (duplicate != null) {
-                        throw new IllegalStateException(
-                            "Duplicate Minecraft AI Companion GameTest id: "
-                                + id
-                        );
-                    }
-                });
-        }
-        tests = Map.copyOf(gathered);
-        if (tests.isEmpty()) {
-            throw new IllegalStateException(
-                "GameTest fixture was found but exposed no registered tests"
-            );
-        }
-
-        RegisterEvent.getBus(context.getModBusGroup())
-            .addListener(GameTestRegistrar::registerFunctions);
-        MinecraftAiCompanion.LOGGER.info(
-            "Prepared {} Minecraft AI Companion GameTest function(s): {}",
-            tests.size(),
-            tests.keySet()
-        );
-    }
-
-    private static void registerFunctions(final RegisterEvent event) {
-        if (!Registries.TEST_FUNCTION.equals(event.getRegistryKey())) {
-            return;
-        }
-
-        tests.forEach((id, reference) ->
-            event.register(
-                Registries.TEST_FUNCTION,
-                id,
-                reference::consumer
-            )
-        );
-        MinecraftAiCompanion.LOGGER.info(
-            "Registered {} Minecraft AI Companion GameTest function(s)",
-            tests.size()
-        );
-    }
-}
+ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…µ•Ñ•ÍÐì()¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹5¥¹•É…™Ñ¥½µÁ…¹¥½¸ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹1¥¹­•‘!…Í¡5…Àì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹1¥ÍÐì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹5…Àì)¥µÁ½ÉÐ¹•Ð¹µ¥¹•É…™Ð¹½É”¹É•¥ÍÑÉ¥•Ì¹I•¥ÍÑÉ¥•Ìì)¥µÁ½ÉÐ¹•Ð¹µ¥¹•É…™Ð¹É•Í½ÕÉ•Ì¹%‘•¹Ñ¥™¥•Èì)¥µÁ½ÉÐ¹•Ð¹µ¥¹•É…™Ñ™½É”¹™µ°¹©…Ù…™µ±µ½¹51)…Ù…5½‘1½…‘¥¹½¹Ñ•áÐì)¥µÁ½ÉÐ¹•Ð¹µ¥¹•É…™Ñ™½É”¹…µ•Ñ•ÍÐ¹½É•…µ•Q•ÍÑ!½½­Ìì)¥µÁ½ÉÐ¹•Ð¹µ¥¹•É…™Ñ™½É”¹É•¥ÍÑÉ¥•Ì¹I•¥ÍÑ•ÉÙ•¹Ðì((¼¨¨(€¨•Ù•±½Áµ•¹Ðµ½¹±ä‰É¥‘”™½È½É”ÌÑÝ¼µÁ…ÉÐ€ÈØ¸Ä…µ•Q•ÍÐÉ•¥ÍÑÉ…Ñ¥½¸¸(€¨(€¨€ñÀùQ¡”™¥áÑÕÉ”±…ÍÌ…¹¥ÑÌ‘…Ñ„µ‘É¥Ù•¸Ñ•ÍÐ¥¹ÍÑ…¹”…É”•á±Õ‘•™É½´(€¨É•±•…Í”)IÌ¸I•™±•Ñ¥½¸­••ÁÌÑ¡”ÁÉ½‘ÕÑ¥½¸•¹ÑÉäÁ½¥¹Ð™É•”½˜„¡…É(€¨±¥¹­…”Ñ¼Ñ¡…Ð…‰Í•¹Ð™¥áÑÕÉ”¸½É”…±Í¼É•Á½ÉÑÌ…µ•Q•ÍÑÌ‘¥Í…‰±•¥¸„(€¨ÁÉ½‘ÕÑ¥½¸¥¹ÍÑ…±±…Ñ¥½¸°Í¼Ñ¡¥ÌÉ•¥ÍÑÉ…È¥Ì¥¹•ÉÐÑ¡•É”¸ð½Àø(€¨¼)ÁÕ‰±¥Œ™¥¹…°±…ÍÌ…µ•Q•ÍÑI•¥ÍÑÉ…Èì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°1¥ÍÐñMÑÉ¥¹œø%aQUI}1MML€ô1¥ÍÐ¹½˜ (€€€€€€€€‰‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹•µ‰½‘¥µ•¹Ð¹µ‰½‘¥µ•¹Ñ…µ•Q•ÍÑÌˆ°(€€€€€€€€‰‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ù•¹Ñ½Éä¹%¹Ù•¹Ñ½Éå…µ•Q•ÍÑÌˆ°(€€€€€€€€‰‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹Á½ÉÑ…°¹A½ÉÑ…±…ÍÑ…µ•Q•ÍÑÌˆ°(€€€€€€€€‰‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹•¹¹¹‘%Í±…¹‘%¹É•ÍÍ…µ•Q•ÍÑÌˆ(€€€€¤ì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ5…Àñ%‘•¹Ñ¥™¥•È°½É•…µ•Q•ÍÑ!½½­Ì¹Q•ÍÑI•™•É•¹”øÑ•ÍÑÌ€ô(€€€€€€€5…À¹½˜ ¤ì((€€€ÁÉ¥Ù…Ñ”…µ•Q•ÍÑI•¥ÍÑÉ…È ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒÙ½¥É•¥ÍÑ•È¡™¥¹…°51)…Ù…5½‘1½…‘¥¹½¹Ñ•áÐ½¹Ñ•áÐ¤ì(€€€€€€€¥˜€ …½É•…µ•Q•ÍÑ!½½­Ì¹¥Í…µ•Ñ•ÍÑ¹…‰±• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô((€€€€€€€™¥¹…°5…Àñ%‘•¹Ñ¥™¥•È°½É•…µ•Q•ÍÑ!½½­Ì¹Q•ÍÑI•™•É•¹”ø…Ñ¡•É•€ô(€€€€€€€€€€€¹•Ü1¥¹­•‘!…Í¡5…Àðø ¤ì(€€€€€€€™½È€¡™¥¹…°MÑÉ¥¹œ™¥áÑÕÉ•±…ÍÌ€è%aQUI}1MML¤ì(€€€€€€€€€€€™¥¹…°±…ÍÌðüø™¥áÑÕÉ”ì(€€€€€€€€€€€ÑÉäì(€€€€€€€€€€€€€€€™¥áÑÕÉ”€ô±…ÍÌ¹™½É9…µ”¡™¥áÑÕÉ•±…ÍÌ¤ì(€€€€€€€€€€€ô…Ñ €¡±…ÍÍ9½Ñ½Õ¹‘á•ÁÑ¥½¸•á•ÁÑ¥½¸¤ì(€€€€€€€€€€€€€€€5¥¹•É…™Ñ¥½µÁ…¹¥½¸¹1=H¹‘•‰Õœ (€€€€€€€€€€€€€€€€€€€€‰…µ•Q•ÍÐ™¥áÑÕÉ”íô¥Ì¹½ÐÁÉ•Í•¹Ð½¸Ñ¡¥ÌÉÕ¹Ñ¥µ”€ˆ(€€€€€€€€€€€€€€€€€€€€€€€€¬€‰±…ÍÍÁ…Ñ ˆ°(€€€€€€€€€€€€€€€€€€€™¥áÑÕÉ•±…ÍÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì(€€€€€€€€€€€ô(€€€€€€€€€€€½É•…µ•Q•ÍÑ!½½­Ì¹…Ñ¡•ÉQ•ÍÑÌ¡™¥áÑÕÉ”°¹Õ±°¤(€€€€€€€€€€€€€€€€¹™½É…  ¡¥°É•™•É•¹”¤€´øì(€€€€€€€€€€€€€€€€€€€™¥¹…°Ù…È‘ÕÁ±¥…Ñ”€ô…Ñ¡•É•¹ÁÕÑ%™‰Í•¹Ð (€€€€€€€€€€€€€€€€€€€€€€€¥°(€€€€€€€€€€€€€€€€€€€€€€€É•™•É•¹”(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€€€€€¥˜€¡‘ÕÁ±¥…Ñ”€„ô¹Õ±°¤ì(€€€€€€€€€€€€€€€€€€€€€€€Ñ¡É½Ü¹•Ü%±±•…±MÑ…Ñ•á•ÁÑ¥½¸ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰ÕÁ±¥…Ñ”5¥¹•É…™Ð$½µÁ…¹¥½¸…µ•Q•ÍÐ¥è€ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬¥(€€€€€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ô¤ì(€€€€€€€ô(€€€€€€€Ñ•ÍÑÌ€ô5…À¹½Áå=˜¡…Ñ¡•É•¤ì(€€€€€€€¥˜€¡Ñ•ÍÑÌ¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€Ñ¡É½Ü¹•Ü%±±•…±MÑ…Ñ•á•ÁÑ¥½¸ (€€€€€€€€€€€€€€€€‰…µ•Q•ÍÐ™¥áÑÕÉ”Ý…Ì™½Õ¹‰ÕÐ•áÁ½Í•¹¼É•¥ÍÑ•É•Ñ•ÍÑÌˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€I•¥ÍÑ•ÉÙ•¹Ð¹•Ñ	ÕÌ¡½¹Ñ•áÐ¹•Ñ5½‘	ÕÍÉ½ÕÀ ¤¤(€€€€€€€€€€€€¹…‘‘1¥ÍÑ•¹•È¡…µ•Q•ÍÑI•¥ÍÑÉ…ÈèéÉ•¥ÍÑ•ÉÕ¹Ñ¥½¹Ì¤ì(€€€€€€€5¥¹•É…™Ñ¥½µÁ…¹¥½¸¹1=H¹¥¹™¼ (€€€€€€€€€€€€‰AÉ•Á…É•íô5¥¹•É…™Ð$½µÁ…¹¥½¸…µ•Q•ÍÐ™Õ¹Ñ¥½¸¡Ì¤èíôˆ°(€€€€€€€€€€€Ñ•ÍÑÌ¹Í¥é” ¤°(€€€€€€€€€€€Ñ•ÍÑÌ¹­•åM•Ð ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÙ½¥É•¥ÍÑ•ÉÕ¹Ñ¥½¹Ì¡™¥¹…°I•¥ÍÑ•ÉÙ•¹Ð•Ù•¹Ð¤ì(€€€€€€€¥˜€ …I•¥ÍÑÉ¥•Ì¹QMQ}U9Q%=8¹•ÅÕ…±Ì¡•Ù•¹Ð¹•ÑI•¥ÍÑÉå-•ä ¤¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô((€€€€€€€Ñ•ÍÑÌ¹™½É…  ¡¥°É•™•É•¹”¤€´ø(€€€€€€€€€€€•Ù•¹Ð¹É•¥ÍÑ•È (€€€€€€€€€€€€€€€I•¥ÍÑÉ¥•Ì¹QMQ}U9Q%=8°(€€€€€€€€€€€€€€€¥°(€€€€€€€€€€€€€€€É•™•É•¹”èé½¹ÍÕµ•È(€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€5¥¹•É…™Ñ¥½µÁ…¹¥½¸¹1=H¹¥¹™¼ (€€€€€€€€€€€€‰I•¥ÍÑ•É•íô5¥¹•É…™Ð$½µÁ…¹¥½¸…µ•Q•ÍÐ™Õ¹Ñ¥½¸¡Ì¤ˆ°(€€€€€€€€€€€Ñ•ÍÑÌ¹Í¥é” ¤(€€€€€€€€¤ì(€€€ô)ô(

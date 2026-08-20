@@ -1,1147 +1,1 @@
-package dev.mcai.companion.navigation;
-
-import dev.mcai.companion.perception.PerceptionVec3;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.PriorityQueue;
-import java.util.Set;
-import java.util.function.LongSupplier;
-
-/**
- * Bounded 3D A* over only the voxels present in LocalNavSnapshot.
- */
-public final class LocalAStarPlanner {
-    private static final double EPSILON = 1.0e-9;
-    private static final int[][] CARDINAL_DIRECTIONS = {
-        {-1, 0},
-        {0, -1},
-        {0, 1},
-        {1, 0}
-    };
-
-    private static final Comparator<SearchNode> NODE_ORDER =
-        Comparator.comparingDouble(SearchNode::estimatedTotalCost)
-            .thenComparingDouble(SearchNode::heuristic)
-            .thenComparing(SearchNode::position)
-            .thenComparingLong(SearchNode::sequence);
-
-    private final LongSupplier nanoTime;
-
-    public LocalAStarPlanner() {
-        this(System::nanoTime);
-    }
-
-    LocalAStarPlanner(LongSupplier nanoTime) {
-        this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
-    }
-
-    public LocalRoute plan(
-        LocalNavSnapshot snapshot,
-        GridPos start,
-        GridPos goal,
-        LocalPlannerOptions options
-    ) {
-        return plan(snapshot, start, goal, options, false);
-    }
-
-    /**
-     * Plans from a current player cell whose authoritative body state says it
-     * is on the ground.  The current support may be outside the latest ray
-     * fan (a common case at a ledge or portal threshold); this exception is
-     * scoped to the current cell and never authorizes a future support.
-     */
-    public LocalRoute plan(
-        LocalNavSnapshot snapshot,
-        GridPos start,
-        GridPos goal,
-        LocalPlannerOptions options,
-        boolean currentBodyOnGround
-    ) {
-        Objects.requireNonNull(snapshot, "snapshot");
-        Objects.requireNonNull(start, "start");
-        Objects.requireNonNull(goal, "goal");
-        Objects.requireNonNull(options, "options");
-
-        if (!isValidStart(snapshot, start, currentBodyOnGround)
-                || !snapshot.isObserved(goal)) {
-            return LocalRoute.failure(
-                LocalRouteStatus.INVALID_START_OR_GOAL,
-                start,
-                goal,
-                0,
-                snapshot.revision()
-            );
-        }
-        return search(
-            snapshot,
-            start,
-            goal,
-            Set.of(goal),
-            options,
-            currentBodyOnGround
-        );
-    }
-
-    /**
-     * Plans to any fairly observed, currently occupiable feet cell whose
-     * center is inside the caller's arrival region.
-     *
-     * <p>This is materially different from planning to the exact target
-     * cell and checking the radius only after movement. A moving entity
-     * occupies its own target cell, and ordinary waypoints often need the
-     * actor to stop near rather than on top of the target. The candidate set
-     * is derived exclusively from {@link LocalNavSnapshot}; unknown cells
-     * never become route endpoints.</p>
-     */
-    public LocalRoute planWithinRadius(
-        LocalNavSnapshot snapshot,
-        GridPos start,
-        PerceptionVec3 target,
-        double arrivalRadius,
-        LocalPlannerOptions options
-    ) {
-        return planWithinRadius(
-            snapshot,
-            start,
-            target,
-            arrivalRadius,
-            options,
-            false
-        );
-    }
-
-    /** See the current-body support exception on {@link #plan}. */
-    public LocalRoute planWithinRadius(
-        LocalNavSnapshot snapshot,
-        GridPos start,
-        PerceptionVec3 target,
-        double arrivalRadius,
-        LocalPlannerOptions options,
-        boolean currentBodyOnGround
-    ) {
-        Objects.requireNonNull(snapshot, "snapshot");
-        Objects.requireNonNull(start, "start");
-        Objects.requireNonNull(target, "target");
-        Objects.requireNonNull(options, "options");
-        if (!Double.isFinite(arrivalRadius) || arrivalRadius < 0.0) {
-            throw new IllegalArgumentException(
-                "arrivalRadius must be finite and non-negative"
-            );
-        }
-
-        final GridPos requestedGoal = new GridPos(
-            floorCoordinate(target.x()),
-            floorCoordinate(target.y()),
-            floorCoordinate(target.z())
-        );
-        if (!isValidStart(snapshot, start, currentBodyOnGround)) {
-            return LocalRoute.failure(
-                LocalRouteStatus.INVALID_START_OR_GOAL,
-                start,
-                requestedGoal,
-                0,
-                snapshot.revision()
-            );
-        }
-
-        final Set<GridPos> goals = new HashSet<>();
-        for (GridPos candidate : arrivalCandidates(
-                snapshot,
-                target,
-                arrivalRadius
-        )) {
-            if (insideArrivalRegion(candidate, target, arrivalRadius)
-                && isValidGoal(
-                    snapshot,
-                    start,
-                    candidate,
-                    currentBodyOnGround
-                )) {
-                goals.add(candidate);
-            }
-        }
-        if (goals.isEmpty()) {
-            return LocalRoute.failure(
-                LocalRouteStatus.INVALID_START_OR_GOAL,
-                start,
-                requestedGoal,
-                0,
-                snapshot.revision()
-            );
-        }
-        return search(
-            snapshot,
-            start,
-            requestedGoal,
-            Set.copyOf(goals),
-            options,
-            currentBodyOnGround
-        );
-    }
-
-    /**
-     * Enumerates the smaller of the exact arrival cube and the observed map.
-     * A normal follow radius covers tens or hundreds of cells while a fair
-     * ray snapshot can contain thousands; scanning the entire map before A*
-     * consumed the same 2 ms budget reserved for the search itself.
-     */
-    private static Iterable<GridPos> arrivalCandidates(
-        final LocalNavSnapshot snapshot,
-        final PerceptionVec3 target,
-        final double arrivalRadius
-    ) {
-        final long minimumX = boundedCeil(
-            target.x() - arrivalRadius - 0.5
-        );
-        final long maximumX = boundedFloor(
-            target.x() + arrivalRadius - 0.5
-        );
-        final long minimumY = boundedCeil(target.y() - arrivalRadius);
-        final long maximumY = boundedFloor(target.y() + arrivalRadius);
-        final long minimumZ = boundedCeil(
-            target.z() - arrivalRadius - 0.5
-        );
-        final long maximumZ = boundedFloor(
-            target.z() + arrivalRadius - 0.5
-        );
-        final long volume = boundedVolume(
-            minimumX,
-            maximumX,
-            minimumY,
-            maximumY,
-            minimumZ,
-            maximumZ,
-            snapshot.observedVoxels().size()
-        );
-        if (volume >= snapshot.observedVoxels().size()) {
-            return snapshot.observedVoxels().keySet();
-        }
-        final List<GridPos> candidates = new ArrayList<>((int) volume);
-        for (long x = minimumX; x <= maximumX; x++) {
-            for (long y = minimumY; y <= maximumY; y++) {
-                for (long z = minimumZ; z <= maximumZ; z++) {
-                    candidates.add(new GridPos((int) x, (int) y, (int) z));
-                }
-            }
-        }
-        return candidates;
-    }
-
-    private static long boundedVolume(
-        final long minimumX,
-        final long maximumX,
-        final long minimumY,
-        final long maximumY,
-        final long minimumZ,
-        final long maximumZ,
-        final int observedSize
-    ) {
-        if (minimumX > maximumX
-                || minimumY > maximumY
-                || minimumZ > maximumZ) {
-            return 0L;
-        }
-        final long limit = Math.max(0L, observedSize);
-        long volume = maximumX - minimumX + 1L;
-        final long spanY = maximumY - minimumY + 1L;
-        final long spanZ = maximumZ - minimumZ + 1L;
-        if (volume > limit
-                || spanY > 0L && volume > limit / spanY) {
-            return limit;
-        }
-        volume *= spanY;
-        if (volume > limit
-                || spanZ > 0L && volume > limit / spanZ) {
-            return limit;
-        }
-        return volume * spanZ;
-    }
-
-    private static long boundedCeil(final double value) {
-        if (value <= Integer.MIN_VALUE) {
-            return Integer.MIN_VALUE;
-        }
-        if (value >= Integer.MAX_VALUE) {
-            return Integer.MAX_VALUE;
-        }
-        return (long) Math.ceil(value);
-    }
-
-    private static long boundedFloor(final double value) {
-        if (value <= Integer.MIN_VALUE) {
-            return Integer.MIN_VALUE;
-        }
-        if (value >= Integer.MAX_VALUE) {
-            return Integer.MAX_VALUE;
-        }
-        return (long) Math.floor(value);
-    }
-
-    /**
-     * Returns one safely observed local step that advances toward a target
-     * whose complete corridor is not visible yet.
-     *
-     * <p>A first-person player normally walks to the visible frontier and
-     * gains a new view; requiring the whole route to be proven before taking
-     * the first step makes an otherwise fair ray sampler deadlock. This
-     * method considers only transitions already accepted by the same
-     * fail-closed movement rules as A*. It never invents an unknown endpoint
-     * and never chooses a step whose horizontal component points away from
-     * the target. A tangential step remains necessary to begin a fair detour
-     * around an observed wall; the caller is responsible for bounding repeated
-     * frontier cells so this cannot become a navigation loop.</p>
-     */
-    public LocalRoute planTowardObserved(
-        final LocalNavSnapshot snapshot,
-        final GridPos start,
-        final PerceptionVec3 target,
-        final LocalPlannerOptions options
-    ) {
-        return planTowardObserved(
-            snapshot,
-            start,
-            target,
-            options,
-            false
-        );
-    }
-
-    /** See the current-body support exception on {@link #plan}. */
-    public LocalRoute planTowardObserved(
-        final LocalNavSnapshot snapshot,
-        final GridPos start,
-        final PerceptionVec3 target,
-        final LocalPlannerOptions options,
-        final boolean currentBodyOnGround
-    ) {
-        Objects.requireNonNull(snapshot, "snapshot");
-        Objects.requireNonNull(start, "start");
-        Objects.requireNonNull(target, "target");
-        Objects.requireNonNull(options, "options");
-        final GridPos requestedGoal = new GridPos(
-            floorCoordinate(target.x()),
-            floorCoordinate(target.y()),
-            floorCoordinate(target.z())
-        );
-        if (!isValidStart(snapshot, start, currentBodyOnGround)) {
-            return LocalRoute.failure(
-                LocalRouteStatus.INVALID_START_OR_GOAL,
-                start,
-                requestedGoal,
-                0,
-                snapshot.revision()
-            );
-        }
-
-        final double targetDeltaX =
-                target.x() - (start.x() + 0.5);
-        final double targetDeltaZ =
-                target.z() - (start.z() + 0.5);
-        final Optional<Transition> best = transitions(
-                snapshot,
-                start,
-                start,
-                options
-            ).stream()
-            .filter(transition -> {
-                final double stepX =
-                        transition.destination().x() - start.x();
-                final double stepZ =
-                        transition.destination().z() - start.z();
-                return stepX * targetDeltaX
-                        + stepZ * targetDeltaZ
-                        >= -EPSILON;
-            })
-            .min(
-                Comparator.comparingDouble(
-                        (Transition transition) ->
-                            squaredTargetDistance(
-                                transition.destination(),
-                                target
-                            )
-                    )
-                    .thenComparingDouble(Transition::cost)
-                    .thenComparing(Transition::destination)
-                    .thenComparing(
-                        transition -> transition.primitive().ordinal()
-                    )
-            );
-        if (best.isEmpty()) {
-            return LocalRoute.failure(
-                LocalRouteStatus.NO_PATH,
-                start,
-                requestedGoal,
-                1,
-                snapshot.revision()
-            );
-        }
-
-        final Transition transition = best.orElseThrow();
-        final GridPos reached = transition.destination();
-        final LocalStep step = new LocalStep(
-            start,
-            reached,
-            transition.primitive(),
-            transition.cost(),
-            transition.danger(),
-            snapshot.revision(),
-            transition.dependencies()
-        );
-        return new LocalRoute(
-            LocalRouteStatus.FOUND,
-            start,
-            reached,
-            reached,
-            List.of(step),
-            transition.cost(),
-            1,
-            snapshot.revision()
-        );
-    }
-
-    private LocalRoute search(
-        LocalNavSnapshot snapshot,
-        GridPos start,
-        GridPos requestedGoal,
-        Set<GridPos> goals,
-        LocalPlannerOptions options,
-        boolean currentBodyOnGround
-    ) {
-        Objects.requireNonNull(goals, "goals");
-        if (goals.isEmpty()) {
-            return LocalRoute.failure(
-                LocalRouteStatus.INVALID_START_OR_GOAL,
-                start,
-                requestedGoal,
-                0,
-                snapshot.revision()
-            );
-        }
-        if (goals.contains(start)) {
-            return new LocalRoute(
-                LocalRouteStatus.FOUND,
-                start,
-                start,
-                start,
-                List.of(),
-                0.0,
-                0,
-                snapshot.revision()
-            );
-        }
-
-        final long startedAt = nanoTime.getAsLong();
-        final long budgetNanos = options.budget().maximumWallTime().toNanos();
-        final PriorityQueue<SearchNode> open = new PriorityQueue<>(NODE_ORDER);
-        final Map<GridPos, Double> bestCosts = new HashMap<>();
-        final Map<GridPos, PreviousStep> previous = new HashMap<>();
-        final GoalBounds goalBounds = GoalBounds.of(goals);
-        long sequence = 0L;
-        final double initialHeuristic = heuristic(start, goalBounds);
-        open.add(new SearchNode(start, 0.0, initialHeuristic, sequence++));
-        bestCosts.put(start, 0.0);
-        int expanded = 0;
-
-        while (!open.isEmpty()) {
-            if (nanoTime.getAsLong() - startedAt >= budgetNanos) {
-                return LocalRoute.failure(
-                    LocalRouteStatus.TIME_BUDGET_EXCEEDED,
-                    start,
-                    requestedGoal,
-                    expanded,
-                    snapshot.revision()
-                );
-            }
-            if (expanded >= options.budget().maximumExpandedNodes()) {
-                return LocalRoute.failure(
-                    LocalRouteStatus.NODE_BUDGET_EXCEEDED,
-                    start,
-                    requestedGoal,
-                    expanded,
-                    snapshot.revision()
-                );
-            }
-
-            final SearchNode current = open.remove();
-            final double knownCost = bestCosts.getOrDefault(
-                current.position(),
-                Double.POSITIVE_INFINITY
-            );
-            if (current.costFromStart() > knownCost + EPSILON) {
-                continue;
-            }
-            expanded++;
-            if (goals.contains(current.position())) {
-                return reconstruct(
-                    start,
-                    current.position(),
-                    current.costFromStart(),
-                    expanded,
-                    snapshot.revision(),
-                    previous
-                );
-            }
-
-            for (Transition transition : transitions(
-                    snapshot,
-                    start,
-                    current.position(),
-                    options
-            )) {
-                final double candidateCost = current.costFromStart() + transition.cost();
-                final double existingCost = bestCosts.getOrDefault(
-                    transition.destination(),
-                    Double.POSITIVE_INFINITY
-                );
-                if (candidateCost + EPSILON >= existingCost) {
-                    continue;
-                }
-                bestCosts.put(transition.destination(), candidateCost);
-                previous.put(
-                    transition.destination(),
-                    new PreviousStep(current.position(), transition)
-                );
-                final double remaining = heuristic(
-                    transition.destination(),
-                    goalBounds
-                );
-                open.add(new SearchNode(
-                    transition.destination(),
-                    candidateCost,
-                    remaining,
-                    sequence++
-                ));
-            }
-        }
-
-        return LocalRoute.failure(
-            LocalRouteStatus.NO_PATH,
-            start,
-            requestedGoal,
-            expanded,
-            snapshot.revision()
-        );
-    }
-
-    private static List<Transition> transitions(
-        LocalNavSnapshot snapshot,
-        GridPos start,
-        GridPos current,
-        LocalPlannerOptions options
-    ) {
-        final List<Transition> transitions = new ArrayList<>(16);
-        final ObservedVoxel currentVoxel = snapshot.voxelAt(current).orElseThrow();
-        for (int[] direction : CARDINAL_DIRECTIONS) {
-            final int deltaX = direction[0];
-            final int deltaZ = direction[1];
-            addHorizontalTransition(
-                snapshot,
-                start,
-                current,
-                currentVoxel,
-                deltaX,
-                deltaZ,
-                options,
-                transitions
-            );
-            addStepUpTransition(
-                snapshot,
-                start,
-                current,
-                deltaX,
-                deltaZ,
-                options,
-                transitions
-            );
-            addDropTransition(
-                snapshot,
-                start,
-                current,
-                deltaX,
-                deltaZ,
-                options,
-                transitions
-            );
-        }
-        addVerticalTransitions(snapshot, current, currentVoxel, options, transitions);
-        transitions.sort(
-            Comparator.comparing(Transition::destination)
-                .thenComparing(transition -> transition.primitive().ordinal())
-        );
-        return transitions;
-    }
-
-    private static void addHorizontalTransition(
-        LocalNavSnapshot snapshot,
-        GridPos start,
-        GridPos current,
-        ObservedVoxel currentVoxel,
-        int deltaX,
-        int deltaZ,
-        LocalPlannerOptions options,
-        List<Transition> output
-    ) {
-        final GridPos destination = current.offset(deltaX, 0, deltaZ);
-        final Optional<ObservedVoxel> destinationVoxel = snapshot.voxelAt(destination);
-        if (destinationVoxel.isEmpty()) {
-            return;
-        }
-        final ObservedVoxel voxel = destinationVoxel.orElseThrow();
-        final GridPos head = destination.above();
-        final GridPos support = destination.below();
-
-        if (NavigationEvidence.isFreshClosedDoor(
-                voxel,
-                snapshot.revision()
-            )
-            && isPassableObserved(snapshot, head)
-            && supportsObserved(snapshot, support, start)) {
-            output.add(transition(
-                snapshot,
-                current,
-                destination,
-                MovementPrimitive.OPEN_DOOR,
-                1.8,
-                maxDanger(snapshot, Set.of(destination, head)),
-                0,
-                options,
-                Set.of(destination, head, support)
-            ));
-            return;
-        }
-
-        if (voxel.kind().isLiquid()
-            && isPassableObserved(snapshot, destination)
-            && isPassableObserved(snapshot, head)) {
-            output.add(transition(
-                snapshot,
-                current,
-                destination,
-                MovementPrimitive.SWIM,
-                1.4,
-                maxDanger(snapshot, Set.of(destination, head)),
-                0,
-                options,
-                Set.of(destination, head)
-            ));
-            return;
-        }
-
-        if (!isPassableObserved(snapshot, destination)
-                || !isPassableObserved(snapshot, head)) {
-            return;
-        }
-        if (supportsObserved(snapshot, support, start)) {
-            final MovementPrimitive primitive = currentVoxel.kind().isLiquid()
-                ? MovementPrimitive.SWIM
-                : options.allowSprint()
-                && voxel.effectiveDanger() == 0.0
-                ? MovementPrimitive.SPRINT
-                : MovementPrimitive.WALK;
-            output.add(transition(
-                snapshot,
-                current,
-                destination,
-                primitive,
-                primitive == MovementPrimitive.SPRINT ? 0.8 : 1.0,
-                maxDanger(snapshot, Set.of(destination, head)),
-                0,
-                options,
-                Set.of(destination, head, support)
-            ));
-        } else if (options.allowBuilding()
-            && isPassableObserved(snapshot, support)) {
-            output.add(transition(
-                snapshot,
-                current,
-                destination,
-                MovementPrimitive.BRIDGE,
-                3.0,
-                maxDanger(snapshot, Set.of(destination, head, support)),
-                0,
-                options,
-                Set.of(destination, head, support)
-            ));
-        }
-    }
-
-    private static void addStepUpTransition(
-        LocalNavSnapshot snapshot,
-        GridPos start,
-        GridPos current,
-        int deltaX,
-        int deltaZ,
-        LocalPlannerOptions options,
-        List<Transition> output
-    ) {
-        final GridPos destination = current.offset(deltaX, 1, deltaZ);
-        final GridPos head = destination.above();
-        final GridPos support = destination.below();
-        final GridPos launchClearance = current.above(2);
-        final Set<GridPos> dependencies = Set.of(
-            destination,
-            head,
-            support,
-            launchClearance
-        );
-        if (isPassableObserved(snapshot, destination)
-            && isPassableObserved(snapshot, head)
-            && isPassableObserved(snapshot, launchClearance)
-            && supportsObserved(snapshot, support, start)) {
-            output.add(transition(
-                snapshot,
-                current,
-                destination,
-                MovementPrimitive.JUMP,
-                1.6,
-                maxDanger(snapshot, dependencies),
-                0,
-                options,
-                dependencies
-            ));
-        }
-    }
-
-    private static void addDropTransition(
-        LocalNavSnapshot snapshot,
-        GridPos start,
-        GridPos current,
-        int deltaX,
-        int deltaZ,
-        LocalPlannerOptions options,
-        List<Transition> output
-    ) {
-        final Set<GridPos> observedColumn = new HashSet<>();
-        for (int drop = 1; drop <= options.maximumDrop(); drop++) {
-            final GridPos destination = current.offset(deltaX, -drop, deltaZ);
-            final GridPos head = destination.above();
-            final GridPos support = destination.below();
-            observedColumn.add(destination);
-            observedColumn.add(head);
-            if (!isPassableObserved(snapshot, destination)
-                || !isPassableObserved(snapshot, head)) {
-                return;
-            }
-            if (supportsObserved(snapshot, support, start)) {
-                observedColumn.add(support);
-                output.add(transition(
-                    snapshot,
-                    current,
-                    destination,
-                    MovementPrimitive.JUMP,
-                    1.2 + drop * 0.25,
-                    maxDanger(snapshot, observedColumn),
-                    drop,
-                    options,
-                    Set.copyOf(observedColumn)
-                ));
-                return;
-            }
-            if (!snapshot.isObserved(support)) {
-                return;
-            }
-        }
-    }
-
-    private static void addVerticalTransitions(
-        LocalNavSnapshot snapshot,
-        GridPos current,
-        ObservedVoxel currentVoxel,
-        LocalPlannerOptions options,
-        List<Transition> output
-    ) {
-        for (int deltaY : new int[]{-1, 1}) {
-            final GridPos destination = current.offset(0, deltaY, 0);
-            final Optional<ObservedVoxel> destinationVoxel = snapshot.voxelAt(destination);
-            if (destinationVoxel.isEmpty()) {
-                continue;
-            }
-            final ObservedVoxel voxel = destinationVoxel.orElseThrow();
-            final GridPos upwardHeadClearance = destination.above();
-            if (deltaY > 0 && !isPassableObserved(snapshot, upwardHeadClearance)) {
-                continue;
-            }
-            final Set<GridPos> dependencies = deltaY > 0
-                ? Set.of(current, destination, upwardHeadClearance)
-                : Set.of(current, destination);
-            if ((currentVoxel.kind().isClimbable() || voxel.kind().isClimbable())
-                && NavigationEvidence.hasFreshTraversalClearance(
-                    voxel,
-                    snapshot.revision()
-                )) {
-                output.add(transition(
-                    snapshot,
-                    current,
-                    destination,
-                    MovementPrimitive.CLIMB,
-                    1.5,
-                    maxDanger(snapshot, dependencies),
-                    0,
-                    options,
-                    dependencies
-                ));
-            } else if (currentVoxel.kind().isLiquid()
-                && voxel.kind().isLiquid()
-                && NavigationEvidence.hasFreshTraversalClearance(
-                    voxel,
-                    snapshot.revision()
-                )) {
-                output.add(transition(
-                    snapshot,
-                    current,
-                    destination,
-                    MovementPrimitive.SWIM,
-                    1.4,
-                    maxDanger(snapshot, dependencies),
-                    0,
-                    options,
-                    dependencies
-                ));
-            }
-        }
-
-        if (options.allowBuilding()) {
-            final GridPos destination = current.above();
-            final GridPos head = destination.above();
-            if (isPassableObserved(snapshot, destination)
-                && isPassableObserved(snapshot, head)) {
-                output.add(transition(
-                    snapshot,
-                    current,
-                    destination,
-                    MovementPrimitive.PILLAR,
-                    4.0,
-                    maxDanger(snapshot, Set.of(destination, head)),
-                    0,
-                    options,
-                    Set.of(current, destination, head)
-                ));
-            }
-        }
-    }
-
-    private static Transition transition(
-        LocalNavSnapshot snapshot,
-        GridPos from,
-        GridPos destination,
-        MovementPrimitive primitive,
-        double baseCost,
-        double danger,
-        int drop,
-        LocalPlannerOptions options,
-        Set<GridPos> dependencies
-    ) {
-        final double fallRisk = drop <= 2 ? 0.0 : (drop - 2.0) * (drop - 2.0);
-        final double cost = baseCost
-            + danger * options.riskProfile().voxelDangerWeight()
-            + fallRisk * options.riskProfile().fallDangerWeight();
-        return new Transition(
-            destination,
-            primitive,
-            cost,
-            danger,
-            snapshot.revision(),
-            dependencies
-        );
-    }
-
-    private static boolean isValidStart(
-        LocalNavSnapshot snapshot,
-        GridPos start,
-        boolean currentBodyOnGround
-    ) {
-        final Optional<ObservedVoxel> startVoxel = snapshot.voxelAt(start);
-        if (startVoxel.isEmpty()
-                || !NavigationEvidence.hasFreshTraversalClearance(
-                        startVoxel.orElseThrow(),
-                        snapshot.revision()
-                )) {
-            return false;
-        }
-        if (!isPassableObserved(snapshot, start.above())) {
-            return false;
-        }
-        if (startVoxel.orElseThrow().kind().isLiquid()
-            || startVoxel.orElseThrow().kind().isClimbable()) {
-            return true;
-        }
-        if (currentBodyOnGround
-                && startVoxel.orElseThrow().occupancyEvidence()
-                    .isFullBodyFact()) {
-            return true;
-        }
-        return snapshot.voxelAt(start.below())
-            .map(voxel -> NavigationEvidence.supportsCurrentBody(
-                    voxel,
-                    snapshot.revision()
-            ))
-            .orElse(false);
-    }
-
-    private static boolean isPassableObserved(
-        LocalNavSnapshot snapshot,
-        GridPos position
-    ) {
-        return snapshot.voxelAt(position)
-            .map(voxel ->
-                NavigationEvidence.hasFreshTraversalClearance(
-                    voxel,
-                    snapshot.revision()
-                )
-            )
-            .orElse(false);
-    }
-
-    private static boolean supportsObserved(
-        LocalNavSnapshot snapshot,
-        GridPos position,
-        GridPos start
-    ) {
-        return snapshot.voxelAt(position)
-            .map(voxel -> position.equals(start.below())
-                ? NavigationEvidence.supportsCurrentBody(
-                        voxel,
-                        snapshot.revision()
-                )
-                : NavigationEvidence.isFreshStandingSupport(
-                        voxel,
-                        snapshot.revision()
-                ))
-            .orElse(false);
-    }
-
-    private static double maxDanger(
-        LocalNavSnapshot snapshot,
-        Set<GridPos> positions
-    ) {
-        double danger = 0.0;
-        for (GridPos position : positions) {
-            danger = Math.max(
-                danger,
-                snapshot.voxelAt(position)
-                    .map(ObservedVoxel::effectiveDanger)
-                    .orElse(1.0)
-            );
-        }
-        return danger;
-    }
-
-    private static double heuristic(GridPos position, GridPos goal) {
-        return position.manhattanDistance(goal) * 0.8;
-    }
-
-    private static double squaredTargetDistance(
-        final GridPos position,
-        final PerceptionVec3 target
-    ) {
-        final double deltaX = position.x() + 0.5 - target.x();
-        final double deltaY = position.y() - target.y();
-        final double deltaZ = position.z() + 0.5 - target.z();
-        return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
-    }
-
-    private static double heuristic(
-        GridPos position,
-        GoalBounds goals
-    ) {
-        return (
-            distanceOutside(position.x(), goals.minimumX(), goals.maximumX())
-                + distanceOutside(
-                    position.y(),
-                    goals.minimumY(),
-                    goals.maximumY()
-                )
-                + distanceOutside(
-                    position.z(),
-                    goals.minimumZ(),
-                    goals.maximumZ()
-                )
-        ) * 0.8;
-    }
-
-    private static long distanceOutside(
-        final int coordinate,
-        final int minimum,
-        final int maximum
-    ) {
-        if (coordinate < minimum) {
-            return (long) minimum - coordinate;
-        }
-        if (coordinate > maximum) {
-            return (long) coordinate - maximum;
-        }
-        return 0L;
-    }
-
-    private static boolean insideArrivalRegion(
-        GridPos candidate,
-        PerceptionVec3 target,
-        double arrivalRadius
-    ) {
-        final double deltaX = candidate.x() + 0.5 - target.x();
-        final double deltaY = candidate.y() - target.y();
-        final double deltaZ = candidate.z() + 0.5 - target.z();
-        return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ
-            <= arrivalRadius * arrivalRadius + EPSILON;
-    }
-
-    private static boolean isValidGoal(
-        LocalNavSnapshot snapshot,
-        GridPos actualStart,
-        GridPos candidate,
-        boolean currentBodyOnGround
-    ) {
-        if (candidate.equals(actualStart)) {
-            return isValidStart(
-                snapshot,
-                actualStart,
-                currentBodyOnGround
-            );
-        }
-        final Optional<ObservedVoxel> feet =
-            snapshot.voxelAt(candidate);
-        if (feet.isEmpty()
-            || !NavigationEvidence.hasFreshTraversalClearance(
-                feet.orElseThrow(),
-                snapshot.revision()
-            )
-            || !isPassableObserved(snapshot, candidate.above())) {
-            return false;
-        }
-        if (feet.orElseThrow().kind().isLiquid()
-            || feet.orElseThrow().kind().isClimbable()) {
-            return true;
-        }
-        return snapshot.voxelAt(candidate.below())
-            .map(voxel -> NavigationEvidence.isFreshStandingSupport(
-                voxel,
-                snapshot.revision()
-            ))
-            .orElse(false);
-    }
-
-    private static int floorCoordinate(double coordinate) {
-        final double floor = Math.floor(coordinate);
-        if (floor < Integer.MIN_VALUE || floor > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException(
-                "Target coordinate is outside grid bounds"
-            );
-        }
-        return (int) floor;
-    }
-
-    private static LocalRoute reconstruct(
-        GridPos start,
-        GridPos goal,
-        double totalCost,
-        int expanded,
-        long revision,
-        Map<GridPos, PreviousStep> previous
-    ) {
-        final Deque<LocalStep> steps = new ArrayDeque<>();
-        GridPos cursor = goal;
-        while (!cursor.equals(start)) {
-            final PreviousStep predecessor = previous.get(cursor);
-            if (predecessor == null) {
-                throw new IllegalStateException("A* predecessor chain is incomplete");
-            }
-            final Transition transition = predecessor.transition();
-            steps.addFirst(new LocalStep(
-                predecessor.position(),
-                cursor,
-                transition.primitive(),
-                transition.cost(),
-                transition.danger(),
-                revision,
-                transition.dependencies()
-            ));
-            cursor = predecessor.position();
-        }
-        return new LocalRoute(
-            LocalRouteStatus.FOUND,
-            start,
-            goal,
-            goal,
-            List.copyOf(steps),
-            totalCost,
-            expanded,
-            revision
-        );
-    }
-
-    private record SearchNode(
-        GridPos position,
-        double costFromStart,
-        double heuristic,
-        long sequence
-    ) {
-        double estimatedTotalCost() {
-            return costFromStart + heuristic;
-        }
-    }
-
-    private record PreviousStep(GridPos position, Transition transition) {
-    }
-
-    /**
-     * Constant-time admissible lower bound for a possibly large goal set.
-     * The box may contain cells that are not goals, which only makes the
-     * heuristic more conservative; it never overestimates route cost.
-     */
-    private record GoalBounds(
-        int minimumX,
-        int maximumX,
-        int minimumY,
-        int maximumY,
-        int minimumZ,
-        int maximumZ
-    ) {
-        private static GoalBounds of(final Set<GridPos> goals) {
-            if (goals.isEmpty()) {
-                throw new IllegalArgumentException(
-                    "Goal bounds require at least one goal"
-                );
-            }
-            int minimumX = Integer.MAX_VALUE;
-            int maximumX = Integer.MIN_VALUE;
-            int minimumY = Integer.MAX_VALUE;
-            int maximumY = Integer.MIN_VALUE;
-            int minimumZ = Integer.MAX_VALUE;
-            int maximumZ = Integer.MIN_VALUE;
-            for (GridPos goal : goals) {
-                minimumX = Math.min(minimumX, goal.x());
-                maximumX = Math.max(maximumX, goal.x());
-                minimumY = Math.min(minimumY, goal.y());
-                maximumY = Math.max(maximumY, goal.y());
-                minimumZ = Math.min(minimumZ, goal.z());
-                maximumZ = Math.max(maximumZ, goal.z());
-            }
-            return new GoalBounds(
-                minimumX,
-                maximumX,
-                minimumY,
-                maximumY,
-                minimumZ,
-                maximumZ
-            );
-        }
-    }
-
-    private record Transition(
-        GridPos destination,
-        MovementPrimitive primitive,
-        double cost,
-        double danger,
-        long revision,
-        Set<GridPos> dependencies
-    ) {
-    }
-}
+ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸ì()¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹A•É•ÁÑ¥½¹Y•ŒÌì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹ÉÉ…å•ÅÕ”ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹ÉÉ…å1¥ÍÐì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹½µÁ…É…Ñ½Èì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹•ÅÕ”ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹!…Í¡5…Àì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹!…Í¡M•Ðì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹1¥ÍÐì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹5…Àì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=‰©•ÑÌì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=ÁÑ¥½¹…°ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹AÉ¥½É¥ÑåEÕ•Õ”ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹M•Ðì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹™Õ¹Ñ¥½¸¹1½¹MÕÁÁ±¥•Èì((¼¨¨(€¨	½Õ¹‘•€Í¨½Ù•È½¹±äÑ¡”Ù½á•±ÌÁÉ•Í•¹Ð¥¸1½…±9…ÙM¹…ÁÍ¡½Ð¸(€¨¼)ÁÕ‰±¥Œ™¥¹…°±…ÍÌ1½…±MÑ…ÉA±…¹¹•Èì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”AM%1=8€ô€Ä¸Á”´äì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹ÑmumtI%91}%IQ%=9L€ôì(€€€€€€€ì´Ä°€Áô°(€€€€€€€ìÀ°€´Åô°(€€€€€€€ìÀ°€Åô°(€€€€€€€ìÄ°€Áô(€€€ôì((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°½µÁ…É…Ñ½ÈñM•…É¡9½‘”ø9=}=IH€ô(€€€€€€€½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±”¡M•…É¡9½‘”èé•ÍÑ¥µ…Ñ•‘Q½Ñ…±½ÍÐ¤(€€€€€€€€€€€€¹Ñ¡•¹½µÁ…É¥¹½Õ‰±”¡M•…É¡9½‘”èé¡•ÕÉ¥ÍÑ¥Œ¤(€€€€€€€€€€€€¹Ñ¡•¹½µÁ…É¥¹œ¡M•…É¡9½‘”èéÁ½Í¥Ñ¥½¸¤(€€€€€€€€€€€€¹Ñ¡•¹½µÁ…É¥¹1½¹œ¡M•…É¡9½‘”èéÍ•ÅÕ•¹”¤ì((€€€ÁÉ¥Ù…Ñ”™¥¹…°1½¹MÕÁÁ±¥•È¹…¹½Q¥µ”ì((€€€ÁÕ‰±¥Œ1½…±MÑ…ÉA±…¹¹•È ¤ì(€€€€€€€Ñ¡¥Ì¡MåÍÑ•´èé¹…¹½Q¥µ”¤ì(€€€ô((€€€1½…±MÑ…ÉA±…¹¹•È¡1½¹MÕÁÁ±¥•È¹…¹½Q¥µ”¤ì(€€€€€€€Ñ¡¥Ì¹¹…¹½Q¥µ”€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡¹…¹½Q¥µ”°€‰¹…¹½Q¥µ”ˆ¤ì(€€€ô((€€€ÁÕ‰±¥Œ1½…±I½ÕÑ”Á±…¸ (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€É¥‘A½Ì½…°°(€€€€€€€1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì(€€€€¤ì(€€€€€€€É•ÑÕÉ¸Á±…¸¡Í¹…ÁÍ¡½Ð°ÍÑ…ÉÐ°½…°°½ÁÑ¥½¹Ì°™…±Í”¤ì(€€€ô((€€€€¼¨¨(€€€€€¨A±…¹Ì™É½´„ÕÉÉ•¹ÐÁ±…å•È•±°Ý¡½Í”…ÕÑ¡½É¥Ñ…Ñ¥Ù”‰½‘äÍÑ…Ñ”Í…åÌ¥Ð(€€€€€¨¥Ì½¸Ñ¡”É½Õ¹¸€Q¡”ÕÉÉ•¹ÐÍÕÁÁ½ÉÐµ…ä‰”½ÕÑÍ¥‘”Ñ¡”±…Ñ•ÍÐÉ…ä(€€€€€¨™…¸€¡„½µµ½¸…Í”…Ð„±•‘”½ÈÁ½ÉÑ…°Ñ¡É•Í¡½±¤ìÑ¡¥Ì•á•ÁÑ¥½¸¥Ì(€€€€€¨Í½Á•Ñ¼Ñ¡”ÕÉÉ•¹Ð•±°…¹¹•Ù•È…ÕÑ¡½É¥é•Ì„™ÕÑÕÉ”ÍÕÁÁ½ÉÐ¸(€€€€€¨¼(€€€ÁÕ‰±¥Œ1½…±I½ÕÑ”Á±…¸ (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€É¥‘A½Ì½…°°(€€€€€€€1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì°(€€€€€€€‰½½±•…¸ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Í¹…ÁÍ¡½Ð°€‰Í¹…ÁÍ¡½Ðˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡ÍÑ…ÉÐ°€‰ÍÑ…ÉÐˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡½…°°€‰½…°ˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡½ÁÑ¥½¹Ì°€‰½ÁÑ¥½¹Ìˆ¤ì((€€€€€€€¥˜€ …¥ÍY…±¥‘MÑ…ÉÐ¡Í¹…ÁÍ¡½Ð°ÍÑ…ÉÐ°ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹¤(€€€€€€€€€€€€€€€ñð€…Í¹…ÁÍ¡½Ð¹¥Í=‰Í•ÉÙ•¡½…°¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸1½…±I½ÕÑ”¹™…¥±ÕÉ” (€€€€€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹%9Y1%}MQIQ}=I}=0°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€½…°°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Í•…É  (€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€½…°°(€€€€€€€€€€€M•Ð¹½˜¡½…°¤°(€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€€€€€¤ì(€€€ô((€€€€¼¨¨(€€€€€¨A±…¹ÌÑ¼…¹äµ•µ‰•È½˜½¹”…±±•ÈµÍÕÁÁ±¥•°™…¥É±ä½‰Í•ÉÙ•½…°Í•Ð¸(€€€€€¨=¹”Í•…É ½Ý¹ÌÑ¡”½µÁ±•Ñ”¹½‘”…¹Ý…±°µ±½¬‰Õ‘•Ð°Í¼ÑÉå¥¹œ(€€€€€¨Í•Ù•É…°…¹‘¥‘…Ñ”±…¹‘™…±±Ì…¹¹½ÐµÕ±Ñ¥Á±äÝ½É¬¥¹Í¥‘”„Í•ÉÙ•ÈÑ¥¬¸(€€€€€¨¼(€€€ÁÕ‰±¥Œ1½…±I½ÕÑ”Á±…¹Q½¹ä (€€€€€€€™¥¹…°1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€™¥¹…°É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€™¥¹…°M•ÐñÉ¥‘A½ÌøÉ•ÅÕ•ÍÑ•‘½…±Ì°(€€€€€€€™¥¹…°1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì°(€€€€€€€™¥¹…°‰½½±•…¸ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Í¹…ÁÍ¡½Ð°€‰Í¹…ÁÍ¡½Ðˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡ÍÑ…ÉÐ°€‰ÍÑ…ÉÐˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡É•ÅÕ•ÍÑ•‘½…±Ì°€‰É•ÅÕ•ÍÑ•‘½…±Ìˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡½ÁÑ¥½¹Ì°€‰½ÁÑ¥½¹Ìˆ¤ì(€€€€€€€™¥¹…°É¥‘A½Ì‘¥…¹½ÍÑ¥½…°€ôÉ•ÅÕ•ÍÑ•‘½…±Ì¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€¹µ¥¸¡É¥‘A½Ìèé½µÁ…É•Q¼¤(€€€€€€€€€€€€¹½É±Í”¡ÍÑ…ÉÐ¤ì(€€€€€€€¥˜€ …¥ÍY…±¥‘MÑ…ÉÐ¡Í¹…ÁÍ¡½Ð°ÍÑ…ÉÐ°ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸1½…±I½ÕÑ”¹™…¥±ÕÉ” (€€€€€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹%9Y1%}MQIQ}=I}=0°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€‘¥…¹½ÍÑ¥½…°°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°M•ÐñÉ¥‘A½ÌøÙ…±¥‘½…±Ì€ôÉ•ÅÕ•ÍÑ•‘½…±Ì¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€¹™¥±Ñ•È¡½…°€´ø¥ÍY…±¥‘½…° (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€½…°°(€€€€€€€€€€€€€€€ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€€€€€€€€€¤¤(€€€€€€€€€€€€¹½±±•Ð¡©…Ù„¹ÕÑ¥°¹ÍÑÉ•…´¹½±±•Ñ½ÉÌ¹Ñ½U¹µ½‘¥™¥…‰±•M•Ð ¤¤ì(€€€€€€€¥˜€¡Ù…±¥‘½…±Ì¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸1½…±I½ÕÑ”¹™…¥±ÕÉ” (€€€€€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹%9Y1%}MQIQ}=I}=0°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€‘¥…¹½ÍÑ¥½…°°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Í•…É  (€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€‘¥…¹½ÍÑ¥½…°°(€€€€€€€€€€€Ù…±¥‘½…±Ì°(€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€€€€€¤ì(€€€ô((€€€€¼¨¨(€€€€€¨A±…¹ÌÑ¼…¹ä™…¥É±ä½‰Í•ÉÙ•°ÕÉÉ•¹Ñ±ä½ÕÁ¥…‰±”™••Ð•±°Ý¡½Í”(€€€€€¨•¹Ñ•È¥Ì¥¹Í¥‘”Ñ¡”…±±•ÈÌ…ÉÉ¥Ù…°É•¥½¸¸(€€€€€¨(€€€€€¨€ñÀùQ¡¥Ì¥Ìµ…Ñ•É¥…±±ä‘¥™™•É•¹Ð™É½´Á±…¹¹¥¹œÑ¼Ñ¡”•á…ÐÑ…É•Ð(€€€€€¨•±°…¹¡•­¥¹œÑ¡”É…‘¥ÕÌ½¹±ä…™Ñ•Èµ½Ù•µ•¹Ð¸µ½Ù¥¹œ•¹Ñ¥Ñä(€€€€€¨½ÕÁ¥•Ì¥ÑÌ½Ý¸Ñ…É•Ð•±°°…¹½É‘¥¹…ÉäÝ…åÁ½¥¹ÑÌ½™Ñ•¸¹••Ñ¡”(€€€€€¨…Ñ½ÈÑ¼ÍÑ½À¹•…ÈÉ…Ñ¡•ÈÑ¡…¸½¸Ñ½À½˜Ñ¡”Ñ…É•Ð¸Q¡”…¹‘¥‘…Ñ”Í•Ð(€€€€€¨¥Ì‘•É¥Ù••á±ÕÍ¥Ù•±ä™É½´í±¥¹¬1½…±9…ÙM¹…ÁÍ¡½ÑôìÕ¹­¹½Ý¸•±±Ì(€€€€€¨¹•Ù•È‰•½µ”É½ÕÑ”•¹‘Á½¥¹ÑÌ¸ð½Àø(€€€€€¨¼(€€€ÁÕ‰±¥Œ1½…±I½ÕÑ”Á±…¹]¥Ñ¡¥¹I…‘¥ÕÌ (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ð°(€€€€€€€‘½Õ‰±”…ÉÉ¥Ù…±I…‘¥ÕÌ°(€€€€€€€1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì(€€€€¤ì(€€€€€€€É•ÑÕÉ¸Á±…¹]¥Ñ¡¥¹I…‘¥ÕÌ (€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€Ñ…É•Ð°(€€€€€€€€€€€…ÉÉ¥Ù…±I…‘¥ÕÌ°(€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€ô((€€€€¼¨¨M•”Ñ¡”ÕÉÉ•¹Ðµ‰½‘äÍÕÁÁ½ÉÐ•á•ÁÑ¥½¸½¸í±¥¹¬€Á±…¹ô¸€¨¼(€€€ÁÕ‰±¥Œ1½…±I½ÕÑ”Á±…¹]¥Ñ¡¥¹I…‘¥ÕÌ (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ð°(€€€€€€€‘½Õ‰±”…ÉÉ¥Ù…±I…‘¥ÕÌ°(€€€€€€€1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì°(€€€€€€€‰½½±•…¸ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Í¹…ÁÍ¡½Ð°€‰Í¹…ÁÍ¡½Ðˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡ÍÑ…ÉÐ°€‰ÍÑ…ÉÐˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Ñ…É•Ð°€‰Ñ…É•Ðˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡½ÁÑ¥½¹Ì°€‰½ÁÑ¥½¹Ìˆ¤ì(€€€€€€€¥˜€ …½Õ‰±”¹¥Í¥¹¥Ñ”¡…ÉÉ¥Ù…±I…‘¥ÕÌ¤ñð…ÉÉ¥Ù…±I…‘¥ÕÌ€ð€À¸À¤ì(€€€€€€€€€€€Ñ¡É½Ü¹•Ü%±±•…±ÉÕµ•¹Ñá•ÁÑ¥½¸ (€€€€€€€€€€€€€€€€‰…ÉÉ¥Ù…±I…‘¥ÕÌµÕÍÐ‰”™¥¹¥Ñ”…¹¹½¸µ¹•…Ñ¥Ù”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€™¥¹…°É¥‘A½ÌÉ•ÅÕ•ÍÑ•‘½…°€ô¹•ÜÉ¥‘A½Ì (€€€€€€€€€€€™±½½É½½É‘¥¹…Ñ”¡Ñ…É•Ð¹à ¤¤°(€€€€€€€€€€€™±½½É½½É‘¥¹…Ñ”¡Ñ…É•Ð¹ä ¤¤°(€€€€€€€€€€€™±½½É½½É‘¥¹…Ñ”¡Ñ…É•Ð¹è ¤¤(€€€€€€€€¤ì(€€€€€€€¥˜€ …¥ÍY…±¥‘MÑ…ÉÐ¡Í¹…ÁÍ¡½Ð°ÍÑ…ÉÐ°ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸1½…±I½ÕÑ”¹™…¥±ÕÉ” (€€€€€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹%9Y1%}MQIQ}=I}=0°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€É•ÅÕ•ÍÑ•‘½…°°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€™¥¹…°M•ÐñÉ¥‘A½Ìø½…±Ì€ô¹•Ü!…Í¡M•Ððø ¤ì(€€€€€€€™½È€¡É¥‘A½Ì…¹‘¥‘…Ñ”€è…ÉÉ¥Ù…±…¹‘¥‘…Ñ•Ì (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€Ñ…É•Ð°(€€€€€€€€€€€€€€€…ÉÉ¥Ù…±I…‘¥ÕÌ(€€€€€€€€¤¤ì(€€€€€€€€€€€¥˜€¡¥¹Í¥‘•ÉÉ¥Ù…±I•¥½¸¡…¹‘¥‘…Ñ”°Ñ…É•Ð°…ÉÉ¥Ù…±I…‘¥ÕÌ¤(€€€€€€€€€€€€€€€€˜˜¥ÍY…±¥‘½…° (€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€€€€€…¹‘¥‘…Ñ”°(€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€½…±Ì¹…‘¡…¹‘¥‘…Ñ”¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€¥˜€¡½…±Ì¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸1½…±I½ÕÑ”¹™…¥±ÕÉ” (€€€€€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹%9Y1%}MQIQ}=I}=0°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€É•ÅÕ•ÍÑ•‘½…°°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Í•…É  (€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€É•ÅÕ•ÍÑ•‘½…°°(€€€€€€€€€€€M•Ð¹½Áå=˜¡½…±Ì¤°(€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€€€€€¤ì(€€€ô((€€€€¼¨¨(€€€€€¨¹Õµ•É…Ñ•ÌÑ¡”Íµ…±±•È½˜Ñ¡”•á…Ð…ÉÉ¥Ù…°Õ‰”…¹Ñ¡”½‰Í•ÉÙ•µ…À¸(€€€€€¨¹½Éµ…°™½±±½ÜÉ…‘¥ÕÌ½Ù•ÉÌÑ•¹Ì½È¡Õ¹‘É•‘Ì½˜•±±ÌÝ¡¥±”„™…¥È(€€€€€¨É…äÍ¹…ÁÍ¡½Ð…¸½¹Ñ…¥¸Ñ¡½ÕÍ…¹‘ÌìÍ…¹¹¥¹œÑ¡”•¹Ñ¥É”µ…À‰•™½É”¨(€€€€€¨½¹ÍÕµ•Ñ¡”Í…µ”€ÈµÌ‰Õ‘•ÐÉ•Í•ÉÙ•™½ÈÑ¡”Í•…É ¥ÑÍ•±˜¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ%Ñ•É…‰±”ñÉ¥‘A½Ìø…ÉÉ¥Ù…±…¹‘¥‘…Ñ•Ì (€€€€€€€™¥¹…°1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ð°(€€€€€€€™¥¹…°‘½Õ‰±”…ÉÉ¥Ù…±I…‘¥ÕÌ(€€€€¤ì(€€€€€€€™¥¹…°±½¹œµ¥¹¥µÕµ`€ô‰½Õ¹‘•‘•¥° (€€€€€€€€€€€Ñ…É•Ð¹à ¤€´…ÉÉ¥Ù…±I…‘¥ÕÌ€´€À¸Ô(€€€€€€€€¤ì(€€€€€€€™¥¹…°±½¹œµ…á¥µÕµ`€ô‰½Õ¹‘•‘±½½È (€€€€€€€€€€€Ñ…É•Ð¹à ¤€¬…ÉÉ¥Ù…±I…‘¥ÕÌ€´€À¸Ô(€€€€€€€€¤ì(€€€€€€€™¥¹…°±½¹œµ¥¹¥µÕµd€ô‰½Õ¹‘•‘•¥°¡Ñ…É•Ð¹ä ¤€´…ÉÉ¥Ù…±I…‘¥ÕÌ¤ì(€€€€€€€™¥¹…°±½¹œµ…á¥µÕµd€ô‰½Õ¹‘•‘±½½È¡Ñ…É•Ð¹ä ¤€¬…ÉÉ¥Ù…±I…‘¥ÕÌ¤ì(€€€€€€€™¥¹…°±½¹œµ¥¹¥µÕµh€ô‰½Õ¹‘•‘•¥° (€€€€€€€€€€€Ñ…É•Ð¹è ¤€´…ÉÉ¥Ù…±I…‘¥ÕÌ€´€À¸Ô(€€€€€€€€¤ì(€€€€€€€™¥¹…°±½¹œµ…á¥µÕµh€ô‰½Õ¹‘•‘±½½È (€€€€€€€€€€€Ñ…É•Ð¹è ¤€¬…ÉÉ¥Ù…±I…‘¥ÕÌ€´€À¸Ô(€€€€€€€€¤ì(€€€€€€€™¥¹…°±½¹œÙ½±Õµ”€ô‰½Õ¹‘•‘Y½±Õµ” (€€€€€€€€€€€µ¥¹¥µÕµ`°(€€€€€€€€€€€µ…á¥µÕµ`°(€€€€€€€€€€€µ¥¹¥µÕµd°(€€€€€€€€€€€µ…á¥µÕµd°(€€€€€€€€€€€µ¥¹¥µÕµh°(€€€€€€€€€€€µ…á¥µÕµh°(€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹½‰Í•ÉÙ•‘Y½á•±Ì ¤¹Í¥é” ¤(€€€€€€€€¤ì(€€€€€€€¥˜€¡Ù½±Õµ”€øôÍ¹…ÁÍ¡½Ð¹½‰Í•ÉÙ•‘Y½á•±Ì ¤¹Í¥é” ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸Í¹…ÁÍ¡½Ð¹½‰Í•ÉÙ•‘Y½á•±Ì ¤¹­•åM•Ð ¤ì(€€€€€€€ô(€€€€€€€™¥¹…°1¥ÍÐñÉ¥‘A½Ìø…¹‘¥‘…Ñ•Ì€ô¹•ÜÉÉ…å1¥ÍÐðø ¡¥¹Ð¤Ù½±Õµ”¤ì(€€€€€€€™½È€¡±½¹œà€ôµ¥¹¥µÕµ`ìà€ðôµ…á¥µÕµ`ìà¬¬¤ì(€€€€€€€€€€€™½È€¡±½¹œä€ôµ¥¹¥µÕµdìä€ðôµ…á¥µÕµdìä¬¬¤ì(€€€€€€€€€€€€€€€™½È€¡±½¹œè€ôµ¥¹¥µÕµhìè€ðôµ…á¥µÕµhìè¬¬¤ì(€€€€€€€€€€€€€€€€€€€…¹‘¥‘…Ñ•Ì¹…‘¡¹•ÜÉ¥‘A½Ì ¡¥¹Ð¤à°€¡¥¹Ð¤ä°€¡¥¹Ð¤è¤¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸…¹‘¥‘…Ñ•Ìì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ±½¹œ‰½Õ¹‘•‘Y½±Õµ” (€€€€€€€™¥¹…°±½¹œµ¥¹¥µÕµ`°(€€€€€€€™¥¹…°±½¹œµ…á¥µÕµ`°(€€€€€€€™¥¹…°±½¹œµ¥¹¥µÕµd°(€€€€€€€™¥¹…°±½¹œµ…á¥µÕµd°(€€€€€€€™¥¹…°±½¹œµ¥¹¥µÕµh°(€€€€€€€™¥¹…°±½¹œµ…á¥µÕµh°(€€€€€€€™¥¹…°¥¹Ð½‰Í•ÉÙ•‘M¥é”(€€€€¤ì(€€€€€€€¥˜€¡µ¥¹¥µÕµ`€øµ…á¥µÕµ`(€€€€€€€€€€€€€€€ñðµ¥¹¥µÕµd€øµ…á¥µÕµd(€€€€€€€€€€€€€€€ñðµ¥¹¥µÕµh€øµ…á¥µÕµh¤ì(€€€€€€€€€€€É•ÑÕÉ¸€Á0ì(€€€€€€€ô(€€€€€€€™¥¹…°±½¹œ±¥µ¥Ð€ô5…Ñ ¹µ…à Á0°½‰Í•ÉÙ•‘M¥é”¤ì(€€€€€€€±½¹œÙ½±Õµ”€ôµ…á¥µÕµ`€´µ¥¹¥µÕµ`€¬€Å0ì(€€€€€€€™¥¹…°±½¹œÍÁ…¹d€ôµ…á¥µÕµd€´µ¥¹¥µÕµd€¬€Å0ì(€€€€€€€™¥¹…°±½¹œÍÁ…¹h€ôµ…á¥µÕµh€´µ¥¹¥µÕµh€¬€Å0ì(€€€€€€€¥˜€¡Ù½±Õµ”€ø±¥µ¥Ð(€€€€€€€€€€€€€€€ñðÍÁ…¹d€ø€Á0€˜˜Ù½±Õµ”€ø±¥µ¥Ð€¼ÍÁ…¹d¤ì(€€€€€€€€€€€É•ÑÕÉ¸±¥µ¥Ðì(€€€€€€€ô(€€€€€€€Ù½±Õµ”€¨ôÍÁ…¹dì(€€€€€€€¥˜€¡Ù½±Õµ”€ø±¥µ¥Ð(€€€€€€€€€€€€€€€ñðÍÁ…¹h€ø€Á0€˜˜Ù½±Õµ”€ø±¥µ¥Ð€¼ÍÁ…¹h¤ì(€€€€€€€€€€€É•ÑÕÉ¸±¥µ¥Ðì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Ù½±Õµ”€¨ÍÁ…¹hì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ±½¹œ‰½Õ¹‘•‘•¥°¡™¥¹…°‘½Õ‰±”Ù…±Õ”¤ì(€€€€€€€¥˜€¡Ù…±Õ”€ðô%¹Ñ••È¹5%9}Y1U¤ì(€€€€€€€€€€€É•ÑÕÉ¸%¹Ñ••È¹5%9}Y1Uì(€€€€€€€ô(€€€€€€€¥˜€¡Ù…±Õ”€øô%¹Ñ••È¹5a}Y1U¤ì(€€€€€€€€€€€É•ÑÕÉ¸%¹Ñ••È¹5a}Y1Uì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸€¡±½¹œ¤5…Ñ ¹•¥°¡Ù…±Õ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ±½¹œ‰½Õ¹‘•‘±½½È¡™¥¹…°‘½Õ‰±”Ù…±Õ”¤ì(€€€€€€€¥˜€¡Ù…±Õ”€ðô%¹Ñ••È¹5%9}Y1U¤ì(€€€€€€€€€€€É•ÑÕÉ¸%¹Ñ••È¹5%9}Y1Uì(€€€€€€€ô(€€€€€€€¥˜€¡Ù…±Õ”€øô%¹Ñ••È¹5a}Y1U¤ì(€€€€€€€€€€€É•ÑÕÉ¸%¹Ñ••È¹5a}Y1Uì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸€¡±½¹œ¤5…Ñ ¹™±½½È¡Ù…±Õ”¤ì(€€€ô((€€€€¼¨¨(€€€€€¨I•ÑÕÉ¹Ì½¹”Í…™•±ä½‰Í•ÉÙ•±½…°ÍÑ•ÀÑ¡…Ð…‘Ù…¹•ÌÑ½Ý…É„Ñ…É•Ð(€€€€€¨Ý¡½Í”½µÁ±•Ñ”½ÉÉ¥‘½È¥Ì¹½ÐÙ¥Í¥‰±”å•Ð¸(€€€€€¨(€€€€€¨€ñÀù™¥ÉÍÐµÁ•ÉÍ½¸Á±…å•È¹½Éµ…±±äÝ…±­ÌÑ¼Ñ¡”Ù¥Í¥‰±”™É½¹Ñ¥•È…¹(€€€€€¨…¥¹Ì„¹•ÜÙ¥•ÜìÉ•ÅÕ¥É¥¹œÑ¡”Ý¡½±”É½ÕÑ”Ñ¼‰”ÁÉ½Ù•¸‰•™½É”Ñ…­¥¹œ(€€€€€¨Ñ¡”™¥ÉÍÐÍÑ•Àµ…­•Ì…¸½Ñ¡•ÉÝ¥Í”™…¥ÈÉ…äÍ…µÁ±•È‘•…‘±½¬¸Q¡¥Ì(€€€€€¨µ•Ñ¡½½¹Í¥‘•ÉÌ½¹±äÑÉ…¹Í¥Ñ¥½¹Ì…±É•…‘ä…•ÁÑ•‰äÑ¡”Í…µ”(€€€€€¨™…¥°µ±½Í•µ½Ù•µ•¹ÐÉÕ±•Ì…Ì¨¸%Ð¹•Ù•È¥¹Ù•¹ÑÌ…¸Õ¹­¹½Ý¸•¹‘Á½¥¹Ð(€€€€€¨…¹¹•Ù•È¡½½Í•Ì„ÍÑ•ÀÝ¡½Í”¡½É¥é½¹Ñ…°½µÁ½¹•¹ÐÁ½¥¹ÑÌ…Ý…ä™É½´(€€€€€¨Ñ¡”Ñ…É•Ð¸Ñ…¹•¹Ñ¥…°ÍÑ•ÀÉ•µ…¥¹Ì¹••ÍÍ…ÉäÑ¼‰•¥¸„™…¥È‘•Ñ½ÕÈ(€€€€€¨…É½Õ¹…¸½‰Í•ÉÙ•Ý…±°ìÑ¡”…±±•È¥ÌÉ•ÍÁ½¹Í¥‰±”™½È‰½Õ¹‘¥¹œÉ•Á•…Ñ•(€€€€€¨™É½¹Ñ¥•È•±±ÌÍ¼Ñ¡¥Ì…¹¹½Ð‰•½µ”„¹…Ù¥…Ñ¥½¸±½½À¸ð½Àø(€€€€€¨¼(€€€ÁÕ‰±¥Œ1½…±I½ÕÑ”Á±…¹Q½Ý…É‘=‰Í•ÉÙ• (€€€€€€€™¥¹…°1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€™¥¹…°É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ð°(€€€€€€€™¥¹…°1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì(€€€€¤ì(€€€€€€€É•ÑÕÉ¸Á±…¹Q½Ý…É‘=‰Í•ÉÙ• (€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€Ñ…É•Ð°(€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€ô((€€€€¼¨¨M•”Ñ¡”ÕÉÉ•¹Ðµ‰½‘äÍÕÁÁ½ÉÐ•á•ÁÑ¥½¸½¸í±¥¹¬€Á±…¹ô¸€¨¼(€€€ÁÕ‰±¥Œ1½…±I½ÕÑ”Á±…¹Q½Ý…É‘=‰Í•ÉÙ• (€€€€€€€™¥¹…°1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€™¥¹…°É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ð°(€€€€€€€™¥¹…°1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì°(€€€€€€€™¥¹…°‰½½±•…¸ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Í¹…ÁÍ¡½Ð°€‰Í¹…ÁÍ¡½Ðˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡ÍÑ…ÉÐ°€‰ÍÑ…ÉÐˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Ñ…É•Ð°€‰Ñ…É•Ðˆ¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡½ÁÑ¥½¹Ì°€‰½ÁÑ¥½¹Ìˆ¤ì(€€€€€€€™¥¹…°É¥‘A½ÌÉ•ÅÕ•ÍÑ•‘½…°€ô¹•ÜÉ¥‘A½Ì (€€€€€€€€€€€™±½½É½½É‘¥¹…Ñ”¡Ñ…É•Ð¹à ¤¤°(€€€€€€€€€€€™±½½É½½É‘¥¹…Ñ”¡Ñ…É•Ð¹ä ¤¤°(€€€€€€€€€€€™±½½É½½É‘¥¹…Ñ”¡Ñ…É•Ð¹è ¤¤(€€€€€€€€¤ì(€€€€€€€¥˜€ …¥ÍY…±¥‘MÑ…ÉÐ¡Í¹…ÁÍ¡½Ð°ÍÑ…ÉÐ°ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸1½…±I½ÕÑ”¹™…¥±ÕÉ” (€€€€€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹%9Y1%}MQIQ}=I}=0°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€É•ÅÕ•ÍÑ•‘½…°°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€™¥¹…°‘½Õ‰±”Ñ…É•Ñ•±Ñ…`€ô(€€€€€€€€€€€€€€€Ñ…É•Ð¹à ¤€´€¡ÍÑ…ÉÐ¹à ¤€¬€À¸Ô¤ì(€€€€€€€™¥¹…°‘½Õ‰±”Ñ…É•Ñ•±Ñ…h€ô(€€€€€€€€€€€€€€€Ñ…É•Ð¹è ¤€´€¡ÍÑ…ÉÐ¹è ¤€¬€À¸Ô¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñQÉ…¹Í¥Ñ¥½¸ø‰•ÍÐ€ôÑÉ…¹Í¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì(€€€€€€€€€€€€¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€¹™¥±Ñ•È¡ÑÉ…¹Í¥Ñ¥½¸€´øì(€€€€€€€€€€€€€€€™¥¹…°‘½Õ‰±”ÍÑ•Á`€ô(€€€€€€€€€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸ ¤¹à ¤€´ÍÑ…ÉÐ¹à ¤ì(€€€€€€€€€€€€€€€™¥¹…°‘½Õ‰±”ÍÑ•Áh€ô(€€€€€€€€€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸ ¤¹è ¤€´ÍÑ…ÉÐ¹è ¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ•Á`€¨Ñ…É•Ñ•±Ñ…`(€€€€€€€€€€€€€€€€€€€€€€€€¬ÍÑ•Áh€¨Ñ…É•Ñ•±Ñ…h(€€€€€€€€€€€€€€€€€€€€€€€€øô€µAM%1=8ì(€€€€€€€€€€€ô¤(€€€€€€€€€€€€¹µ¥¸ (€€€€€€€€€€€€€€€½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±” (€€€€€€€€€€€€€€€€€€€€€€€€¡QÉ…¹Í¥Ñ¥½¸ÑÉ…¹Í¥Ñ¥½¸¤€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€ÍÅÕ…É•‘Q…É•Ñ¥ÍÑ…¹” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ñ…É•Ð(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¹Ñ¡•¹½µÁ…É¥¹½Õ‰±”¡QÉ…¹Í¥Ñ¥½¸èé½ÍÐ¤(€€€€€€€€€€€€€€€€€€€€¹Ñ¡•¹½µÁ…É¥¹œ¡QÉ…¹Í¥Ñ¥½¸èé‘•ÍÑ¥¹…Ñ¥½¸¤(€€€€€€€€€€€€€€€€€€€€¹Ñ¡•¹½µÁ…É¥¹œ (€€€€€€€€€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸€´øÑÉ…¹Í¥Ñ¥½¸¹ÁÉ¥µ¥Ñ¥Ù” ¤¹½É‘¥¹…° ¤(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡‰•ÍÐ¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸1½…±I½ÕÑ”¹™…¥±ÕÉ” (€€€€€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹9=}AQ °(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€É•ÅÕ•ÍÑ•‘½…°°(€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€™¥¹…°QÉ…¹Í¥Ñ¥½¸ÑÉ…¹Í¥Ñ¥½¸€ô‰•ÍÐ¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€™¥¹…°É¥‘A½ÌÉ•…¡•€ôÑÉ…¹Í¥Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸ ¤ì(€€€€€€€™¥¹…°1½…±MÑ•ÀÍÑ•À€ô¹•Ü1½…±MÑ•À (€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€É•…¡•°(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹ÁÉ¥µ¥Ñ¥Ù” ¤°(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹½ÍÐ ¤°(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹‘…¹•È ¤°(€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹‘•Á•¹‘•¹¥•Ì ¤(€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸¹•Ü1½…±I½ÕÑ” (€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹=U9°(€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€É•…¡•°(€€€€€€€€€€€É•…¡•°(€€€€€€€€€€€1¥ÍÐ¹½˜¡ÍÑ•À¤°(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹½ÍÐ ¤°(€€€€€€€€€€€€Ä°(€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”1½…±I½ÕÑ”Í•…É  (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€É¥‘A½ÌÉ•ÅÕ•ÍÑ•‘½…°°(€€€€€€€M•ÐñÉ¥‘A½Ìø½…±Ì°(€€€€€€€1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì°(€€€€€€€‰½½±•…¸ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡½…±Ì°€‰½…±Ìˆ¤ì(€€€€€€€¥˜€¡½…±Ì¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸1½…±I½ÕÑ”¹™…¥±ÕÉ” (€€€€€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹%9Y1%}MQIQ}=I}=0°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€É•ÅÕ•ÍÑ•‘½…°°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡½…±Ì¹½¹Ñ…¥¹Ì¡ÍÑ…ÉÐ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸¹•Ü1½…±I½ÕÑ” (€€€€€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹=U9°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€1¥ÍÐ¹½˜ ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€™¥¹…°±½¹œÍÑ…ÉÑ•‘Ð€ô¹…¹½Q¥µ”¹•ÑÍ1½¹œ ¤ì(€€€€€€€™¥¹…°±½¹œ‰Õ‘•Ñ9…¹½Ì€ô½ÁÑ¥½¹Ì¹‰Õ‘•Ð ¤¹µ…á¥µÕµ]…±±Q¥µ” ¤¹Ñ½9…¹½Ì ¤ì(€€€€€€€™¥¹…°AÉ¥½É¥ÑåEÕ•Õ”ñM•…É¡9½‘”ø½Á•¸€ô¹•ÜAÉ¥½É¥ÑåEÕ•Õ”ðø¡9=}=IH¤ì(€€€€€€€™¥¹…°5…ÀñÉ¥‘A½Ì°½Õ‰±”ø‰•ÍÑ½ÍÑÌ€ô¹•Ü!…Í¡5…Àðø ¤ì(€€€€€€€™¥¹…°5…ÀñÉ¥‘A½Ì°AÉ•Ù¥½ÕÍMÑ•ÀøÁÉ•Ù¥½ÕÌ€ô¹•Ü!…Í¡5…Àðø ¤ì(€€€€€€€™¥¹…°½…±	½Õ¹‘Ì½…±	½Õ¹‘Ì€ô½…±	½Õ¹‘Ì¹½˜¡½…±Ì¤ì(€€€€€€€±½¹œÍ•ÅÕ•¹”€ô€Á0ì(€€€€€€€™¥¹…°‘½Õ‰±”¥¹¥Ñ¥…±!•ÕÉ¥ÍÑ¥Œ€ô¡•ÕÉ¥ÍÑ¥Œ¡ÍÑ…ÉÐ°½…±	½Õ¹‘Ì¤ì(€€€€€€€½Á•¸¹…‘¡¹•ÜM•…É¡9½‘”¡ÍÑ…ÉÐ°€À¸À°¥¹¥Ñ¥…±!•ÕÉ¥ÍÑ¥Œ°Í•ÅÕ•¹”¬¬¤¤ì(€€€€€€€‰•ÍÑ½ÍÑÌ¹ÁÕÐ¡ÍÑ…ÉÐ°€À¸À¤ì(€€€€€€€¥¹Ð•áÁ…¹‘•€ô€Àì((€€€€€€€Ý¡¥±”€ …½Á•¸¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€¥˜€¡¹…¹½Q¥µ”¹•ÑÍ1½¹œ ¤€´ÍÑ…ÉÑ•‘Ð€øô‰Õ‘•Ñ9…¹½Ì¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸1½…±I½ÕÑ”¹™…¥±ÕÉ” (€€€€€€€€€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹Q%5}	UQ}a°(€€€€€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€€€€€É•ÅÕ•ÍÑ•‘½…°°(€€€€€€€€€€€€€€€€€€€•áÁ…¹‘•°(€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡•áÁ…¹‘•€øô½ÁÑ¥½¹Ì¹‰Õ‘•Ð ¤¹µ…á¥µÕµáÁ…¹‘•‘9½‘•Ì ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸1½…±I½ÕÑ”¹™…¥±ÕÉ” (€€€€€€€€€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹9=}	UQ}a°(€€€€€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€€€€€É•ÅÕ•ÍÑ•‘½…°°(€€€€€€€€€€€€€€€€€€€•áÁ…¹‘•°(€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô((€€€€€€€€€€€™¥¹…°M•…É¡9½‘”ÕÉÉ•¹Ð€ô½Á•¸¹É•µ½Ù” ¤ì(€€€€€€€€€€€™¥¹…°‘½Õ‰±”­¹½Ý¹½ÍÐ€ô‰•ÍÑ½ÍÑÌ¹•Ñ=É•™…Õ±Ð (€€€€€€€€€€€€€€€ÕÉÉ•¹Ð¹Á½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€½Õ‰±”¹A=M%Q%Y}%9%9%Qd(€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€¡ÕÉÉ•¹Ð¹½ÍÑÉ½µMÑ…ÉÐ ¤€ø­¹½Ý¹½ÍÐ€¬AM%1=8¤ì(€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì(€€€€€€€€€€€ô(€€€€€€€€€€€•áÁ…¹‘•¬¬ì(€€€€€€€€€€€¥˜€¡½…±Ì¹½¹Ñ…¥¹Ì¡ÕÉÉ•¹Ð¹Á½Í¥Ñ¥½¸ ¤¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸É•½¹ÍÑÉÕÐ (€€€€€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ð¹Á½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ð¹½ÍÑÉ½µMÑ…ÉÐ ¤°(€€€€€€€€€€€€€€€€€€€•áÁ…¹‘•°(€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€ÁÉ•Ù¥½ÕÌ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô((€€€€€€€€€€€™½È€¡QÉ…¹Í¥Ñ¥½¸ÑÉ…¹Í¥Ñ¥½¸€èÑÉ…¹Í¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ð¹Á½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì(€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€™¥¹…°‘½Õ‰±”…¹‘¥‘…Ñ•½ÍÐ€ôÕÉÉ•¹Ð¹½ÍÑÉ½µMÑ…ÉÐ ¤€¬ÑÉ…¹Í¥Ñ¥½¸¹½ÍÐ ¤ì(€€€€€€€€€€€€€€€™¥¹…°‘½Õ‰±”•á¥ÍÑ¥¹½ÍÐ€ô‰•ÍÑ½ÍÑÌ¹•Ñ=É•™…Õ±Ð (€€€€€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€½Õ‰±”¹A=M%Q%Y}%9%9%Qd(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€¥˜€¡…¹‘¥‘…Ñ•½ÍÐ€¬AM%1=8€øô•á¥ÍÑ¥¹½ÍÐ¤ì(€€€€€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€‰•ÍÑ½ÍÑÌ¹ÁÕÐ¡ÑÉ…¹Í¥Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸ ¤°…¹‘¥‘…Ñ•½ÍÐ¤ì(€€€€€€€€€€€€€€€ÁÉ•Ù¥½ÕÌ¹ÁÕÐ (€€€€€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€¹•ÜAÉ•Ù¥½ÕÍMÑ•À¡ÕÉÉ•¹Ð¹Á½Í¥Ñ¥½¸ ¤°ÑÉ…¹Í¥Ñ¥½¸¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€™¥¹…°‘½Õ‰±”É•µ…¥¹¥¹œ€ô¡•ÕÉ¥ÍÑ¥Œ (€€€€€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€½…±	½Õ¹‘Ì(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€½Á•¸¹…‘¡¹•ÜM•…É¡9½‘” (€€€€€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€…¹‘¥‘…Ñ•½ÍÐ°(€€€€€€€€€€€€€€€€€€€É•µ…¥¹¥¹œ°(€€€€€€€€€€€€€€€€€€€Í•ÅÕ•¹”¬¬(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€ô(€€€€€€€ô((€€€€€€€É•ÑÕÉ¸1½…±I½ÕÑ”¹™…¥±ÕÉ” (€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹9=}AQ °(€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€É•ÅÕ•ÍÑ•‘½…°°(€€€€€€€€€€€•áÁ…¹‘•°(€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ1¥ÍÐñQÉ…¹Í¥Ñ¥½¸øÑÉ…¹Í¥Ñ¥½¹Ì (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€É¥‘A½ÌÕÉÉ•¹Ð°(€€€€€€€1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì(€€€€¤ì(€€€€€€€™¥¹…°1¥ÍÐñQÉ…¹Í¥Ñ¥½¸øÑÉ…¹Í¥Ñ¥½¹Ì€ô¹•ÜÉÉ…å1¥ÍÐðø ÄØ¤ì(€€€€€€€™¥¹…°=‰Í•ÉÙ•‘Y½á•°ÕÉÉ•¹ÑY½á•°€ôÍ¹…ÁÍ¡½Ð¹Ù½á•±Ð¡ÕÉÉ•¹Ð¤¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€™½È€¡¥¹Ñmt‘¥É•Ñ¥½¸€èI%91}%IQ%=9L¤ì(€€€€€€€€€€€™¥¹…°¥¹Ð‘•±Ñ…`€ô‘¥É•Ñ¥½¹lÁtì(€€€€€€€€€€€™¥¹…°¥¹Ð‘•±Ñ…h€ô‘¥É•Ñ¥½¹lÅtì(€€€€€€€€€€€…‘‘!½É¥é½¹Ñ…±QÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€ÕÉÉ•¹ÑY½á•°°(€€€€€€€€€€€€€€€‘•±Ñ…`°(€€€€€€€€€€€€€€€‘•±Ñ…h°(€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹Ì(€€€€€€€€€€€€¤ì(€€€€€€€€€€€…‘‘MÑ•ÁUÁQÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€‘•±Ñ…`°(€€€€€€€€€€€€€€€‘•±Ñ…h°(€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹Ì(€€€€€€€€€€€€¤ì(€€€€€€€€€€€…‘‘É½ÁQÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€‘•±Ñ…`°(€€€€€€€€€€€€€€€‘•±Ñ…h°(€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹Ì(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€…‘‘Y•ÉÑ¥…±QÉ…¹Í¥Ñ¥½¹Ì¡Í¹…ÁÍ¡½Ð°ÕÉÉ•¹Ð°ÕÉÉ•¹ÑY½á•°°½ÁÑ¥½¹Ì°ÑÉ…¹Í¥Ñ¥½¹Ì¤ì(€€€€€€€ÑÉ…¹Í¥Ñ¥½¹Ì¹Í½ÉÐ (€€€€€€€€€€€½µÁ…É…Ñ½È¹½µÁ…É¥¹œ¡QÉ…¹Í¥Ñ¥½¸èé‘•ÍÑ¥¹…Ñ¥½¸¤(€€€€€€€€€€€€€€€€¹Ñ¡•¹½µÁ…É¥¹œ¡ÑÉ…¹Í¥Ñ¥½¸€´øÑÉ…¹Í¥Ñ¥½¸¹ÁÉ¥µ¥Ñ¥Ù” ¤¹½É‘¥¹…° ¤¤(€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸ÑÉ…¹Í¥Ñ¥½¹Ìì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÙ½¥…‘‘!½É¥é½¹Ñ…±QÉ…¹Í¥Ñ¥½¸ (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€É¥‘A½ÌÕÉÉ•¹Ð°(€€€€€€€=‰Í•ÉÙ•‘Y½á•°ÕÉÉ•¹ÑY½á•°°(€€€€€€€¥¹Ð‘•±Ñ…`°(€€€€€€€¥¹Ð‘•±Ñ…h°(€€€€€€€1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì°(€€€€€€€1¥ÍÐñQÉ…¹Í¥Ñ¥½¸ø½ÕÑÁÕÐ(€€€€¤ì(€€€€€€€™¥¹…°É¥‘A½Ì‘•ÍÑ¥¹…Ñ¥½¸€ôÕÉÉ•¹Ð¹½™™Í•Ð¡‘•±Ñ…`°€À°‘•±Ñ…h¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ=‰Í•ÉÙ•‘Y½á•°ø‘•ÍÑ¥¹…Ñ¥½¹Y½á•°€ôÍ¹…ÁÍ¡½Ð¹Ù½á•±Ð¡‘•ÍÑ¥¹…Ñ¥½¸¤ì(€€€€€€€¥˜€¡‘•ÍÑ¥¹…Ñ¥½¹Y½á•°¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô(€€€€€€€™¥¹…°=‰Í•ÉÙ•‘Y½á•°Ù½á•°€ô‘•ÍÑ¥¹…Ñ¥½¹Y½á•°¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€™¥¹…°É¥‘A½Ì¡•…€ô‘•ÍÑ¥¹…Ñ¥½¸¹…‰½Ù” ¤ì(€€€€€€€™¥¹…°É¥‘A½ÌÍÕÁÁ½ÉÐ€ô‘•ÍÑ¥¹…Ñ¥½¸¹‰•±½Ü ¤ì((€€€€€€€¥˜€¡9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¥ÍÉ•Í¡±½Í•‘½½È (€€€€€€€€€€€€€€€Ù½á•°°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤(€€€€€€€€€€€€˜˜¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°¡•…¤(€€€€€€€€€€€€˜˜ÍÕÁÁ½ÉÑÍ=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°ÍÕÁÁ½ÉÐ°ÍÑ…ÉÐ¤¤ì(€€€€€€€€€€€½ÕÑÁÕÐ¹…‘¡ÑÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€€€€€5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹=A9}==H°(€€€€€€€€€€€€€€€€Ä¸à°(€€€€€€€€€€€€€€€µ…á…¹•È¡Í¹…ÁÍ¡½Ð°M•Ð¹½˜¡‘•ÍÑ¥¹…Ñ¥½¸°¡•…¤¤°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€M•Ð¹½˜¡‘•ÍÑ¥¹…Ñ¥½¸°¡•…°ÍÕÁÁ½ÉÐ¤(€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô((€€€€€€€¥˜€¡Ù½á•°¹­¥¹ ¤¹¥Í1¥ÅÕ¥ ¤(€€€€€€€€€€€€˜˜¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°‘•ÍÑ¥¹…Ñ¥½¸¤(€€€€€€€€€€€€˜˜¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°¡•…¤¤ì(€€€€€€€€€€€½ÕÑÁÕÐ¹…‘¡ÑÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€€€€€5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹M]%4°(€€€€€€€€€€€€€€€€Ä¸Ð°(€€€€€€€€€€€€€€€µ…á…¹•È¡Í¹…ÁÍ¡½Ð°M•Ð¹½˜¡‘•ÍÑ¥¹…Ñ¥½¸°¡•…¤¤°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€M•Ð¹½˜¡‘•ÍÑ¥¹…Ñ¥½¸°¡•…¤(€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô((€€€€€€€¥˜€ …¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°‘•ÍÑ¥¹…Ñ¥½¸¤(€€€€€€€€€€€€€€€ñð€…¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°¡•…¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô(€€€€€€€¥˜€¡ÍÕÁÁ½ÉÑÍ=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°ÍÕÁÁ½ÉÐ°ÍÑ…ÉÐ¤¤ì(€€€€€€€€€€€™¥¹…°5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”ÁÉ¥µ¥Ñ¥Ù”€ôÕÉÉ•¹ÑY½á•°¹­¥¹ ¤¹¥Í1¥ÅÕ¥ ¤(€€€€€€€€€€€€€€€€ü5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹M]%4(€€€€€€€€€€€€€€€€è½ÁÑ¥½¹Ì¹…±±½ÝMÁÉ¥¹Ð ¤(€€€€€€€€€€€€€€€€˜˜Ù½á•°¹•™™•Ñ¥Ù•…¹•È ¤€ôô€À¸À(€€€€€€€€€€€€€€€€ü5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹MAI%9P(€€€€€€€€€€€€€€€€è5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹]1,ì(€€€€€€€€€€€½ÕÑÁÕÐ¹…‘¡ÑÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€€€€€ÁÉ¥µ¥Ñ¥Ù”°(€€€€€€€€€€€€€€€ÁÉ¥µ¥Ñ¥Ù”€ôô5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹MAI%9P€ü€À¸à€è€Ä¸À°(€€€€€€€€€€€€€€€µ…á…¹•È¡Í¹…ÁÍ¡½Ð°M•Ð¹½˜¡‘•ÍÑ¥¹…Ñ¥½¸°¡•…¤¤°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€M•Ð¹½˜¡‘•ÍÑ¥¹…Ñ¥½¸°¡•…°ÍÕÁÁ½ÉÐ¤(€€€€€€€€€€€€¤¤ì(€€€€€€€ô•±Í”¥˜€¡½ÁÑ¥½¹Ì¹…±±½Ý	Õ¥±‘¥¹œ ¤(€€€€€€€€€€€€˜˜¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°ÍÕÁÁ½ÉÐ¤¤ì(€€€€€€€€€€€½ÕÑÁÕÐ¹…‘¡ÑÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€€€€€5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹	I%°(€€€€€€€€€€€€€€€€Ì¸À°(€€€€€€€€€€€€€€€µ…á…¹•È¡Í¹…ÁÍ¡½Ð°M•Ð¹½˜¡‘•ÍÑ¥¹…Ñ¥½¸°¡•…°ÍÕÁÁ½ÉÐ¤¤°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€M•Ð¹½˜¡‘•ÍÑ¥¹…Ñ¥½¸°¡•…°ÍÕÁÁ½ÉÐ¤(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÙ½¥…‘‘MÑ•ÁUÁQÉ…¹Í¥Ñ¥½¸ (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€É¥‘A½ÌÕÉÉ•¹Ð°(€€€€€€€¥¹Ð‘•±Ñ…`°(€€€€€€€¥¹Ð‘•±Ñ…h°(€€€€€€€1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì°(€€€€€€€1¥ÍÐñQÉ…¹Í¥Ñ¥½¸ø½ÕÑÁÕÐ(€€€€¤ì(€€€€€€€™¥¹…°É¥‘A½Ì‘•ÍÑ¥¹…Ñ¥½¸€ôÕÉÉ•¹Ð¹½™™Í•Ð¡‘•±Ñ…`°€Ä°‘•±Ñ…h¤ì(€€€€€€€™¥¹…°É¥‘A½Ì¡•…€ô‘•ÍÑ¥¹…Ñ¥½¸¹…‰½Ù” ¤ì(€€€€€€€™¥¹…°É¥‘A½ÌÍÕÁÁ½ÉÐ€ô‘•ÍÑ¥¹…Ñ¥½¸¹‰•±½Ü ¤ì(€€€€€€€™¥¹…°É¥‘A½Ì±…Õ¹¡±•…É…¹”€ôÕÉÉ•¹Ð¹…‰½Ù” È¤ì(€€€€€€€™¥¹…°M•ÐñÉ¥‘A½Ìø‘•Á•¹‘•¹¥•Ì€ôM•Ð¹½˜ (€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€¡•…°(€€€€€€€€€€€ÍÕÁÁ½ÉÐ°(€€€€€€€€€€€±…Õ¹¡±•…É…¹”(€€€€€€€€¤ì(€€€€€€€¥˜€¡¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°‘•ÍÑ¥¹…Ñ¥½¸¤(€€€€€€€€€€€€˜˜¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°¡•…¤(€€€€€€€€€€€€˜˜¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°±…Õ¹¡±•…É…¹”¤(€€€€€€€€€€€€˜˜ÍÕÁÁ½ÉÑÍ=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°ÍÕÁÁ½ÉÐ°ÍÑ…ÉÐ¤¤ì(€€€€€€€€€€€½ÕÑÁÕÐ¹…‘¡ÑÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€€€€€5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹)U5@°(€€€€€€€€€€€€€€€€Ä¸Ø°(€€€€€€€€€€€€€€€µ…á…¹•È¡Í¹…ÁÍ¡½Ð°‘•Á•¹‘•¹¥•Ì¤°(€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€‘•Á•¹‘•¹¥•Ì(€€€€€€€€€€€€¤¤ì(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÙ½¥…‘‘É½ÁQÉ…¹Í¥Ñ¥½¸ (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€É¥‘A½ÌÕÉÉ•¹Ð°(€€€€€€€¥¹Ð‘•±Ñ…`°(€€€€€€€¥¹Ð‘•±Ñ…h°(€€€€€€€1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì°(€€€€€€€1¥ÍÐñQÉ…¹Í¥Ñ¥½¸ø½ÕÑÁÕÐ(€€€€¤ì(€€€€€€€™¥¹…°M•ÐñÉ¥‘A½Ìø½‰Í•ÉÙ•‘½±Õµ¸€ô¹•Ü!…Í¡M•Ððø ¤ì(€€€€€€€™½È€¡¥¹Ð‘É½À€ô€Äì‘É½À€ðô½ÁÑ¥½¹Ì¹µ…á¥µÕµÉ½À ¤ì‘É½À¬¬¤ì(€€€€€€€€€€€™¥¹…°É¥‘A½Ì‘•ÍÑ¥¹…Ñ¥½¸€ôÕÉÉ•¹Ð¹½™™Í•Ð¡‘•±Ñ…`°€µ‘É½À°‘•±Ñ…h¤ì(€€€€€€€€€€€™¥¹…°É¥‘A½Ì¡•…€ô‘•ÍÑ¥¹…Ñ¥½¸¹…‰½Ù” ¤ì(€€€€€€€€€€€™¥¹…°É¥‘A½ÌÍÕÁÁ½ÉÐ€ô‘•ÍÑ¥¹…Ñ¥½¸¹‰•±½Ü ¤ì(€€€€€€€€€€€½‰Í•ÉÙ•‘½±Õµ¸¹…‘¡‘•ÍÑ¥¹…Ñ¥½¸¤ì(€€€€€€€€€€€½‰Í•ÉÙ•‘½±Õµ¸¹…‘¡¡•…¤ì(€€€€€€€€€€€¥˜€ …¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°‘•ÍÑ¥¹…Ñ¥½¸¤(€€€€€€€€€€€€€€€ñð€…¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°¡•…¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡ÍÕÁÁ½ÉÑÍ=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°ÍÕÁÁ½ÉÐ°ÍÑ…ÉÐ¤¤ì(€€€€€€€€€€€€€€€½‰Í•ÉÙ•‘½±Õµ¸¹…‘¡ÍÕÁÁ½ÉÐ¤ì(€€€€€€€€€€€€€€€½ÕÑÁÕÐ¹…‘¡ÑÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€€€€€€€€€5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹)U5@°(€€€€€€€€€€€€€€€€€€€€Ä¸È€¬‘É½À€¨€À¸ÈÔ°(€€€€€€€€€€€€€€€€€€€µ…á…¹•È¡Í¹…ÁÍ¡½Ð°½‰Í•ÉÙ•‘½±Õµ¸¤°(€€€€€€€€€€€€€€€€€€€‘É½À°(€€€€€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€€€€€M•Ð¹½Áå=˜¡½‰Í•ÉÙ•‘½±Õµ¸¤(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€ …Í¹…ÁÍ¡½Ð¹¥Í=‰Í•ÉÙ•¡ÍÕÁÁ½ÉÐ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÙ½¥…‘‘Y•ÉÑ¥…±QÉ…¹Í¥Ñ¥½¹Ì (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÕÉÉ•¹Ð°(€€€€€€€=‰Í•ÉÙ•‘Y½á•°ÕÉÉ•¹ÑY½á•°°(€€€€€€€1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì°(€€€€€€€1¥ÍÐñQÉ…¹Í¥Ñ¥½¸ø½ÕÑÁÕÐ(€€€€¤ì(€€€€€€€™½È€¡¥¹Ð‘•±Ñ…d€è¹•Ü¥¹Ñmuì´Ä°€Åô¤ì(€€€€€€€€€€€™¥¹…°É¥‘A½Ì‘•ÍÑ¥¹…Ñ¥½¸€ôÕÉÉ•¹Ð¹½™™Í•Ð À°‘•±Ñ…d°€À¤ì(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ=‰Í•ÉÙ•‘Y½á•°ø‘•ÍÑ¥¹…Ñ¥½¹Y½á•°€ôÍ¹…ÁÍ¡½Ð¹Ù½á•±Ð¡‘•ÍÑ¥¹…Ñ¥½¸¤ì(€€€€€€€€€€€¥˜€¡‘•ÍÑ¥¹…Ñ¥½¹Y½á•°¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì(€€€€€€€€€€€ô(€€€€€€€€€€€™¥¹…°=‰Í•ÉÙ•‘Y½á•°Ù½á•°€ô‘•ÍÑ¥¹…Ñ¥½¹Y½á•°¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€€€€€™¥¹…°É¥‘A½ÌÕÁÝ…É‘!•…‘±•…É…¹”€ô‘•ÍÑ¥¹…Ñ¥½¸¹…‰½Ù” ¤ì(€€€€€€€€€€€¥˜€¡‘•±Ñ…d€ø€À€˜˜€…¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°ÕÁÝ…É‘!•…‘±•…É…¹”¤¤ì(€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì(€€€€€€€€€€€ô(€€€€€€€€€€€™¥¹…°M•ÐñÉ¥‘A½Ìø‘•Á•¹‘•¹¥•Ì€ô‘•±Ñ…d€ø€À(€€€€€€€€€€€€€€€€üM•Ð¹½˜¡ÕÉÉ•¹Ð°‘•ÍÑ¥¹…Ñ¥½¸°ÕÁÝ…É‘!•…‘±•…É…¹”¤(€€€€€€€€€€€€€€€€èM•Ð¹½˜¡ÕÉÉ•¹Ð°‘•ÍÑ¥¹…Ñ¥½¸¤ì(€€€€€€€€€€€¥˜€ ¡ÕÉÉ•¹ÑY½á•°¹­¥¹ ¤¹¥Í±¥µ‰…‰±” ¤ñðÙ½á•°¹­¥¹ ¤¹¥Í±¥µ‰…‰±” ¤¤(€€€€€€€€€€€€€€€€˜˜9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¡…ÍÉ•Í¡QÉ…Ù•ÉÍ…±±•…É…¹” (€€€€€€€€€€€€€€€€€€€Ù½á•°°(€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€½ÕÑÁÕÐ¹…‘¡ÑÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€€€€€€€€€5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹1%5°(€€€€€€€€€€€€€€€€€€€€Ä¸Ô°(€€€€€€€€€€€€€€€€€€€µ…á…¹•È¡Í¹…ÁÍ¡½Ð°‘•Á•¹‘•¹¥•Ì¤°(€€€€€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€€€€€‘•Á•¹‘•¹¥•Ì(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€ô•±Í”¥˜€¡ÕÉÉ•¹ÑY½á•°¹­¥¹ ¤¹¥Í1¥ÅÕ¥ ¤(€€€€€€€€€€€€€€€€˜˜Ù½á•°¹­¥¹ ¤¹¥Í1¥ÅÕ¥ ¤(€€€€€€€€€€€€€€€€˜˜9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¡…ÍÉ•Í¡QÉ…Ù•ÉÍ…±±•…É…¹” (€€€€€€€€€€€€€€€€€€€Ù½á•°°(€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€½ÕÑÁÕÐ¹…‘¡ÑÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€€€€€€€€€5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹M]%4°(€€€€€€€€€€€€€€€€€€€€Ä¸Ð°(€€€€€€€€€€€€€€€€€€€µ…á…¹•È¡Í¹…ÁÍ¡½Ð°‘•Á•¹‘•¹¥•Ì¤°(€€€€€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€€€€€‘•Á•¹‘•¹¥•Ì(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€ô(€€€€€€€ô((€€€€€€€¥˜€¡½ÁÑ¥½¹Ì¹…±±½Ý	Õ¥±‘¥¹œ ¤¤ì(€€€€€€€€€€€™¥¹…°É¥‘A½Ì‘•ÍÑ¥¹…Ñ¥½¸€ôÕÉÉ•¹Ð¹…‰½Ù” ¤ì(€€€€€€€€€€€™¥¹…°É¥‘A½Ì¡•…€ô‘•ÍÑ¥¹…Ñ¥½¸¹…‰½Ù” ¤ì(€€€€€€€€€€€¥˜€¡¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°‘•ÍÑ¥¹…Ñ¥½¸¤(€€€€€€€€€€€€€€€€˜˜¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°¡•…¤¤ì(€€€€€€€€€€€€€€€½ÕÑÁÕÐ¹…‘¡ÑÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€€€€€€€€€5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”¹A%11H°(€€€€€€€€€€€€€€€€€€€€Ð¸À°(€€€€€€€€€€€€€€€€€€€µ…á…¹•È¡Í¹…ÁÍ¡½Ð°M•Ð¹½˜¡‘•ÍÑ¥¹…Ñ¥½¸°¡•…¤¤°(€€€€€€€€€€€€€€€€€€€€À°(€€€€€€€€€€€€€€€€€€€½ÁÑ¥½¹Ì°(€€€€€€€€€€€€€€€€€€€M•Ð¹½˜¡ÕÉÉ•¹Ð°‘•ÍÑ¥¹…Ñ¥½¸°¡•…¤(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒQÉ…¹Í¥Ñ¥½¸ÑÉ…¹Í¥Ñ¥½¸ (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½Ì™É½´°(€€€€€€€É¥‘A½Ì‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”ÁÉ¥µ¥Ñ¥Ù”°(€€€€€€€‘½Õ‰±”‰…Í•½ÍÐ°(€€€€€€€‘½Õ‰±”‘…¹•È°(€€€€€€€¥¹Ð‘É½À°(€€€€€€€1½…±A±…¹¹•É=ÁÑ¥½¹Ì½ÁÑ¥½¹Ì°(€€€€€€€M•ÐñÉ¥‘A½Ìø‘•Á•¹‘•¹¥•Ì(€€€€¤ì(€€€€€€€™¥¹…°‘½Õ‰±”™…±±I¥Í¬€ô‘É½À€ðô€È€ü€À¸À€è€¡‘É½À€´€È¸À¤€¨€¡‘É½À€´€È¸À¤ì(€€€€€€€™¥¹…°‘½Õ‰±”½ÍÐ€ô‰…Í•½ÍÐ(€€€€€€€€€€€€¬‘…¹•È€¨½ÁÑ¥½¹Ì¹É¥Í­AÉ½™¥±” ¤¹Ù½á•±…¹•É]•¥¡Ð ¤(€€€€€€€€€€€€¬™…±±I¥Í¬€¨½ÁÑ¥½¹Ì¹É¥Í­AÉ½™¥±” ¤¹™…±±…¹•É]•¥¡Ð ¤ì(€€€€€€€É•ÑÕÉ¸¹•ÜQÉ…¹Í¥Ñ¥½¸ (€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€€€€€ÁÉ¥µ¥Ñ¥Ù”°(€€€€€€€€€€€½ÍÐ°(€€€€€€€€€€€‘…¹•È°(€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€‘•Á•¹‘•¹¥•Ì(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¥ÍY…±¥‘MÑ…ÉÐ (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€‰½½±•…¸ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ=‰Í•ÉÙ•‘Y½á•°øÍÑ…ÉÑY½á•°€ôÍ¹…ÁÍ¡½Ð¹Ù½á•±Ð¡ÍÑ…ÉÐ¤ì(€€€€€€€¥˜€¡ÍÑ…ÉÑY½á•°¹¥ÍµÁÑä ¤(€€€€€€€€€€€€€€€ñð€…9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¡…ÍÉ•Í¡QÉ…Ù•ÉÍ…±±•…É…¹” (€€€€€€€€€€€€€€€€€€€€€€€ÍÑ…ÉÑY½á•°¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì(€€€€€€€ô(€€€€€€€¥˜€ …¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°ÍÑ…ÉÐ¹…‰½Ù” ¤¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì(€€€€€€€ô(€€€€€€€¥˜€¡ÍÑ…ÉÑY½á•°¹½É±Í•Q¡É½Ü ¤¹­¥¹ ¤¹¥Í1¥ÅÕ¥ ¤(€€€€€€€€€€€ñðÍÑ…ÉÑY½á•°¹½É±Í•Q¡É½Ü ¤¹­¥¹ ¤¹¥Í±¥µ‰…‰±” ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì(€€€€€€€ô(€€€€€€€¥˜€¡ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€€€€€€€€€€€€€˜˜ÍÑ…ÉÑY½á•°¹½É±Í•Q¡É½Ü ¤¹½ÕÁ…¹åÙ¥‘•¹” ¤(€€€€€€€€€€€€€€€€€€€€¹¥ÍÕ±±	½‘å…Ð ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Í¹…ÁÍ¡½Ð¹Ù½á•±Ð¡ÍÑ…ÉÐ¹‰•±½Ü ¤¤(€€€€€€€€€€€€¹µ…À¡Ù½á•°€´ø9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹ÍÕÁÁ½ÉÑÍÕÉÉ•¹Ñ	½‘ä (€€€€€€€€€€€€€€€€€€€Ù½á•°°(€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤¤(€€€€€€€€€€€€¹½É±Í”¡™…±Í”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ• (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÁ½Í¥Ñ¥½¸(€€€€¤ì(€€€€€€€É•ÑÕÉ¸Í¹…ÁÍ¡½Ð¹Ù½á•±Ð¡Á½Í¥Ñ¥½¸¤(€€€€€€€€€€€€¹µ…À¡Ù½á•°€´ø(€€€€€€€€€€€€€€€9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¡…ÍÉ•Í¡QÉ…Ù•ÉÍ…±±•…É…¹” (€€€€€€€€€€€€€€€€€€€Ù½á•°°(€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€¤(€€€€€€€€€€€€¹½É±Í”¡™…±Í”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸ÍÕÁÁ½ÉÑÍ=‰Í•ÉÙ• (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½ÌÁ½Í¥Ñ¥½¸°(€€€€€€€É¥‘A½ÌÍÑ…ÉÐ(€€€€¤ì(€€€€€€€É•ÑÕÉ¸Í¹…ÁÍ¡½Ð¹Ù½á•±Ð¡Á½Í¥Ñ¥½¸¤(€€€€€€€€€€€€¹µ…À¡Ù½á•°€´øÁ½Í¥Ñ¥½¸¹•ÅÕ…±Ì¡ÍÑ…ÉÐ¹‰•±½Ü ¤¤(€€€€€€€€€€€€€€€€ü9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹ÍÕÁÁ½ÉÑÍÕÉÉ•¹Ñ	½‘ä (€€€€€€€€€€€€€€€€€€€€€€€Ù½á•°°(€€€€€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€è9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¥ÍÉ•Í¡MÑ…¹‘¥¹MÕÁÁ½ÉÐ (€€€€€€€€€€€€€€€€€€€€€€€Ù½á•°°(€€€€€€€€€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€¤¤(€€€€€€€€€€€€¹½É±Í”¡™…±Í”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‘½Õ‰±”µ…á…¹•È (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€M•ÐñÉ¥‘A½ÌøÁ½Í¥Ñ¥½¹Ì(€€€€¤ì(€€€€€€€‘½Õ‰±”‘…¹•È€ô€À¸Àì(€€€€€€€™½È€¡É¥‘A½ÌÁ½Í¥Ñ¥½¸€èÁ½Í¥Ñ¥½¹Ì¤ì(€€€€€€€€€€€‘…¹•È€ô5…Ñ ¹µ…à (€€€€€€€€€€€€€€€‘…¹•È°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹Ù½á•±Ð¡Á½Í¥Ñ¥½¸¤(€€€€€€€€€€€€€€€€€€€€¹µ…À¡=‰Í•ÉÙ•‘Y½á•°èé•™™•Ñ¥Ù•…¹•È¤(€€€€€€€€€€€€€€€€€€€€¹½É±Í” Ä¸À¤(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸‘…¹•Èì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‘½Õ‰±”¡•ÕÉ¥ÍÑ¥Œ¡É¥‘A½ÌÁ½Í¥Ñ¥½¸°É¥‘A½Ì½…°¤ì(€€€€€€€É•ÑÕÉ¸Á½Í¥Ñ¥½¸¹µ…¹¡…ÑÑ…¹¥ÍÑ…¹”¡½…°¤€¨€À¸àì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‘½Õ‰±”ÍÅÕ…É•‘Q…É•Ñ¥ÍÑ…¹” (€€€€€€€™¥¹…°É¥‘A½ÌÁ½Í¥Ñ¥½¸°(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ð(€€€€¤ì(€€€€€€€™¥¹…°‘½Õ‰±”‘•±Ñ…`€ôÁ½Í¥Ñ¥½¸¹à ¤€¬€À¸Ô€´Ñ…É•Ð¹à ¤ì(€€€€€€€™¥¹…°‘½Õ‰±”‘•±Ñ…d€ôÁ½Í¥Ñ¥½¸¹ä ¤€´Ñ…É•Ð¹ä ¤ì(€€€€€€€™¥¹…°‘½Õ‰±”‘•±Ñ…h€ôÁ½Í¥Ñ¥½¸¹è ¤€¬€À¸Ô€´Ñ…É•Ð¹è ¤ì(€€€€€€€É•ÑÕÉ¸‘•±Ñ…`€¨‘•±Ñ…`€¬‘•±Ñ…d€¨‘•±Ñ…d€¬‘•±Ñ…h€¨‘•±Ñ…hì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‘½Õ‰±”¡•ÕÉ¥ÍÑ¥Œ (€€€€€€€É¥‘A½ÌÁ½Í¥Ñ¥½¸°(€€€€€€€½…±	½Õ¹‘Ì½…±Ì(€€€€¤ì(€€€€€€€É•ÑÕÉ¸€ (€€€€€€€€€€€‘¥ÍÑ…¹•=ÕÑÍ¥‘”¡Á½Í¥Ñ¥½¸¹à ¤°½…±Ì¹µ¥¹¥µÕµ` ¤°½…±Ì¹µ…á¥µÕµ` ¤¤(€€€€€€€€€€€€€€€€¬‘¥ÍÑ…¹•=ÕÑÍ¥‘” (€€€€€€€€€€€€€€€€€€€Á½Í¥Ñ¥½¸¹ä ¤°(€€€€€€€€€€€€€€€€€€€½…±Ì¹µ¥¹¥µÕµd ¤°(€€€€€€€€€€€€€€€€€€€½…±Ì¹µ…á¥µÕµd ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¬‘¥ÍÑ…¹•=ÕÑÍ¥‘” (€€€€€€€€€€€€€€€€€€€Á½Í¥Ñ¥½¸¹è ¤°(€€€€€€€€€€€€€€€€€€€½…±Ì¹µ¥¹¥µÕµh ¤°(€€€€€€€€€€€€€€€€€€€½…±Ì¹µ…á¥µÕµh ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤€¨€À¸àì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ±½¹œ‘¥ÍÑ…¹•=ÕÑÍ¥‘” (€€€€€€€™¥¹…°¥¹Ð½½É‘¥¹…Ñ”°(€€€€€€€™¥¹…°¥¹Ðµ¥¹¥µÕ´°(€€€€€€€™¥¹…°¥¹Ðµ…á¥µÕ´(€€€€¤ì(€€€€€€€¥˜€¡½½É‘¥¹…Ñ”€ðµ¥¹¥µÕ´¤ì(€€€€€€€€€€€É•ÑÕÉ¸€¡±½¹œ¤µ¥¹¥µÕ´€´½½É‘¥¹…Ñ”ì(€€€€€€€ô(€€€€€€€¥˜€¡½½É‘¥¹…Ñ”€øµ…á¥µÕ´¤ì(€€€€€€€€€€€É•ÑÕÉ¸€¡±½¹œ¤½½É‘¥¹…Ñ”€´µ…á¥µÕ´ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸€Á0ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¥¹Í¥‘•ÉÉ¥Ù…±I•¥½¸ (€€€€€€€É¥‘A½Ì…¹‘¥‘…Ñ”°(€€€€€€€A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ð°(€€€€€€€‘½Õ‰±”…ÉÉ¥Ù…±I…‘¥ÕÌ(€€€€¤ì(€€€€€€€™¥¹…°‘½Õ‰±”‘•±Ñ…`€ô…¹‘¥‘…Ñ”¹à ¤€¬€À¸Ô€´Ñ…É•Ð¹à ¤ì(€€€€€€€™¥¹…°‘½Õ‰±”‘•±Ñ…d€ô…¹‘¥‘…Ñ”¹ä ¤€´Ñ…É•Ð¹ä ¤ì(€€€€€€€™¥¹…°‘½Õ‰±”‘•±Ñ…h€ô…¹‘¥‘…Ñ”¹è ¤€¬€À¸Ô€´Ñ…É•Ð¹è ¤ì(€€€€€€€É•ÑÕÉ¸‘•±Ñ…`€¨‘•±Ñ…`€¬‘•±Ñ…d€¨‘•±Ñ…d€¬‘•±Ñ…h€¨‘•±Ñ…h(€€€€€€€€€€€€ðô…ÉÉ¥Ù…±I…‘¥ÕÌ€¨…ÉÉ¥Ù…±I…‘¥ÕÌ€¬AM%1=8ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¥ÍY…±¥‘½…° (€€€€€€€1½…±9…ÙM¹…ÁÍ¡½ÐÍ¹…ÁÍ¡½Ð°(€€€€€€€É¥‘A½Ì…ÑÕ…±MÑ…ÉÐ°(€€€€€€€É¥‘A½Ì…¹‘¥‘…Ñ”°(€€€€€€€‰½½±•…¸ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€¤ì(€€€€€€€¥˜€¡…¹‘¥‘…Ñ”¹•ÅÕ…±Ì¡…ÑÕ…±MÑ…ÉÐ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸¥ÍY…±¥‘MÑ…ÉÐ (€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð°(€€€€€€€€€€€€€€€…ÑÕ…±MÑ…ÉÐ°(€€€€€€€€€€€€€€€ÕÉÉ•¹Ñ	½‘å=¹É½Õ¹(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ=‰Í•ÉÙ•‘Y½á•°ø™••Ð€ô(€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹Ù½á•±Ð¡…¹‘¥‘…Ñ”¤ì(€€€€€€€¥˜€¡™••Ð¹¥ÍµÁÑä ¤(€€€€€€€€€€€ñð€…9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¡…ÍÉ•Í¡QÉ…Ù•ÉÍ…±±•…É…¹” (€€€€€€€€€€€€€€€™••Ð¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤(€€€€€€€€€€€ñð€…¥ÍA…ÍÍ…‰±•=‰Í•ÉÙ•¡Í¹…ÁÍ¡½Ð°…¹‘¥‘…Ñ”¹…‰½Ù” ¤¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì(€€€€€€€ô(€€€€€€€¥˜€¡™••Ð¹½É±Í•Q¡É½Ü ¤¹­¥¹ ¤¹¥Í1¥ÅÕ¥ ¤(€€€€€€€€€€€ñð™••Ð¹½É±Í•Q¡É½Ü ¤¹­¥¹ ¤¹¥Í±¥µ‰…‰±” ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Í¹…ÁÍ¡½Ð¹Ù½á•±Ð¡…¹‘¥‘…Ñ”¹‰•±½Ü ¤¤(€€€€€€€€€€€€¹µ…À¡Ù½á•°€´ø9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¥ÍÉ•Í¡MÑ…¹‘¥¹MÕÁÁ½ÉÐ (€€€€€€€€€€€€€€€Ù½á•°°(€€€€€€€€€€€€€€€Í¹…ÁÍ¡½Ð¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€¤¤(€€€€€€€€€€€€¹½É±Í”¡™…±Í”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¥¹Ð™±½½É½½É‘¥¹…Ñ”¡‘½Õ‰±”½½É‘¥¹…Ñ”¤ì(€€€€€€€™¥¹…°‘½Õ‰±”™±½½È€ô5…Ñ ¹™±½½È¡½½É‘¥¹…Ñ”¤ì(€€€€€€€¥˜€¡™±½½È€ð%¹Ñ••È¹5%9}Y1Uñð™±½½È€ø%¹Ñ••È¹5a}Y1U¤ì(€€€€€€€€€€€Ñ¡É½Ü¹•Ü%±±•…±ÉÕµ•¹Ñá•ÁÑ¥½¸ (€€€€€€€€€€€€€€€€‰Q…É•Ð½½É‘¥¹…Ñ”¥Ì½ÕÑÍ¥‘”É¥‰½Õ¹‘Ìˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸€¡¥¹Ð¤™±½½Èì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ1½…±I½ÕÑ”É•½¹ÍÑÉÕÐ (€€€€€€€É¥‘A½ÌÍÑ…ÉÐ°(€€€€€€€É¥‘A½Ì½…°°(€€€€€€€‘½Õ‰±”Ñ½Ñ…±½ÍÐ°(€€€€€€€¥¹Ð•áÁ…¹‘•°(€€€€€€€±½¹œÉ•Ù¥Í¥½¸°(€€€€€€€5…ÀñÉ¥‘A½Ì°AÉ•Ù¥½ÕÍMÑ•ÀøÁÉ•Ù¥½ÕÌ(€€€€¤ì(€€€€€€€™¥¹…°•ÅÕ”ñ1½…±MÑ•ÀøÍÑ•ÁÌ€ô¹•ÜÉÉ…å•ÅÕ”ðø ¤ì(€€€€€€€É¥‘A½ÌÕÉÍ½È€ô½…°ì(€€€€€€€Ý¡¥±”€ …ÕÉÍ½È¹•ÅÕ…±Ì¡ÍÑ…ÉÐ¤¤ì(€€€€€€€€€€€™¥¹…°AÉ•Ù¥½ÕÍMÑ•ÀÁÉ•‘••ÍÍ½È€ôÁÉ•Ù¥½ÕÌ¹•Ð¡ÕÉÍ½È¤ì(€€€€€€€€€€€¥˜€¡ÁÉ•‘••ÍÍ½È€ôô¹Õ±°¤ì(€€€€€€€€€€€€€€€Ñ¡É½Ü¹•Ü%±±•…±MÑ…Ñ•á•ÁÑ¥½¸ ‰¨ÁÉ•‘••ÍÍ½È¡…¥¸¥Ì¥¹½µÁ±•Ñ”ˆ¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€™¥¹…°QÉ…¹Í¥Ñ¥½¸ÑÉ…¹Í¥Ñ¥½¸€ôÁÉ•‘••ÍÍ½È¹ÑÉ…¹Í¥Ñ¥½¸ ¤ì(€€€€€€€€€€€ÍÑ•ÁÌ¹…‘‘¥ÉÍÐ¡¹•Ü1½…±MÑ•À (€€€€€€€€€€€€€€€ÁÉ•‘••ÍÍ½È¹Á½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€ÕÉÍ½È°(€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹ÁÉ¥µ¥Ñ¥Ù” ¤°(€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹½ÍÐ ¤°(€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹‘…¹•È ¤°(€€€€€€€€€€€€€€€É•Ù¥Í¥½¸°(€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¹‘•Á•¹‘•¹¥•Ì ¤(€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€ÕÉÍ½È€ôÁÉ•‘••ÍÍ½È¹Á½Í¥Ñ¥½¸ ¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸¹•Ü1½…±I½ÕÑ” (€€€€€€€€€€€1½…±I½ÕÑ•MÑ…ÑÕÌ¹=U9°(€€€€€€€€€€€ÍÑ…ÉÐ°(€€€€€€€€€€€½…°°(€€€€€€€€€€€½…°°(€€€€€€€€€€€1¥ÍÐ¹½Áå=˜¡ÍÑ•ÁÌ¤°(€€€€€€€€€€€Ñ½Ñ…±½ÍÐ°(€€€€€€€€€€€•áÁ…¹‘•°(€€€€€€€€€€€É•Ù¥Í¥½¸(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”É•½ÉM•…É¡9½‘” (€€€€€€€É¥‘A½ÌÁ½Í¥Ñ¥½¸°(€€€€€€€‘½Õ‰±”½ÍÑÉ½µMÑ…ÉÐ°(€€€€€€€‘½Õ‰±”¡•ÕÉ¥ÍÑ¥Œ°(€€€€€€€±½¹œÍ•ÅÕ•¹”(€€€€¤ì(€€€€€€€‘½Õ‰±”•ÍÑ¥µ…Ñ•‘Q½Ñ…±½ÍÐ ¤ì(€€€€€€€€€€€É•ÑÕÉ¸½ÍÑÉ½µMÑ…ÉÐ€¬¡•ÕÉ¥ÍÑ¥Œì(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”É•½ÉAÉ•Ù¥½ÕÍMÑ•À¡É¥‘A½ÌÁ½Í¥Ñ¥½¸°QÉ…¹Í¥Ñ¥½¸ÑÉ…¹Í¥Ñ¥½¸¤ì(€€€ô((€€€€¼¨¨(€€€€€¨½¹ÍÑ…¹ÐµÑ¥µ”…‘µ¥ÍÍ¥‰±”±½Ý•È‰½Õ¹™½È„Á½ÍÍ¥‰±ä±…É”½…°Í•Ð¸(€€€€€¨Q¡”‰½àµ…ä½¹Ñ…¥¸•±±ÌÑ¡…Ð…É”¹½Ð½…±Ì°Ý¡¥ ½¹±äµ…­•ÌÑ¡”(€€€€€¨¡•ÕÉ¥ÍÑ¥Œµ½É”½¹Í•ÉÙ…Ñ¥Ù”ì¥Ð¹•Ù•È½Ù•É•ÍÑ¥µ…Ñ•ÌÉ½ÕÑ”½ÍÐ¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”É•½É½…±	½Õ¹‘Ì (€€€€€€€¥¹Ðµ¥¹¥µÕµ`°(€€€€€€€¥¹Ðµ…á¥µÕµ`°(€€€€€€€¥¹Ðµ¥¹¥µÕµd°(€€€€€€€¥¹Ðµ…á¥µÕµd°(€€€€€€€¥¹Ðµ¥¹¥µÕµh°(€€€€€€€¥¹Ðµ…á¥µÕµh(€€€€¤ì(€€€€€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ½…±	½Õ¹‘Ì½˜¡™¥¹…°M•ÐñÉ¥‘A½Ìø½…±Ì¤ì(€€€€€€€€€€€¥˜€¡½…±Ì¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€€€€€Ñ¡É½Ü¹•Ü%±±•…±ÉÕµ•¹Ñá•ÁÑ¥½¸ (€€€€€€€€€€€€€€€€€€€€‰½…°‰½Õ¹‘ÌÉ•ÅÕ¥É”…Ð±•…ÍÐ½¹”½…°ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥¹Ðµ¥¹¥µÕµ`€ô%¹Ñ••È¹5a}Y1Uì(€€€€€€€€€€€¥¹Ðµ…á¥µÕµ`€ô%¹Ñ••È¹5%9}Y1Uì(€€€€€€€€€€€¥¹Ðµ¥¹¥µÕµd€ô%¹Ñ••È¹5a}Y1Uì(€€€€€€€€€€€¥¹Ðµ…á¥µÕµd€ô%¹Ñ••È¹5%9}Y1Uì(€€€€€€€€€€€¥¹Ðµ¥¹¥µÕµh€ô%¹Ñ••È¹5a}Y1Uì(€€€€€€€€€€€¥¹Ðµ…á¥µÕµh€ô%¹Ñ••È¹5%9}Y1Uì(€€€€€€€€€€€™½È€¡É¥‘A½Ì½…°€è½…±Ì¤ì(€€€€€€€€€€€€€€€µ¥¹¥µÕµ`€ô5…Ñ ¹µ¥¸¡µ¥¹¥µÕµ`°½…°¹à ¤¤ì(€€€€€€€€€€€€€€€µ…á¥µÕµ`€ô5…Ñ ¹µ…à¡µ…á¥µÕµ`°½…°¹à ¤¤ì(€€€€€€€€€€€€€€€µ¥¹¥µÕµd€ô5…Ñ ¹µ¥¸¡µ¥¹¥µÕµd°½…°¹ä ¤¤ì(€€€€€€€€€€€€€€€µ…á¥µÕµd€ô5…Ñ ¹µ…à¡µ…á¥µÕµd°½…°¹ä ¤¤ì(€€€€€€€€€€€€€€€µ¥¹¥µÕµh€ô5…Ñ ¹µ¥¸¡µ¥¹¥µÕµh°½…°¹è ¤¤ì(€€€€€€€€€€€€€€€µ…á¥µÕµh€ô5…Ñ ¹µ…à¡µ…á¥µÕµh°½…°¹è ¤¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸¹•Ü½…±	½Õ¹‘Ì (€€€€€€€€€€€€€€€µ¥¹¥µÕµ`°(€€€€€€€€€€€€€€€µ…á¥µÕµ`°(€€€€€€€€€€€€€€€µ¥¹¥µÕµd°(€€€€€€€€€€€€€€€µ…á¥µÕµd°(€€€€€€€€€€€€€€€µ¥¹¥µÕµh°(€€€€€€€€€€€€€€€µ…á¥µÕµh(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”É•½ÉQÉ…¹Í¥Ñ¥½¸ (€€€€€€€É¥‘A½Ì‘•ÍÑ¥¹…Ñ¥½¸°(€€€€€€€5½Ù•µ•¹ÑAÉ¥µ¥Ñ¥Ù”ÁÉ¥µ¥Ñ¥Ù”°(€€€€€€€‘½Õ‰±”½ÍÐ°(€€€€€€€‘½Õ‰±”‘…¹•È°(€€€€€€€±½¹œÉ•Ù¥Í¥½¸°(€€€€€€€M•ÐñÉ¥‘A½Ìø‘•Á•¹‘•¹¥•Ì(€€€€¤ì(€€€ô)ô

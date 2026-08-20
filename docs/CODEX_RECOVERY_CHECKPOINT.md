@@ -34,8 +34,10 @@ This section supersedes older chronological notes below when they conflict.
   be rejected at the exact completion boundary. The regression is covered by
   the observation-provider source contract and the 25-field route-snapshot
   test.
-- The current source/test fix is uncommitted in the working tree and must be
-  published only after the exact local build and fresh-clone verification.
+- The source/test fix is published on public `main` through Git Data commit
+  `62a6666b11585297c9942e2b2e44b45ec0ce95ab` with tree
+  `0ea66d14ec68123126c6e6481f265c5a16aaf550`. A fresh clone matched the local
+  tree and key production blobs, and Forge 65.1.1 `compileJava` passed.
 
 - The fair natural-End ingress gate now passes on both Forge 65.1.1 and
   Forge 65.0.0 in fresh isolated GameTest server directories. The gate uses a
@@ -60,12 +62,12 @@ This section supersedes older chronological notes below when they conflict.
   passed after the ingress, rally-evidence, loadout, and planner-guide
   changes. The release JAR is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `7e71a3212cc5bc65e5f9b90aae62da4682456db8024a7844c515c4d64beb63f0`.
-- The exact local `6d295f6` tree is now published on public `main` through
-  Git Data commit `fd0e492d53ca4bfdf8f41cd5c511f3e256ebe756` with tree
-  `1d1c0d6116d0a54e7d939e49035386c3ea2b2b1f`. A fresh public clone verified
-  the same tree, the two previously truncated emergency-survival files, the
-  natural ingress source, and `compileJava` on Forge 65.1.1. The repository
+  `14616a253a5765eb4355c87243f2b1525aae769990fc4cae80082e1accea66b7`.
+- The exact current local tree is published on public `main` through Git Data
+  commit `62a6666b11585297c9942e2b2e44b45ec0ce95ab` with tree
+  `0ea66d14ec68123126c6e6481f265c5a16aaf550`. A fresh public clone verified
+  the same tree, the previously truncated emergency-survival files, the new
+  epoch/projection fixes, and `compileJava` on Forge 65.1.1. The repository
   remains `NON_RELEASE` because dynamic-dragon and formal M1--M4 gates are
   not complete.
 - The natural End selector was extended with a strict dynamic-presence slice.

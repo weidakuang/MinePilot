@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-20T14:04:00Z",
+  "updatedAtUtc": "2026-08-20T14:10:00Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -365,7 +365,7 @@
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, and Forge compatibility validation after the focused End safety changes. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "7e71a3212cc5bc65e5f9b90aae62da4682456db8024a7844c515c4d64beb63f0",
+      "sha256": "14616a253a5765eb4355c87243f2b1525aae769990fc4cae80082e1accea66b7",
       "formalGate": "NOT_RUN"
     }
   },

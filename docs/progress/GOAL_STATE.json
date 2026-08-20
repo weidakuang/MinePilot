@@ -354,6 +354,13 @@
       "fixtureConstraint": "Presence and vanilla motion only. This does not prove that fight_ender_dragon can kill a dynamic manager-owned dragon, destroy natural crystals, survive breath/void hazards, complete the return portal, or satisfy random Hardcore/two-hour/M2-M4 gates.",
       "formalGate": "NOT_RUN"
     },
+    "naturalEndIngressLatestRerun": {
+      "status": "PASS_FORGE_65.1.1",
+      "details": "A fresh isolated zero-human run of mcai_companion:natural_end_island_ingress completed in 2.518 minutes after the observed wall/ceiling recovery changes. The body crossed a real vanilla End portal, used ordinary fair-frame mining and movement, and reached natural End-stone support inside the arena-ready radius.",
+      "tests": "runGameTestServer -Pforge_compile_version=65.1.1 -Ptest_selector=mcai_companion:natural_end_island_ingress -Pgametest_working_dir=/private/tmp/mcai-end-ingress-current.CKtNcl passed with All 1 required tests passed.",
+      "fixtureConstraint": "Physical ingress and manager-presence evidence only. It does not prove dynamic dragon combat, random Hardcore completion, speedrun timing, rendered-client behavior, or formal M1-M4 gates.",
+      "formalGate": "NOT_RUN"
+    },
     "dynamicDragonObservedRally": {
       "status": "IMPLEMENTED_FOCUSED_TEST_ONLY",
       "details": "After an empty sky sweep, fight_ender_dragon can choose a fresh low-danger standing cell from the current first-person navigation frame, keep it inside the verified End radius, and require ordinary TravelTo preconditions before moving. A completed rally leg becomes the next bounded search anchor.",

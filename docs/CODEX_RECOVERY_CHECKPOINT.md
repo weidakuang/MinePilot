@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-20T23:19:00+09:00
+Last updated: 2026-08-20T23:28:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -49,6 +49,13 @@ This section supersedes older chronological notes below when they conflict.
   support/radius handoff in both runs. One seed had a continuous route and did
   not need a bridge, so the fixture accepts zero block placement only when no
   gap is encountered; a gap still requires ordinary owned block use.
+- A fresh Forge 65.1.1 rerun of
+  `mcai_companion:natural_end_island_ingress` also passed after the observed
+  wall/ceiling recovery changes. It completed in 2.518 minutes from the
+  isolated directory `/private/tmp/mcai-end-ingress-current.CKtNcl`, with
+  `All 1 required tests passed`. This remains physical ingress and
+  dynamic-presence evidence only; it is not a dragon-combat, random-seed,
+  Hardcore, speedrun, or rendered-client result.
 - The ingress budget was raised from 16/32 to a bounded 128 observed-block
   mining allowance after real natural terrain showed a continuous End-stone
   wall from the entry platform toward the central island. This remains an

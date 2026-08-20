@@ -77,6 +77,12 @@ or speedrun claim.
   with identical Overworld/Nether section coordinates. It verifies that the
   headless player's ordinary destination simulation window ticks an outlying
   entity and scheduled block update, then retires the old dimension window.
+- A fresh Forge 65.1.1 `natural_end_island_ingress` run passed in 2.518
+  minutes from a real vanilla End portal with zero human players. The body
+  handled the natural entry wall/ceiling using observed mining and movement,
+  then reached natural End-stone support inside the arena-ready radius. This
+  is physical ingress/presence evidence only; dynamic combat and formal gates
+  remain unverified.
 - Stronghold portal-room search and activation now have fair first-person
   diagnostics, bounded interior confidence, dead-end backtracking, and a
   regression guard against walking without observed support. The live entry

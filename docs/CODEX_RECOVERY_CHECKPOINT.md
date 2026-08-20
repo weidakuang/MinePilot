@@ -48,6 +48,12 @@ This section supersedes older chronological notes below when they conflict.
   natural ingress source, and `compileJava` on Forge 65.1.1. The repository
   remains `NON_RELEASE` because dynamic-dragon and formal M1--M4 gates are
   not complete.
+- The natural End selector was extended with a strict dynamic-presence slice.
+  A fresh Forge 65.1.1 zero-human run observed the vanilla manager dragon with
+  `isNoAi=false`, a real displacement of 104.5 blocks in that run, and a
+  recorded vanilla phase; the selector passed. This verifies only manager
+  presence/motion. It does not claim dynamic dragon combat, crystal clearing,
+  survival, return, random Hardcore, or two-hour completion.
 
 - Root causes closed in the current worktree: the vanilla End fight bootstrap
   could retire a test dragon created before its legacy scan settled; a

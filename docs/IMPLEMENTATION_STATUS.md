@@ -87,6 +87,18 @@ or speedrun claim.
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
   `5200153a20aa291425fcbe0a0f2d11a3c1e2e0157560b474bae22d62cfd78b35`.
 
+### Natural dynamic-dragon presence slice
+
+- A fresh zero-human Forge 65.1.1 run now crosses the vanilla End portal,
+  reaches the fair natural-island handoff, and observes the real
+  `EnderDragonFight` manager's live dragon with `isNoAi=false` and more than
+  two blocks of actual displacement. The selector completed with `All 1
+  required tests passed`.
+- This is deliberately a presence/motion gate, not a combat victory claim.
+  The dynamic dragon was never spawned, repositioned, frozen, damaged, or
+  mutated by the fixture. Natural crystals, breath, void safety, dragon
+  damage, and return-portal completion remain unverified.
+
 ### Live MiMo result (latest)
 
 The latest authorized `mimo-v2.5` focused test used the supplied provider URL

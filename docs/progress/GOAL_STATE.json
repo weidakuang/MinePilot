@@ -317,6 +317,13 @@
       "fixtureConstraint": "This is a natural-End ingress gate only. It does not prove a dynamic Ender Dragon fight, random Hardcore completion, speedrun timing, or rendered-client behavior.",
       "formalGate": "NOT_RUN"
     },
+    "naturalDynamicDragonPresence": {
+      "status": "PASS_FORGE_65.1.1",
+      "details": "The same fresh zero-human natural-End selector now waits for the vanilla EnderDragonFight manager after ingress and observes a live AI-enabled dragon with real displacement of at least two blocks over a bounded window. The test records the manager phase and never spawns, repositions, freezes, damages, or mutates the dragon.",
+      "tests": "runGameTestServer -Pforge_compile_version=65.1.1 -Ptest_selector=mcai_companion:natural_end_island_ingress -Pgametest_working_dir=<isolated> passed with All 1 required tests passed.",
+      "fixtureConstraint": "Presence and vanilla motion only. This does not prove that fight_ender_dragon can kill a dynamic manager-owned dragon, destroy natural crystals, survive breath/void hazards, complete the return portal, or satisfy random Hardcore/two-hour/M2-M4 gates.",
+      "formalGate": "NOT_RUN"
+    },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, and Forge compatibility validation after the focused End safety changes. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",

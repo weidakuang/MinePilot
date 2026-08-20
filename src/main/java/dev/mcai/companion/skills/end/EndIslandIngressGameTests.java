@@ -31,6 +31,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.stats.Stats;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
@@ -60,6 +61,8 @@ public final class EndIslandIngressGameTests {
     private static final int BODY_TIMEOUT_TICKS = 3_000;
     private static final int END_ENTRY_TIMEOUT_TICKS = 400;
     private static final int END_SETTLE_TIMEOUT_TICKS = 400;
+    private static final int DYNAMIC_DRAGON_TIMEOUT_TICKS = 1_200;
+    private static final int DYNAMIC_DRAGON_OBSERVATION_TICKS = 240;
     private static final int BRIDGE_BLOCKS = 64;
 
     private EndIslandIngressGameTests() {
@@ -181,6 +184,11 @@ public final class EndIslandIngressGameTests {
         private long stageStartedAt;
         private long ingressStartedAt = -1L;
         private long ingressStartObservationRevision = -1L;
+        private long dynamicDragonStartedAt = -1L;
+        private Vec3 dynamicDragonStartPosition;
+        private double dynamicDragonMaximumDisplacement;
+        private final java.util.Set<String> dynamicDragonPhases =
+                new java.util.LinkedHashSet<>();
         private int initialBlocks;
         private int initialBlockUseStat;
         private boolean cleaned;
@@ -337,6 +345,7 @@ public final class EndIslandIngressGameTests {
                 case ENTERING_END -> waitForEndEntry(body);
                 case SETTLING_END -> waitForStableEndFrame(body);
                 case RUNNING -> waitForIngress(body);
+                case VERIFYING_DYNAMIC_DRAGON -> verifyDynamicDragon(body);
                 case DONE -> {
                     // GameTest is already terminal.
                 }
@@ -495,8 +504,69 @@ public final class EndIslandIngressGameTests {
                         && helper.getTick() > ingressStartedAt,
                     "Ingress completed without a physical runtime interval"
             );
-            stage = Stage.DONE;
-            helper.succeed();
+            dynamicDragonStartedAt = helper.getTick();
+            dynamicDragonStartPosition = null;
+            dynamicDragonMaximumDisplacement = 0.0D;
+            dynamicDragonPhases.clear();
+            stage = Stage.VERIFYING_DYNAMIC_DRAGON;
+        }
+
+        /**
+         * Verify that the vanilla End fight owns a live, AI-enabled dragon
+         * after ingress. This is intentionally a presence/motion gate only;
+         * it does not spawn, reposition, freeze, damage, or otherwise mutate
+         * the manager dragon. Static/no-AI dragon fixtures are not accepted
+         * as evidence for this check.
+         */
+        private void verifyDynamicDragon(final ServerPlayer body) {
+            helper.assertTrue(
+                    body.level().dimension().equals(Level.END),
+                    "Dynamic End dragon gate lost the End dimension"
+            );
+            final ServerLevel end = (ServerLevel) body.level();
+            final var fight = end.getDragonFight();
+            final List<? extends EnderDragon> dragons = end.getDragons();
+            if (fight != null && !dragons.isEmpty()) {
+                for (final EnderDragon dragon : dragons) {
+                    helper.assertTrue(
+                            !dragon.isNoAi(),
+                            "Natural End fight exposed a frozen/no-AI dragon"
+                    );
+                    dynamicDragonPhases.add(
+                            dragon.getPhaseManager()
+                                    .getCurrentPhase()
+                                    .getPhase()
+                                    .toString()
+                    );
+                    if (dynamicDragonStartPosition == null) {
+                        dynamicDragonStartPosition = dragon.position();
+                    }
+                    dynamicDragonMaximumDisplacement = Math.max(
+                            dynamicDragonMaximumDisplacement,
+                            dynamicDragonStartPosition.distanceTo(
+                                    dragon.position()
+                            )
+                    );
+                }
+                if (helper.getTick() - dynamicDragonStartedAt
+                        >= DYNAMIC_DRAGON_OBSERVATION_TICKS
+                        && dynamicDragonMaximumDisplacement >= 2.0D
+                        && !dynamicDragonPhases.isEmpty()) {
+                    helper.succeed();
+                    stage = Stage.DONE;
+                    return;
+                }
+            }
+            helper.assertTrue(
+                    helper.getTick() - dynamicDragonStartedAt
+                            <= DYNAMIC_DRAGON_TIMEOUT_TICKS,
+                    "Natural End fight did not expose a moving AI-enabled "
+                        + "dragon: fight=" + fight
+                        + ", dragons=" + dragons.size()
+                        + ", displacement="
+                        + dynamicDragonMaximumDisplacement
+                        + ", phases=" + dynamicDragonPhases
+            );
         }
 
         private SkillSupervisor.Snapshot advanceSkill() {
@@ -622,6 +692,7 @@ public final class EndIslandIngressGameTests {
         ENTERING_END,
         SETTLING_END,
         RUNNING,
+        VERIFYING_DYNAMIC_DRAGON,
         DONE
     }
 

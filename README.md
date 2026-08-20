@@ -1,5 +1,141 @@
-˝KÆœz'Zˇ:k°¯•{πË≤Á!~)^¢∑b≠Á-¢ºø¢õÜâûn∑∞˝∏ß˝∫ﬁ¿åÅ5•πïA•±Ω–ÉäPÅ5•πïç…Öô–Å$ÅΩµ¡Öπ•Ω∏()5•πïA•±Ω–Å•ÃÅ—°îÅ¡’â±•åÅ…ï¡ΩÕ•—Ω…‰ÅπÖµî∏ÅQ°îÅ¡…Ωë’ç—•Ω∏ÅΩ…ùîÅµΩêÅ•êÅ•Ã)ÅµçÖ•}çΩµ¡Öπ•ΩπÄ∏()mUÕÖùîÅù’•ëït°ëΩçÃΩUMπµê§É
-‹ÅmA…Ω©ïç–Åç°Ö…—ï…t°ëΩçÃΩAI=)Q}!IQHπµê§É
-‹)mΩπ—…•â’—•Ω∏Å…’±ïÕt°=9QI%	UQ%9πµê§É
-‹ÅmMïç’…•—‰Å¡Ω±•çÂt°MUI%Qdπµê§É
-‹)m%µ¡±ïµïπ—Ö—•Ω∏ÅÕ—Ö—’Õt°ëΩçÃΩ%5A159QQ%=9}MQQULπµê§()5•πïA•±Ω–ÅÖëëÃÅÑÅŸ•Õ•â±î∞ÅÖççΩ’π–µô…ïîÅ$Å—ïÖµµÖ—îÅ—ºÅ5•πïç…Öô–Å)ÖŸÑÄ»ÿ∏»ÅΩ∏)Ω…ùîÄÿ‘π‡∏Å%–Å’ÕïÃÅΩπîÅÖ’—°Ω…•—Ö—•ŸîÅŸÖπ•±±ÑÅÅMï…Ÿï…A±ÖÂï…Ä∞ÅπΩ…µÖ∞ÅÕï…Ÿï»)…’±ïÃ∞ÅÖπêÅÑÅÕ•πù±îÅ°•ù†µ±ïŸï∞Å±Öπù’ÖùîÅµΩëï∞∏Å%–ÅëΩïÃÅπΩ–Å…’∏ÅÑÅÕïçΩπêÅùÖµî)ç±•ïπ–∞Å’ÕîÅÑÅ5•ç…ΩÕΩô–ÅÖççΩ’π–∞Å—ï±ï¡Ω…–∞Å…ïÖêÅ°•ëëï∏Åâ±Ωç≠Ã∞ÅΩ»Åù…Öπ–Åç°ïÖ–)Öâ•±•—•ïÃ∏((¯Ä®©’……ïπ–ÅÕ—Ö—’ÃËÅÄ¿∏ƒ∏ƒƒµëïÿµµå»ÿ∏…Ä∏®®ÅQ°îÅïµâΩë•ïêÅ¡±ÖÂï»∞ÅµΩëï∞ÅùÖ—ï›Ö‰∞(¯ÅôÖ•»Å¡ï…çï¡—•Ω∏∞ÅµïµΩ…‰∞ÅçΩπô•ù’…Ö—•Ω∏ÅÕç…ïï∏∞ÅÕ≠•∏ÅÕÂπç°…Ωπ•ÈÖ—•Ω∏∞ÅÖπê(¯ÅµÖπ‰ÅÖ—Ωµ•åÅÕ’…Ÿ•ŸÖ∞ÅÕ≠•±±ÃÅÖ…îÅ•µ¡±ïµïπ—ïê∏ÅQ°îÅ…ï±ïÖÕîÅ•ÃÅÕ—•±∞ÅÑ(¯ÅëïŸï±Ω¡µïπ–Åâ’•±êËÅ—°îÄ»–µ°Ω’»ÅÕ—Öâ•±•—‰ÅùÖ—î∞Å’πÕïï∏Å…ÖπëΩ¥Å!Ö…ëçΩ…î(¯ÅçΩµ¡±ï—•Ω∏ÅùÖ—ïÃ∞Å…ïπëï…ïêµç±•ïπ–ÅùÖ—î∞ÅÖπêÅ4√äM4–Å¡…Ωë’ç–ÅùÖ—ïÃÅÖ…îÅπΩ–(¯ÅçΩµ¡±ï—î∏ÅºÅπΩ–ÅµÖ…≠ï–Å—°•ÃÅâ’•±êÅÖÃÅÑÅ—›ºµ°Ω’»ÅÕ¡ïïë…’∏Å¡…Ωë’ç–ÅΩ»ÅÖÃÅÑ(¯Å¡…ΩôïÕÕ•ΩπÖ∞ÅçΩµ¡Öπ•Ω∏∏((ååÅ]°Ö–Å•ÃÅ•µ¡±ïµïπ—ïê((¥ÅÅ¡ï…Õ•Õ—ïπ–ÅÅMï…Ÿï…A±ÖÂï…ÄÅâΩë‰Å›•—†ÅÑÅÕ—Öâ±îÅUU%∞ÅŸÖπ•±±ÑÅ•πŸïπ—Ω…‰∞(ÄÅ°ÖπëÃ∞ÅÖ…µΩ»∞Å°ïÖ±—†∞Å°’πùï»∞Åï·¡ï…•ïπçî∞Åïôôïç—Ã∞ÅÕ—Ö—•Õ—•çÃ∞Åïπëï»Åç°ïÕ–∞(ÄÅëïÖ—†∞Å…ïÕ¡Ö›∏∞Åë•µïπÕ•Ω∏∞ÅÖπêÅÕÖŸîÅâï°ÖŸ•Ω»∏(¥ÅÅ°ïÖë±ïÕÃÅçΩππïç—•Ω∏Å¡’µ¿Å—°Ö–ÅôΩ±±Ω›ÃÅ—°îÅπΩ…µÖ∞Å¡±ÖÂï»µ±•Õ–Å±•ôïçÂç±îÅÖπê(ÄÅ°Öπë±ïÃÅ≠ïï¡Ö±•Ÿî∞Å—ï±ï¡Ω…–ÅçΩπô•…µÖ—•Ω∏∞Å¡Öç≠ï–Åë…Ö•π•πú∞Å±Ωù•∏∞ÅÖπê(ÄÅ…ïµΩŸÖ∞Å›•—°Ω’–ÅÑÅç±•ïπ–ÅÖççΩ’π–∏(¥ÅYÖπ•±±ÑÅµ•π•πú∞Å¡±Öçïµïπ–∞Å•—ï¥Å’Õî∞ÅÖ——Öç≠Ã∞Åï≈’•¡µïπ–∞Åç…Öô—•πú∞Åµïπ’Ã∞(ÄÅçΩΩ±ëΩ›πÃ∞Åë’…Öâ•±•—‰∞Åë…Ω¡Ã∞ÅÖπêÅÕ—Ö—•Õ—•çÃ∏ÅM≠•±±ÃÅçÖππΩ–Åë•…ïç—±‰Å›…•—î(ÄÅÑÅ›Ω…±êÅ…ïÕ’±–ÅΩ»Åç…ïÖ—îÅÖ∏Å•—ï¥∏(¥ÅÅ)ÖŸÑÄ»‘ÅÕ•πù±îµµΩëï∞ÅùÖ—ï›Ö‰ÅôΩ»ÅIïÕ¡ΩπÕïÃÅÖπêÅ=¡ïπ$µçΩµ¡Ö—•â±îÅ°Ö–(ÄÅΩµ¡±ï—•ΩπÃ∞Å›•—†ÅÕ—…’ç—’…ïêµΩ’—¡’–ÅôÖ±±âÖç≠Ã∞ÅÕ•πù±îµô±•ù°–Å…ï≈’ïÕ—Ã∞(ÄÅ—•µïΩ’—Ã∞ÅçÖπçï±±Ö—•Ω∏∞Å…ïŸ•Õ•Ω∏Åç°ïç≠Ã∞ÅÖπêÅ…ïëÖç—ïêÅï……Ω…Ã∏(¥ÅQ›ïπ—‰µQALÅ±ΩçÖ∞ÅµΩŸïµïπ–∞ÅÕ°•ï±ë•πú∞ÅôΩΩê∞Å…ï—…ïÖ–∞ÅôÖ±∞∞Å›Ö—ï»µç±’—ç†∞(ÄÅ¡Ö…≠Ω’»∞ÅÖπêÅïµï…ùïπç‰µÕ’…Ÿ•ŸÖ∞Å…ïÖç—•ΩπÃÅ›°•±îÅ—°îÅµΩëï∞Å•ÃÅ—°•π≠•πú∏(¥Å•…Õ–µ¡ï…ÕΩ∏ÅÕïµÖπ—•åÅ¡ï…çï¡—•Ω∏Å›•—†Åë•Õ—Öπçî∞Åô•ï±êµΩòµŸ•ï‹∞ÅΩçç±’Õ•Ω∏∞(ÄÅ¡…ΩŸïπÖπçî∞ÅÕÖµ¡±îÅÕï≈’ïπçî∞ÅÖπêÅ›Ω…±êΩùΩÖ∞Å…ïŸ•Õ•Ω∏Åç°ïç≠Ã∏ÅMç…ïïπÕ°Ω—ÃÅÖ…î(ÄÅ—ÖÕ¨µ—…•ùùï…ïêÅÖπêÅπïŸï»ÅÑÅçΩπ—•π’Ω’ÃÅŸ•ëïºÅ’¡±ΩÖê∏(¥ÅME1•—îÅ]0ÅµïµΩ…‰Å›•—†ÅïŸïπ–ÅÖπêÅ—ÖÕ¨Åç°ïç≠¡Ω•π—Ã∞ÅQL‘ÅπÖµîÅÕïÖ…ç†∞ÅH©Q…ïî(ÄÅÕ¡Ö—•Ö∞ÅÕïÖ…ç†∞Å›ÖÂ¡Ω•π—Ã∞ÅÖÕÕï—Ã∞ÅÖπêÅŸï…•ô•ïêÅ¡Ω…—Ö∞ÅïëùïÃ∏(¥ÅM—…’ç—’…ïêÅaÖï…ºÅÕ°Ö…ïêµ›ÖÂ¡Ω•π–Å•π¡’–∏ÅQ°îÅçΩµ¡Öπ•Ω∏Å›Ö±≠Ã∞ÅÕÖ•±Ã∞Å…•ëïÃ∞(ÄÅΩ»Å’ÕïÃÅŸï…•ô•ïêÅ¡Ω…—Ö±ÃÏÅ•–ÅπïŸï»Å…ïÖëÃÅ…ÖëÖ»ΩçÖŸîÅµÖ¡ÃÅΩ»Å—ï±ï¡Ω…—Ã∏(¥Å1ΩΩ¡âÖç¨Å5@ÅÖ–ÅÄƒ»‹∏¿∏¿∏ƒË»‘‹ÿÿΩµç¡ÄÅ›•—†ÅâïÖ…ï»∞Å°ΩÕ–∞ÅΩ…•ù•∏∞ÅÖπêÅâΩë‰(ÄÅ±•µ•—Ã∏ÅQΩΩ±ÃÅÖ…îÅÅΩâÕï…ŸïÄ∞ÅÅÕï—}ùΩÖ±Ä∞ÅÅùΩÖ±}Õ—Ö—’ÕÄ∞ÅÅÕÖÂÄ∞(ÄÅÅçÖπçï±}ùΩÖ±Ä∞ÅÅÖëë}›ÖÂ¡Ω•π—Ä∞ÅÅùï—}Õç…ïïπÕ°Ω—Ä∞ÅÖπêÅÅùï—}Ö’ë•—}Õ’µµÖ…ÂÄ∏(¥ÅYÖπ•±±ÑµÕ—Â±îÅ¡Ö’Õîµµïπ‘ÅçΩπô•ù’…Ö—•Ω∏ËÅÖùïπ–ÅπÖµîÅŸÖ±•ëÖ—•Ω∏∞ÅçΩ±Ω»∞(ÄÅÄ¿∏√äLƒ∏¡ÄÅ—ïµ¡ï…Ö—’…î∞Å±ΩçÖ∞Äÿ”\ÿ–ÅÕ≠•∏Å•µ¡Ω…–∞ÅÖ…¥ÅµΩëï∞∞ÅA$Å≠ï‰∞ÅâÖÕî(ÄÅUI0∞ÅµΩëï∞ÅπÖµî∞ÅÕÂÕ—ï¥Å¡…ïôï…ïπçî∞ÅÖπêÅô•…Õ–µ…’∏Å—’—Ω…•Ö∞∏(¥Å—Ωµ•åÅÖπêÅçΩµ¡ΩÕ•—îÅÕ≠•±±ÃÅôΩ»ÅµΩŸïµïπ–∞ÅôΩ±±Ω‹∞ÅŸ•Õ•â±îÅ•—ï¥Å¡•ç≠’¿∞(ÄÅµ•π•πú∞Åç…Öô—•πú∞Åô’…πÖçîΩµïπ‘Å—…ÖπÕÖç—•ΩπÃ∞ÅÕ°ï±—ï»ÅçΩπÕ—…’ç—•Ω∏∞Åç…Ω¡Ã∞(ÄÅ¡Ω…—Ö∞ÅçÖÕ—•πú∞Å›Ö—ï»Åç±’—ç°•πú∞Å¡Ö…≠Ω’»∞Å…ÖπùïêÅçΩµâÖ–∞Åïµï…ùïπç‰ÅAY∞(ÄÅπêÅïπ—…‰∞ÅÖπêÅçΩπ—…Ω±±ïêÅë…ÖùΩ∏ÅçΩµâÖ–∏(+äq%µ¡±ïµïπ—ïìätÅµïÖπÃÅ—°Ö–ÅçΩëîÅÖπêÅâΩ’πëïêÅ—ïÕ—ÃÅï·•Õ–∏Å%–ÅëΩïÃÅπΩ–ÅµïÖ∏Å—°Ö–ÅÑ)πÖ—’…Ö∞Å…ÖπëΩ¥Å›Ω…±ê∞ÅÖ…â•—…Ö…‰ÅµΩë¡Öç¨∞ÅΩ»ÅïŸï…‰Å°•ù†µ±ïŸï∞Å…ï≈’ïÕ–Å°ÖÃÅâïï∏)ŸÖ±•ëÖ—ïê∏((ååÅΩµ¡Ö—•â•±•—‰((¥Å5•πïç…Öô–Å)ÖŸÑÄ»ÿ∏»∏(¥ÅΩ…ùîÄ®®ÿ‘∏¿∏¿Å•πç±’Õ•ŸîÅ—°…Ω’ù†Äÿÿ∏¿∏¿Åï·ç±’Õ•Ÿî®®∏ÅQ°îÅç’……ïπ–ÅÖ…—•ôÖç–Å•Ã(ÄÅÑÅΩ…ùîÄÿ‘π‡Åâ’•±êÅÖπêÅ•ÃÅπΩ–ÅÑÅΩ…ùîÄÿ–π‡ÅΩ»ÅΩ…ùîÄÿÿπ‡ÅÖ…—•ôÖç–∏(¥Å)ÖŸÑÄ»‘Ä°Qïµ’…•∏Å…ïçΩµµïπëïê§∏(¥ÅµÖç=L∞Å1•π’‡∞ÅÖπêÅ]•πëΩ›ÃÅÖ…îÅÕ’¡¡Ω…—ïêÅ•∏Å¡…•πç•¡±îÏÅ—°îÅôΩ…µÖ∞Å…ïπëï…ïê(ÄÅç±•ïπ–ÅùÖ—îÅ…ï≈’•…ïÃÅÖ∏Å•ÕΩ±Ö—ïêÅ1•π’‡ΩaŸôàÅ›Ω…≠ï»∏()Ω…ùîÅ•ÃÅ—°îÅ±ΩÖëï»ÅôΩ»Å—°îÅÕï±ïç—ïêÅ±Ö’πç°ï»Å•πÕ—ÖπçîÏÅ•–Å•ÃÅπΩ–ÅÑÅ©Ö»Å—º)ë…Ω¿Å•π—ºÅÅµΩëÕÄ∏Å%πÕ—Ö±∞Å—°îÅÕÖµîÅ5•πïA•±Ω–Å©Ö»ÅΩ∏Å—°îÅç±•ïπ–ÅÖπêÅ•π—ïù…Ö—ïê)Õï…Ÿï»∏ÅÅ—°•…êµ¡Ö…—‰ÅÕï…Ÿï»Å›•—°Ω’–Å—°îÅµΩêÅçÖππΩ–Åç…ïÖ—îÅ—°îÅÖççΩ’π–µô…ïî)¡±ÖÂï»ÅâΩë‰∏((ååÅ	’•±êÅÖπêÅ•πÕ—Ö±∞()ÅÅÅâÖÕ†(∏Ωù…Öë±ï‹Åâ’•±ê)ç¿Åâ’•±êΩ±•âÃΩµçÖ•}çΩµ¡Öπ•Ω∏¥®π©Ö»Å¡Ö—†Ω—ºΩ•πÕ—ÖπçîΩµΩëÃº)ÅÅÄ()Ω¡‰ÅΩπ±‰Å—°îÅ•πÕ—Ö±±Öâ±îÅ©Ö»Åô…Ω¥ÅÅâ’•±êΩ±•âÕÄ∏ÅQ°îÅâ’•±êÅÖ…ç°•ŸïÃÅΩ±êÅ©Ö…ÃÅ•∏)Åâ’•±êΩÖ…ç°•Ÿîµ±•âÕÄÅÖπêÅ¡’—ÃÅÖ’ë•–µΩπ±‰ÅÕ±•¥Å©Ö…ÃÅ•∏ÅÅâ’•±êΩÖ’ë•–µ±•âÕÄÏÅ—°ΩÕî)ë•…ïç—Ω…•ïÃÅÖ…îÅπΩ–ÅµΩêÅôΩ±ëï…Ã∏ÅME1•—îÅ)	Å•ÃÅïµâïëëïêÅ›•—†ÅΩ…ùîÅ)Ö»µ•∏µ)Ö»∏()Ω»ÅÑÅ±ΩçÖ∞ÅÕï…Ÿï»µΩπ±‰Å¡°ÂÕ•çÃÅç°ïç¨Ë()ÅÅÅâÖÕ†(∏Ωù…Öë±ï‹Å…’πÖµïQïÕ—Mï…Ÿï»Åp(ÄÄµAôΩ…ùï}çΩµ¡•±ï}Ÿï…Õ•Ω∏Ùÿ‘∏ƒ∏ƒÅp(ÄÄµA—ïÕ—}Õï±ïç—Ω»ıµçÖ•}çΩµ¡Öπ•Ω∏È…ïÖ±}¡Ö…≠Ω’…}çΩ’…Õî)ÅÅÄ()Ω»ÅÖ∏ÅÖ’—°Ω…•ÈïêÅ±•ŸîµµΩëï∞Å—ïÕ–∞Å•π©ïç–Åç…ïëïπ—•Ö±ÃÅΩπ±‰Å—°…Ω’ù†Å—°îÅ¡…ΩçïÕÃ)ïπŸ•…Ωπµïπ–ÅÖπêÅ’ÕîÅ—°îÅ…ïÖ∞µ—•µîÅô±ÖúË()ÅÅÅâÖÕ†)5%}A%}-dÙú∏∏∏úÅ5%}	M}UI0Ùù°——¡ÃËºΩ¡…ΩŸ•ëï»πï·Öµ¡±îΩÿƒúÅp)5%}5=0ÙùµΩëï∞µπÖµîúÅ)Y}!=5ÙúΩ¡Ö—†Ω—ºΩ©ë¨¥»‘úÅp(∏Ωù…Öë±ï‹Å…’πÖµïQïÕ—Mï…Ÿï»Åp(ÄÄµAôΩ…ùï}çΩµ¡•±ï}Ÿï…Õ•Ω∏Ùÿ‘∏ƒ∏ƒÅp(ÄÄµA±•Ÿï}µΩëï±}—ïÕ–ı—…’îÄµA…ïÖ±—•µï}ùÖµï—ïÕ–ı—…’îÅp(ÄÄµA±•Ÿï}µΩëï±}Õï±ïç—Ω»ıµçÖ•}çΩµ¡Öπ•Ω∏È…ïÖ±}¡±ÖÂï…}—ÖÕ≠}—Ω}±•Ÿï}µΩëï±}µΩŸïµïπ–)ÅÅÄ()Q°îÅ…ïÖ∞µ—•µîÅô±ÖúÅ≠ïï¡ÃÅ—°îÅÕï…Ÿï»Åç±ΩÕîÅ—ºÄ»¿ÅQALÏÅ›•—°Ω’–Å•–∞ÅÑÅ—ïÕ–ÅÕï…Ÿï»)µÖ‰ÅôÖÕ–µôΩ…›Ö…êÅ—°Ω’ÕÖπëÃÅΩòÅ—•ç≠ÃÅ›°•±îÅ—°îÅ¡…ΩŸ•ëï»Å•ÃÅ›Ö•—•πú∏Å9ïŸï»Å¡’–ÅÑ)≠ï‰Å•∏ÅQ=50∞ÅMÖŸïëÖ—Ñ∞ÅME1•—î∞Å±ΩùÃ∞Åç…ÖÕ†Å…ï¡Ω…—Ã∞ÅÕç…ïïπÕ°Ω—Ã∞ÅΩ»Å•–∏((ååÅŸ•ëïπçîÅ¡Ω±•ç‰()Q°îÅ…ï¡ΩÕ•—Ω…‰Åë•Õ—•πù’•Õ°ïÃÅÕΩ’…çîÅ•µ¡±ïµïπ—Ö—•Ω∏∞ÅçΩπ—…Ω±±ïêÅπºµµΩëï∞)ÖµïQïÕ—Ã∞ÅÖ’—°Ω…•ÈïêÅ±•ŸîµµΩëï∞ÅÕ±•çïÃ∞ÅÖπêÅôΩ…µÖ∞Å…ï±ïÖÕîÅùÖ—ïÃ∏ÅÅ’π•–Å—ïÕ–∞)Ö∏ÅΩ±êÅ…’∏∞ÅÑÅµΩëï∞ÅÖç≠πΩ›±ïëùïµïπ–∞ÅΩ»ÅÑÅÕï…Ÿï»ÅÕµΩ≠îÅ—ïÕ–ÅçÖππΩ–ÅâîÅ¡…ΩµΩ—ïê)—ºÅÖ∏Å4√äM4–ÅAML∏Å’……ïπ–Å4¿∞Å4ƒ∞Å4»∞Å4Ã∞Å4–∞Å’πÕïï∏µÕïïê∞Å…ïπëï…ïêµç±•ïπ–∞ÅÖπê)±ΩπúµÕΩÖ¨ÅÕ—Ö—’ÕïÃÅÖ…îÅ…ïçΩ…ëïêÅÖÃÅÅ9=Q}IU9ÄÅΩ»ÅÅ%1ÄÅ’π—•∞Å—°îÅï·Öç–Åô…ΩÈï∏)Ö…—•ôÖç–Å¡ÖÕÕïÃÅ—°îÅ…ï≈’•…ïêÅ¡…Ω—ΩçΩ∞∏()Q°îÅ±Ö—ïÕ–ÅçΩπ—…Ω±±ïêÅ±•ŸîµµΩëï∞Å…’πÃÅ•πç±’ëîÅÑÅ¡°ÂÕ•çÖ∞ÅπêÅŸ•ç—Ω…‰Ω…ï—’…∏∞)Ω…ë•πÖ…‰ÅµΩŸïµïπ–∞ÅôΩ±±Ω‹∞ÅÕ’…¡…•ÕîµÈΩµâ•îÅëïôïπÕî∞ÅÖπêÅΩ›πïêÅùΩ±ëï∏µÖ¡¡±î)çΩπÕ’µ¡—•Ω∏∏ÅQ°ïÕîÅÖ…îÅâΩ’πëïêÅÕ±•çïÃ∞ÅπΩ–Å…ÖπëΩ¥µÕïïê∞Å!Ö…ëçΩ…î∞ÅÕ¡ïïë…’∏∞ÅΩ»)ôΩ…µÖ∞Å4¿µ4–Å…ïÕ’±—Ã∏ÅQ°îÅΩôô±•πîÅë…ÖùΩ∏ÅâÖÕï±•πîÅ…ïµÖ•πÃÅΩπ±‰ÅÑÅçΩπ—…Ω±±ïê)πºµµΩëï∞Å¡°ÂÕ•çÖ∞Å±Ω›ï»ÅâΩ’πê∏((ååÅÖ•…πïÕÃÅÖπêÅÕÖôï—‰ÅâΩ’πëÖ…•ïÃ()Q°îÅµΩëï∞Å…ï—’…πÃÅΩπ±‰ÅÑÅŸï…Õ•ΩπïêÅ°•ù†µ±ïŸï∞Åëïç•Õ•Ω∏∏Å%–ÅçÖππΩ–Åïµ•–Å)ÖŸÑ∞)¡Öç≠ï—Ã∞ÅçΩµµÖπëÃ∞ÅçΩΩ…ë•πÖ—ïÃÅ•πŸïπ—ïêÅô…Ω¥ÅπΩ›°ï…î∞Åë•…ïç–Åâ±Ωç¨Åç°ÖπùïÃ∞ÅΩ»)•πŸïπ—Ω…‰Å9	P∏ÅQ°îÅÕ≠•±∞ÅÕ’¡ï…Ÿ•ÕΩ»Å…ïç°ïç≠ÃÅ¡ï…µ•ÕÕ•ΩπÃ∞ÅΩâÕï…ŸÖ—•ΩπÃ∞)…ïŸ•Õ•ΩπÃ∞Å…ïÖç†∞Å±•πîÅΩòÅÕ•ù°–∞ÅçΩ±±•Õ•Ω∏∞ÅçΩΩ±ëΩ›∏∞Åë’…Öâ•±•—‰∞ÅÖπêÅµïπ‘)Õ—Ö—îÅΩ∏Å—°îÅÕï…Ÿï»Å—°…ïÖê∏Åµï…ùïπç‰Å…ïÖç—•ΩπÃÅ…ïµÖ•∏Å±ΩçÖ∞ÅÖπêÅâΩ’πëïêÅ›°ï∏)—°îÅ¡…ΩŸ•ëï»Å•ÃÅΩôô±•πî∞ÅÕ±Ω‹∞Å’πÖ’—°Ω…•Èïê∞ÅΩ»Å…ï—’…πÃÅ•πŸÖ±•êÅ)M=8∏()Q°îÅ¡’â±•åÅµ’±—•¡±ÖÂï»Å•ëïπ—•—‰Å•ÃÅï·¡±•ç•–ÅÅm%uÄÏÅ—°îÅµΩêÅπïŸï»ÅôΩ…ùïÃÅÑ)¡±ÖÂï»ÅÕ•ùπÖ—’…îÅΩ»Å¡…ï—ïπëÃÅ—ºÅâîÅÑÅ°’µÖ∏ÅÖççΩ’π–∏((ååÅ1•çïπÕî()=…•ù•πÖ∞Å5•πïA•±Ω–ÅçΩëîÅ•ÃÅ¡Öç°î¥»∏¿∏ÅQ°•…êµ¡Ö…—‰ÅçΩëî∞ÅëÖ—Ñ∞ÅÖπêÅÖÕÕï—ÃÅ≠ïï¿)—°ï•»ÅΩ…•ù•πÖ∞Å±•çïπÕïÃÅÖπêÅÖ…îÅ±•Õ—ïêÅ•∏ÅÅQ!%I}AIQe}9=Q%LπµëÄÅ›°ï∏Å’Õïê∏(
+# MinePilot ‚Äî Minecraft AI Companion
+
+MinePilot is the public repository name. The production Forge mod id is
+`mcai_companion`.
+
+[Usage guide](docs/USAGE.md) ¬∑ [Project charter](docs/PROJECT_CHARTER.md) ¬∑
+[Contribution rules](CONTRIBUTING.md) ¬∑ [Security policy](SECURITY.md) ¬∑
+[Implementation status](docs/IMPLEMENTATION_STATUS.md)
+
+MinePilot adds a visible, account-free AI teammate to Minecraft Java 26.2 on
+Forge 65.x. It uses one authoritative vanilla `ServerPlayer`, normal server
+rules, and a single high-level language model. It does not run a second game
+client, use a Microsoft account, teleport, read hidden blocks, or grant cheat
+abilities.
+
+> **Current status: `0.1.11-dev-mc26.2`.** The embodied player, model gateway,
+> fair perception, memory, configuration screen, skin synchronization, and
+> many atomic survival skills are implemented. The release is still a
+> development build: the 24-hour stability gate, unseen random Hardcore
+> completion gates, rendered-client gate, and M0‚ÄìM4 product gates are not
+> complete. Do not market this build as a two-hour speedrun product or as a
+> professional companion.
+
+## What is implemented
+
+- A persistent `ServerPlayer` body with a stable UUID, vanilla inventory,
+  hands, armor, health, hunger, experience, effects, statistics, ender chest,
+  death, respawn, dimension, and save behavior.
+- A headless connection pump that follows the normal player-list lifecycle and
+  handles keepalive, teleport confirmation, packet draining, login, and
+  removal without a client account.
+- Vanilla mining, placement, item use, attacks, equipment, crafting, menus,
+  cooldowns, durability, drops, and statistics. Skills cannot directly write
+  a world result or create an item.
+- A Java 25 single-model gateway for Responses and OpenAI-compatible Chat
+  Completions, with structured-output fallbacks, single-flight requests,
+  timeouts, cancellation, revision checks, and redacted errors.
+- Twenty-TPS local movement, shielding, food, retreat, fall, water-clutch,
+  parkour, and emergency-survival reactions while the model is thinking.
+- First-person semantic perception with distance, field-of-view, occlusion,
+  provenance, sample sequence, and world/goal revision checks. Screenshots are
+  task-triggered and never a continuous video upload.
+- SQLite WAL memory with event and task checkpoints, FTS5 name search, R*Tree
+  spatial search, waypoints, assets, and verified portal edges.
+- Structured Xaero shared-waypoint input. The companion walks, sails, rides,
+  or uses verified portals; it never reads radar/cave maps or teleports.
+- Loopback MCP at `127.0.0.1:25766/mcp` with bearer, host, origin, and body
+  limits. Tools are `observe`, `set_goal`, `goal_status`, `say`,
+  `cancel_goal`, `add_waypoint`, `get_screenshot`, and `get_audit_summary`.
+- Vanilla-style pause-menu configuration: agent name validation, color,
+  `0.0‚Äì1.0` temperature, local 64√ó64 skin import, arm model, API key, base
+  URL, model name, system preference, and first-run tutorial.
+- Atomic and composite skills for movement, follow, visible item pickup,
+  mining, crafting, furnace/menu transactions, shelter construction, crops,
+  portal casting, water clutching, parkour, ranged combat, emergency PVE,
+  End entry, and controlled dragon combat.
+
+‚ÄúImplemented‚Äù means that code and bounded tests exist. It does not mean that a
+natural random world, arbitrary modpack, or every high-level request has been
+validated.
+
+## Compatibility
+
+- Minecraft Java 26.2.
+- Forge **65.0.0 inclusive through 66.0.0 exclusive**. The current artifact is
+  a Forge 65.x build and is not a Forge 64.x or Forge 66.x artifact.
+- Java 25 (Temurin recommended).
+- macOS, Linux, and Windows are supported in principle; the formal rendered
+  client gate requires an isolated Linux/Xvfb worker.
+
+Forge is the loader for the selected launcher instance; it is not a jar to
+drop into `mods`. Install the same MinePilot jar on the client and integrated
+server. A third-party server without the mod cannot create the account-free
+player body.
+
+## Build and install
+
+```bash
+./gradlew build
+cp build/libs/mcai_companion-*.jar path/to/instance/mods/
+```
+
+Copy only the installable jar from `build/libs`. The build archives old jars in
+`build/archive-libs` and puts audit-only slim jars in `build/audit-libs`; those
+directories are not mod folders. SQLite JDBC is embedded with Forge Jar-in-Jar.
+
+For a local server-only physics check:
+
+```bash
+./gradlew runGameTestServer \
+  -Pforge_compile_version=65.1.1 \
+  -Ptest_selector=mcai_companion:real_parkour_course
+```
+
+For an authorized live-model test, inject credentials only through the process
+environment and use the real-time flag:
+
+```bash
+MCAI_API_KEY='...' MCAI_BASE_URL='https://provider.example/v1' \
+MCAI_MODEL='model-name' JAVA_HOME='/path/to/jdk-25' \
+./gradlew runGameTestServer \
+  -Pforge_compile_version=65.1.1 \
+  -Plive_model_test=true -Prealtime_gametest=true \
+  -Plive_model_selector=mcai_companion:real_player_task_to_live_model_movement
+```
+
+The real-time flag keeps the server close to 20 TPS; without it, a test server
+may fast-forward thousands of ticks while the provider is waiting. Never put a
+key in TOML, SavedData, SQLite, logs, crash reports, screenshots, or Git.
+
+## Evidence policy
+
+The repository distinguishes source implementation, controlled no-model
+GameTests, authorized live-model slices, and formal release gates. A unit test,
+an old run, a model acknowledgement, or a server smoke test cannot be promoted
+to an M0‚ÄìM4 PASS. Current M0, M1, M2, M3, M4, unseen-seed, rendered-client, and
+long-soak statuses are recorded as `NOT_RUN` or `FAIL` until the exact frozen
+artifact passes the required protocol.
+
+The latest controlled live-model runs include a physical End victory/return,
+ordinary movement, follow, surprise-zombie defense, and owned golden-apple
+consumption. These are bounded slices, not random-seed, Hardcore, speedrun, or
+formal M0-M4 results. The offline dragon baseline remains only a controlled
+no-model physical lower bound.
+
+## Fairness and safety boundaries
+
+The model returns only a versioned high-level decision. It cannot emit Java,
+packets, commands, coordinates invented from nowhere, direct block changes, or
+inventory NBT. The skill supervisor rechecks permissions, observations,
+revisions, reach, line of sight, collision, cooldown, durability, and menu
+state on the server thread. Emergency reactions remain local and bounded when
+the provider is offline, slow, unauthorized, or returns invalid JSON.
+
+The public multiplayer identity is explicit `[AI]`; the mod never forges a
+player signature or pretends to be a human account.
+
+## License
+
+Original MinePilot code is Apache-2.0. Third-party code, data, and assets keep
+their original licenses and are listed in `THIRD_PARTY_NOTICES.md` when used.

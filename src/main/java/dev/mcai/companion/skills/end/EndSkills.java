@@ -1,1 +1,67 @@
-ıK®Ïğz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰n·°ı¸§ıºŞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹•¹ì()¥µÁ½ÉĞ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±I•¥ÍÑÉäì)¥µÁ½ÉĞ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹‰É¥‘¥¹œ¹	É¥‘•5…Ñ•É¥…±ÑÕ…Ñ½Èì)¥µÁ½ÉĞ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹½É•M­¥±±ÑÕ…Ñ½Èì)¥µÁ½ÉĞ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹½É•M­¥±±É…µ•M½ÕÉ”ì)¥µÁ½ÉĞ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ñ•É…Ñ¥½¸¹%¹Ñ•É…Ñ¥½¹M­¥±±ÑÕ…Ñ½Èì)¥µÁ½ÉĞ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹¥¹Ñ•É…Ñ¥½¸¹%¹Ñ•É…Ñ¥½¹M­¥±±É…µ•M½ÕÉ”ì)¥µÁ½ÉĞ©…Ù„¹ÕÑ¥°¹=‰©•ÑÌì)¥µÁ½ÉĞ©…Ù„¹ÕÑ¥°¹UU%ì)¥µÁ½ÉĞ©…Ù„¹ÕÑ¥°¹™Õ¹Ñ¥½¸¹1½¹½¹ÍÕµ•Èì)¥µÁ½ÉĞ©…Ù„¹ÕÑ¥°¹™Õ¹Ñ¥½¸¹1½¹MÕÁÁ±¥•Èì((¼¨¨I•¥ÍÑ•ÉÌÑ¡”™…¥È°Á…É…µ•Ñ•É±•ÍÌ¹…ÑÕÉ…°µ¹¥¹É•ÍÌ½¹ÑÉ½±±•È¸€¨¼)ÁÕ‰±¥Œ™¥¹…°±…ÍÌ¹‘M­¥±±Ìì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°MÑÉ¥¹œI!}9}%M19€ô(€€€€€€€€€€€¹‘%Í±…¹‘%¹É•ÍÍM­¥±°¹95ì((€€€ÁÉ¥Ù…Ñ”¹‘M­¥±±Ì ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒM­¥±±I•¥ÍÑÉäÉ•¥ÍÑ•É±° (€€€€€€€€€€€™¥¹…°M­¥±±I•¥ÍÑÉäÉ•¥ÍÑÉä°(€€€€€€€€€€€™¥¹…°UU%Á±…å•É%°(€€€€€€€€€€€™¥¹…°½É•M­¥±±ÑÕ…Ñ½È…ÑÕ…Ñ½È°(€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ•M½ÕÉ”™É…µ•Ì°(€€€€€€€€€€€™¥¹…°	É¥‘•5…Ñ•É¥…±ÑÕ…Ñ½Èµ…Ñ•É¥…±Ì°(€€€€€€€€€€€™¥¹…°1½¹MÕÁÁ±¥•ÈÍ•ÍÍ¥½¹•¹•É…Ñ¥½¸°(€€€€€€€€€€€™¥¹…°%¹Ñ•É…Ñ¥½¹M­¥±±ÑÕ…Ñ½È¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È°(€€€€€€€€€€€™¥¹…°%¹Ñ•É…Ñ¥½¹M­¥±±É…µ•M½ÕÉ”¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€™¥¹…°1½¹½¹ÍÕµ•È½µÁ±•Ñ¥½¹M¥¹¬(€€€€¤ì(€€€€€€€É•ÑÕÉ¸=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡É•¥ÍÑÉä°€‰É•¥ÍÑÉäˆ¤¹É•¥ÍÑ•È (€€€€€€€€€€€€€€€I!}9}%M19°(€€€€€€€€€€€€€€€¹•Ü¹‘%Í±…¹‘%¹É•ÍÍM­¥±° (€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡Á±…å•É%°€‰Á±…å•É%ˆ¤°(€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡…ÑÕ…Ñ½È°€‰…ÑÕ…Ñ½Èˆ¤°(€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡™É…µ•Ì°€‰™É…µ•Ìˆ¤°(€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡µ…Ñ•É¥…±Ì°€‰µ…Ñ•É¥…±Ìˆ¤°(€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•ÍÍ¥½¹•¹•É…Ñ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰Í•ÍÍ¥½¹•¹•É…Ñ¥½¸ˆ(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰¥¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½Èˆ(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰¥¹Ñ•É…Ñ¥½¹É…µ•Ìˆ(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½µÁ±•Ñ¥½¹M¥¹¬°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰½µÁ±•Ñ¥½¹M¥¹¬ˆ(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒMÑÉ¥¹œÁ±…¹¹•ÉÕ¥‘” ¤ì(€€€€€€€É•ÑÕÉ¸€ˆˆˆ(€€€€€€€€€€€É•…¡}•¹‘}¥Í±…¹¡…Ì¹¼…ÉÕµ•¹ÑÌ¸UÍ”¥Ğ…™Ñ•È¹…ÑÕÉ…°¹•¹ÑÉä(€€€€€€€€€€€‰•™½É”™¥¡Ñ}•¹‘•É}‘É…½¸ì¥ĞÕÍ•Ì™É•Í Ñ•ÉÉ…¥¸…¹‰½Õ¹‘•(€€€€€€€€€€€Ù…¹¥±±„µ½Ù•µ•¹Ğ½µ¥¹¥¹œ½‰É¥‘¥¹œ¸(€€€€€€€€€€€€ˆˆˆì(€€€ô)ô
+package dev.mcai.companion.skills.end;
+
+import dev.mcai.companion.skill.SkillRegistry;
+import dev.mcai.companion.skills.bridging.BridgeMaterialActuator;
+import dev.mcai.companion.skills.core.CoreSkillActuator;
+import dev.mcai.companion.skills.core.CoreSkillFrameSource;
+import dev.mcai.companion.skills.interaction.InteractionSkillActuator;
+import dev.mcai.companion.skills.interaction.InteractionSkillFrameSource;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.function.LongConsumer;
+import java.util.function.LongSupplier;
+
+/** Registers the fair, parameterless natural-End ingress controller. */
+public final class EndSkills {
+    public static final String REACH_END_ISLAND =
+            EndIslandIngressSkill.NAME;
+
+    private EndSkills() {
+    }
+
+    public static SkillRegistry registerAll(
+            final SkillRegistry registry,
+            final UUID playerId,
+            final CoreSkillActuator actuator,
+            final CoreSkillFrameSource frames,
+            final BridgeMaterialActuator materials,
+            final LongSupplier sessionGeneration,
+            final InteractionSkillActuator interactionActuator,
+            final InteractionSkillFrameSource interactionFrames,
+            final LongConsumer completionSink
+    ) {
+        return Objects.requireNonNull(registry, "registry").register(
+                REACH_END_ISLAND,
+                new EndIslandIngressSkill(
+                        Objects.requireNonNull(playerId, "playerId"),
+                        Objects.requireNonNull(actuator, "actuator"),
+                        Objects.requireNonNull(frames, "frames"),
+                        Objects.requireNonNull(materials, "materials"),
+                        Objects.requireNonNull(
+                                sessionGeneration,
+                                "sessionGeneration"
+                        ),
+                        Objects.requireNonNull(
+                                interactionActuator,
+                                "interactionActuator"
+                        ),
+                        Objects.requireNonNull(
+                                interactionFrames,
+                                "interactionFrames"
+                        ),
+                        Objects.requireNonNull(
+                                completionSink,
+                                "completionSink"
+                        )
+                )
+        );
+    }
+
+    public static String plannerGuide() {
+        return """
+            reach_end_island has no arguments. Use it after natural End entry
+            before fight_ender_dragon; it uses fresh terrain and bounded
+            vanilla movement/mining/bridging.
+            """;
+    }
+}

@@ -1,1 +1,31 @@
-ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹ÁÉ½É•ÍÍ¥½¸ì((¼¨¨(€¨MÑ¥­ä°Í•ÉÙ•ÈµÙ•É¥™¥••Ù¥‘•¹”™½ÈÑ¡”½É‘¥¹…ÉäÍÕÉÙ¥Ù…°É½ÕÑ”¸=É‘•É¥¹œ(€¨¥ÌÕ¥‘…¹”½¹±äìÑ¡”½µÁ…¹¥½¸µ…ä±•¥Ñ¥µ…Ñ•±ä½‰Ñ…¥¸µ¥±•ÍÑ½¹•Ì¥¸„(€¨‘¥™™•É•¹Ð½É‘•È¸(€¨¼)ÁÕ‰±¥Œ•¹Õ´MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”ì(€€€	=e}Q%Y°(€€€]==}=	Q%9°(€€€	M%}IQ%9}Id°(€€€==}MUI°(€€€MQ=9}Q==1}=	Q%9°(€€€%I=9}Q==1-%Q}=	Q%9°(€€€]=I-MQQ%=9M}MQ	1%M!°(€€€MUAA1%M}MQ=I°(€€€M!1QI}5QI%1M}AIAI°(€€€M!1QI}=5A1Q°(€€€%IMQ}9%!Q}MUIY%Y°(€€€9Q!I}9QI°(€€€	1i}5QI%1}=	Q%9°(€€€9I}AI1}=	Q%9°(€€€e}=}9I}IQ°(€€€MQI=9!=1}	I%9}5MUI°(€€€MQI=9!=1}MI!}I}QI%9U1Q°(€€€9}1==UQ}AIAI°(€€€9}9QI°(€€€9}%M19}I!°(€€€I=9}-%11°(€€€IQUI9}I=5}9)ô(
+package dev.mcai.companion.progression;
+
+/**
+ * Sticky, server-verified evidence for the ordinary survival route. Ordering
+ * is guidance only; the companion may legitimately obtain milestones in a
+ * different order.
+ */
+public enum SurvivalMilestone {
+    BODY_ACTIVE,
+    WOOD_OBTAINED,
+    BASIC_CRAFTING_READY,
+    FOOD_SECURED,
+    STONE_TOOL_OBTAINED,
+    IRON_TOOLKIT_OBTAINED,
+    WORKSTATIONS_ESTABLISHED,
+    SUPPLIES_STORED,
+    SHELTER_MATERIALS_PREPARED,
+    SHELTER_COMPLETED,
+    FIRST_NIGHT_SURVIVED,
+    NETHER_ENTERED,
+    BLAZE_MATERIAL_OBTAINED,
+    ENDER_PEARL_OBTAINED,
+    EYE_OF_ENDER_CRAFTED,
+    STRONGHOLD_BEARING_MEASURED,
+    STRONGHOLD_SEARCH_AREA_TRIANGULATED,
+    END_LOADOUT_PREPARED,
+    END_ENTERED,
+    END_ISLAND_REACHED,
+    DRAGON_KILLED,
+    RETURNED_FROM_END
+}

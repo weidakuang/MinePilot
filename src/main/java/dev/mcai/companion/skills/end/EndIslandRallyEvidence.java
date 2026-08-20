@@ -1,1 +1,80 @@
-ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹•¹ì()¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹É¥‘A½Ìì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹9…Ù¥…Ñ¥½¹Ù¥‘•¹”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹=‰Í•ÉÙ•‘Y½á•°ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹	±½­½½É‘¥¹…Ñ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹½É•M­¥±±É…µ”ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=‰©•ÑÌì((¼¨¨(€¨…¥È°ÕÉÉ•¹ÐµÁ½Í”•Ù¥‘•¹”™½È¡…¹‘¥¹œÑ¡”¹¥Í±…¹™É½´¥¹É•ÍÌÑ¼(€¨‘É…½¸½µ‰…Ð¸ÍÑ¥­äÉ½ÕÑ”µ¥±•ÍÑ½¹”¥Ì¹½ÐÍÕ™™¥¥•¹ÐèÑ¡”‰½‘äµÕÍÐ(€¨ÍÑ¥±°‰”ÍÑ…¹‘¥¹œ½¸„™É•Í¡±ä½‰Í•ÉÙ•¹…ÑÕÉ…°¹µÍÑ½¹”•±°Ý¥Ñ ÑÝ¼(€¨‰±½­Ì½˜±•…ÈÍÁ…”¥¸Ñ¡”Í…µ”¹…Ù¥…Ñ¥½¸É•Ù¥Í¥½¸¸(€¨¼)ÁÕ‰±¥Œ™¥¹…°±…ÍÌ¹‘%Í±…¹‘I…±±åÙ¥‘•¹”ì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°MÑÉ¥¹œ9}MQ=9€ô€‰µ¥¹•É…™Ðé•¹‘}ÍÑ½¹”ˆì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”9QI}Q=1I9€ô€À¸ÜÈì((€€€ÁÉ¥Ù…Ñ”¹‘%Í±…¹‘I…±±åÙ¥‘•¹” ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ‰½½±•…¸ÍÕÁÁ½ÉÑÍÕÉÉ•¹ÑA½Í” (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°‘½Õ‰±”µ…á¥µÕµI…‘¥ÕÌ(€€€€¤ì(€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡™É…µ”°€‰™É…µ”ˆ¤ì(€€€€€€€¥˜€ …™É…µ”¹½¹É½Õ¹ ¤(€€€€€€€€€€€€€€€ñð™É…µ”¹¥¹]…Ñ•È ¤(€€€€€€€€€€€€€€€ñð€…½Õ‰±”¹¥Í¥¹¥Ñ”¡µ…á¥µÕµI…‘¥ÕÌ¤(€€€€€€€€€€€€€€€ñð¹‘É•¹…Q½Á½±½ä¹¡½É¥é½¹Ñ…±I…‘¥ÕÌ¡™É…µ”¹Á½Í¥Ñ¥½¸ ¤¤(€€€€€€€€€€€€€€€€€€€€øµ…á¥µÕµI…‘¥ÕÌ(€€€€€€€€€€€€€€€ñð™É…µ”¹¹…Ù¥…Ñ¥½¸ ¤¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€„ô™É…µ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì(€€€€€€€ô(€€€€€€€™¥¹…°É¥‘A½ÌÍÕÁÁ½ÉÐ€ô™É…µ”¹™••Ð ¤¹‰•±½Ü ¤ì(€€€€€€€™¥¹…°‘½Õ‰±”•¹Ñ•É¥ÍÑ…¹”€ô5…Ñ ¹¡åÁ½Ð (€€€€€€€€€€€€€€€™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹à ¤€´€¡ÍÕÁÁ½ÉÐ¹à ¤€¬€À¸Ô¤°(€€€€€€€€€€€€€€€™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹è ¤€´€¡ÍÕÁÁ½ÉÐ¹è ¤€¬€À¸Ô¤(€€€€€€€€¤ì(€€€€€€€¥˜€¡•¹Ñ•É¥ÍÑ…¹”€ø9QI}Q=1I9(€€€€€€€€€€€€€€€ñð€…Í…™•É•Í¡•ÍÑ¥¹…Ñ¥½¸¡™É…µ”°ÍÕÁÁ½ÉÐ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•	±½­…•Ì ¤¹ÍÑÉ•…´ ¤¹…¹å5…Ñ ¡™…”€´ø(€€€€€€€€€€€€€€€9}MQ=9¹•ÅÕ…±Ì¡™…”¹‰±½­QåÁ•% ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€˜˜€‰ÕÀˆ¹•ÅÕ…±Ì¡™…”¹™…” ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€˜˜™…”¹Ñ½ÁMÕÁÁ½ÉÑ™™½É‘…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹Í…™•±åMÕÁÁ½ÉÑÍMÑ…¹‘¥¹œ ¤(€€€€€€€€€€€€€€€€€€€€€€€€˜˜É¥¡™…”¹‰±½¬ ¤¤¹•ÅÕ…±Ì¡ÍÕÁÁ½ÉÐ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸Í…™•É•Í¡•ÍÑ¥¹…Ñ¥½¸ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°É¥‘A½ÌÍÕÁÁ½ÉÐ(€€€€¤ì(€€€€€€€™¥¹…°±½¹œÉ•Ù¥Í¥½¸€ô™É…µ”¹¹…Ù¥…Ñ¥½¸ ¤¹É•Ù¥Í¥½¸ ¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹¹…Ù¥…Ñ¥½¸ ¤¹Ù½á•±Ð¡ÍÕÁÁ½ÉÐ¤¹™¥±Ñ•È¡Ù½á•°€´ø(€€€€€€€€€€€€€€€€€€€€€€€9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¥ÍÉ•Í¡MÑ…¹‘¥¹MÕÁÁ½ÉÐ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù½á•°°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€É•Ù¥Í¥½¸(€€€€€€€€€€€€€€€€€€€€€€€€¤¤¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€˜˜™É…µ”¹¹…Ù¥…Ñ¥½¸ ¤¹Ù½á•±Ð¡ÍÕÁÁ½ÉÐ¹…‰½Ù” ¤¤¹™¥±Ñ•È¡Ù½á•°€´ø(€€€€€€€€€€€€€€€€€€€€€€€9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¡…ÍÉ•Í¡QÉ…Ù•ÉÍ…±±•…É…¹” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù½á•°°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€É•Ù¥Í¥½¸(€€€€€€€€€€€€€€€€€€€€€€€€¤¤¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€˜˜™É…µ”¹¹…Ù¥…Ñ¥½¸ ¤¹Ù½á•±Ð¡ÍÕÁÁ½ÉÐ¹…‰½Ù” È¤¤¹™¥±Ñ•È¡Ù½á•°€´ø(€€€€€€€€€€€€€€€€€€€€€€€9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¡…ÍÉ•Í¡QÉ…Ù•ÉÍ…±±•…É…¹” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù½á•°°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€É•Ù¥Í¥½¸(€€€€€€€€€€€€€€€€€€€€€€€€¤¤¹¥ÍAÉ•Í•¹Ð ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÉ¥‘A½ÌÉ¥¡™¥¹…°	±½­½½É‘¥¹…Ñ”‰±½¬¤ì(€€€€€€€É•ÑÕÉ¸¹•ÜÉ¥‘A½Ì¡‰±½¬¹à ¤°‰±½¬¹ä ¤°‰±½¬¹è ¤¤ì(€€€ô)ô(
+package dev.mcai.companion.skills.end;
+
+import dev.mcai.companion.navigation.GridPos;
+import dev.mcai.companion.navigation.NavigationEvidence;
+import dev.mcai.companion.navigation.ObservedVoxel;
+import dev.mcai.companion.perception.BlockCoordinate;
+import dev.mcai.companion.skills.core.CoreSkillFrame;
+import java.util.Objects;
+
+/**
+ * Fair, current-pose evidence for handing the End island from ingress to
+ * dragon combat. A sticky route milestone is not sufficient: the body must
+ * still be standing on a freshly observed natural End-stone cell with two
+ * blocks of clear space in the same navigation revision.
+ */
+public final class EndIslandRallyEvidence {
+    private static final String END_STONE = "minecraft:end_stone";
+    private static final double CENTER_TOLERANCE = 0.72;
+
+    private EndIslandRallyEvidence() {
+    }
+
+    public static boolean supportsCurrentPose(
+            final CoreSkillFrame frame,
+            final double maximumRadius
+    ) {
+        Objects.requireNonNull(frame, "frame");
+        if (!frame.onGround()
+                || frame.inWater()
+                || !Double.isFinite(maximumRadius)
+                || EndArenaTopology.horizontalRadius(frame.position())
+                    > maximumRadius
+                || frame.navigation().revision()
+                    != frame.observationRevision()) {
+            return false;
+        }
+        final GridPos support = frame.feet().below();
+        final double centerDistance = Math.hypot(
+                frame.position().x() - (support.x() + 0.5),
+                frame.position().z() - (support.z() + 0.5)
+        );
+        if (centerDistance > CENTER_TOLERANCE
+                || !safeFreshDestination(frame, support)) {
+            return false;
+        }
+        return frame.visibleBlockFaces().stream().anyMatch(face ->
+                END_STONE.equals(face.blockTypeId())
+                        && "up".equals(face.face())
+                        && face.topSupportAffordance()
+                            .safelySupportsStanding()
+                        && grid(face.block()).equals(support)
+        );
+    }
+
+    private static boolean safeFreshDestination(
+            final CoreSkillFrame frame,
+            final GridPos support
+    ) {
+        final long revision = frame.navigation().revision();
+        return frame.navigation().voxelAt(support).filter(voxel ->
+                        NavigationEvidence.isFreshStandingSupport(
+                                voxel,
+                                revision
+                        )).isPresent()
+                && frame.navigation().voxelAt(support.above()).filter(voxel ->
+                        NavigationEvidence.hasFreshTraversalClearance(
+                                voxel,
+                                revision
+                        )).isPresent()
+                && frame.navigation().voxelAt(support.above(2)).filter(voxel ->
+                        NavigationEvidence.hasFreshTraversalClearance(
+                                voxel,
+                                revision
+                        )).isPresent();
+    }
+
+    private static GridPos grid(final BlockCoordinate block) {
+        return new GridPos(block.x(), block.y(), block.z());
+    }
+}

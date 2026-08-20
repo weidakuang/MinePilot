@@ -1,2 +1,313 @@
-ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹ÁÉ½É•ÍÍ¥½¸ì()¥µÁ½ÉÐÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑ…±Í”ì)¥µÁ½ÉÐÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑÅÕ…±Ìì)¥µÁ½ÉÐÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑQÉÕ”ì()¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹½¹ÑÉ½°¹½…±M¹…ÁÍ¡½Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹½¹ÑÉ½°¹½…±M½ÕÉ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹½¹ÑÉ½°¹½…±MÑ…ÑÕÌì)¥µÁ½ÉÐ©…Ù„¹Ñ¥µ”¹%¹ÍÑ…¹Ðì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹5…Àì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹1¥ÍÐì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=ÁÑ¥½¹…°ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹M•Ðì)¥µÁ½ÉÐ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹Q•ÍÐì()™¥¹…°±…ÍÌMÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•ÉQ•ÍÐì(€€€Q•ÍÐ(€€€Ù½¥…Ñ¥Ù…Ñ•Í=¹±å½ÉáÁ±¥¥Ñ½µÁ±•Ñ¥½¹½…±Í=É1½­•‘Ù…±Õ…Ñ¥½¸ ¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹¥Í½µÁ±•Ñ¥½¹½…°¡½…° (€€€€€€€€€€€€€€€½…±M½ÕÉ”¹!I=I}Y1UQ%=8°(€€€€€€€€€€€€€€€€‰…¹åÑ¡¥¹œˆ(€€€€€€€€¤¤¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹¥Í½µÁ±•Ñ¥½¹½…°¡½…° (€€€€€€€€€€€€€€€½…±M½ÕÉ”¹A1eI}!P°(€€€€€€€€€€€€€€€€‹¢¾ß’î;¦nÛ¦k–Ì5¥¹•É…™Ðˆ(€€€€€€€€¤¤¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹¥Í½µÁ±•Ñ¥½¹½…°¡½…° (€€€€€€€€€€€€€€€½…±M½ÕÉ”¹5@°(€€€€€€€€€€€€€€€€‰	•…Ð5¥¹•É…™Ð¥¸ÍÕÉÙ¥Ù…°ˆ(€€€€€€€€¤¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹¥Í½µÁ±•Ñ¥½¹½…°¡½…° (€€€€€€€€€€€€€€€½…±M½ÕÉ”¹A1eI}!P°(€€€€€€€€€€€€€€€€‹šRÛ–Â?¦ê›–B;–n{–ºØˆ(€€€€€€€€¤¤¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥Í•±•ÑÍ%¹‘•Á•¹‘•¹Ñ½Õ¹‘…Ñ¥½¹¹‘½µÁ±•Ñ¥½¹AÉ½™¥±•Ì ¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹½˜¡MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=U9Q%=8¤°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹ÁÉ½™¥±”¡½…° (€€€€€€€€€€€€€€€€€€€€€€€½…±M½ÕÉ”¹A1eI}!P°(€€€€€€€€€€€€€€€€€€€€€€€€‹–îëž®/–º'–£š6»ž
-ç–æÛžR–¶c–"Ãž²³’ê3–’¤ˆ(€€€€€€€€€€€€€€€€¤¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹½˜¡MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8¤°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹ÁÉ½™¥±”¡½…° (€€€€€€€€€€€€€€€€€€€€€€€½…±M½ÕÉ”¹A1eI}!P°(€€€€€€€€€€€€€€€€€€€€€€€€‹’î;¦nÛ¦k–Ì5¥¹•É…™Ðˆ(€€€€€€€€€€€€€€€€¤¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹•µÁÑä ¤°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹ÁÉ½™¥±”¡½…° (€€€€€€€€€€€€€€€€€€€€€€€½…±M½ÕÉ”¹A1eI}!P°(€€€€€€€€€€€€€€€€€€€€€€€€‹¢Þš"Gšv”ˆ(€€€€€€€€€€€€€€€€¤¤(€€€€€€€€¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÍ½Õ¹ÑÍÉ…™Ñ•‘å•Í]¥Ñ¡½ÕÑ=¹•É½ÁM¡½ÉÑÕÑÌ ¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€€È°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹‰±…é•I½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€5…À¹½˜ ‰µ¥¹•É…™Ðé‰±…é•}É½ˆ°€Ä¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹•¹‘•ÉI½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€5…À¹½˜ ‰µ¥¹•É…™Ðé•¹‘•É}Á•…É°ˆ°€Ä¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ” (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹‰±…é•I½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€5…À¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé‰±…é•}É½ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ø°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé‰±…é•}Á½Ý‘•Èˆ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé•¹‘•É}•å”ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ä(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤€øôMÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È(€€€€€€€€€€€€€€€€€€€€€€€€¹=5A1Q%=9}	1i}I=UQ}U9%QL(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€€ÄÐ°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹•¹‘•ÉI½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€5…À¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé•¹‘•É}Á•…É°ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€È°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé•¹‘•É}•å”ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÄÈ(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥½µÁ±•Ñ¥½¹5¥¹¥µÕµQ…É•ÑÍI•Ñ¥É•=¹±å™Ñ•ÉY•É¥™¥•‘5¥±•ÍÑ½¹•Ì ¤ì(€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø¥¹¥Ñ¥…°€ô(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹µ¥¹¥µÕµQ…É•ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€M•Ð¹½˜ ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹=5A1Q%=9}	1i}I=UQ}U9%QL°(€€€€€€€€€€€€€€€¥¹¥Ñ¥…°¹•Ð ‰‰±…é•}É½ÕÑ•}Õ¹¥ÑÌˆ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹=5A1Q%=9}9I}I=UQ}U9%QL°(€€€€€€€€€€€€€€€¥¹¥Ñ¥…°¹•Ð ‰•¹‘•É}É½ÕÑ•}Õ¹¥ÑÌˆ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹=5A1Q%=9}eM}Id°(€€€€€€€€€€€€€€€¥¹¥Ñ¥…°¹•Ð ‰•å•Í}½™}•¹‘•Èˆ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹=5A1Q%=9}9}	U%1%9}	1=-L°(€€€€€€€€€€€€€€€¥¹¥Ñ¥…°¹•Ð ‰‰Õ¥±‘¥¹}‰±½­Ìˆ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹=5A1Q%=9}9}	=]L°(€€€€€€€€€€€€€€€¥¹¥Ñ¥…°¹•Ð ‰‰½ÝÌˆ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹=5A1Q%=9}9}II=]L°(€€€€€€€€€€€€€€€¥¹¥Ñ¥…°¹•Ð ‰…ÉÉ½ÝÌˆ¤(€€€€€€€€¤ì((€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••ÈøÙ•É¥™¥•€ô(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹µ¥¹¥µÕµQ…É•ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€M•Ð¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹	1i}5QI%1}=	Q%9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9I}AI1}=	Q%9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹e}=}9I}IQ(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡Ù•É¥™¥•¹½¹Ñ…¥¹Í-•ä ‰‰±…é•}É½ÕÑ•}Õ¹¥ÑÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡Ù•É¥™¥•¹½¹Ñ…¥¹Í-•ä ‰•¹‘•É}É½ÕÑ•}Õ¹¥ÑÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡Ù•É¥™¥•¹½¹Ñ…¥¹Í-•ä ‰•å•Í}½™}•¹‘•Èˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡Ù•É¥™¥•¹½¹Ñ…¥¹Í-•ä ‰‰Õ¥±‘¥¹}‰±½­Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡Ù•É¥™¥•¹½¹Ñ…¥¹Í-•ä ‰‰½ÝÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡Ù•É¥™¥•¹½¹Ñ…¥¹Í-•ä ‰…ÉÉ½ÝÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì à°Ù•É¥™¥•¹•Ð ‰™½½ˆ¤¤ì((€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø±½…‘½ÕÑY•É¥™¥•€ô(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹µ¥¹¥µÕµQ…É•ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€M•Ð¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡±½…‘½ÕÑY•É¥™¥•¹½¹Ñ…¥¹Í-•ä ‰‰Õ¥±‘¥¹}‰±½­Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡±½…‘½ÕÑY•É¥™¥•¹½¹Ñ…¥¹Í-•ä ‰‰½ÝÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡±½…‘½ÕÑY•É¥™¥•¹½¹Ñ…¥¹Í-•ä ‰…ÉÉ½ÝÌˆ¤¤ì((€€€€€€€™¥¹…°5…ÀñMÑÉ¥¹œ°%¹Ñ••Èø•¹Ñ•É•‘]¥Ñ¡1½…‘½ÕÐ€ô(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹µ¥¹¥µÕµQ…É•ÑÌ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€M•Ð¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}9QI(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡•¹Ñ•É•‘]¥Ñ¡1½…‘½ÕÐ¹½¹Ñ…¥¹Í-•ä ‰‰Õ¥±‘¥¹}‰±½­Ìˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡•¹Ñ•É•‘]¥Ñ¡1½…‘½ÕÐ¹½¹Ñ…¥¹Í-•ä ‰‰½ÝÌˆ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡•¹Ñ•É•‘]¥Ñ¡1½…‘½ÕÐ¹½¹Ñ…¥¹Í-•ä ‰…ÉÉ½ÝÌˆ¤¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥¥ÉÉ•Ù•ÉÍ¥‰±•¹‘MÑ…Ñ•M•±•ÑÍ1…Ñ•A¡…Í•]¥Ñ¡½ÕÑ½É¥¹!¥ÍÑ½Éä ¤ì(€€€€€€€™¥¹…°1¥ÍÐñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”ø½É‘•È€ô1¥ÍÐ¹½˜ (€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹]==}=	Q%9°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}9QI°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}%M19}I!°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹I=9}-%11°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹IQUI9}I=5}9(€€€€€€€€¤ì(€€€€€€€™¥¹…°M•ÐñMÕÉÙ¥Ù…±5¥±•ÍÑ½¹”ø½¹±å	½‘ä€ô(€€€€€€€€€€€€€€€M•Ð¹½˜¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	=e}Q%Y¤ì((€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI(€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹¹•áÑ5¥±•ÍÑ½¹” (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€½É‘•È°(€€€€€€€€€€€€€€€€€€€€€€€½¹±å	½‘ä°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹½˜¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}%M19}I!¤°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹¹•áÑ5¥±•ÍÑ½¹” (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€½É‘•È°(€€€€€€€€€€€€€€€€€€€€€€€M•Ð¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	=e}Q%Y°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹½˜¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹I=9}-%11¤°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹¹•áÑ5¥±•ÍÑ½¹” (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€½É‘•È°(€€€€€€€€€€€€€€€€€€€€€€€M•Ð¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	=e}Q%Y°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}%M19}I!(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹½˜¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹IQUI9}I=5}9¤°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹¹•áÑ5¥±•ÍÑ½¹” (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€½É‘•È°(€€€€€€€€€€€€€€€€€€€€€€€½¹±å	½‘ä°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹•µÁÑä ¤°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹¹•áÑ5¥±•ÍÑ½¹” (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€½É‘•È°(€€€€€€€€€€€€€€€€€€€€€€€½¹±å	½‘ä°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹½˜¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI¤°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹¹•áÑ5¥±•ÍÑ½¹” (€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•AÉ½™¥±”¹=5A1Q%=8°(€€€€€€€€€€€€€€€€€€€€€€€½É‘•È°(€€€€€€€€€€€€€€€€€€€€€€€M•Ð¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	=e}Q%Y°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹]==}=	Q%9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹9}1==UQ}AIAI(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€½¹±å	½‘ä°(€€€€€€€€€€€€€€€M•Ð¹½˜¡MÕÉÙ¥Ù…±5¥±•ÍÑ½¹”¹	=e}Q%Y¤(€€€€€€€€¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥•¹‘I•…‘¥¹•ÍÍI•ÅÕ¥É•ÍQ¡•]¡½±•=Ý¹•‘1½…‘½ÕÐ ¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹•¹‘1½…‘½ÕÑI•…‘ä¡5…À¹½˜ (€€€€€€€€€€€€€€€€‰‰Õ¥±‘¥¹}‰±½­Ìˆ°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹=5A1Q%=9}9}	U%1%9}	1=-L°(€€€€€€€€€€€€€€€€‰‰½ÝÌˆ°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹=5A1Q%=9}9}	=]L°(€€€€€€€€€€€€€€€€‰…ÉÉ½ÝÌˆ°(€€€€€€€€€€€€€€€MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹=5A1Q%=9}9}II=]L(€€€€€€€€¤¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡MÕÉÙ¥Ù…±I½ÕÑ•QÉ…­•È¹•¹‘1½…‘½ÕÑI•…‘ä¡5…À¹½˜ (€€€€€€€€€€€€€€€€‰‰Õ¥±‘¥¹}‰±½­Ìˆ°€ØÐ°(€€€€€€€€€€€€€€€€‰‰½ÝÌˆ°€Ä°(€€€€€€€€€€€€€€€€‰…ÉÉ½ÝÌˆ°€ÄÔ(€€€€€€€€¤¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ½…±M¹…ÁÍ¡½Ð½…° (€€€€€€€€€€€™¥¹…°½…±M½ÕÉ”Í½ÕÉ”°(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œÑ•áÐ(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¹•Ü½…±M¹…ÁÍ¡½Ð (€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹•µÁÑä ¤°(€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€½…±MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€Í½ÕÉ”°(€€€€€€€€€€€€€€€Ñ•áÐ°(€€€€€€€€€€€€€€€€ˆˆ°(€€€€€€€€€€€€€€€%¹ÍÑ…¹Ð¹A= °(€€€€€€€€€€€€€€€Í½ÕÉ”€ôô½…±M½ÕÉ”¹!I=I}Y1UQ%=8(€€€€€€€€¤ì(€€€ô)ô(
+package dev.mcai.companion.progression;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import dev.mcai.companion.control.GoalSnapshot;
+import dev.mcai.companion.control.GoalSource;
+import dev.mcai.companion.control.GoalStatus;
+import java.time.Instant;
+import java.util.Map;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+
+final class SurvivalRouteTrackerTest {
+    @Test
+    void activatesOnlyForExplicitCompletionGoalsOrLockedEvaluation() {
+        assertTrue(SurvivalRouteTracker.isCompletionGoal(goal(
+                GoalSource.HARDCORE_EVALUATION,
+                "anything"
+        )));
+        assertTrue(SurvivalRouteTracker.isCompletionGoal(goal(
+                GoalSource.PLAYER_CHAT,
+                "è¯·ä»Žé›¶é€šå…³ Minecraft"
+        )));
+        assertTrue(SurvivalRouteTracker.isCompletionGoal(goal(
+                GoalSource.MCP,
+                "Beat Minecraft in survival"
+        )));
+        assertFalse(SurvivalRouteTracker.isCompletionGoal(goal(
+                GoalSource.PLAYER_CHAT,
+                "æ”¶å°éº¦åŽå›žå®¶"
+        )));
+    }
+
+    @Test
+    void selectsIndependentFoundationAndCompletionProfiles() {
+        assertEquals(
+                Optional.of(SurvivalRouteProfile.FOUNDATION),
+                SurvivalRouteTracker.profile(goal(
+                        GoalSource.PLAYER_CHAT,
+                        "å»ºç«‹å®‰å…¨æ®ç‚¹å¹¶ç”Ÿå­˜åˆ°ç¬¬äºŒå¤©"
+                ))
+        );
+        assertEquals(
+                Optional.of(SurvivalRouteProfile.COMPLETION),
+                SurvivalRouteTracker.profile(goal(
+                        GoalSource.PLAYER_CHAT,
+                        "ä»Žé›¶é€šå…³ Minecraft"
+                ))
+        );
+        assertEquals(
+                Optional.empty(),
+                SurvivalRouteTracker.profile(goal(
+                        GoalSource.PLAYER_CHAT,
+                        "è·Ÿæˆ‘æ¥"
+                ))
+        );
+    }
+
+    @Test
+    void completionResourceReadinessCountsCraftedEyesWithoutOneDropShortcuts() {
+        assertEquals(
+                2,
+                SurvivalRouteTracker.blazeRouteUnits(
+                        Map.of("minecraft:blaze_rod", 1)
+                )
+        );
+        assertEquals(
+                1,
+                SurvivalRouteTracker.enderRouteUnits(
+                        Map.of("minecraft:ender_pearl", 1)
+                )
+        );
+        assertTrue(
+                SurvivalRouteTracker.blazeRouteUnits(
+                        Map.of(
+                                "minecraft:blaze_rod",
+                                6,
+                                "minecraft:blaze_powder",
+                                1,
+                                "minecraft:ender_eye",
+                                1
+                        )
+                ) >= SurvivalRouteTracker
+                        .COMPLETION_BLAZE_ROUTE_UNITS
+        );
+        assertEquals(
+                14,
+                SurvivalRouteTracker.enderRouteUnits(
+                        Map.of(
+                                "minecraft:ender_pearl",
+                                2,
+                                "minecraft:ender_eye",
+                                12
+                        )
+                )
+        );
+    }
+
+    @Test
+    void completionMinimumTargetsRetireOnlyAfterVerifiedMilestones() {
+        final Map<String, Integer> initial =
+                SurvivalRouteTracker.minimumTargets(
+                        SurvivalRouteProfile.COMPLETION,
+                        Set.of()
+                );
+        assertEquals(
+                SurvivalRouteTracker.COMPLETION_BLAZE_ROUTE_UNITS,
+                initial.get("blaze_route_units")
+        );
+        assertEquals(
+                SurvivalRouteTracker.COMPLETION_ENDER_ROUTE_UNITS,
+                initial.get("ender_route_units")
+        );
+        assertEquals(
+                SurvivalRouteTracker.COMPLETION_EYES_READY,
+                initial.get("eyes_of_ender")
+        );
+        assertEquals(
+                SurvivalRouteTracker.COMPLETION_END_BUILDING_BLOCKS,
+                initial.get("building_blocks")
+        );
+        assertEquals(
+                SurvivalRouteTracker.COMPLETION_END_BOWS,
+                initial.get("bows")
+        );
+        assertEquals(
+                SurvivalRouteTracker.COMPLETION_END_ARROWS,
+                initial.get("arrows")
+        );
+
+        final Map<String, Integer> verified =
+                SurvivalRouteTracker.minimumTargets(
+                        SurvivalRouteProfile.COMPLETION,
+                        Set.of(
+                                SurvivalMilestone
+                                        .BLAZE_MATERIAL_OBTAINED,
+                                SurvivalMilestone.ENDER_PEARL_OBTAINED,
+                                SurvivalMilestone.EYE_OF_ENDER_CRAFTED
+                        )
+                );
+        assertFalse(verified.containsKey("blaze_route_units"));
+        assertFalse(verified.containsKey("ender_route_units"));
+        assertFalse(verified.containsKey("eyes_of_ender"));
+        assertTrue(verified.containsKey("building_blocks"));
+        assertTrue(verified.containsKey("bows"));
+        assertTrue(verified.containsKey("arrows"));
+        assertEquals(8, verified.get("food"));
+
+        final Map<String, Integer> loadoutVerified =
+                SurvivalRouteTracker.minimumTargets(
+                        SurvivalRouteProfile.COMPLETION,
+                        Set.of(
+                                SurvivalMilestone.END_LOADOUT_PREPARED
+                        )
+                );
+        assertTrue(loadoutVerified.containsKey("building_blocks"));
+        assertTrue(loadoutVerified.containsKey("bows"));
+        assertTrue(loadoutVerified.containsKey("arrows"));
+
+        final Map<String, Integer> enteredWithLoadout =
+                SurvivalRouteTracker.minimumTargets(
+                        SurvivalRouteProfile.COMPLETION,
+                        Set.of(
+                                SurvivalMilestone.END_LOADOUT_PREPARED,
+                                SurvivalMilestone.END_ENTERED
+                        )
+                );
+        assertFalse(enteredWithLoadout.containsKey("building_blocks"));
+        assertFalse(enteredWithLoadout.containsKey("bows"));
+        assertFalse(enteredWithLoadout.containsKey("arrows"));
+    }
+
+    @Test
+    void irreversibleEndStateSelectsLatePhaseWithoutForgingHistory() {
+        final List<SurvivalMilestone> order = List.of(
+                SurvivalMilestone.WOOD_OBTAINED,
+                SurvivalMilestone.END_LOADOUT_PREPARED,
+                SurvivalMilestone.END_ENTERED,
+                SurvivalMilestone.END_ISLAND_REACHED,
+                SurvivalMilestone.DRAGON_KILLED,
+                SurvivalMilestone.RETURNED_FROM_END
+        );
+        final Set<SurvivalMilestone> onlyBody =
+                Set.of(SurvivalMilestone.BODY_ACTIVE);
+
+        assertEquals(
+                Optional.of(
+                        SurvivalMilestone.END_LOADOUT_PREPARED
+                ),
+                SurvivalRouteTracker.nextMilestone(
+                        SurvivalRouteProfile.COMPLETION,
+                        order,
+                        onlyBody,
+                        true,
+                        false,
+                        false,
+                        false
+                )
+        );
+        assertEquals(
+                Optional.of(SurvivalMilestone.END_ISLAND_REACHED),
+                SurvivalRouteTracker.nextMilestone(
+                        SurvivalRouteProfile.COMPLETION,
+                        order,
+                        Set.of(
+                                SurvivalMilestone.BODY_ACTIVE,
+                                SurvivalMilestone.END_LOADOUT_PREPARED
+                        ),
+                        true,
+                        false,
+                        false,
+                        true
+                )
+        );
+        assertEquals(
+                Optional.of(SurvivalMilestone.DRAGON_KILLED),
+                SurvivalRouteTracker.nextMilestone(
+                        SurvivalRouteProfile.COMPLETION,
+                        order,
+                        Set.of(
+                                SurvivalMilestone.BODY_ACTIVE,
+                                SurvivalMilestone.END_LOADOUT_PREPARED,
+                                SurvivalMilestone.END_ISLAND_REACHED
+                        ),
+                        true,
+                        false,
+                        false,
+                        true
+                )
+        );
+        assertEquals(
+                Optional.of(SurvivalMilestone.RETURNED_FROM_END),
+                SurvivalRouteTracker.nextMilestone(
+                        SurvivalRouteProfile.COMPLETION,
+                        order,
+                        onlyBody,
+                        true,
+                        true,
+                        false,
+                        false
+                )
+        );
+        assertEquals(
+                Optional.empty(),
+                SurvivalRouteTracker.nextMilestone(
+                        SurvivalRouteProfile.COMPLETION,
+                        order,
+                        onlyBody,
+                        false,
+                        true,
+                        true,
+                        false
+                )
+        );
+        assertEquals(
+                Optional.of(SurvivalMilestone.END_LOADOUT_PREPARED),
+                SurvivalRouteTracker.nextMilestone(
+                        SurvivalRouteProfile.COMPLETION,
+                        order,
+                        Set.of(
+                                SurvivalMilestone.BODY_ACTIVE,
+                                SurvivalMilestone.WOOD_OBTAINED,
+                                SurvivalMilestone.END_LOADOUT_PREPARED
+                        ),
+                        false,
+                        false,
+                        false,
+                        false
+                )
+        );
+        assertEquals(
+                onlyBody,
+                Set.of(SurvivalMilestone.BODY_ACTIVE)
+        );
+    }
+
+    @Test
+    void endReadinessRequiresTheWholeOwnedLoadout() {
+        assertTrue(SurvivalRouteTracker.endLoadoutReady(Map.of(
+                "building_blocks",
+                SurvivalRouteTracker.COMPLETION_END_BUILDING_BLOCKS,
+                "bows",
+                SurvivalRouteTracker.COMPLETION_END_BOWS,
+                "arrows",
+                SurvivalRouteTracker.COMPLETION_END_ARROWS
+        )));
+        assertFalse(SurvivalRouteTracker.endLoadoutReady(Map.of(
+                "building_blocks", 64,
+                "bows", 1,
+                "arrows", 15
+        )));
+    }
+
+    private static GoalSnapshot goal(
+            final GoalSource source,
+            final String text
+    ) {
+        return new GoalSnapshot(
+                Optional.empty(),
+                1,
+                GoalStatus.RUNNING,
+                source,
+                text,
+                "",
+                Instant.EPOCH,
+                source == GoalSource.HARDCORE_EVALUATION
+        );
+    }
+}

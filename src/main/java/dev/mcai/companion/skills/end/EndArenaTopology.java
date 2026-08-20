@@ -1,1 +1,62 @@
-ıK®Ïğz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰n·°ı¸§ıºŞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹•¹ì()¥µÁ½ÉĞ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹A•É•ÁÑ¥½¹Y•ŒÌì((¼¨¨(€¨AÕ‰±¥Œ°Í••µ¥¹‘•Á•¹‘•¹ĞÙ…¹¥±±„¹•½µ•ÑÉäÕÍ•½¹±ä…Ì„¡•…‘¥¹œ¸(€¨(€¨€ñÀùQ¡”•¹ÑÉ…°¥Í±…¹…¹‘É…½¸™½Õ¹Ñ…¥¸…É”½É…¹¥é•…É½Õ¹¡½É¥é½¹Ñ…°(€¨½É¥¥¸¸Q¡•Í”½¹ÍÑ…¹ÑÌ‘¼¹½ĞÅÕ•Éä„±•Ù•°°Í••°¡•¥¡Ñµ…À°ÍÑÉÕÑÕÉ”°(€¨¡Õ¹¬°½È‘É…½¸µ™¥¡Ğ½‰©•Ğ¸ğ½Àø(€¨¼)ÁÕ‰±¥Œ™¥¹…°±…ÍÌ¹‘É•¹…Q½Á½±½äì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”9QI}AM%1=8€ô€Ä¸Á´äì((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”9QI}`€ô€À¸Àì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”9QI}h€ô€À¸Àì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”5a%5U5}%9IMM}MQIQ}I%UL€ô€ÄÄÈ¸Àì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”I9}Ie}I%UL€ô€ÔØ¸Àì((€€€ÁÉ¥Ù…Ñ”¹‘É•¹…Q½Á½±½ä ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ‘½Õ‰±”¡½É¥é½¹Ñ…±I…‘¥ÕÌ (€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÁ½Í¥Ñ¥½¸(€€€€¤ì(€€€€€€€É•ÑÕÉ¸5…Ñ ¹¡åÁ½Ğ (€€€€€€€€€€€€€€€Á½Í¥Ñ¥½¸¹à ¤€´9QI}`°(€€€€€€€€€€€€€€€Á½Í¥Ñ¥½¸¹è ¤€´9QI}h(€€€€€€€€¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥ŒA•É•ÁÑ¥½¹Y•ŒÌ½¹•…É‘¥¹…±MÑ•ÁQ½İ…É‘•¹Ñ•È (€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÁ½Í¥Ñ¥½¸(€€€€¤ì(€€€€€€€™¥¹…°‘½Õ‰±”‘•±Ñ…`€ô9QI}`€´Á½Í¥Ñ¥½¸¹à ¤ì(€€€€€€€™¥¹…°‘½Õ‰±”‘•±Ñ…h€ô9QI}h€´Á½Í¥Ñ¥½¸¹è ¤ì(€€€€€€€¥˜€¡5…Ñ ¹…‰Ì¡‘•±Ñ…`¤€ğô9QI}AM%1=8(€€€€€€€€€€€€€€€€˜˜5…Ñ ¹…‰Ì¡‘•±Ñ…h¤€ğô9QI}AM%1=8¤ì(€€€€€€€€€€€É•ÑÕÉ¸Á½Í¥Ñ¥½¸ì(€€€€€€€ô(€€€€€€€™¥¹…°‘½Õ‰±”ÕÉÉ•¹Ñ•±±•¹Ñ•É`€ô5…Ñ ¹™±½½È¡Á½Í¥Ñ¥½¸¹à ¤¤€¬€À¸Ôì(€€€€€€€™¥¹…°‘½Õ‰±”ÕÉÉ•¹Ñ•±±•¹Ñ•Éh€ô5…Ñ ¹™±½½È¡Á½Í¥Ñ¥½¸¹è ¤¤€¬€À¸Ôì(€€€€€€€¥˜€¡5…Ñ ¹…‰Ì¡‘•±Ñ…`¤€øô5…Ñ ¹…‰Ì¡‘•±Ñ…h¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ñ•±±•¹Ñ•É`€¬5…Ñ ¹½ÁåM¥¸ Ä¸À°‘•±Ñ…`¤°(€€€€€€€€€€€€€€€€€€€Á½Í¥Ñ¥½¸¹ä ¤°(€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ñ•±±•¹Ñ•Éh(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€ÕÉÉ•¹Ñ•±±•¹Ñ•É`°(€€€€€€€€€€€€€€€Á½Í¥Ñ¥½¸¹ä ¤°(€€€€€€€€€€€€€€€ÕÉÉ•¹Ñ•±±•¹Ñ•Éh€¬5…Ñ ¹½ÁåM¥¸ Ä¸À°‘•±Ñ…h¤(€€€€€€€€¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ‰½½±•…¸¥¹Í¥‘•É•¹…I•…‘åI…‘¥ÕÌ (€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÁ½Í¥Ñ¥½¸(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¡½É¥é½¹Ñ…±I…‘¥ÕÌ¡Á½Í¥Ñ¥½¸¤€ğôI9}Ie}I%ULì(€€€ô)ô(
+package dev.mcai.companion.skills.end;
+
+import dev.mcai.companion.perception.PerceptionVec3;
+
+/**
+ * Public, seed-independent vanilla End geometry used only as a heading.
+ *
+ * <p>The central island and dragon fountain are organized around horizontal
+ * origin. These constants do not query a level, seed, heightmap, structure,
+ * chunk, or dragon-fight object.</p>
+ */
+public final class EndArenaTopology {
+    private static final double CENTER_EPSILON = 1.0E-9;
+
+    public static final double CENTER_X = 0.0;
+    public static final double CENTER_Z = 0.0;
+    public static final double MAXIMUM_INGRESS_START_RADIUS = 112.0;
+    public static final double ARENA_READY_RADIUS = 56.0;
+
+    private EndArenaTopology() {
+    }
+
+    public static double horizontalRadius(
+            final PerceptionVec3 position
+    ) {
+        return Math.hypot(
+                position.x() - CENTER_X,
+                position.z() - CENTER_Z
+        );
+    }
+
+    public static PerceptionVec3 oneCardinalStepTowardCenter(
+            final PerceptionVec3 position
+    ) {
+        final double deltaX = CENTER_X - position.x();
+        final double deltaZ = CENTER_Z - position.z();
+        if (Math.abs(deltaX) <= CENTER_EPSILON
+                && Math.abs(deltaZ) <= CENTER_EPSILON) {
+            return position;
+        }
+        final double currentCellCenterX = Math.floor(position.x()) + 0.5;
+        final double currentCellCenterZ = Math.floor(position.z()) + 0.5;
+        if (Math.abs(deltaX) >= Math.abs(deltaZ)) {
+            return new PerceptionVec3(
+                    currentCellCenterX + Math.copySign(1.0, deltaX),
+                    position.y(),
+                    currentCellCenterZ
+            );
+        }
+        return new PerceptionVec3(
+                currentCellCenterX,
+                position.y(),
+                currentCellCenterZ + Math.copySign(1.0, deltaZ)
+        );
+    }
+
+    public static boolean insideArenaReadyRadius(
+            final PerceptionVec3 position
+    ) {
+        return horizontalRadius(position) <= ARENA_READY_RADIUS;
+    }
+}

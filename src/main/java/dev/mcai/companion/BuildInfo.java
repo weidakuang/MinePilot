@@ -1,1 +1,10 @@
-ıK®Ïğz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰n·°ı¸§ıºŞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸ì()ÁÕ‰±¥Œ™¥¹…°±…ÍÌ	Õ¥±‘%¹™¼ì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°MÑÉ¥¹œYIM%=8€ô€ˆÀ¸Ä¸ÄÄµ‘•ØµµŒÈØ¸Èˆì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ğ55=Ie}M!5}YIM%=8€ô€Ìì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ğ5=1}=9QIQ}YIM%=8€ô€Èì((€€€ÁÉ¥Ù…Ñ”	Õ¥±‘%¹™¼ ¤ì(€€€ô)ô(
+package dev.mcai.companion;
+
+public final class BuildInfo {
+    public static final String VERSION = "0.1.11-dev-mc26.2";
+    public static final int MEMORY_SCHEMA_VERSION = 3;
+    public static final int MODEL_CONTRACT_VERSION = 2;
+
+    private BuildInfo() {
+    }
+}

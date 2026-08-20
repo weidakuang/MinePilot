@@ -1,1 +1,126 @@
-ıK®Ïğz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰n·°ı¸§ıºŞÀŒ5¥¹•A¥±½ĞUÍ…”Õ¥‘”()Q¡¥ÌÕ¥‘”½Ù•ÉÌÑ¡”€À¸Ä¸ÄÄµ‘•ØµµŒÈØ¸É€‘•Ù•±½Áµ•¹Ğ±¥¹”è5¥¹•É…™Ğ)…Ù„(ÈØ¸È°½É”€ØÔ¹à°…¹)…Ù„€ÈÔ¸%Ğ¥Ì¹½Ğ„Ñİ¼µ¡½ÕÈ½µÁ±•Ñ¥½¸Õ…É…¹Ñ•”ìÑ¡”)™½Éµ…°4ÃŠM4Ğ…Ñ•ÌÉ•µ…¥¸¥¸ÁÉ½É•ÍÌ¸((ŒŒ%¹ÍÑ…±°((ŒŒŒ±¥•¹Ğ…¹¥¹Ñ•É…Ñ•Í•ÉÙ•È((Ä¸%¹ÍÑ…±°)…Ù„€ÈÔ…¹5¥¹•É…™Ğ)…Ù„€ÈØ¸È¸(È¸%¹ÍÑ…±°½É”€ØÔ¸À¸ÃŠLØÔ¹à¥¸Ñ¡”¥¹ÍÑ…¹”¸¼¹½ĞÁÕĞÑ¡”½É”¥¹ÍÑ…±±•È(€€¥¸µ½‘Í€¸(Ì¸½Áä•á…Ñ±ä½¹”µ…¥}½µÁ…¹¥½¸´¨¹©…É€™É½´‰Õ¥±½±¥‰Í€¥¹Ñ¼µ½‘Í€¸(Ğ¸UÍ”Ñ¡”Í…µ”©…È½¸Ñ¡”±¥•¹Ğ…¹¥¹Ñ•É…Ñ•Í•ÉÙ•È¸Í•ÉÙ•Èİ¥Ñ¡½ÕĞÑ¡”(€€µ½…¹¹½ĞÉ•…Ñ”…¸…½Õ¹Ğµ™É•”$M•ÉÙ•ÉA±…å•É€¸(Ô¸=Á•¸„İ½É±…¹ÁÉ•ÍÌÍ€¸M•±•Ğ€¨©$½µÁ…¹¥½¸¨¨¥¸Ñ¡”Á…ÕÍ”µ•¹Ô¸((ŒŒŒ•‘¥…Ñ•Í•ÉÙ•È()%¹ÍÑ…±°Ñ¡”Í…µ”©…È½¸Ñ¡”Í•ÉÙ•È…¹Ñ¡”¹½Éµ…°±¥•¹Ğ¸I•Ù¥•ÜÑ¡”•¹•É…Ñ•)½¹™¥œ½µ…¤µ½µÁ…¹¥½¸¹Ñ½µ±€°…•ÁĞÑ¡”5½©…¹œU1°…¹ÍÑ…ÉĞÑ¡”Í•ÉÙ•Èİ¥Ñ ))…Ù„€ÈÔ¸¹½¸µ½Á•É…Ñ½Èµ…ä¥ÍÍÕ”…µ•Á±…ä½…±Ì½¹±äİ¡•¸Ñ¡•¥ÈUU%¥Ì±¥ÍÑ•)¥¸¡…Ğ¹…±±½İ•‘M•¹‘•ÉÍ€ìÑ¡¥Ì‘½•Ì¹½ĞÉ…¹Ğ€½µ…¥€…‘µ¥¹¥ÍÑÉ…Ñ¥½¸½È¡•…Ğ)½µµ…¹‘Ì¸((ŒŒ¥ÉÍĞµÉÕ¸Í•ÑÕÀ()Q¡”™¥ÉÍĞ½Á•¸Í¡½İÌ„™½ÕÈµÍÑ•ÀÑÕÑ½É¥…°è((Ä¸¡½½Í”„Õ¹¥ÅÕ”…•¹Ğ¹…µ”°½±½È°…¹…É´µ½‘•°¸(È¸%µÁ½ÉĞ…¸½ÁÑ¥½¹…°±½…°€ØÓ\ØĞA9Í­¥¸°½È­••ÀÑ¡”ÍÑ…‰±”MÑ•Ù”½±•à(€€™…±±‰…¬¸(Ì¸¹Ñ•ÈÑ¡”A$­•ä°!QQAL‰…Í”UI0°…¹µ½‘•°¹…µ”¸Q¡”­•ä¥ÌÍÑ½É•¥¸„(€€Á±…Ñ™½É´Í•ÕÉ”ÍÑ½É”½ÈÁÉ½•ÍÌµ½¹±äµ•µ½Éäì¥Ğ¥Ì¹•Ù•ÈİÉ¥ÑÑ•¸Ñ¼Ñ¡”(€€İ½É±½È¥Ğ¸(Ğ¸Y…±¥‘…Ñ”Ñ¡”½¹¹•Ñ¥½¸…¹Í•¹„™¥ÉÍĞ½É‘¥¹…Éä¡…Ğµ•ÍÍ…”¸()Q¡”Ñ•µÁ•É…ÑÕÉ”Í±¥‘•È¥Ì€À¸ÃŠLÄ¸Á€…¹¥ÌÍ•¹Ğ…ÌÑ¡”ÁÉ½Ù¥‘•ÈÌÍ…µÁ±¥¹œ)Ñ•µÁ•É…ÑÕÉ”¸%Ğ‘½•Ì¹½Ğ½Ù•ÉÉ¥‘”™…¥É¹•ÍÌ°Á•Éµ¥ÍÍ¥½¹Ì°!…É‘½É”ÉÕ±•Ì°½È)Ñ¡”ÍåÍÑ•´Á½±¥ä¸Q¡”™½É´…¸ÍÉ½±°…ĞÍµ…±°İ¥¹‘½ÜÍ¥é•ÌìM…Ù”½Y…±¥‘…Ñ”…¹)	…¬É•µ…¥¸Ù¥Í¥‰±”½ÕÑÍ¥‘”µÕ±Ñ¤µ±¥¹”™¥•±‘Ì¸((ŒŒ¡…Ğ…¹½…±Ì()%¸Í¥¹±”µÁ±…å•È°¹½Éµ…°¡…Ğ¥Ì•¹½Õ ì¹¼€ÁÉ•™¥à¥ÌÉ•ÅÕ¥É•¸%¸)µÕ±Ñ¥Á±…å•È°ÕÍ”Ñ¡”…•¹Ğ¹…µ”½È…¸…±±½İ±¥ÍÑ•Í•¹‘•È¸É•ÅÕ•ÍĞ¥Ì¹½Ğ)½µÁ±•Ñ”İ¡•¸Ñ¡”½µÁ…¹¥½¸É•Á±¥•ÌƒŠqİ½É­¥¹œ½¸¥ÓŠtè¥¹ÍÁ•ĞÑ¡”ÍÑ…ÑÕÌ½È)…Õ‘¥ĞÍÕµµ…Éä™½È‘•¥Í¥½¹}É•Ù¥Í¥½¹}…•ÁÑ•‘€°Í­¥±±}ÍÑ…ÉÑ•‘€°)±½İ}±•Ù•±}…Ñ¥½¹Í}¥ÍÍÕ•‘€°…¹„Í•ÉÙ•ÈµÙ•É¥™¥•É•ÍÕ±Ğ¸()á…µÁ±•Ìè()Ñ•áĞ)5¥¹•A¥±½Ğ°™½±±½Üµ”Ñ¼Ñ¡”Í¡…É•İ…åÁ½¥¹Ğ¸)½±±•ĞÙ¥Í¥‰±”½…¬±½Ì°É•Á±…¹Ğ¹•…É‰äÍ…Á±¥¹Ì°…¹É•ÑÕÉ¸Ñ¼Ñ¡”¡•ÍĞ¸)	Õ¥±„Íµ…±°±¥ĞÍ¡•±Ñ•È¡•É”°Ñ¡•¸ÍÑ½É”ÍÁ…É”™½½¥¸Ñ¡”¡•ÍĞ¸)€()Q¡”½µÁ…¹¥½¸µ…ä…Í¬„±•…ÈÅÕ•ÍÑ¥½¸İ¡•¸„Ñ…Í¬¥ÌÕ¹Í…™”°…µ‰¥Õ½ÕÌ°)Õ¹…ÕÑ¡½É¥é•°½È¥µÁ½ÍÍ¥‰±”¸%ĞµÕÍĞ¹½Ğ¥¹Ù•¹Ğ„±½…Ñ¥½¸°±…¥´Ñ¼¡…Ù”ÕÍ•„)µ•¹Ô¥Ğ‘¥¹½Ğ½Á•¸°½ÈÍ¥±•¹Ñ±äÑ•Éµ¥¹…Ñ”…¸…Ñ¥Ù”Á±…å•È½…°¸((ŒŒa…•É¼Í¡…É•İ…åÁ½¥¹ÑÌ()M¡…É”„ÍÑÉÕÑÕÉ•İ…åÁ½¥¹ĞÑ¡É½Õ Ñ¡”ÍÕÁÁ½ÉÑ•a…•É¼¥¹Ñ•É…Ñ¥½¸¸Q¡”)½µÁ…¹¥½¸…•ÁÑÌ½¹±ä…¸•áÁ±¥¥ĞÍ¡…É•µ…É­•È½È…¸…±±½İ±¥ÍÑ•Í•¹‘•È°)¡•­ÌÑ¡”‘¥µ•¹Í¥½¸…¹Í…™•Ñä°Ñ¡•¸¡½½Í•Ìİ…±­¥¹œ°„‰½…Ğ°„µ¥¹•…ÉĞ°)É…¥°°½È„Ù•É¥™¥•Á½ÉÑ…°•‘”¸%Ğİ…±­ÌÑ¼Ñ¡”¹•…É•ÍĞÍ…™”ÍÑ…¹‘¥¹œÁ½¥¹Ğ)İ¥Ñ¡¥¸Ñ¡”É•ÅÕ•ÍÑ•Ñ…É•Ğì¥Ğ¹•Ù•ÈÑ•±•Á½ÉÑÌ…¹¹•Ù•ÈÉ•…‘Ì…Ù”µ…ÁÌ½È)•¹Ñ¥ÑäÉ…‘…È¸((ŒŒ5@…¹½‘•à()Q¡”±½…°5@•¹‘Á½¥¹Ğ¥Ì¡ÑÑÀè¼¼ÄÈÜ¸À¸À¸ÄèÈÔÜØØ½µÁ€¸%ĞÉ•ÅÕ¥É•ÌÑ¡”•¹•É…Ñ•)	•…É•ÈÑ½­•¸Á±ÕÌÙ…±¥!½ÍĞ…¹=É¥¥¸¡•…‘•ÉÌ¸Ù…¥±…‰±”Ñ½½±Ìè()Ñ•áĞ)½‰Í•ÉÙ”°Í•Ñ}½…°°½…±}ÍÑ…ÑÕÌ°Í…ä°…¹•±}½…°°)…‘‘}İ…åÁ½¥¹Ğ°•Ñ}ÍÉ••¹Í¡½Ğ°•Ñ}…Õ‘¥Ñ}ÍÕµµ…Éä)€()5@¥Ì„½¹ÑÉ½°ÍÕÉ™…”°¹½Ğ„ÁÉ¥Ù¥±•••á•ÕÑ¥½¸Á…Ñ ¸Q¡”Í…µ”Á•Éµ¥ÍÍ¥½¸°)É•Ù¥Í¥½¸°™…¥ÈµÁ•É•ÁÑ¥½¸°…¹Í­¥±°¡•­Ì…ÁÁ±ä…Ì™½È¡…Ğ¸Q¡”‰Õ¹‘±•)Í­¥±±Ì½µ¥¹•É…™Ğµ½µÁ…¹¥½¹€½‘•àÍ­¥±°‘•ÍÉ¥‰•ÌÑ¡”¡¥ µ±•Ù•°İ½É­™±½Ü…¹)‘½•Ì¹½Ğ•µ‰•„…µ”•¹å±½Á•‘¥„¸((ŒŒQ•ÍÑ¥¹œİ¥Ñ¡½ÕĞ„±…Õ¹¡•È()½É”ÌÉÕ¹…µ•Q•ÍÑM•ÉÙ•É€ÍÑ…ÉÑÌ„‘•‘¥…Ñ•Í•ÉÙ•Èİ¥Ñ¡½ÕĞ„İ¥¹‘½Ü½Èµ½ÕÍ”)¥¹ÁÕĞ¸%ĞÉ•…Ñ•Ì„É•…°M•ÉÙ•ÉA±…å•É€°Í•¹‘Ì¡…ĞÑ¡É½Õ ½É”•Ù•¹ÑÌ°…¹)¡•­ÌÙ…¹¥±±„İ½É±°¥¹Ù•¹Ñ½Éä°•¹Ñ¥Ñä°Á¡åÍ¥Ì°…¹ÍÑ…Ñ¥ÍÑ¥Ì¸á…µÁ±”è()‰…Í (¸½É…‘±•ÜÉÕ¹…µ•Q•ÍÑM•ÉÙ•Èp(€€µA™½É•}½µÁ¥±•}Ù•ÉÍ¥½¸ôØÔ¸Ä¸Äp(€€µAÑ•ÍÑ}Í•±•Ñ½Èõµ…¥}½µÁ…¹¥½¸éÉ•…±}İ…Ñ•É}±ÕÑ p(€€´µ¹¼µ‘…•µ½¸€´µ¹¼µ½¹™¥ÕÉ…Ñ¥½¸µ…¡”)€()½È…ÕÑ¡½É¥é•±¥Ù”µµ½‘•°İ½É¬°­••ÀÑ¡”­•ä¥¸•¹Ù¥É½¹µ•¹ĞÙ…É¥…‰±•Ì…¹Í•Ğ)€µA±¥Ù•}µ½‘•±}Ñ•ÍĞõÑÉÕ”€µAÉ•…±Ñ¥µ•}…µ•Ñ•ÍĞõÑÉÕ•€¸ÁÉ½Ù¥‘•ÈÉ•ÍÁ½¹Í”¥ÌÉ•…°)•Ù¥‘•¹”½¹±äİ¡•¸Ñ¡”…Õ‘¥ĞÉ•½É‘ÌÑ¡”…ÕÍ…°Í•ÅÕ•¹”™É½´¡…ĞÑ¼µ½‘•°)É•ÅÕ•ÍĞ°Í¡•µ„Ù…±¥‘…Ñ¥½¸°…•ÁÑ•‘•¥Í¥½¸°Í­¥±°ÍÑ…ÉĞ°±½Üµ±•Ù•°…Ñ¥½¸°)…¹Í•ÉÙ•ÈÉ•ÍÕ±Ğ¸((ŒŒQÉ½Õ‰±•Í¡½½Ñ¥¹œ((´€¨©9¼‰½‘äè¨¨½¹™¥É´Ñ¡”µ½¥Ì¥¹ÍÑ…±±•½¸‰½Ñ ±¥•¹Ğ…¹Í•ÉÙ•È°Ñ¡”(€Í•ÉÙ•È¡…Ì½µÁ±•Ñ•İ½É±ÍÁ…İ¸°…¹QÍ¡½İÌÑ¡”•áÁ±¥¥Ğm%u€•¹ÑÉä¸(´€¨©9¼ÍÁ•• ½È…Ñ¥½¸è¨¨¥¹ÍÁ•Ğ½…±}ÍÑ…ÑÕÍ€…¹•Ñ}…Õ‘¥Ñ}ÍÕµµ…Éå€°Ñ¡•¸(€¡•¬Ñ¡”ÁÉ½Ù¥‘•ÈÍÑ…ÑÕÌ°UI0°µ½‘•°°…±±½İ±¥ÍĞ°…¹É•Ù¥Í¥½¸¸9¼µ­•äµ½‘”(€‘•±¥‰•É…Ñ•±ä­••ÁÌÑ¡”‰½‘äÁÉ•Í•¹Ğ‰ÕĞ¥‘±”…¹Í…™”¸(´€¨©-•äÉ•ÅÕ•ÍÑ•……¥¸è¨¨É”µ½Á•¸Ñ¡”Í•ÑÕÀÍÉ••¸…¹¡•¬Ñ¡”Í•ÕÉ”µÍÑ½É”(€ÍÑ…ÑÕÌ¸=¸„¡•…‘±•ÍÌÍ•ÉÙ•È°ÕÍ”Ñ¡”‘½Õµ•¹Ñ•¹•áĞµÁÉ½•ÍÌ•¹Ù¥É½¹µ•¹Ğ½È(€Í•É•Ğµ™¥±”¥¹©•Ñ¥½¸Á…Ñ ì‘¼¹½ĞÁÕĞÑ¡”­•ä¥¸Q=50¸(´€¨©±¥Ù”Ñ•ÍĞÑ¥µ•Ì½ÕĞè¨¨ÁÉ•Í•ÉÙ”Ñ¡”•á…Ğ±½œ…¹‘¥…¹½ÍÑ¥Ì¸Ñ¥µ•½ÕĞ(€¥Ì„™…¥±•Í±¥”°¹½Ğ•Ù¥‘•¹”Ñ¡…ĞÑ¡”µ½‘•°½µÁ±•Ñ•Ñ¡”½…°¸((ŒŒ1¥µ¥ÑÌ½˜Ñ¡¥Ì‰Õ¥±()Q¡”ÕÉÉ•¹Ğ…ÉÑ¥™…Ğ¥Ì¹½Ğ„Õ¹¥Ù•ÉÍ…°µ½‘Á…¬…•¹Ğ°¹½Ğ„¡•…Ğ±¥•¹Ğ°…¹)¹½Ğ„Õ…É…¹Ñ••É…¹‘½´µÍ••ÍÁ••‘ÉÕ¹¹•È¸½µÁ±•àÉ•…Ñ”°5QH°…Éµ•ÈÌ•±¥¡Ğ°)…¹…¥ÉÉ…™ĞÍ­¥±±Ì…É”…‘…ÁÑ•ÉÌÕ¹‘•ÈÑ•ÍĞ¸I•¹‘•É•Í­¥¸½…¹¥µ…Ñ¥½¸¡•­Ì°)1¥¹Õà½aÙ™ˆ±¥Ù”±¥•¹ÑÌ°É…¹‘½µ¥é•!…É‘½É”ÍÑ…Ñ¥ÍÑ¥Ì°…¹€ÈĞ¼ÄÀÀµ¡½ÕÈÍ½…¬)É•µ…¥¸Í•Á…É…Ñ”É•±•…Í”…Ñ•Ì¸
+# MinePilot Usage Guide
+
+This guide covers the `0.1.11-dev-mc26.2` development line: Minecraft Java
+26.2, Forge 65.x, and Java 25. It is not a two-hour completion guarantee; the
+formal M0â€“M4 gates remain in progress.
+
+## Install
+
+### Client and integrated server
+
+1. Install Java 25 and Minecraft Java 26.2.
+2. Install Forge 65.0.0â€“65.x in the instance. Do not put the Forge installer
+   in `mods`.
+3. Copy exactly one `mcai_companion-*.jar` from `build/libs` into `mods`.
+4. Use the same jar on the client and integrated server. A server without the
+   mod cannot create an account-free AI `ServerPlayer`.
+5. Open a world and press `Esc`. Select **AI Companion** in the pause menu.
+
+### Dedicated server
+
+Install the same jar on the server and the normal client. Review the generated
+`config/mcai-companion.toml`, accept the Mojang EULA, and start the server with
+Java 25. A non-operator may issue gameplay goals only when their UUID is listed
+in `chat.allowedSenders`; this does not grant `/mcai` administration or cheat
+commands.
+
+## First-run setup
+
+The first open shows a four-step tutorial:
+
+1. Choose a unique agent name, color, and arm model.
+2. Import an optional local 64Ã—64 PNG skin, or keep the stable Steve/Alex
+   fallback.
+3. Enter the API key, HTTPS base URL, and model name. The key is stored in a
+   platform secure store or process-only memory; it is never written to the
+   world or Git.
+4. Validate the connection and send a first ordinary chat message.
+
+The temperature slider is `0.0â€“1.0` and is sent as the provider's sampling
+temperature. It does not override fairness, permissions, Hardcore rules, or
+the system policy. The form can scroll at small window sizes; Save/Validate and
+Back remain visible outside multi-line fields.
+
+## Chat and goals
+
+In single-player, normal chat is enough; no `@` prefix is required. In
+multiplayer, use the agent name or an allowlisted sender. A request is not
+complete when the companion replies â€œworking on itâ€: inspect the status or
+audit summary for `decision_revision_accepted`, `skill_started`,
+`low_level_actions_issued`, and a server-verified result.
+
+Examples:
+
+```text
+MinePilot, follow me to the shared waypoint.
+Collect visible oak logs, replant nearby saplings, and return to the chest.
+Build a small lit shelter here, then store spare food in the chest.
+```
+
+The companion may ask a clear question when a task is unsafe, ambiguous,
+unauthorized, or impossible. It must not invent a location, claim to have used a
+menu it did not open, or silently terminate an active player goal.
+
+## Xaero shared waypoints
+
+Share a structured waypoint through the supported Xaero integration. The
+companion accepts only an explicit shared marker or an allowlisted sender,
+checks the dimension and safety, then chooses walking, a boat, a minecart,
+rail, or a verified portal edge. It walks to the nearest safe standing point
+within the requested target; it never teleports and never reads cave maps or
+entity radar.
+
+## MCP and Codex
+
+The local MCP endpoint is `http://127.0.0.1:25766/mcp`. It requires the generated
+Bearer token plus valid Host and Origin headers. Available tools:
+
+```text
+observe, set_goal, goal_status, say, cancel_goal,
+add_waypoint, get_screenshot, get_audit_summary
+```
+
+MCP is a control surface, not a privileged execution path. The same permission,
+revision, fair-perception, and skill checks apply as for chat. The bundled
+`skills/minecraft-companion` Codex skill describes the high-level workflow and
+does not embed a game encyclopedia.
+
+## Testing without a launcher
+
+Forge's `runGameTestServer` starts a dedicated server without a window or mouse
+input. It creates a real `ServerPlayer`, sends chat through Forge events, and
+checks vanilla world, inventory, entity, physics, and statistics. Example:
+
+```bash
+./gradlew runGameTestServer \
+  -Pforge_compile_version=65.1.1 \
+  -Ptest_selector=mcai_companion:real_water_clutch \
+  --no-daemon --no-configuration-cache
+```
+
+For authorized live-model work, keep the key in environment variables and set
+`-Plive_model_test=true -Prealtime_gametest=true`. A provider response is real
+evidence only when the audit records the causal sequence from chat to model
+request, schema validation, accepted decision, skill start, low-level action,
+and server result.
+
+## Troubleshooting
+
+- **No body:** confirm the mod is installed on both client and server, the
+  server has completed world spawn, and TAB shows the explicit `[AI]` entry.
+- **No speech or action:** inspect `goal_status` and `get_audit_summary`, then
+  check the provider status, URL, model, allowlist, and revision. No-key mode
+  deliberately keeps the body present but idle and safe.
+- **Key requested again:** re-open the setup screen and check the secure-store
+  status. On a headless server, use the documented next-process environment or
+  secret-file injection path; do not put the key in TOML.
+- **A live test times out:** preserve the exact log and diagnostics. A timeout
+  is a failed slice, not evidence that the model completed the goal.
+
+## Limits of this build
+
+The current artifact is not a universal modpack agent, not a cheat client, and
+not a guaranteed random-seed speedrunner. Complex Create, MTR, Farmer's Delight,
+and aircraft skills are adapters under test. Rendered skin/animation checks,
+Linux/Xvfb live clients, randomized Hardcore statistics, and 24/100-hour soak
+remain separate release gates.

@@ -1,1 +1,9 @@
-ıK®Ïğz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰n·°ı¸§ıºŞÁì(€€‰ÑåÁ”ˆè€‰µ¥¹•É…™Ğé™Õ¹Ñ¥½¸ˆ°(€€‰•¹Ù¥É½¹µ•¹Ğˆè€‰µ…¥}½µÁ…¹¥½¸é•á±ÕÍ¥Ù•}¹…ÑÕÉ…±}•¹‘}¥Í±…¹‘}¥¹É•ÍÌˆ°(€€‰™Õ¹Ñ¥½¸ˆè€‰µ…¥}½µÁ…¹¥½¸é¹…ÑÕÉ…±}•¹‘}¥Í±…¹‘}¥¹É•ÍÌˆ°(€€‰µ…á}Ñ¥­Ìˆè€ÄÈÀÀÀ°(€€‰ÍÑÉÕÑÕÉ”ˆè€‰™½É”é•µÁÑäĞáàÌÉàĞàˆ°(€€‰Í­å}…•ÍÌˆèÑÉÕ”°(€€‰Á…‘‘¥¹œˆè€à)ô
+{
+  "type": "minecraft:function",
+  "environment": "mcai_companion:exclusive_natural_end_island_ingress",
+  "function": "mcai_companion:natural_end_island_ingress",
+  "max_ticks": 12000,
+  "structure": "forge:empty48x32x48",
+  "sky_access": true,
+  "padding": 8
+}

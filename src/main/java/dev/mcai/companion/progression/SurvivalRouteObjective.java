@@ -1,1 +1,28 @@
-ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹ÁÉ½É•ÍÍ¥½¸ì((¼¨¨(€¨½µÁ…ÐÍÑÉ…Ñ•¥Œ½‰©•Ñ¥Ù”Í•±•Ñ•™É½´Ñ¡”¹•áÐÕ¹Ù•É¥™¥•É½ÕÑ”(€¨µ¥±•ÍÑ½¹”¸%Ð¥ÌÕ¥‘…¹”°¹½Ð•Ù¥‘•¹”½È„‘¥É•ÐÝ½É±…Ñ¥½¸¸(€¨¼)ÁÕ‰±¥Œ•¹Õ´MÕÉÙ¥Ù…±I½ÕÑ•=‰©•Ñ¥Ù”ì(€€€Q!I}Y%M%	1}]==°(€€€AIAI}	M%}IQ%9°(€€€MUI}==}IMIY°(€€€IQ}9}5%9}MQ=9°(€€€EU%I}%I=9}Q==1-%P°(€€€MQ	1%M!}=U9Q%=9}]=I-MQQ%=9L°(€€€MQ=I}MUIA1UM}MUAA1%L°(€€€	U%1}e95%}M!1QH°(€€€MUIY%Y}=I}M1A}Q!I=U!}9%!P°(€€€	U%1}9}YI%e}9Q!I}I=UQ°(€€€%9}9}EU%I}	1i}5QI%0°(€€€EU%I}9I}AI1L°(€€€IQ}eM}=}9H°(€€€QI}MQI=9!=1}	I%9°(€€€QI%9U1Q}MQI=9!=1}MI!}I°(€€€AIAI}9}1==UP°(€€€Q%YQ}9}9QI}9}A=IQ0°(€€€I!}9}%M19°(€€€Q}9I}I=8°(€€€9QI}IQUI9}A=IQ0)ô(
+package dev.mcai.companion.progression;
+
+/**
+ * Compact strategic objective selected from the next unverified route
+ * milestone. It is guidance, not evidence or a direct world action.
+ */
+public enum SurvivalRouteObjective {
+    GATHER_VISIBLE_WOOD,
+    PREPARE_BASIC_CRAFTING,
+    SECURE_FOOD_RESERVE,
+    CRAFT_AND_MINE_STONE,
+    ACQUIRE_IRON_TOOLKIT,
+    ESTABLISH_FOUNDATION_WORKSTATIONS,
+    STORE_SURPLUS_SUPPLIES,
+    BUILD_DYNAMIC_SHELTER,
+    SURVIVE_OR_SLEEP_THROUGH_NIGHT,
+    BUILD_AND_VERIFY_NETHER_ROUTE,
+    FIND_AND_ACQUIRE_BLAZE_MATERIAL,
+    ACQUIRE_ENDER_PEARLS,
+    CRAFT_EYES_OF_ENDER,
+    TRACE_STRONGHOLD_BEARING,
+    TRIANGULATE_STRONGHOLD_SEARCH_AREA,
+    PREPARE_END_LOADOUT,
+    ACTIVATE_AND_ENTER_END_PORTAL,
+    REACH_END_ISLAND,
+    DEFEAT_ENDER_DRAGON,
+    ENTER_RETURN_PORTAL
+}

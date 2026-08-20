@@ -1,1 +1,58 @@
-ıK®Ïğz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰n·°ı¸§ıºŞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹ÁÉ½É•ÍÍ¥½¸ì((¼¨¨(€¨M¡…É•°±½…‘•Èµ¥¹‘•Á•¹‘•¹Ğµ…Ñ•É¥…°Ñ…É•ÑÌ™½ÈÑ¡”½É‘¥¹…Éä½µÁ±•Ñ¥½¸(€¨É½ÕÑ”¸½Õ¹ÑÌ…É”É•Í½ÕÉ”µ•ÅÕ¥Ù…±•¹ĞÕ¹¥ÑÌÉ…Ñ¡•ÈÑ¡…¸‘¥É•Ğ•Ù¥‘•¹”½˜(€¨„ÍÑÉÕÑÕÉ”½È™ÕÑÕÉ”‘É½À¸(€¨¼)ÁÕ‰±¥Œ™¥¹…°±…ÍÌ½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ğ	1i}I=UQ}U9%QL€ô€ÄĞì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ğ9I}I=UQ}U9%QL€ô€ÄĞì(€€€€¼¨¨(€€€€€¨Qİ•±Ù”å•Ì…É”Ñ¡”İ½ÉÍĞµ…Í”Á½ÉÑ…°µ™É…µ”É•Í•ÉÙ”¸Qİ¼…‘‘¥Ñ¥½¹…°(€€€€€¨å•Ì…É”‰Õ‘•Ñ•™½È™…¥È°½É‘¥¹…ÉäÍÑÉ½¹¡½±ÑÉ¥…¹Õ±…Ñ¥½¸¸(€€€€€¨¼(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹ĞeM}Id€ô€ÄĞì(€€€€¼¨¨I•Í•ÉÙ”™½È„‘å¹…µ¥Œ‘É…½¸™±¥¡ĞÉ…Ñ¡•ÈÑ¡…¸„½¹”µÍ¡½Ğ‘•µ¼¸€¨¼(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ğ9}	U%1%9}	1=-L€ô€ØĞì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ğ9}	=]L€ô€Äì(€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ™¥¹…°¥¹Ğ9}II=]L€ô€ØĞì((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ğ5a}U9%QL€ô€ÌØ€¨€ØĞì((€€€ÁÉ¥Ù…Ñ”½µÁ±•Ñ¥½¹I•Í½ÕÉ•I•…‘¥¹•ÍÌ ¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ¥¹Ğ‰±…é•I½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€™¥¹…°¥¹Ğ‰±…é•I½‘Ì°(€€€€€€€€€€€™¥¹…°¥¹Ğ‰±…é•A½İ‘•È°(€€€€€€€€€€€™¥¹…°¥¹ĞÉ…™Ñ•‘å•Ì(€€€€¤ì(€€€€€€€É•ÅÕ¥É•9½¹9•…Ñ¥Ù”¡‰±…é•I½‘Ì°‰±…é•A½İ‘•È°É…™Ñ•‘å•Ì¤ì(€€€€€€€É•ÑÕÉ¸‰½Õ¹‘• (€€€€€€€€€€€€€€€‰±…é•I½‘Ì€¨€É0€¬‰±…é•A½İ‘•È€¬É…™Ñ•‘å•Ì(€€€€€€€€¤ì(€€€ô((€€€ÁÕ‰±¥ŒÍÑ…Ñ¥Œ¥¹Ğ•¹‘•ÉI½ÕÑ•U¹¥ÑÌ (€€€€€€€€€€€™¥¹…°¥¹Ğ•¹‘•ÉA•…É±Ì°(€€€€€€€€€€€™¥¹…°¥¹ĞÉ…™Ñ•‘å•Ì(€€€€¤ì(€€€€€€€É•ÅÕ¥É•9½¹9•…Ñ¥Ù”¡•¹‘•ÉA•…É±Ì°É…™Ñ•‘å•Ì¤ì(€€€€€€€É•ÑÕÉ¸‰½Õ¹‘• ¡±½¹œ¤•¹‘•ÉA•…É±Ì€¬É…™Ñ•‘å•Ì¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¥¹Ğ‰½Õ¹‘•¡™¥¹…°±½¹œÙ…±Õ”¤ì(€€€€€€€É•ÑÕÉ¸€¡¥¹Ğ¤5…Ñ ¹µ¥¸¡5a}U9%QL°Ù…±Õ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒÙ½¥É•ÅÕ¥É•9½¹9•…Ñ¥Ù”¡™¥¹…°¥¹Ğ¸¸¸½Õ¹ÑÌ¤ì(€€€€€€€™½È€¡¥¹Ğ½Õ¹Ğ€è½Õ¹ÑÌ¤ì(€€€€€€€€€€€¥˜€¡½Õ¹Ğ€ğ€À¤ì(€€€€€€€€€€€€€€€Ñ¡É½Ü¹•Ü%±±•…±ÉÕµ•¹Ñá•ÁÑ¥½¸ (€€€€€€€€€€€€€€€€€€€€€€€€‰½µÁ±•Ñ¥½¸É•Í½ÕÉ”½Õ¹Ğ¥Ì¹•…Ñ¥Ù”ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€ô)ô
+package dev.mcai.companion.progression;
+
+/**
+ * Shared, loader-independent material targets for the ordinary completion
+ * route. Counts are resource-equivalent units rather than direct evidence of
+ * a structure or future drop.
+ */
+public final class CompletionResourceReadiness {
+    public static final int BLAZE_ROUTE_UNITS = 14;
+    public static final int ENDER_ROUTE_UNITS = 14;
+    /**
+     * Twelve Eyes are the worst-case portal-frame reserve. Two additional
+     * Eyes are budgeted for fair, ordinary stronghold triangulation.
+     */
+    public static final int EYES_READY = 14;
+    /** Reserve for a dynamic dragon flight rather than a one-shot demo. */
+    public static final int END_BUILDING_BLOCKS = 64;
+    public static final int END_BOWS = 1;
+    public static final int END_ARROWS = 64;
+
+    private static final int MAX_UNITS = 36 * 64;
+
+    private CompletionResourceReadiness() {
+    }
+
+    public static int blazeRouteUnits(
+            final int blazeRods,
+            final int blazePowder,
+            final int craftedEyes
+    ) {
+        requireNonNegative(blazeRods, blazePowder, craftedEyes);
+        return bounded(
+                blazeRods * 2L + blazePowder + craftedEyes
+        );
+    }
+
+    public static int enderRouteUnits(
+            final int enderPearls,
+            final int craftedEyes
+    ) {
+        requireNonNegative(enderPearls, craftedEyes);
+        return bounded((long) enderPearls + craftedEyes);
+    }
+
+    private static int bounded(final long value) {
+        return (int) Math.min(MAX_UNITS, value);
+    }
+
+    private static void requireNonNegative(final int... counts) {
+        for (int count : counts) {
+            if (count < 0) {
+                throw new IllegalArgumentException(
+                        "Completion resource count is negative"
+                );
+            }
+        }
+    }
+}

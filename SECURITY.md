@@ -1,1 +1,37 @@
-ıK®Ïğz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰n·°ı¸§ıºŞÀŒM•ÕÉ¥ÑäÁ½±¥ä((ŒŒM½Á”()Q¡¥ÌÁ½±¥ä½Ù•ÉÌÑ¡”µ…¥}½µÁ…¹¥½¹€Í½ÕÉ”ÑÉ•”°Ñ¡”¥¹ÍÑ…±±…‰±”½É”)H°)Ñ¡”±½½Á‰…¬5@•¹‘Á½¥¹Ğ°İ½É±M…Ù•‘…Ñ…€°…¹Ñ¡”ME1¥Ñ”µ•µ½Éä‘…Ñ…‰…Í”¸)Q¡”ÕÉÉ•¹Ğ‰É…¹ ¥Ì„‘•Ù•±½Áµ•¹Ğ‰Õ¥±€¡€À¸Ä¸ÄÄµ‘•ØµµŒÈØ¸É€¤°¹½Ğ„Í•ÕÉ¥Ñä)½È…µ•Á±…äÉ•±•…Í”¸((ŒŒI•Á½ÉĞ„ÙÕ±¹•É…‰¥±¥Ñä()¼¹½ĞÁÕĞA$­•åÌ°…•ÍÌÑ½­•¹Ì°İ½É±Í…Ù•Ì°Á±…å•È%AÌ°½ÈÁÉ¥Ù…Ñ”±½Ì¥¸„)ÁÕ‰±¥Œ¥ÍÍÕ”¸M•¹„µ¥¹¥µ…°É•ÁÉ½‘ÕÑ¥½¸…¹Ñ¡”…™™•Ñ•½µµ¥ĞÑ¡É½Õ Ñ¡”)É•Á½Í¥Ñ½ÉäÌÁÉ¥Ù…Ñ”Í•ÕÉ¥Ñä¡…¹¹•°¸%˜¹¼ÁÉ¥Ù…Ñ”¡…¹¹•°¥Ì½¹™¥ÕÉ•°)½Á•¸…¸¥ÍÍÕ”½¹Ñ…¥¹¥¹œ½¹±ä„É•‘…Ñ•‘•ÍÉ¥ÁÑ¥½¸…¹É•ÅÕ•ÍĞ„ÁÉ¥Ù…Ñ”)½¹Ñ…Ğì¹•Ù•È…ÑÑ… É•‘•¹Ñ¥…±Ì¸((ŒŒM•ÕÉ¥Ñä‰½Õ¹‘…É¥•Ì((´É•‘•¹Ñ¥…±Ì…É”ÁÉ½•ÍÌ½¹™¥ÕÉ…Ñ¥½¸½È=LÉ•‘•¹Ñ¥…°µÍÑ½É”‘…Ñ„½¹±äìÑ¡•ä(€µÕÍĞ¹½Ğ•¹Ñ•ÈM…Ù•‘…Ñ…€°ME1¥Ñ”°)IÌ°±½Ì°É…Í É•Á½ÉÑÌ°ÍÉ••¹Í¡½ÑÌ°(€½È•Ù¥‘•¹”µ…¹¥™•ÍÑÌ¸(´5@‰¥¹‘ÌÑ¼±½½Á‰…¬…¹É•ÅÕ¥É•Ì„‰•…É•ÈÑ½­•¸Á±ÕÌ!½ÍĞ½=É¥¥¸¡•­Ì¸(´I•µ½Ñ”µ½‘•°UI1ÌµÕÍĞÕÍ”!QQALìÁ±…¥¸!QQ@¥Ì±¥µ¥Ñ•Ñ¼±½½Á‰…¬¸(´5½‘•°½ÕÑÁÕĞ¥Ì„ÑåÁ•¡¥ µ±•Ù•°‘•¥Í¥½¸¸%Ğ…¹¹½Ğ¥ÍÍÕ”)…Ù„°Á…­•ÑÌ°(€½µµ…¹‘Ì°Ñ•±•Á½ÉĞÉ•ÅÕ•ÍÑÌ°‘¥É•Ğ‰±½¬İÉ¥Ñ•Ì°½È¥Ñ•´É•…Ñ¥½¸¸(´¡…Ğ°‰½½­Ì°¥Ñ•´¹…µ•Ì°Í¥¹Ì°…¹Í¡…É•İ…åÁ½¥¹ÑÌ…É”Õ¹ÑÉÕÍÑ•½¹Ñ•¹Ğì(€Ñ¡•ä…¹¹½Ğ…±Ñ•ÈÑ¡”ÍåÍÑ•´ÁÉ½µÁĞ½ÈÍ…™•ÑäÁ½±¥ä¸(´!…É‘½É”…¹™…¥ÈµÁ±…ä½¹™¥ÕÉ…Ñ¥½¹ÌÁ•Éµ…¹•¹Ñ±äÉ•©•Ğ¡•…ÑÌ°¡¥‘‘•¸µİ½É±(€É•…‘Ì°Í••½ÍÑÉÕÑÕÉ”A%Ì°½‰Í•ÉÙ•Èµ…µ•É„¥¹ÁÕĞ°…¹‘¥É•Ğİ½É±µÕÑ…Ñ¥½¸¸((ŒŒMÕÁÁ½ÉÑ•Ù•ÉÍ¥½¹Ì()Q¡”ÕÉÉ•¹ĞÍ½ÕÉ”Ñ…É•ÑÌ5¥¹•É…™Ğ€ÈØ¸È€¼½É”€ØÔ¹à€¼)…Ù„€ÈÔ¸Q¡”‘•±…É•)±½…‘•ÈÉ…¹”¥ÌlØÔ¸À¸À°ØØ¸À¸À¥€°‰ÕĞÑ¡”™Õ±°€ØÔ¹àÉÕ¹Ñ¥µ”µ…ÑÉ¥à¥ÌÍÑ¥±°)9=Q}IU9€ìÍ•”m½µÁ…Ñ¥‰¥±¥Ñåt¡½µÁ…Ğ½™½É”µ±¥¹•Ì¹Ñ½µ°¤…¹)m=1}MQQt¡‘½Ì½ÁÉ½É•ÍÌ½=1}MQQ¹©Í½¸¤¸(
+# Security policy
+
+## Scope
+
+This policy covers the `mcai_companion` source tree, the installable Forge JAR,
+the loopback MCP endpoint, world `SavedData`, and the SQLite memory database.
+The current branch is a development build (`0.1.11-dev-mc26.2`), not a security
+or gameplay release.
+
+## Report a vulnerability
+
+Do not put API keys, access tokens, world saves, player IPs, or private logs in a
+public issue. Send a minimal reproduction and the affected commit through the
+repository's private security channel. If no private channel is configured,
+open an issue containing only a redacted description and request a private
+contact; never attach credentials.
+
+## Security boundaries
+
+- Credentials are process configuration or OS credential-store data only; they
+  must not enter `SavedData`, SQLite, JARs, logs, crash reports, screenshots,
+  or evidence manifests.
+- MCP binds to loopback and requires a bearer token plus Host/Origin checks.
+- Remote model URLs must use HTTPS; plain HTTP is limited to loopback.
+- Model output is a typed high-level decision. It cannot issue Java, packets,
+  commands, teleport requests, direct block writes, or item creation.
+- Chat, books, item names, signs, and shared waypoints are untrusted content;
+  they cannot alter the system prompt or safety policy.
+- Hardcore and fair-play configurations permanently reject cheats, hidden-world
+  reads, seed/structure APIs, observer-camera input, and direct world mutation.
+
+## Supported versions
+
+The current source targets Minecraft 26.2 / Forge 65.x / Java 25. The declared
+loader range is `[65.0.0,66.0.0)`, but the full 65.x runtime matrix is still
+`NOT_RUN`; see [compatibility](compat/forge-lines.toml) and
+[GOAL_STATE](docs/progress/GOAL_STATE.json).

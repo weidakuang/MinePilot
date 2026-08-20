@@ -17,7 +17,7 @@ pass.
 
 This section supersedes older chronological notes below when they conflict.
 
-- The current uncommitted End-fight patch adds fair sky-clearance recovery,
+- The latest End-fight commit adds fair sky-clearance recovery,
   bounded observed one-cell rally movement, and one bounded reuse of
   `EndIslandIngressSkill` when the dragon scan reaches an observed frontier.
   It uses only the existing `ServerPlayer` movement, mining, crouch/place, and

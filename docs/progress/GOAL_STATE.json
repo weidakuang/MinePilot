@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-20T13:35:00Z",
+  "updatedAtUtc": "2026-08-20T13:52:00Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -68,6 +68,24 @@
       "runtimeSeconds": 12.26,
       "fixtureConstraint": "Bounded straight safe course with an embedded GameTest player; not a rendered client or random world.",
       "runRoot": "run-live-task-fix-20260814",
+      "formalGate": "NOT_RUN"
+    },
+    "currentLiveMovementRerun": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL travel_to",
+      "actions": "SQLite recorded conversation_task_accepted, HTTP-200 model response, schema and revision acceptance, skill_started, and low_level_actions_issued(action=move). The body reached the requested point through ordinary ServerPlayer movement without teleport or command.",
+      "runtimeSeconds": 22.86,
+      "modelRequestSeconds": 7.136,
+      "fixtureConstraint": "Isolated straight safe course with an embedded GameTest player; not a rendered Actor/Observer, random-world, Hardcore, or formal M1-M4 gate.",
+      "runRoot": "ephemeral isolated GameTest run (2026-08-20T22:45+09:00)",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveProviderNegative": {
+      "status": "FAIL_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "details": "Capability negotiation succeeded, but the real structured response for secure_ender_pearl_reserve returned REPLAN instead of the test-required START_SKILL. The assertion failed after 67.66 seconds; no fallback action was fabricated.",
       "formalGate": "NOT_RUN"
     },
     "latestLiveFollow": {

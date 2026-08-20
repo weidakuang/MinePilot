@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-20T22:28:00+09:00
+Last updated: 2026-08-20T22:52:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -62,6 +62,20 @@ This section supersedes older chronological notes below when they conflict.
   ender-dragon breath cloud as a fair proximity threat; waiting or expired
   clouds remain neutral. The focused perception source-contract test passes;
   no hidden effect data or world mutation is used.
+- A fresh authorized MiMo movement slice on Forge 65.1.1 passed in an
+  isolated GameTest server. The SQLite chain was
+  `conversation_task_accepted → model_request_started →
+  model_response_received(HTTP 200) → decision_revision_accepted(START_SKILL
+  travel_to) → skill_started → low_level_actions_issued(move)`, and the body
+  reached its requested point with ordinary `ServerPlayer` movement. Forge
+  reported `All 1 required tests passed` in 22.86 seconds; the model request
+  itself completed in 7.136 seconds. This is controlled live evidence, not a
+  rendered Actor/Observer or formal M1-M4 gate.
+- The same provider's explicit multi-phase smoke test is retained as negative
+  evidence: capability negotiation succeeded, but its real structured answer
+  for `secure_ender_pearl_reserve` was `REPLAN` instead of the required
+  `START_SKILL`. The assertion failed after 67.66 seconds, and no fallback
+  action was invented.
 
 - Root causes closed in the current worktree: the vanilla End fight bootstrap
   could retire a test dragon created before its legacy scan settled; a

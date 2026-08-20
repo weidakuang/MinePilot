@@ -22,13 +22,15 @@ Hardcore world or the rendered Actor/Observer protocol.
 All runs used Forge `65.1.1`, Minecraft `26.2`, and Java `25`. Each passing
 test ran one case and exited cleanly with `All 1 required tests passed`; the
 newest movement, follow, defense, food, combat, and delayed-login results are
-recorded in the validated source tree. Public repair commit `5edcdc7f` carries
-that exact tree and passes a fresh-clone Gradle build. They remain controlled
+recorded in the validated source tree. Public `main` commit
+`34c49dfda610fa5952f69cc5ecf95ff62b21f01f` carries the exact current tree and
+passes a fresh-clone Forge 65.1.1 `compileJava` build. They remain controlled
 evidence, not release artifacts.
 
 | Scenario | Model decision evidence | Vanilla-world evidence | Result |
 | --- | --- | --- | --- |
 | `real_player_task_to_live_model_movement` | `START_SKILL(travel_to)` | The body walked from the fixture start to the requested point; no teleport or command was used. | PASS (controlled live slice) |
+| `real_player_task_to_live_model_movement` (2026-08-20 rerun) | SQLite: `conversation_task_accepted` → HTTP-200 model response → schema/revision acceptance → `START_SKILL(travel_to)` → `skill_started` → `low_level_actions_issued(action=move)` | The body reached the requested point through ordinary `ServerPlayer` movement; no teleport or command was used. | PASS (22.86-second current controlled live slice; model request 7.136 seconds) |
 | `real_player_task_to_live_model_follow` | An ordinary, unaddressed Chinese chat reached the real gateway; `START_SKILL(follow_entity)` was schema/revision accepted with an observed player target. | The body survived the initial-anchor relogin and followed the moving course through ordinary player movement. | PASS (12.66-second latest controlled live slice; no `@` prefix required in the one-human fixture) |
 | `real_player_chat_to_surprise_zombie_defense` | `START_SKILL(engage_observed_entity)` after local damage/hostile observations | The emergency lane reacted before model completion and the body killed the visible zombie with normal combat actions. | PASS (controlled live slice) |
 | `real_player_chat_to_surprise_zombie_defense` (directional-damage regression) | The real model issued a gameplay replan while the local survival lane remained active. | The first run killed the body while it only scanned; after the fix, a fair directional damage cue caused a bounded sneak separation, the body reacquired the Zombie, attacked through vanilla, survived, and triggered `Monster Hunter`. | PASS after fix (15.27-second controlled live slice; first run retained as FAIL) |
@@ -45,6 +47,13 @@ evidence, not release artifacts.
 | `real_player_task_to_live_model_nether_portal_build_and_entry` | `START_SKILL(build_and_light_nether_portal)` followed by `START_SKILL(find_and_enter_observed_portal)`. | The body built and lit the portal using the ordinary placement/use path, entered it, and the portal-entry skill completed. | PASS (52.17-second controlled live slice) |
 | `real_player_task_to_live_model_stronghold_portal_room_and_entry` | Four accepted real-model decisions: `survey_surroundings`, `search_stronghold_portal_room`, `activate_observed_end_portal`, and `find_and_enter_observed_portal`. | The body traversed the authored maze, visited a dead end and a second turn, inserted all twelve eyes through ordinary crosshair use and inventory verification, created nine portal blocks, entered the End, and triggered the vanilla `The End?` advancement with the same body UUID. | PASS (`debug15`, 1.627-minute controlled live slice) |
 | `real_player_task_to_live_model_stronghold_portal_room_to_victory` | One Chinese player task produced accepted `search_stronghold_portal_room`, `activate_observed_end_portal`, End-entry, `fight_ender_dragon`, and return-portal skill decisions. SQLite records HTTP-200 responses, schema/revision acceptance, skill starts, and low-level movement/use/attack actions. | The body completed the authored maze and twelve-eye transaction, entered the End, received vanilla dragon-kill credit, then physically entered the return portal. Route milestones recorded `DRAGON_KILLED` at tick 4802 and `RETURNED_FROM_END` at tick 7425. | PASS (6.188-minute controlled chain; static bounded End arena, not random Hardcore or a dynamic vanilla dragon fight) |
+
+The explicit provider smoke test also produced negative evidence on the same
+credential injection path: capability negotiation succeeded, but a valid
+structured response for `secure_ender_pearl_reserve` was `REPLAN` rather than
+the test's required `START_SKILL`. The test failed at that assertion after
+67.66 seconds. The failure is retained as model-planning evidence; the runtime
+did not fabricate a skill or mark the phase complete.
 
 ## Superseded live failures that drove fixes
 

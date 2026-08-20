@@ -8,9 +8,10 @@ Last reviewed: 2026-08-20
 - Minecraft Java 26.2; Forge 65.0.0 inclusive through 66.0.0 exclusive;
   Java 25.
 - Development version: `0.1.11-dev-mc26.2`.
-- Public repository: `https://github.com/weidakuang/MinePilot`; snapshot commit
-  `11975c380c243aa331ac19edbb0e494d99663313` carries source tree
-  `32c864eff3c26c0119ee23f62537b58ff9acac49` and passes a fresh-clone build.
+- Public repository: `https://github.com/weidakuang/MinePilot`; current public
+  `main` commit `34c49dfda610fa5952f69cc5ecf95ff62b21f01f` carries source tree
+  `a8259c1b00df8234bc20a9cee3745d5d8a71c8af` and passes a fresh-clone
+  `compileJava` build on Forge 65.1.1.
 - Local development branch: `main`.
 - Current development includes the focused End fall-recovery and bounded
   dragon melee-cycle corrections described below. Git remains the authority
@@ -150,6 +151,20 @@ and food runs additionally prove that the local 20-TPS survival lane acts while
 the model is waiting. A separate production zero-human startup GameTest passed
 the delayed first-human anchor lifecycle. These are controlled slices, not
 random-seed or rendered-client gates.
+
+The newest real-model movement rerun on 2026-08-20 used the same provider and
+Forge 65.1.1. SQLite recorded `conversation_task_accepted`, an HTTP-200 model
+response, schema/revision acceptance, `START_SKILL(travel_to)`,
+`skill_started`, and `low_level_actions_issued(action=move)`. The body reached
+the requested point through ordinary `ServerPlayer` movement and the isolated
+GameTest ended with `All 1 required tests passed` in 22.86 seconds; the model
+request itself completed in 7.136 seconds. This is current controlled movement
+evidence, not a rendered-client or formal M1-M4 gate.
+
+The same provider smoke sequence also supplied negative evidence: its real
+structured response for the `secure_ender_pearl_reserve` phase was valid but
+chose `REPLAN` instead of the expected `START_SKILL`. The runtime correctly
+failed that assertion rather than inventing an action or claiming completion.
 
 A fresh real-model combat rerun also passed after the test fixture was corrected
 to log its embedded human beside the companion through the safe login path. The

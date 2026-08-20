@@ -22,9 +22,10 @@ Hardcore world or the rendered Actor/Observer protocol.
 All runs used Forge `65.1.1`, Minecraft `26.2`, and Java `25`. Each passing
 test ran one case and exited cleanly with `All 1 required tests passed`; the
 newest movement, follow, defense, food, combat, and delayed-login results are
-recorded in the validated source tree. Public `main` commit
-`50fb70bbbb0441b16e1456e5b96e6d2c08defdb5` carries the exact current tree and
-passes a fresh-clone Forge 65.1.1 `compileJava` build. They remain controlled
+recorded in the validated source tree snapshot `50fb70bbbb0441b16e1456e5b96e6d2c08defdb5`
+(`66cf4c51c975d8c0f82e7cb8659c2b8e4fdf5736`); later docs-only commits carry
+the evidence updates. A fresh clone of the published line passes a Forge
+65.1.1 `compileJava` build. They remain controlled
 evidence, not release artifacts.
 
 | Scenario | Model decision evidence | Vanilla-world evidence | Result |

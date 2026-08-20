@@ -54,6 +54,10 @@ This section supersedes older chronological notes below when they conflict.
   recorded vanilla phase; the selector passed. This verifies only manager
   presence/motion. It does not claim dynamic dragon combat, crystal clearing,
   survival, return, random Hardcore, or two-hour completion.
+- The dynamic-presence documentation and release-excluded fixture are also
+  published on `main` as commit `8edf819ba87c7a5624011a6a5b96ac11ae21af87`
+  with tree `1e537f0ca53b4283ce2687014fb6b99b5342f528`; a fresh clone matched
+  the local tree and compiled on Forge 65.1.1.
 
 - Root causes closed in the current worktree: the vanilla End fight bootstrap
   could retire a test dragon created before its legacy scan settled; a

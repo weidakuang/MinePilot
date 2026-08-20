@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-20T22:52:00+09:00
+Last updated: 2026-08-20T23:04:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,26 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+- The latest authorized real-model `mimo-v2.5` Ender-pearl reserve slice now
+  passes on Forge 65.1.1 after the epoch fix below. The model returned
+  `START_SKILL secure_ender_pearl_reserve`; the real ServerPlayer built the
+  observed roof, killed and picked up Endermen, reached 14 pearls with full
+  health, and Forge reported `All 1 required tests passed` in 3.094 minutes.
+  SQLite recorded `conversation_task_accepted`, HTTP-200 model response,
+  schema/revision acceptance, `skill_started`, and
+  `low_level_actions_issued`. This is a bounded live-model acquisition slice,
+  not random-world, Hardcore, speedrun, or M1-M4 evidence.
+- The preceding run reached the same 14-pearl state but failed its final tick
+  with `stale_world_revision`. The cause was an active skill's route milestone
+  changing while the skill was still authorized; the observation provider
+  released the frozen decision epoch on that ordinary progress change. Active
+  skills now retain their bound epoch until completion, so a long skill cannot
+  be rejected at the exact completion boundary. The regression is covered by
+  the observation-provider source contract and the 25-field route-snapshot
+  test.
+- The current source/test fix is uncommitted in the working tree and must be
+  published only after the exact local build and fresh-clone verification.
 
 - The fair natural-End ingress gate now passes on both Forge 65.1.1 and
   Forge 65.0.0 in fresh isolated GameTest server directories. The gate uses a

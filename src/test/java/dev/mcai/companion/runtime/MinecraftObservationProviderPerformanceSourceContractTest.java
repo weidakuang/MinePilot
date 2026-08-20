@@ -59,7 +59,7 @@ class MinecraftObservationProviderPerformanceSourceContractTest {
     }
 
     @Test
-    void portalTransitionCapabilityKeepsOnlyItsBoundEpochAcrossRouteChange()
+    void activeSkillKeepsItsBoundEpochAcrossRouteMilestones()
             throws Exception {
         final Path provider = Path.of(
                 "src/main/java/dev/mcai/companion/runtime/"
@@ -71,15 +71,13 @@ class MinecraftObservationProviderPerformanceSourceContractTest {
         );
         assertTrue(
                 providerText.contains(
-                        "skills.activeSkillAllowsWorldRevisionTransition()"
+                        "isActive(skill)\n            ? OptionalLong.of(skill.boundWorldRevision())"
                 ),
-                "observation must consult the active skill capability"
+                "an active atomic skill must retain its bound decision epoch"
         );
         assertTrue(
-                providerText.contains(
-                        "(!routePhaseChanged || activeSkillOwnsWorldTransition)"
-                ),
-                "only an explicitly transition-owning skill may retain its epoch"
+                providerText.contains("stale_world_revision"),
+                "the provider must document the stale-world regression it prevents"
         );
 
         final Path skill = Path.of(

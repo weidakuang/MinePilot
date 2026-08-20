@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-20T13:52:00Z",
+  "updatedAtUtc": "2026-08-20T14:04:00Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -80,6 +80,18 @@
       "modelRequestSeconds": 7.136,
       "fixtureConstraint": "Isolated straight safe course with an embedded GameTest player; not a rendered Actor/Observer, random-world, Hardcore, or formal M1-M4 gate.",
       "runRoot": "ephemeral isolated GameTest run (2026-08-20T22:45+09:00)",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveEnderPearlReserve": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL secure_ender_pearl_reserve",
+      "actions": "The model selected the skill from a Chinese player task. The real ServerPlayer built the observed Enderman roof, fought and picked up Endermen, reached 14 ender pearls with full health, and SQLite recorded model response, schema/revision acceptance, skill start, and low-level action events.",
+      "runtimeSeconds": 185.64,
+      "fixtureConstraint": "Bounded Nether Enderman arena with controlled spawning; not random-world, Hardcore, speedrun, rendered-client, or formal M1-M4 evidence.",
+      "runRoot": "/private/tmp/mcai-live-ender-pearl-final.9f4kgw",
+      "supersededFailure": "The preceding rerun reached 14 pearls but failed at the completion boundary with stale_world_revision. Active-skill epoch retention now prevents route-milestone progress from invalidating the skill.",
       "formalGate": "NOT_RUN"
     },
     "latestLiveProviderNegative": {

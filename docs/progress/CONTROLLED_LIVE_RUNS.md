@@ -31,6 +31,7 @@ evidence, not release artifacts.
 | --- | --- | --- | --- |
 | `real_player_task_to_live_model_movement` | `START_SKILL(travel_to)` | The body walked from the fixture start to the requested point; no teleport or command was used. | PASS (controlled live slice) |
 | `real_player_task_to_live_model_movement` (2026-08-20 rerun) | SQLite: `conversation_task_accepted` → HTTP-200 model response → schema/revision acceptance → `START_SKILL(travel_to)` → `skill_started` → `low_level_actions_issued(action=move)` | The body reached the requested point through ordinary `ServerPlayer` movement; no teleport or command was used. | PASS (22.86-second current controlled live slice; model request 7.136 seconds) |
+| `real_player_task_to_live_model_ender_pearl_reserve` (2026-08-20 rerun) | SQLite: `conversation_task_accepted` → `model_request_started` → HTTP-200 `model_response_received` → schema/revision acceptance → `START_SKILL(secure_ender_pearl_reserve)` → `skill_started` → `low_level_actions_issued` | The body built the observed Enderman roof, fought and picked up Endermen, reached 14 ender pearls with full health, and Forge reported `All 1 required tests passed`. | PASS (3.094-minute controlled live slice after the active-skill epoch fix; not random-world, Hardcore, speedrun, rendered-client, or formal M1-M4 evidence) |
 | `real_player_task_to_live_model_follow` | An ordinary, unaddressed Chinese chat reached the real gateway; `START_SKILL(follow_entity)` was schema/revision accepted with an observed player target. | The body survived the initial-anchor relogin and followed the moving course through ordinary player movement. | PASS (12.66-second latest controlled live slice; no `@` prefix required in the one-human fixture) |
 | `real_player_chat_to_surprise_zombie_defense` | `START_SKILL(engage_observed_entity)` after local damage/hostile observations | The emergency lane reacted before model completion and the body killed the visible zombie with normal combat actions. | PASS (controlled live slice) |
 | `real_player_chat_to_surprise_zombie_defense` (directional-damage regression) | The real model issued a gameplay replan while the local survival lane remained active. | The first run killed the body while it only scanned; after the fix, a fair directional damage cue caused a bounded sneak separation, the body reacquired the Zombie, attacked through vanilla, survived, and triggered `Monster Hunter`. | PASS after fix (15.27-second controlled live slice; first run retained as FAIL) |
@@ -54,6 +55,13 @@ structured response for `secure_ender_pearl_reserve` was `REPLAN` rather than
 the test's required `START_SKILL`. The test failed at that assertion after
 67.66 seconds. The failure is retained as model-planning evidence; the runtime
 did not fabricate a skill or mark the phase complete.
+
+The first rerun of the Ender-pearl reserve slice reached the requested 14
+pearls but failed at the final boundary with `stale_world_revision`. The route
+milestone changed during the still-active atomic skill and incorrectly released
+its frozen decision epoch. The production provider now keeps every active
+skill's bound epoch until completion; the corrected rerun passed, and the
+failure remains retained here as negative regression evidence.
 
 ## Superseded live failures that drove fixes
 

@@ -95,15 +95,6 @@ public final class MinecraftObservationProvider implements ObservationProvider {
     private ObservationRequestStatus lastObservationRequestStatus =
             ObservationRequestStatus.REJECTED;
     private long lastBodySessionGeneration = -1;
-    /**
-     * Route milestones are an explicit phase boundary.  Unlike ordinary
-     * movement noise, a phase change must invalidate a planner response even
-     * while the previous atomic skill is still attached; otherwise a response
-     * produced for the old compound can be applied after that compound has
-     * already been retired.
-     */
-    private String lastDecisionRoutePhase = "";
-
     public MinecraftObservationProvider(
         final MinecraftServer server,
         final SkillSupervisor skills,
@@ -434,13 +425,20 @@ public final class MinecraftObservationProvider implements ObservationProvider {
                     "routeResults returned null"
                 );
         final String routePhase = routePhaseSignature(routeResult);
-        final boolean routePhaseChanged = !routePhase.equals(
-                lastDecisionRoutePhase
-        );
-        final boolean activeSkillOwnsWorldTransition =
-                skills.activeSkillAllowsWorldRevisionTransition();
+        /*
+         * An active atomic skill owns its server-authoritative action window.
+         * Route milestones may change while that skill is doing exactly what
+         * it was asked to do (for example, collecting the first pearl or
+         * recording a newly verified resource).  Releasing the frozen epoch
+         * for those ordinary progress changes rebinds the SkillContext to a
+         * newer fingerprint and makes the supervisor report
+         * stale_world_revision on the very tick the skill completes.  Keep
+         * the decision epoch bound for every active skill; the supervisor's
+         * skill-specific capability remains the explicit documentation for
+         * bounded dimension/route transitions, while completion itself
+         * releases the epoch on the following observation.
+         */
         final OptionalLong frozenEpoch = isActive(skill)
-                && (!routePhaseChanged || activeSkillOwnsWorldTransition)
             ? OptionalLong.of(skill.boundWorldRevision())
             : OptionalLong.empty();
         final Fingerprint decisionFingerprint =
@@ -450,7 +448,6 @@ public final class MinecraftObservationProvider implements ObservationProvider {
             decisionFingerprint.withRoutePhase(routePhase),
             frozenEpoch
         );
-        lastDecisionRoutePhase = routePhase;
         return new BrainObservation(
             epoch,
             new SkillContext(
@@ -578,7 +575,6 @@ public final class MinecraftObservationProvider implements ObservationProvider {
         latest = null;
         latestJson = "";
         latestFingerprint = null;
-        lastDecisionRoutePhase = "";
         navigationMapper.reset();
         lastSemanticGameTick = Long.MIN_VALUE;
         lastGoalRevision = -1;

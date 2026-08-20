@@ -121,6 +121,29 @@ Earlier controlled MiMo slices reached End entry and demonstrated follow and
 other task chains, but they are historical evidence and do not upgrade the
 current formal gates.
 
+### Latest real-model acquisition rerun
+
+The authorized `mimo-v2.5` rerun of
+`real_player_task_to_live_model_ender_pearl_reserve` passed on Forge 65.1.1
+after a production epoch fix. The model selected
+`START_SKILL(secure_ender_pearl_reserve)` from a Chinese player task. The real
+ServerPlayer built the fair observed roof, fought and picked up Endermen, and
+reached 14 ender pearls with full health; Forge reported
+`All 1 required tests passed` in 3.094 minutes. SQLite recorded
+`conversation_task_accepted`, `model_request_started`, HTTP-200
+`model_response_received`, `decision_schema_validated`,
+`decision_revision_accepted`, `skill_started`, and
+`low_level_actions_issued`.
+
+The previous rerun reached 14 pearls but ended with
+`stale_world_revision`. Route-milestone progress had released the decision
+epoch while the atomic skill was still active. Active skills now retain their
+bound epoch until they complete; the next non-active observation releases it,
+so ordinary progress cannot invalidate the skill's own completion tick. The
+fix is covered by `MinecraftObservationProviderPerformanceSourceContractTest`
+and `SurvivalRouteSnapshotTest`. This remains a controlled live-model slice,
+not a random-world, Hardcore, speedrun, rendered-client, or formal M1-M4 gate.
+
 ### Fresh controlled live slices
 
 Using the same real `mimo-v2.5` gateway, the current line passed bounded

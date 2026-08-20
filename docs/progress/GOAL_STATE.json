@@ -354,6 +354,12 @@
       "fixtureConstraint": "Presence and vanilla motion only. This does not prove that fight_ender_dragon can kill a dynamic manager-owned dragon, destroy natural crystals, survive breath/void hazards, complete the return portal, or satisfy random Hardcore/two-hour/M2-M4 gates.",
       "formalGate": "NOT_RUN"
     },
+    "dynamicDragonObservedRally": {
+      "status": "IMPLEMENTED_FOCUSED_TEST_ONLY",
+      "details": "After an empty sky sweep, fight_ender_dragon can choose a fresh low-danger standing cell from the current first-person navigation frame, keep it inside the verified End radius, and require ordinary TravelTo preconditions before moving. A completed rally leg becomes the next bounded search anchor.",
+      "tests": "FightEnderDragonSkillTest and FightEnderDragonDynamicRallySourceContractTest pass.",
+      "formalGate": "NOT_RUN"
+    },
     "dragonBreathThreatPerception": {
       "status": "PASS_FOCUSED_SOURCE_CONTRACT",
       "details": "Fair perception now treats an active visible AreaEffectCloud with positive radius and duration as a bounded proximity threat, while waiting or expired clouds remain neutral. This prevents dragon breath from starving the emergency danger lane without exposing hidden effect data.",
@@ -365,7 +371,7 @@
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, and Forge compatibility validation after the focused End safety changes. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "14616a253a5765eb4355c87243f2b1525aae769990fc4cae80082e1accea66b7",
+      "sha256": "44d9a8013c16a96c227046cef233e51c4ce6affa54d5d360ce2775f3c914512b",
       "formalGate": "NOT_RUN"
     }
   },

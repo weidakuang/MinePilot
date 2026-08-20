@@ -62,7 +62,7 @@ This section supersedes older chronological notes below when they conflict.
   passed after the ingress, rally-evidence, loadout, and planner-guide
   changes. The release JAR is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `14616a253a5765eb4355c87243f2b1525aae769990fc4cae80082e1accea66b7`.
+  `44d9a8013c16a96c227046cef233e51c4ce6affa54d5d360ce2775f3c914512b`.
 - The exact current local tree is published on public `main` through Git Data
   commit `62a6666b11585297c9942e2b2e44b45ec0ce95ab` with tree
   `0ea66d14ec68123126c6e6481f265c5a16aaf550`. A fresh public clone verified
@@ -76,6 +76,13 @@ This section supersedes older chronological notes below when they conflict.
   recorded vanilla phase; the selector passed. This verifies only manager
   presence/motion. It does not claim dynamic dragon combat, crystal clearing,
   survival, return, random Hardcore, or two-hour completion.
+- The dynamic dragon controller now has an observed rally search: after an
+  empty sky sweep it may choose a fresh, low-danger standing cell from the
+  current first-person navigation frame, bounded to the verified End radius,
+  and must pass the ordinary `TravelTo` precondition before moving. A completed
+  rally leg becomes the next bounded search anchor. Focused combat tests and
+  the fair-source contract pass; a natural manager-dragon combat/kill/return
+  gate remains `NOT_RUN`.
 - The dynamic-presence documentation and release-excluded fixture are also
   published on `main` as commit `8edf819ba87c7a5624011a6a5b96ac11ae21af87`
   with tree `1e537f0ca53b4283ce2687014fb6b99b5342f528`; a fresh clone matched

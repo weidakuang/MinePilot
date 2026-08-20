@@ -86,7 +86,7 @@ or speedrun claim.
   the compatibility checker. The latest protocol-only change separately
   passed all 65 Python audit tests and ten mutation variants. The artifact is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `14616a253a5765eb4355c87243f2b1525aae769990fc4cae80082e1accea66b7`.
+  `44d9a8013c16a96c227046cef233e51c4ce6affa54d5d360ce2775f3c914512b`.
 
 ### Natural dynamic-dragon presence slice
 
@@ -99,6 +99,14 @@ or speedrun claim.
   The dynamic dragon was never spawned, repositioned, frozen, damaged, or
   mutated by the fixture. Natural crystals, breath, void safety, dragon
   damage, and return-portal completion remain unverified.
+
+The production fight controller now performs bounded observed rally search
+after an empty sky sweep. It can select a fresh low-danger standing cell from
+the current first-person navigation frame, keeps the target inside the
+verified End radius, and submits it to the ordinary `TravelTo` precondition
+before moving. A completed rally leg updates the next search anchor. Focused
+combat tests pass; this implementation change does not upgrade the natural
+manager-dragon combat/kill/return gate, which remains `NOT_RUN`.
 
 ### Live MiMo result (latest)
 

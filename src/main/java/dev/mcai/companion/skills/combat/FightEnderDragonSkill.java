@@ -8,6 +8,8 @@ import dev.mcai.companion.action.LookIntent;
 import dev.mcai.companion.action.MovementIntent;
 import dev.mcai.companion.progression.CompletionResourceReadiness;
 import dev.mcai.companion.navigation.GridPos;
+import dev.mcai.companion.navigation.NavigationEvidence;
+import dev.mcai.companion.navigation.ObservedVoxel;
 import dev.mcai.companion.perception.InventoryItemSummary;
 import dev.mcai.companion.perception.DangerKind;
 import dev.mcai.companion.perception.PerceptionVec3;
@@ -1549,6 +1551,7 @@ public final class FightEnderDragonSkill
             return startRallyTravel(
                     context,
                     parameters,
+                    frame,
                     fresh
             );
         }
@@ -2055,6 +2058,7 @@ public final class FightEnderDragonSkill
             return startRallyTravel(
                     context,
                     parameters,
+                    frame,
                     fresh
             );
         }
@@ -2532,13 +2536,16 @@ public final class FightEnderDragonSkill
     private SkillTickResult startRallyTravel(
             final SkillContext context,
             final FightEnderDragonParameters parameters,
+            final CoreSkillFrame frame,
             final boolean fresh
     ) {
+        final PerceptionVec3 rallyPoint = selectObservedRallyPoint(frame)
+                .orElse(Objects.requireNonNull(localRallyPoint));
         travelParameters = new TravelToParameters(
                 parameters.dimension(),
-                Objects.requireNonNull(localRallyPoint).x(),
-                localRallyPoint.y(),
-                localRallyPoint.z(),
+                rallyPoint.x(),
+                rallyPoint.y(),
+                rallyPoint.z(),
                 3.0
         );
         travel = new TravelToSkill(
@@ -2566,6 +2573,68 @@ public final class FightEnderDragonSkill
         return SkillTickResult.running(fresh, true);
     }
 
+    /**
+     * Select a bounded, freshly observed standing cell for the next search
+     * leg. Returning to the exact start pose after every empty scan is safe
+     * but cannot discover a dragon that has flown to another side of the
+     * natural island. This helper consumes only current first-person
+     * navigation evidence; unknown cells and inferred terrain are ineligible.
+     * TravelTo still has to prove a normal local route before movement.
+     */
+    private Optional<PerceptionVec3> selectObservedRallyPoint(
+            final CoreSkillFrame frame
+    ) {
+        final long revision = frame.observationRevision();
+        final GridPos current = frame.feet();
+        final double heading = Math.toRadians(
+                scanBaseYaw + rallyAttempts * 90.0
+        );
+        final double headingX = Math.cos(heading);
+        final double headingZ = Math.sin(heading);
+        return frame.navigation().observedVoxels().values().stream()
+                .filter(voxel -> voxel.observationRevision() == revision)
+                .filter(voxel -> voxel.position().y() == current.y())
+                .filter(voxel -> !voxel.position().equals(current))
+                .filter(voxel -> NavigationEvidence.hasFreshTraversalClearance(
+                        voxel,
+                        revision
+                ))
+                .filter(voxel -> frame.navigation()
+                        .voxelAt(voxel.position().above())
+                        .filter(head ->
+                                NavigationEvidence
+                                        .hasFreshTraversalClearance(
+                                                head,
+                                                revision
+                                        ))
+                        .isPresent())
+                .filter(voxel -> frame.navigation()
+                        .voxelAt(voxel.position().below())
+                        .filter(support ->
+                                NavigationEvidence.isFreshStandingSupport(
+                                        support,
+                                        revision
+                                ))
+                        .isPresent())
+                .filter(voxel -> voxel.effectiveDanger() <= 0.20)
+                .map(ObservedVoxel::position)
+                .filter(position -> position.euclideanDistance(current) >= 2)
+                .filter(position -> position.euclideanDistance(current) <= 10)
+                .map(position -> new PerceptionVec3(
+                        position.x() + 0.5,
+                        position.y(),
+                        position.z() + 0.5
+                ))
+                .filter(EndArenaTopology::insideArenaReadyRadius)
+                .max(Comparator.comparingDouble(candidate -> {
+                    final double dx = candidate.x() - frame.position().x();
+                    final double dz = candidate.z() - frame.position().z();
+                    final double distance = Math.hypot(dx, dz);
+                    final double directional = dx * headingX + dz * headingZ;
+                    return directional * 2.0 + distance * 0.05;
+                }));
+    }
+
     private SkillTickResult tickTravel(
             final SkillContext context,
             final boolean fresh
@@ -2581,6 +2650,12 @@ public final class FightEnderDragonSkill
             phase = Phase.SEARCHING;
             scanTurns = 0;
             nextActionTick = context.gameTick();
+            if (completedPurpose == TravelPurpose.RALLY
+                    && result.status() == SkillTickResult.Status.COMPLETED) {
+                coreFrames.current().ifPresent(current ->
+                        localRallyPoint = current.position()
+                );
+            }
             if (completedPurpose
                     == TravelPurpose.CAGE_APPROACH) {
                 if (result.status()

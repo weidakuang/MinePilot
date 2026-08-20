@@ -164,6 +164,13 @@ final class FairPerceptionSupportSourceContractTest {
                 "Dragon roots and multipart colliders must not be starved "
                     + "by breath-cloud LOS checks"
         );
+        assertTrue(
+                source.contains("candidate instanceof AreaEffectCloud cloud")
+                    && source.contains("!cloud.isWaiting()")
+                    && source.contains("cloud.getRadius() > 0.1F"),
+                "Active visible dragon-breath clouds must publish a fair "
+                    + "proximity threat instead of remaining neutral"
+        );
     }
 
     @Test

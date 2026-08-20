@@ -12,6 +12,10 @@ MinePilot change log
   validation.
 - Added route-guide coverage for `reach_end_island` and retained explicit
   negative evidence for unfinished random-world and formal gates.
+- Added a natural dynamic-dragon presence gate that observes the vanilla
+  manager's AI-enabled motion without fixture spawning or freezing, and made
+  active visible dragon-breath clouds fair proximity threats for emergency
+  avoidance.
 
 0.1.10-dev-mc26.2
 -----------------

@@ -20,6 +20,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.AreaEffectCloud;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
@@ -1501,6 +1502,19 @@ public final class FairPerceptionSampler {
             return part.parentMob != null
                     && part.parentMob.isAlive()
                     && !part.parentMob.isRemoved();
+        }
+        if (candidate instanceof AreaEffectCloud cloud) {
+            /*
+             * Ender-dragon breath is a real, short-lived area hazard. It is
+             * fair to classify it only while the visible cloud is active and
+             * has a positive radius; waiting/expired clouds are retained as
+             * semantic entities but must not trigger an invented threat.
+             */
+            return cloud.isAlive()
+                    && !cloud.isRemoved()
+                    && !cloud.isWaiting()
+                    && cloud.getDuration() > 0
+                    && cloud.getRadius() > 0.1F;
         }
         if (!(candidate instanceof Projectile projectile)
                 || projectile.getOwner() == player) {

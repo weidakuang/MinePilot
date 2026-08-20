@@ -85,7 +85,7 @@ or speedrun claim.
   the compatibility checker. The latest protocol-only change separately
   passed all 65 Python audit tests and ten mutation variants. The artifact is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `5200153a20aa291425fcbe0a0f2d11a3c1e2e0157560b474bae22d62cfd78b35`.
+  `7e71a3212cc5bc65e5f9b90aae62da4682456db8024a7844c515c4d64beb63f0`.
 
 ### Natural dynamic-dragon presence slice
 

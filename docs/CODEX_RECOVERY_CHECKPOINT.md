@@ -40,7 +40,7 @@ This section supersedes older chronological notes below when they conflict.
   passed after the ingress, rally-evidence, loadout, and planner-guide
   changes. The release JAR is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `5200153a20aa291425fcbe0a0f2d11a3c1e2e0157560b474bae22d62cfd78b35`.
+  `7e71a3212cc5bc65e5f9b90aae62da4682456db8024a7844c515c4d64beb63f0`.
 - The exact local `6d295f6` tree is now published on public `main` through
   Git Data commit `fd0e492d53ca4bfdf8f41cd5c511f3e256ebe756` with tree
   `1d1c0d6116d0a54e7d939e49035386c3ea2b2b1f`. A fresh public clone verified
@@ -58,6 +58,10 @@ This section supersedes older chronological notes below when they conflict.
   published on `main` as commit `8edf819ba87c7a5624011a6a5b96ac11ae21af87`
   with tree `1e537f0ca53b4283ce2687014fb6b99b5342f528`; a fresh clone matched
   the local tree and compiled on Forge 65.1.1.
+- The current combat-safety patch also classifies an active, visible
+  ender-dragon breath cloud as a fair proximity threat; waiting or expired
+  clouds remain neutral. The focused perception source-contract test passes;
+  no hidden effect data or world mutation is used.
 
 - Root causes closed in the current worktree: the vanilla End fight bootstrap
   could retire a test dragon created before its legacy scan settled; a

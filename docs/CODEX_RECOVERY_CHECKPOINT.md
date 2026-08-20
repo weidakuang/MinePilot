@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-21T02:54:00+09:00
+Last updated: 2026-08-21T03:08:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -37,6 +37,12 @@ This section supersedes older chronological notes below when they conflict.
   run ended at `(54.9,49.0,0.5)` with the sky budget exhausted; the prior
   unpatched run ended near `(55.8,49.0,0.5)` after four rally scans. These
   results show real physical progress but not a complete End fight.
+- Commit `bf70b73f891ab816d21ca8110d198654cd3ea369` is published on the
+  public `main` branch through Git Data API objects. A fresh clone verified
+  all five changed blob hashes byte-for-byte and `compileJava` passed for
+  Forge 65.1.1. The local release JAR remains
+  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
+  `5e703f7945df7bdea2283033d9b36688a292609af20a017962c136935df69f67`.
 
 - The latest Forge 65.1.1 natural End ingress rerun passed in isolated
   directory `/tmp/mcai-end-ingress-piTmLV`: `All 1 required tests passed` in

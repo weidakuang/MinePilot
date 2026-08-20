@@ -92,6 +92,7 @@ public final class EndIslandIngressSkill
     private final InteractionSkillActuator interactionActuator;
     private final InteractionSkillFrameSource interactionFrames;
     private final LongConsumer completionSink;
+    private final double completionRadiusOverride;
     private final LocalAStarPlanner landfallPlanner =
             new LocalAStarPlanner();
 
@@ -141,7 +142,8 @@ public final class EndIslandIngressSkill
                 null,
                 null,
                 ignored -> {
-                }
+                },
+                Double.NaN
         );
     }
 
@@ -163,7 +165,8 @@ public final class EndIslandIngressSkill
                 interactionActuator,
                 interactionFrames,
                 ignored -> {
-                }
+                },
+                Double.NaN
         );
     }
 
@@ -176,6 +179,37 @@ public final class EndIslandIngressSkill
             final InteractionSkillActuator interactionActuator,
             final InteractionSkillFrameSource interactionFrames,
             final LongConsumer completionSink
+    ) {
+        this(
+                expectedPlayerId,
+                actuator,
+                frames,
+                materials,
+                sessionGeneration,
+                interactionActuator,
+                interactionFrames,
+                completionSink,
+                Double.NaN
+        );
+    }
+
+    /**
+     * Creates an ingress controller with a stricter centerward completion
+     * radius. The ordinary player-facing ingress keeps its parameter-defined
+     * handoff radius; a dragon-fight recovery can require the body to continue
+     * through observed routes until it is close enough for first-person entity
+     * perception, without exposing a hidden destination.
+     */
+    public EndIslandIngressSkill(
+            final UUID expectedPlayerId,
+            final CoreSkillActuator actuator,
+            final CoreSkillFrameSource frames,
+            final BridgeMaterialActuator materials,
+            final LongSupplier sessionGeneration,
+            final InteractionSkillActuator interactionActuator,
+            final InteractionSkillFrameSource interactionFrames,
+            final LongConsumer completionSink,
+            final double completionRadiusOverride
     ) {
         this.expectedPlayerId = Objects.requireNonNull(
                 expectedPlayerId,
@@ -199,6 +233,14 @@ public final class EndIslandIngressSkill
                 completionSink,
                 "completionSink"
         );
+        if (Double.isFinite(completionRadiusOverride)
+                && (completionRadiusOverride < 1.0
+                    || completionRadiusOverride > 64.0)) {
+            throw new IllegalArgumentException(
+                    "completionRadiusOverride must be in [1, 64]"
+            );
+        }
+        this.completionRadiusOverride = completionRadiusOverride;
     }
 
     @Override
@@ -1386,13 +1428,16 @@ public final class EndIslandIngressSkill
                         )).isPresent();
     }
 
-    private static boolean verifiedCurrentEndStoneSupport(
+    private boolean verifiedCurrentEndStoneSupport(
             final CoreSkillFrame frame,
             final EndIslandIngressParameters parameters
     ) {
+        final double completionRadius = Double.isFinite(
+                completionRadiusOverride
+        ) ? completionRadiusOverride : parameters.arenaReadyRadius();
         return EndIslandRallyEvidence.supportsCurrentStandingCell(
                 frame,
-                parameters.arenaReadyRadius()
+                completionRadius
         );
     }
 

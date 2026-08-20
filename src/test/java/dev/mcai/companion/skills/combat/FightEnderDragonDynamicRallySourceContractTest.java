@@ -48,5 +48,14 @@ final class FightEnderDragonDynamicRallySourceContractTest {
                 text.contains("localRallyPoint = current.position()"),
                 "a completed rally leg must become the next bounded rally"
         );
+        assertTrue(
+                text.contains("FIGHT_REENTRY_RADIUS")
+                        && text.contains(
+                                "horizontalRadius(frame.position())"
+                        ),
+                "a fight outside entity perception must re-enter the "
+                        + "observed island route before spending another "
+                        + "blind scan"
+        );
     }
 }

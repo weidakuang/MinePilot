@@ -91,6 +91,8 @@ public final class FightEnderDragonSkill
     private static final double SKY_BREAK_REACH = 6.0;
     private static final double SKY_BREAK_STANDING_REACH = 4.5;
     private static final int MAXIMUM_REENTRY_ATTEMPTS = 1;
+    /** Keep the dragon inside the body's normal first-person entity envelope. */
+    private static final double FIGHT_REENTRY_RADIUS = 32.0;
     private static final double SKY_BREAK_ALIGNMENT_DEGREES = 2.0;
     /* A full bow flight at the maximum observed dragon distance is shorter
      * than this; leave enough time for the vanilla projectile to advance
@@ -186,6 +188,7 @@ public final class FightEnderDragonSkill
     private int scanTurns;
     private int rallyAttempts;
     private int ingressAttempts;
+    private String lastIngressResult = "";
     private int skyBlocksMined;
     private int skyBreakAttempts;
     private int skyAlignmentTicks;
@@ -428,6 +431,7 @@ public final class FightEnderDragonSkill
         scanTurns = 0;
         rallyAttempts = 0;
         ingressAttempts = 0;
+        lastIngressResult = "";
         skyBlocksMined = 0;
         skyBreakAttempts = 0;
         skyAlignmentTicks = 0;
@@ -526,6 +530,9 @@ public final class FightEnderDragonSkill
                             + "\"dragonRangedMode\":%s,"
                             + "\"dragonRetreatTicksRemaining\":%d,"
                             + "\"scanTurns\":%d,\"rallyAttempts\":%d,"
+                            + "\"ingressAttempts\":%d,"
+                            + "\"islandIngressActive\":%s,"
+                            + "\"lastIngressResult\":\"%s\","
                             + "\"skyBlocksMined\":%d,"
                             + "\"skyBlocksSinceRally\":%d,"
                             + "\"skyBreakAttempts\":%d,"
@@ -553,6 +560,9 @@ public final class FightEnderDragonSkill
                         dragonRetreatTicksRemaining,
                         scanTurns,
                         rallyAttempts,
+                        ingressAttempts,
+                        islandIngress != null,
+                        lastIngressResult.replace("\"", "'"),
                         skyBlocksMined,
                         skyBlocksSinceRally,
                         skyBreakAttempts,
@@ -2883,6 +2893,17 @@ public final class FightEnderDragonSkill
          * semantic navigation evidence, so this is not a teleport or hidden
          * terrain lookup.
          */
+        /* A point can be perfectly observable and still be outside the
+         * combat entity-perception radius.  In that annulus, ordinary
+         * TravelTo merely revisits another blind rally point and burns the
+         * bounded scan budget.  Re-enter the observed island route first;
+         * the child still requires fresh support/clearance and owns every
+         * movement, mining, and placement action. */
+        if (ingressAttempts < MAXIMUM_REENTRY_ATTEMPTS
+                && EndArenaTopology.horizontalRadius(frame.position())
+                    > FIGHT_REENTRY_RADIUS) {
+            return startIslandReentry(context, fresh);
+        }
         final Optional<GridPos> observedStep =
                 selectObservedCenterwardStep(frame);
         if (observedStep.isPresent()) {
@@ -2892,10 +2913,6 @@ public final class FightEnderDragonSkill
                     observedStep.orElseThrow(),
                     fresh
             );
-        }
-        if (ingressAttempts < MAXIMUM_REENTRY_ATTEMPTS
-                && selectObservedRallyPoint(frame).isEmpty()) {
-            return startIslandReentry(context, fresh);
         }
         final PerceptionVec3 rallyPoint = selectObservedRallyPoint(frame)
                 .orElseGet(() -> centerwardSearchPoint(frame));
@@ -2945,13 +2962,13 @@ public final class FightEnderDragonSkill
         islandIngressParameters = new EndIslandIngressParameters(
                 128.0,
                 EndArenaTopology.ARENA_READY_RADIUS,
-                16,
+                32,
                 8,
                 32,
                 10.0,
-                64,
+                96,
                 6,
-                2_400
+                4_000
         );
         islandIngress = new EndIslandIngressSkill(
                 expectedPlayerId,
@@ -2960,7 +2977,10 @@ public final class FightEnderDragonSkill
                 bridgeMaterials,
                 sessionGeneration,
                 interactions,
-                interactionFrames
+                interactionFrames,
+                ignored -> {
+                },
+                FIGHT_REENTRY_RADIUS
         );
         final Optional<SkillFailure> rejected = islandIngress.preconditions(
                 new SkillContext(
@@ -2974,6 +2994,8 @@ public final class FightEnderDragonSkill
                 islandIngressParameters
         );
         if (rejected.isPresent()) {
+            lastSkyFailure = rejected.orElseThrow().code();
+            lastIngressResult = "rejected:" + rejected.orElseThrow().code();
             islandIngress = null;
             islandIngressParameters = null;
             ingressAttempts++;
@@ -2998,6 +3020,7 @@ public final class FightEnderDragonSkill
                 islandIngressParameters
         );
         if (result.status() == SkillTickResult.Status.COMPLETED) {
+            lastIngressResult = "completed";
             islandIngress = null;
             islandIngressParameters = null;
             phase = Phase.SEARCHING;
@@ -3014,6 +3037,7 @@ public final class FightEnderDragonSkill
             final String code = result.failure()
                     .map(SkillFailure::code)
                     .orElse(NAME + ".island_reentry_failed");
+            lastIngressResult = "failed:" + code;
             islandIngress = null;
             islandIngressParameters = null;
             lastSkyFailure = code;

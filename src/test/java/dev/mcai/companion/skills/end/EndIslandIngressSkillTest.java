@@ -527,6 +527,49 @@ final class EndIslandIngressSkillTest {
     }
 
     @Test
+    void completionRadiusOverrideIsStricterThanTheNormalIngressRadius() {
+        final EndIslandIngressParameters parameters =
+                EndIslandIngressParameters.defaults();
+        final MutableFrames frames = new MutableFrames(
+                readyFrame(1, 40.5, "minecraft:end_stone", "up", true)
+        );
+        final EndIslandIngressSkill skill = new EndIslandIngressSkill(
+                PLAYER_ID,
+                new RecordingActuator(),
+                frames,
+                () -> BridgeMaterialResult.ready(
+                        "minecraft:cobblestone",
+                        64
+                ),
+                () -> 15L,
+                null,
+                null,
+                ignored -> { },
+                32.0
+        );
+
+        skill.start(context(1), parameters);
+        skill.tick(context(2), parameters);
+        assertEquals(
+                SkillTickResult.Status.RUNNING,
+                skill.tick(context(3), parameters).status(),
+                "A fight rally must not be certified merely because it is inside the wider ingress radius"
+        );
+
+        frames.frame = readyFrame(
+                4,
+                31.5,
+                "minecraft:end_stone",
+                "up",
+                true
+        );
+        assertEquals(
+                SkillTickResult.Status.COMPLETED,
+                skill.tick(context(4), parameters).status()
+        );
+    }
+
+    @Test
     void rejectedPostTravelSupportReturnsToScanningInsteadOfFreezing() {
         final MutableFrames frames = landfallFrames();
         final RecordingActuator actuator = new RecordingActuator();

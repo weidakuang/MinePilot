@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-21T02:06:00+09:00
+Last updated: 2026-08-21T02:54:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -25,12 +25,14 @@ This section supersedes older chronological notes below when they conflict.
   invent a bridge destination.
 - Focused combat and rally-evidence tests pass after that patch. The latest
   real Forge 65.1.1 zero-human selector run was
-  `/tmp/mcai-dynamic-dragon-final-zg3PaK`; it failed honestly after 1,745
-  fight ticks with `fight_ender_dragon.no_visible_combat_target`. The body
-  advanced from the earlier wall to approximately `(54.8,49.0,0.5)`, mined
-  32 observed End-stone blocks, consumed no arrows, and never produced a
-  dragon damage event or kill/return. Natural dynamic dragon combat remains a
-  release blocker and is not claimed as passed.
+  `/tmp/mcai-dynamic-dragon-reentry-result-xQ0M6S`; it failed honestly after
+  2,311 fight ticks with `fight_ender_dragon.no_visible_combat_target`. The
+  body advanced to approximately `(47.8,49.0,0.6)`, mined 30 observed
+  End-stone blocks, consumed no arrows, and never produced a dragon damage
+  event or kill/return. The fight-specific ingress completion radius is now
+  32 blocks and the re-entry child ran once, ending with the bounded
+  `lastIngressResult=failed:skill_failure`; natural dynamic dragon combat
+  remains a release blocker and is not claimed as passed.
 - The earlier two real runs remain negative evidence: the one-cell movement
   run ended at `(54.9,49.0,0.5)` with the sky budget exhausted; the prior
   unpatched run ended near `(55.8,49.0,0.5)` after four rally scans. These

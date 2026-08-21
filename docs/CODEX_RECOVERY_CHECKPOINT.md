@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-21T21:47:10+09:00
+Last updated: 2026-08-21T21:55:49+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -17,7 +17,7 @@ pass.
 
 This section supersedes older chronological notes below when they conflict.
 
-- The next uncommitted correction makes observed side-step targets land near
+- Commit `882d3e5` makes observed side-step targets land near
   the far edge of the destination cell instead of allowing `BridgeToSkill` to
   complete inside its minimum arrival radius, and lets a fresh frontier probe
   try a visible wall attachment before ordinary side travel. The new edge
@@ -36,8 +36,11 @@ This section supersedes older chronological notes below when they conflict.
 - The current development JAR after this correction is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
   `d171284cb19242398cb9e2bfc408f277188a6d6eb0e7f9639d0af065a320a71f`.
-  The correction is not yet published; publication is pending the reviewed
-  commit and fresh-clone verification below.
+  The correction is published on public `main` as
+  `e2e1d009797d59404e0fa59fe4e7b69745295da6` through Git Data API objects.
+  Fresh clone `/tmp/minepilot-side-step-J0hDs2` matched all four changed file
+  SHA-256 values byte-for-byte, its goal JSON parsed successfully, and Forge
+  65.1.1 `compileJava` passed.
 
 - Commit `0f3ab2a` adds fresh observed rally targets,
   bounded sky-clearance target rebinding, observed lateral End-stone mining,

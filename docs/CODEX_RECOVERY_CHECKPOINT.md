@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-21T21:55:49+09:00
+Last updated: 2026-08-21T22:02:40+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -17,7 +17,7 @@ pass.
 
 This section supersedes older chronological notes below when they conflict.
 
-- The next uncommitted correction records a `TowerUp` precondition rejection
+- Commit `cc877a4` records a `TowerUp` precondition rejection
   in `lastChildFailureCode`, allowing the already bounded frontier-probe path
   to run instead of silently retrying the same tower. Focused ingress/combat
   tests, the full JUnit suite, and the Forge 65.1.1 build passed after this
@@ -27,8 +27,11 @@ This section supersedes older chronological notes below when they conflict.
   8,002 executed ticks with `reach_end_island.scan_budget_exhausted`; body
   `(47.433,51.0,-0.187)`, zero arrows, zero dragon damage, zero kill, and zero
   return. The latest frame showed only observed End-stone and obsidian faces,
-  so no unsupported route was inferred. Publication of this state fix is
-  pending the reviewed commit and fresh-clone verification.
+  so no unsupported route was inferred. The state fix is published on public
+  `main` as `fd20b5c52dc518b61e9fe2ba02f062764c225ae4` through Git Data API
+  objects. Fresh clone `/tmp/minepilot-tower-state-OO07E9` matched the three
+  changed file SHA-256 values byte-for-byte, its goal JSON parsed successfully,
+  and Forge 65.1.1 `compileJava` passed.
 - The current development JAR is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
   `ece574e8ca4b345d4ee2127bb72ad68d3163f10fbedd48a627c8341e964a1ac5`.

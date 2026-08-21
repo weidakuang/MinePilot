@@ -43,6 +43,7 @@ import dev.mcai.companion.skills.interaction.ObservedBlockTarget;
 import dev.mcai.companion.waypoint.DimensionRef;
 import java.time.Duration;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -129,6 +130,13 @@ public final class EndIslandIngressSkill
     private int frontierProbeIndex;
     private boolean frontierProbePending;
     private long frontierProbeRevision = -1;
+    /**
+     * Feet cells visited by the current fair route frontier.  Side-step
+     * selection must not bounce between the same two observed cells while a
+     * solid centerward wall is still unresolved.  This is only an in-memory
+     * route guard; it never supplies terrain or support evidence.
+     */
+    private final Set<GridPos> visitedIngressCells = new LinkedHashSet<>();
     private String lastChildFailureCode = "";
     private GridPos candidateSupport;
     private BridgeToSkill bridge;
@@ -349,6 +357,8 @@ public final class EndIslandIngressSkill
         frontierProbeIndex = 0;
         frontierProbePending = false;
         frontierProbeRevision = -1;
+        visitedIngressCells.clear();
+        visitedIngressCells.add(frame.feet());
         lastChildFailureCode = "";
         candidateSupport = null;
         bridge = null;
@@ -663,7 +673,7 @@ public final class EndIslandIngressSkill
                     context,
                     parameters,
                     frame,
-                    landfall.orElseThrow()
+                landfall.orElseThrow()
             );
         }
         final Optional<VisibleBlockFace> obstruction =
@@ -794,6 +804,7 @@ public final class EndIslandIngressSkill
                 bridgeParameters
         );
         if (child.status() == SkillTickResult.Status.COMPLETED) {
+            visitedIngressCells.add(frame.feet());
             if (bridgeRequiresCenterProgress
                     && !bridgeMadeCenterProgress(frame)) {
                 bridge = null;
@@ -883,6 +894,8 @@ public final class EndIslandIngressSkill
         if (child.status() == SkillTickResult.Status.COMPLETED) {
             travel = null;
             travelParameters = null;
+            visitedIngressCells.clear();
+            visitedIngressCells.add(frame.feet());
             childFailures = 0;
             phase = Phase.VERIFYING_CURRENT_SUPPORT;
             requiredFreshRevision = frame.observationRevision();
@@ -926,6 +939,8 @@ public final class EndIslandIngressSkill
         if (child.status() == SkillTickResult.Status.COMPLETED) {
             tower = null;
             towerParameters = null;
+            visitedIngressCells.clear();
+            visitedIngressCells.add(frame.feet());
             towerSteps++;
             childFailures = 0;
             phase = Phase.SCANNING;
@@ -969,6 +984,8 @@ public final class EndIslandIngressSkill
         if (child.status() == SkillTickResult.Status.COMPLETED) {
             blockBreak = null;
             blockBreakParameters = null;
+            visitedIngressCells.clear();
+            visitedIngressCells.add(frame.feet());
             minedBlocks++;
             childFailures = 0;
             phase = Phase.SCANNING;
@@ -1446,6 +1463,7 @@ public final class EndIslandIngressSkill
                 current.offset(1, 0, 0)
         ).stream()
                 .filter(step -> !step.equals(current))
+                .filter(step -> !visitedIngressCells.contains(step))
                 .filter(step -> radiusOf(step)
                         <= EndArenaTopology.horizontalRadius(frame.position())
                                 + 2.5)
@@ -1609,6 +1627,7 @@ public final class EndIslandIngressSkill
                 .filter(step -> radiusOf(step)
                         <= EndArenaTopology.horizontalRadius(frame.position())
                                 + 1.5)
+                .filter(step -> !visitedIngressCells.contains(step))
                 /* An attached extension may target an unknown frontier, but
                  * it must never be selected when the newest fair fan already
                  * proves that exact destination is occupied.  Otherwise a
@@ -1878,6 +1897,7 @@ public final class EndIslandIngressSkill
         return SkillTickResult.running(true, true);
     }
 
+
     private SkillTickResult orientForFreshSkyObservation(
             final CoreSkillFrame frame
     ) {
@@ -2018,6 +2038,7 @@ public final class EndIslandIngressSkill
                 ? Optional.of(route.reached().below())
                 : Optional.empty();
     }
+
 
     private static boolean visibleCenterwardEndStoneWall(
             final CoreSkillFrame frame

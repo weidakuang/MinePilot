@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T02:02:07+09:00
+Last updated: 2026-08-22T02:12:39+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -27,15 +27,15 @@ This section supersedes older chronological notes below when they conflict.
   65.0.0 `natural_end_island_ingress` selector passed in 5.835 seconds.
 - The latest completed zero-human Forge 65.1.1
   `natural_end_dynamic_dragon_combat` gate remains `FAIL`: after 8,002 fight
-  ticks the vanilla AI-enabled manager dragon was loaded at approximately
-  `(4.513,81.966,-18.680)`, while the body remained near
-  `(47.652,49.0,0.500)`. The fight performed seven rally starts and mined 75
-  observed sky blocks; it fired zero arrows, dealt zero dragon damage, and did
-  not kill or return. The nested ingress timed out with one bridge step,
-  `frontierProbePending=true`, zero mined blocks, and no break target. No
-  teleport, command, hidden terrain read, dragon freeze, or fixture terrain
-  mutation was used. This is the active release blocker; it is not M2/M4 or
-  random-seed evidence.
+  ticks the body reached approximately `(46.636,51.0,-1.503)` but the vanilla
+  AI-enabled manager dragon remained unharmed. The nested fair ingress mined 29
+  observed blocks and placed 32 bridge blocks, reached 24 frontier probes, and
+  then exhausted its scan budget with `tower_up.overhead_clearance_unverified`;
+  it fired zero arrows and dealt zero dragon damage. The non-repeating visited
+  feet-cell guard improved physical displacement but did not close the natural
+  pillar-edge route. No teleport, command, hidden terrain read, dragon freeze,
+  or fixture terrain mutation was used. This is the active release blocker; it
+  is not M2/M4 or random-seed evidence.
 - A fresh authorized Forge 65.1.1 live-model movement slice passed in
   `run/gametestserver`: SQLite recorded the real chat/task chain, HTTP-200
   Responses output, 7,741 input and 194 output tokens, `START_SKILL

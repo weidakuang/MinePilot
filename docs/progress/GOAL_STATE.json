@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T17:02:07Z",
+  "updatedAtUtc": "2026-08-21T17:12:39Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
   "publicMainHead": "79040ccae309320dbe3c82155374e5bf31b25447",
   "releaseStatus": "NON_RELEASE",
@@ -359,20 +359,20 @@
     },
     "naturalEndIngressLatestRerun": {
       "status": "PASS_FORGE_65.1.1",
-      "details": "A fresh isolated zero-human run of mcai_companion:natural_end_island_ingress completed in 2.518 minutes after the observed wall/ceiling recovery changes. The body crossed a real vanilla End portal, used ordinary fair-frame mining and movement, and reached natural End-stone support inside the arena-ready radius.",
-      "tests": "runGameTestServer -Pforge_compile_version=65.1.1 -Ptest_selector=mcai_companion:natural_end_island_ingress -Pgametest_working_dir=/private/tmp/mcai-end-ingress-current.CKtNcl passed with All 1 required tests passed.",
+      "details": "A fresh zero-human run of mcai_companion:natural_end_island_ingress completed in 5.832 seconds on Forge 65.0.0 after the visited-feet route guard. The body crossed a real vanilla End portal, used ordinary fair-frame mining and movement, and reached natural End-stone support inside the arena-ready radius.",
+      "tests": "runGameTestServer -Pforge_compile_version=65.0.0 -Ptest_selector=mcai_companion:natural_end_island_ingress passed with All 1 required tests passed.",
       "fixtureConstraint": "Physical ingress and manager-presence evidence only. It does not prove dynamic dragon combat, random Hardcore completion, speedrun timing, rendered-client behavior, or formal M1-M4 gates.",
       "formalGate": "NOT_RUN"
     },
     "latestNaturalDynamicDragonGate": {
       "status": "FAIL_FORGE_65.1.1",
-      "details": "A fresh zero-human natural-End run with the vanilla manager-owned AI-enabled dragon reached the pillar-edge route but failed the dynamic fight after bounded rally, side-step, sky-clearance, and observed attachment recovery. The body remained approximately (47.652,49.0,0.500), mined 75 currently observed sky blocks, performed seven observed rally starts, consumed no arrows, dealt no dragon damage, and did not kill or return. The nested ingress timed out after one bridge step with frontierProbePending=true and no break target. No teleport, hidden terrain read, dragon freeze, or fixture mutation was used.",
+      "details": "A fresh zero-human natural-End run with the vanilla manager-owned AI-enabled dragon reached the pillar-edge route but failed the dynamic fight after bounded rally, side-step, sky-clearance, and observed attachment recovery. The body reached approximately (46.636,51.0,-1.503); the nested fair ingress mined 29 observed blocks, placed 32 bridge blocks, reached 24 frontier probes, and exhausted its scan budget with tower_up.overhead_clearance_unverified. It consumed no arrows, dealt no dragon damage, and did not kill or return. The non-repeating visited feet-cell guard improved physical displacement but did not close the natural pillar-edge route. No teleport, hidden terrain read, dragon freeze, or fixture mutation was used.",
       "runRoot": "run/logs/latest.log",
-      "failureCode": "fight_ender_dragon.no_visible_combat_target",
-      "ingressFailure": null,
-      "bodyPosition": "47.652,49.0,0.500",
-      "scanTurns": 0,
-      "latestFixesExercised": "fair centerward re-entry before lateral detours, fresh crosshair-bound block actions, and support-voxel mining protection; the controller still exhausted the bounded re-entry timeout without a dragon damage event",
+      "failureCode": "reach_end_island.scan_budget_exhausted",
+      "ingressFailure": "tower_up.overhead_clearance_unverified",
+      "bodyPosition": "46.636,51.0,-1.503",
+      "scanTurns": 89,
+      "latestFixesExercised": "fair centerward re-entry before lateral detours, fresh crosshair-bound block actions, support-voxel mining protection, and a non-repeating visited-feet-cell route guard; the controller still exhausted bounded re-entry without a dragon damage event",
       "formalGate": "NOT_RUN"
     },
     "dynamicDragonObservedRally": {
@@ -392,7 +392,7 @@
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, Forge compatibility validation, and a fresh-public-clone Forge 65.0.0 compile after the focused End safety changes. The changed production, GameTest, checkpoint, and goal-state files matched the published clone byte-for-byte. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "a4df96aa859d98baf3b20156ec3b57c30d51d8c0340d135b0817a02888e851ad",
+      "sha256": "f6b0f993b585f32a5e2ccb4237965dda7c3234da4bb2324d85b6b12d035c776d",
       "formalGate": "NOT_RUN"
     }
   },

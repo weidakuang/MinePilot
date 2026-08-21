@@ -469,10 +469,24 @@
       "formalGate": "NOT_RUN"
     },
     "professionalCompanionLiveSliceAttempt": {
-      "status": "NOT_RUN_FORGEGRADLE_METADATA_FAILURE",
-      "details": "Three bounded attempts to run the configured-model follow slice stopped before server startup at ForgeGradle slimeLauncherMetadataForForge while resolving runsJson. No model request, server tick, or gameplay evidence was produced.",
-      "tests": "The failure reproduced with isolated GameTest working directories, after generated-output cleanup, and with Gradle parallel/configure-on-demand disabled.",
+      "status": "SUPERSEDED_INFRASTRUCTURE_FAILURE",
+      "details": "Three initial attempts stopped before server startup at ForgeGradle slimeLauncherMetadataForForge while resolving runsJson. Pinning ForgeGradle 7.0.34 resolved the task; the successful controlled live follow result is recorded separately.",
+      "tests": "The failure reproduced with isolated GameTest working directories, generated-output cleanup, and serial Gradle configuration before the plugin pin.",
       "credentialHandling": "The supplied credential was process-only and was not written to logs, source, SavedData, SQLite, or Git.",
+      "formalGate": "NOT_RUN"
+    },
+    "professionalCompanionLiveFollow": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL follow_entity",
+      "actions": "A real embedded player chat installed a follow goal. MiMo returned HTTP-200 Responses output; schema and revision validation accepted follow_entity; the server started the skill, emitted a grounded lifecycle message, and recorded low_level_actions_issued(action=move).",
+      "modelInputTokens": 7075,
+      "modelOutputTokens": 177,
+      "modelTokensRecorded": 7252,
+      "providerLatencyMillis": 4654,
+      "runRoot": "/tmp/minepilot-live-follow-fg7034",
+      "fixtureConstraint": "Controlled Forge GameTest with embedded test player and bounded follow course; not a rendered Actor/Observer client, random Hardcore, long-soak, or formal M3 result.",
       "formalGate": "NOT_RUN"
     },
     "latestReleaseAudit": {

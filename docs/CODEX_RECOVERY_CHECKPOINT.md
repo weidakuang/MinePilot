@@ -95,6 +95,16 @@ This section supersedes older chronological notes below when they conflict.
   `runsJson` (`outputDirectory` queried before producer completion). No model
   request, server tick, or gameplay evidence was produced. This is retained
   as an infrastructure `NOT_RUN`, not a companion result.
+- The ForgeGradle metadata blocker was resolved by pinning the known-good
+  7.0.34 plugin instead of the floating 7.0.35 range. A fresh Forge 65.1.1
+  configured-model follow slice then passed in
+  `/tmp/minepilot-live-follow-fg7034`: real chat/task acceptance, MiMo
+  `START_SKILL follow_entity` over Responses HTTP 200, schema/revision
+  acceptance, `skill_started`, `low_level_actions_issued(action=move)`, and
+  the server-owned lifecycle message were all recorded. The request used
+  7,075 input and 177 output tokens (7,252 total) with 4,654 ms provider
+  latency; this is controlled GameTest evidence, not rendered Actor/Observer
+  or formal M3 evidence.
 - A short exploratory tower-recovery change was tested against the same fresh
   natural selector and was immediately reverted because it regressed the
   measured route: the body stopped near `(42.603,50.0,-4.500)`, the nested

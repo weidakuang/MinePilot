@@ -6,7 +6,10 @@ plugins {
     id 'java'
     id 'idea'
     id 'eclipse'
-    id 'net.minecraftforge.gradle' version '[7.0.17,8)'
+    // 7.0.34 is pinned: ForgeGradle 7.0.35 queries the mapped
+    // slimeLauncherMetadata output before its producer completes under the
+    // locked Gradle 9.5 wrapper, preventing real GameTests from starting.
+    id 'net.minecraftforge.gradle' version '7.0.34'
     id 'net.minecraftforge.jarjar' version '0.2.3'
 }
 

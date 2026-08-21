@@ -159,10 +159,12 @@ This section supersedes older chronological notes below when they conflict.
   real client/model, Hardcore random-seed, and M1--M4 gates remain `NOT_RUN`
   or externally blocked.
 - The current source snapshot is public `main` commit
-  `6d802a7d1ca687830f0b77c719938dc53d42f762`; the four changed blobs match a
-  fresh clone byte-for-byte and that clone passed Forge `compileJava`. The
-  locally built development JAR SHA-256 is
-  `9cf823383fcc36bb3ad98697cdb89db1498f48587c8109a5b638c05eeb8c07b5`.
+  `590ae26265cfc7cee472bf1713f90404c99cedb1`; the three changed blobs
+  (`LiveModelChatGameTests.java`, this checkpoint, and the goal state) match a
+  fresh clone byte-for-byte; that clone parsed the goal JSON and passed Forge
+  `compileJava`. The local source commit is
+  `88eab2be01d14abcd83e47644bcd684bc9115951`; the controlled MiMo evidence is
+  recorded above. Formal gates remain `NOT_RUN` or externally blocked.
 
 - The current uncommitted combat correction contains three narrowly bounded
   fair-perception changes. `FightEnderDragonSkill` now treats a changed face

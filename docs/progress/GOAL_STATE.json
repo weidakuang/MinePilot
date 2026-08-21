@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T20:15:00Z",
+  "updatedAtUtc": "2026-08-21T20:06:41Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
   "publicMainHead": "e8c280d43b2f6d3ee0a7bf4d7b3431964dfd7024",
   "releaseStatus": "NON_RELEASE",
@@ -466,6 +466,13 @@
       "details": "Player-visible skill start, completion, failure, and cancellation messages now derive from server-owned SkillSupervisor transitions with duplicate suppression. Unambiguous stop, hold, pause, and Chinese cancellation phrases use the local safe-cancellation path without waiting for another model request.",
       "tests": "SkillLifecycleStatusTest, PlayerTaskIntentCancellationTest, ConversationCommitmentSourceContractTest, and MinecraftBrainEventSinkSourceContractTest pass.",
       "fixtureConstraint": "Code and focused test evidence only; no external rendered client, 100-hour soak, or formal M3 scenario archive is claimed.",
+      "formalGate": "NOT_RUN"
+    },
+    "professionalCompanionLiveSliceAttempt": {
+      "status": "NOT_RUN_FORGEGRADLE_METADATA_FAILURE",
+      "details": "Three bounded attempts to run the configured-model follow slice stopped before server startup at ForgeGradle slimeLauncherMetadataForForge while resolving runsJson. No model request, server tick, or gameplay evidence was produced.",
+      "tests": "The failure reproduced with isolated GameTest working directories, after generated-output cleanup, and with Gradle parallel/configure-on-demand disabled.",
+      "credentialHandling": "The supplied credential was process-only and was not written to logs, source, SavedData, SQLite, or Git.",
       "formalGate": "NOT_RUN"
     },
     "latestReleaseAudit": {

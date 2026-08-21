@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T05:15:00+09:00
+Last updated: 2026-08-22T05:07:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -89,6 +89,12 @@ This section supersedes older chronological notes below when they conflict.
   Hardcore locks, and ordinary safe checkpoints. Focused JVM and source
   contract tests pass; no formal M3 status is promoted by this code-only
   change.
+- A post-publication configured-model follow slice was attempted three times
+  with the supplied process-only credential, but ForgeGradle failed before
+  server startup at `slimeLauncherMetadataForForge` while resolving
+  `runsJson` (`outputDirectory` queried before producer completion). No model
+  request, server tick, or gameplay evidence was produced. This is retained
+  as an infrastructure `NOT_RUN`, not a companion result.
 - A short exploratory tower-recovery change was tested against the same fresh
   natural selector and was immediately reverted because it regressed the
   measured route: the body stopped near `(42.603,50.0,-4.500)`, the nested

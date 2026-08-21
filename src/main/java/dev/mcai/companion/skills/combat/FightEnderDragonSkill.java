@@ -117,6 +117,9 @@ public final class FightEnderDragonSkill
      * radius let a valid current support cell complete immediately, even
      * while the player was still behind the first wall. */
     private static final double FIGHT_REENTRY_TARGET_RADIUS = 54.0;
+    /** Entity perception is 32 blocks; escape the spawn-platform corridor
+     * before returning to ordinary dragon search. */
+    private static final double FIGHT_OBSTACLE_ESCAPE_RADIUS = 30.0;
     private static final double SKY_BREAK_ALIGNMENT_DEGREES = 2.0;
     /* A full bow flight at the maximum observed dragon distance is shorter
      * than this; leave enough time for the vanilla projectile to advance
@@ -1426,7 +1429,77 @@ public final class FightEnderDragonSkill
                         reachableOverhead,
                         lateral
                 );
+        final Optional<VisibleBlockFace> centerwardWall =
+                visibleCenterwardEndStoneFace(frame);
         if (immediateDragonIndex(frame).isEmpty()) {
+            /* Obsidian crystal pillars are not survival-mining targets.  If
+             * the newest first-person fan proves that the centerward cell is
+             * one, prefer a freshly observed lateral standing cell so the
+             * body can walk around the pillar instead of repeatedly pushing
+             * into its opaque face. */
+            if (visibleCenterwardObsidianWall(frame)) {
+                if (skyBlocksMined >= SKY_BLOCKS_BEFORE_CENTERWARD_TRAVEL
+                        && EndArenaTopology.horizontalRadius(
+                                frame.position()
+                        ) > FIGHT_OBSTACLE_ESCAPE_RADIUS) {
+                    /* Once the bounded overhead reserve has established the
+                     * obstruction, let the observation-bound ingress child
+                     * own the escape.  Trying an exposed lateral cell first
+                     * can oscillate inside the one-cell spawn-platform
+                     * corridor: the semantic frame proves that cell clear,
+                     * but vanilla collision still leaves the body in the
+                     * same feet grid.  Re-entry is fair and bounded; it can
+                     * tower, mine observed End stone, or bridge only after
+                     * the next fresh support proof. */
+                    return startIslandReentry(
+                            context,
+                            fresh,
+                            FIGHT_OBSTACLE_ESCAPE_RADIUS
+                    );
+                }
+                final Optional<GridPos> sideStep =
+                        selectObservedSideStep(frame);
+                if (sideStep.isPresent()) {
+                    return startObservedRallyStep(
+                            context,
+                            frame,
+                            sideStep.orElseThrow(),
+                            fresh
+                    );
+                }
+                /* The semantic fan is intentionally sparse: an opaque
+                 * pillar can prove the forward wall while the adjacent
+                 * standing cell is still unknown.  Do not infer that cell
+                 * or mine the pillar.  Turn to one of the two observed
+                 * lateral frontiers and wait for the next first-person
+                 * frame; that frame can then authorize a normal one-cell
+                 * detour. */
+                return requestObservedSideDetourObservation(
+                        context,
+                        frame,
+                        fresh
+                );
+            }
+            /* Clear a directly observed centerward wall before choosing a
+             * lateral one-cell step.  The lateral candidate can be legal yet
+             * lead under the same lip forever, while the wall face already
+             * provides the exact fair BreakBlock target needed to expose the
+             * next navigation/entity frame. */
+            if (centerwardWall.isPresent()
+                    && frame.dangerSignals().stream().noneMatch(
+                            signal -> signal.severity() >= 0.65
+                    )
+                    && skyBlocksMined < MAXIMUM_SKY_BLOCKS_MINED
+                    && skyBreakAttempts < MAXIMUM_SKY_BREAK_ATTEMPTS) {
+                return prepareSkyClearance(
+                        context,
+                        parameters,
+                        frame,
+                        centerwardWall.orElseThrow(),
+                        false,
+                        fresh
+                );
+            }
             final Optional<GridPos> observedStep =
                     selectObservedCenterwardStep(frame);
             final Optional<GridPos> detour = observedStep.isPresent()
@@ -1438,9 +1511,33 @@ public final class FightEnderDragonSkill
                         context,
                         frame,
                         detour.orElseThrow(),
-                        fresh
+                    fresh
                 );
             }
+        }
+        /* A natural End entry can be inside the nominal combat radius while
+         * a one- or two-block End-stone wall still occupies the centerward
+         * feet/head column.  Do not keep sweeping the sky or hand this frame
+         * to a blind travel fallback: if the current first-person fan proves
+         * an ordinary side face, open exactly that observed block through the
+         * same BreakBlock/retained-crosshair path used for sky clearance.
+         * The helper rejects UP/DOWN faces, support cells and non-centerward
+         * terrain, so this remains a bounded player-like excavation. */
+        if (centerwardWall.isPresent()
+                && immediateDragonIndex(frame).isEmpty()
+                && frame.dangerSignals().stream().noneMatch(
+                        signal -> signal.severity() >= 0.65
+                )
+                && skyBlocksMined < MAXIMUM_SKY_BLOCKS_MINED
+                && skyBreakAttempts < MAXIMUM_SKY_BREAK_ATTEMPTS) {
+            return prepareSkyClearance(
+                    context,
+                    parameters,
+                    frame,
+                    centerwardWall.orElseThrow(),
+                    false,
+                    fresh
+            );
         }
         /* The vanilla End entry can leave the body inside the 56-block
          * combat envelope but behind a natural End-stone lip. That is still
@@ -1734,6 +1831,12 @@ public final class FightEnderDragonSkill
     private static boolean visibleCenterwardEndStoneWall(
             final CoreSkillFrame frame
     ) {
+        return visibleCenterwardEndStoneFace(frame).isPresent();
+    }
+
+    private static boolean visibleCenterwardObsidianWall(
+            final CoreSkillFrame frame
+    ) {
         final GridPos feet = frame.feet();
         final double centerwardX = EndArenaTopology.CENTER_X
                 - frame.position().x();
@@ -1744,7 +1847,50 @@ public final class FightEnderDragonSkill
         final int direction = alongX
                 ? (centerwardX < 0.0 ? -1 : 1)
                 : (centerwardZ < 0.0 ? -1 : 1);
-        return frame.visibleBlockFaces().stream().anyMatch(face -> {
+        return frame.visibleBlockFaces().stream()
+                .filter(face -> "minecraft:obsidian".equals(
+                        face.blockTypeId()))
+                .map(face -> new GridPos(
+                        face.block().x(),
+                        face.block().y(),
+                        face.block().z()
+                ))
+                .anyMatch(block -> {
+                    final int dx = block.x() - feet.x();
+                    final int dz = block.z() - feet.z();
+                    final int distance = Math.abs(dx) + Math.abs(dz);
+                    final int forward = alongX ? dx * direction : dz * direction;
+                    return distance >= 1
+                            && distance <= 2
+                            && forward == distance
+                            && block.y() >= feet.y()
+                            && block.y() <= feet.y() + 3;
+                });
+    }
+
+    /**
+     * Returns one ordinary side face of a centerward End-stone obstruction
+     * from the newest first-person frame.  A boolean-only probe is not enough
+     * for a legal mining action: the BreakBlock child needs the exact block,
+     * face and hit point so its retained/current crosshair guard can verify
+     * the action on the server thread.
+     */
+    private static Optional<VisibleBlockFace>
+            visibleCenterwardEndStoneFace(final CoreSkillFrame frame) {
+        final GridPos feet = frame.feet();
+        final double centerwardX = EndArenaTopology.CENTER_X
+                - frame.position().x();
+        final double centerwardZ = EndArenaTopology.CENTER_Z
+                - frame.position().z();
+        final boolean alongX = Math.abs(centerwardX)
+                >= Math.abs(centerwardZ);
+        final int direction = alongX
+                ? (centerwardX < 0.0 ? -1 : 1)
+                : (centerwardZ < 0.0 ? -1 : 1);
+        return frame.visibleBlockFaces().stream()
+                .filter(face ->
+                        "minecraft:end_stone".equals(face.blockTypeId()))
+                .filter(face -> {
             final GridPos block = new GridPos(
                     face.block().x(),
                     face.block().y(),
@@ -1754,13 +1900,22 @@ public final class FightEnderDragonSkill
             final int dz = block.z() - feet.z();
             final int distance = Math.abs(dx) + Math.abs(dz);
             final int forward = alongX ? dx * direction : dz * direction;
-            return "minecraft:end_stone".equals(face.blockTypeId())
-                    && distance >= 1
+            final String faceName = face.face().toLowerCase(
+                    java.util.Locale.ROOT
+            );
+            return distance >= 1
                     && distance <= 2
                     && forward == distance
                     && block.y() >= feet.y()
-                    && block.y() <= feet.y() + 3;
-        });
+                    && block.y() <= feet.y() + 3
+                    && !faceName.endsWith(":up")
+                    && !faceName.equals("up")
+                    && !faceName.endsWith(":down")
+                    && !faceName.equals("down");
+                })
+                .min(Comparator.comparingDouble(
+                        VisibleBlockFace::distance
+                ));
     }
 
     private static boolean freshHeadClearance(
@@ -2360,6 +2515,47 @@ public final class FightEnderDragonSkill
                 ? CageStatus.REACQUIRING_CAGE
                 : CageStatus.VERIFYING_LANDING;
         return SkillTickResult.running(fresh, true);
+    }
+
+    private SkillTickResult requestObservedSideDetourObservation(
+            final SkillContext context,
+            final CoreSkillFrame frame,
+            final boolean fresh
+    ) {
+        final GridPos feet = frame.feet();
+        final double centerwardX = EndArenaTopology.CENTER_X
+                - frame.position().x();
+        final double centerwardZ = EndArenaTopology.CENTER_Z
+                - frame.position().z();
+        final boolean alongX = Math.abs(centerwardX)
+                >= Math.abs(centerwardZ);
+        /* One adjacent cell can itself be the pillar's end-stone skirt.  A
+         * two-cell lateral look exposes the next legal standing cell without
+         * authorizing a two-cell movement; the subsequent selector still
+         * accepts only an adjacent cell with observed support and clearance. */
+        final int side = (scanTurns & 1) == 0 ? 2 : -2;
+        final GridPos target = alongX
+                ? new GridPos(feet.x(), feet.y(), feet.z() + side)
+                : new GridPos(feet.x() + side, feet.y(), feet.z());
+        final PerceptionVec3 targetCenter = new PerceptionVec3(
+                target.x() + 0.5,
+                target.y() + 0.5,
+                target.z() + 0.5
+        );
+        if (!core.stop().accepted()
+                || !core.look(lookAt(
+                        frame.eyePosition(),
+                        targetCenter
+                )).accepted()) {
+            return fail(
+                    context,
+                    NAME + ".side_observation_rejected"
+            );
+        }
+        scanTurns = (scanTurns + 1) & 3;
+        lastRallyFailure = "side_observation";
+        nextActionTick = context.gameTick() + SCAN_INTERVAL_TICKS;
+        return SkillTickResult.running(true, true);
     }
 
     private SkillTickResult startOrPrepareCageDescent(
@@ -3164,10 +3360,18 @@ public final class FightEnderDragonSkill
          * movement, mining, and placement action. */
         final Optional<GridPos> observedStep =
                 selectObservedCenterwardStep(frame);
-        if (EndArenaTopology.horizontalRadius(frame.position())
-                    > FIGHT_REENTRY_RADIUS
-                && observedStep.isPresent()) {
-            lastRallyFailure = "observed_step_selected:" + observedStep.orElseThrow();
+        /* The dragon can be outside the entity perception radius even after
+         * the body has reached the verified island envelope.  Previously the
+         * centerward observed step was gated on the outer re-entry radius,
+         * so an otherwise legal standing cell inside that envelope could
+         * only repeat blind camera scans until no_visible_combat_target.
+         * Continue through one freshly observed centerward cell whenever one
+         * exists.  The selector still requires support, two-block clearance,
+         * arena bounds and a strictly smaller radius; movement remains a
+         * normal vanilla input rather than a waypoint or teleport. */
+        if (observedStep.isPresent()) {
+            lastRallyFailure = "observed_step_selected:"
+                    + observedStep.orElseThrow();
             return startObservedRallyStep(
                     context,
                     frame,
@@ -3259,6 +3463,18 @@ public final class FightEnderDragonSkill
             final SkillContext context,
             final boolean fresh
     ) {
+        return startIslandReentry(
+                context,
+                fresh,
+                FIGHT_REENTRY_TARGET_RADIUS
+        );
+    }
+
+    private SkillTickResult startIslandReentry(
+            final SkillContext context,
+            final boolean fresh,
+            final double completionRadius
+    ) {
         islandIngressParameters = new EndIslandIngressParameters(
                 128.0,
                 EndArenaTopology.ARENA_READY_RADIUS,
@@ -3289,7 +3505,7 @@ public final class FightEnderDragonSkill
                 interactionFrames,
                 ignored -> {
                 },
-                FIGHT_REENTRY_TARGET_RADIUS
+                completionRadius
         );
         final Optional<SkillFailure> rejected = islandIngress.preconditions(
                 new SkillContext(
@@ -3445,13 +3661,35 @@ public final class FightEnderDragonSkill
                 rallyStepTarget.z() + 0.5
         );
         if (rallyStepAwaitingFreshObservation) {
+            /* A queued look can fail to reveal the requested cell when the
+             * body is under a natural lip or the target becomes occluded by
+             * a moving multipart entity.  The old path kept waiting here
+             * forever because the normal step timeout lived below this
+             * branch.  Bound the observation wait just like the movement
+             * phase, then return to the ordinary scan/mining recovery path. */
+            if (rallyStepTicks++ >= OBSERVED_RALLY_STEP_TICKS) {
+                core.stop();
+                previousRallyStepTarget = rallyStepTarget;
+                rallyAttempts++;
+                rallyStepTimeouts++;
+                lastRallyFailure = "step_fresh_observation_timeout";
+                rallyStepTarget = null;
+                rallyStepTicks = 0;
+                rallyStepAwaitingFreshObservation = false;
+                rallyStepObservationRevision = -1L;
+                phase = Phase.SEARCHING;
+                nextActionTick = context.gameTick()
+                        + SCAN_INTERVAL_TICKS;
+                return SkillTickResult.running(true, true);
+            }
             final PerceptionVec3 clearanceCenter = new PerceptionVec3(
                     rallyStepTarget.x() + 0.5,
                     rallyStepTarget.y() + 1.5,
                     rallyStepTarget.z() + 0.5
             );
-            final boolean freshTarget = frame.observationRevision()
-                    > rallyStepObservationRevision
+            final boolean freshTarget = rallyStepTicks > 0
+                    && frame.observationRevision()
+                    >= rallyStepObservationRevision
                     && frame.navigation().voxelAt(rallyStepTarget)
                         .filter(voxel -> hasObservedRallyPlanningClearance(
                                 voxel,
@@ -3488,6 +3726,7 @@ public final class FightEnderDragonSkill
             }
             rallyStepAwaitingFreshObservation = false;
             rallyStepObservationRevision = frame.observationRevision();
+            rallyStepTicks = 0;
         }
         /* A one-cell target can be only half a block from the current body
          * centre while the player's feet are still in the old cell.  Using a

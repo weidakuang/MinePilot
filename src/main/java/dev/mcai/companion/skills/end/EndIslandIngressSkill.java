@@ -82,7 +82,11 @@ public final class EndIslandIngressSkill
     private static final double MINIMUM_CENTER_PROGRESS = 0.20;
     private static final double CURRENT_SUPPORT_CENTER_TOLERANCE = 0.72;
     private static final int MINIMUM_SCAN_INTERVAL_TICKS = 2;
-    private static final int BLOCK_ALIGNMENT_TIMEOUT_TICKS = 60;
+    /* Rotation is applied through the vanilla input packet at post-tick.  A
+     * fresh semantic frame can therefore arrive while the real crosshair is
+     * still on the neighbouring wall.  Keep the retry finite, but allow
+     * several full look/observation cycles before abandoning a legal target. */
+    private static final int BLOCK_ALIGNMENT_TIMEOUT_TICKS = 100;
     private static final int STABLE_GROUND_RECOVERY_TIMEOUT_TICKS = 80;
     private static final List<String> PICKAXE_PRIORITY = List.of(
             "minecraft:netherite_pickaxe",
@@ -1003,6 +1007,21 @@ public final class EndIslandIngressSkill
                 || pendingBreakBlock == null) {
             return fail(NAME + ".block_alignment_binding_missing");
         }
+        /* Never mine the authoritative support voxel under the body.  A
+         * centre-crosshair sample can legitimately hit its top face while a
+         * queued turn is settling, but breaking it would be a self-inflicted
+         * fall and vanilla correctly rejects the transaction. */
+        if (grid(pendingBreakBlock).equals(frame.feet().below())) {
+            pendingBreakBlock = null;
+            blockAlignmentStartedTick = -1;
+            blockAlignmentReadyRevision = -1;
+            return recoverChildFailure(
+                    context,
+                    parameters,
+                    frame,
+                    "support_mining_guard"
+            );
+        }
         if (context.gameTick() - blockAlignmentStartedTick
                 >= BLOCK_ALIGNMENT_TIMEOUT_TICKS) {
             pendingBreakBlock = null;
@@ -1015,7 +1034,7 @@ public final class EndIslandIngressSkill
                     "block_alignment"
             );
         }
-        final Optional<VisibleBlockFace> visibleTarget =
+        Optional<VisibleBlockFace> visibleTarget =
                 frame.visibleBlockFaces().stream()
                         .filter(face -> END_STONE.equals(
                                 face.blockTypeId()
@@ -1026,6 +1045,44 @@ public final class EndIslandIngressSkill
                         .min(Comparator.comparingDouble(
                                 VisibleBlockFace::distance
                         ));
+        /* The semantic fan and the interaction sampler are both fair, but
+         * their nearest hit can differ while a queued turn is still being
+         * applied.  If the live centre crosshair now proves another End-stone
+         * face in this same semantic frame, bind that exact observed block
+         * instead of repeatedly aiming at a stale neighbour.  No hidden block
+         * state is consulted and BreakBlock still performs its own retained
+         * observation/crosshair validation. */
+        final Optional<VisibleBlockFace> liveCrosshair =
+                interactionFrames.currentCrosshairBlock()
+                        .filter(face -> END_STONE.equals(face.blockTypeId()))
+                        .filter(face -> frame.visibleBlockFaces().stream()
+                                .anyMatch(observed -> observed.block().equals(
+                                        face.block()
+                                ) && END_STONE.equals(
+                                        observed.blockTypeId()
+                                )))
+                        .filter(face -> !grid(face.block()).equals(
+                                frame.feet().below()
+                        ));
+        if (liveCrosshair.isPresent()
+                && (visibleTarget.isEmpty()
+                || !liveCrosshair.orElseThrow().block().equals(
+                        pendingBreakBlock
+                ))) {
+            final VisibleBlockFace rebound = liveCrosshair.orElseThrow();
+            pendingBreakBlock = rebound.block();
+            lastBreakTarget = String.format(
+                    Locale.ROOT,
+                    "%d,%d,%d/%s/%s",
+                    rebound.block().x(),
+                    rebound.block().y(),
+                    rebound.block().z(),
+                    rebound.blockTypeId(),
+                    rebound.face()
+            );
+            blockAlignmentReadyRevision = -1;
+            visibleTarget = Optional.of(rebound);
+        }
         if (visibleTarget.isEmpty()) {
             if (fresh
                     && frame.observationRevision()
@@ -1552,6 +1609,15 @@ public final class EndIslandIngressSkill
                 .filter(step -> radiusOf(step)
                         <= EndArenaTopology.horizontalRadius(frame.position())
                                 + 1.5)
+                /* An attached extension may target an unknown frontier, but
+                 * it must never be selected when the newest fair fan already
+                 * proves that exact destination is occupied.  Otherwise a
+                 * spawn-platform wall is repeatedly handed to BridgeTo and
+                 * consumes the route budget without placing or moving. */
+                .filter(step -> frame.visibleBlockFaces().stream()
+                        .noneMatch(face -> grid(face.block()).equals(step)
+                                && face.collisionAffordance()
+                                    != CollisionAffordance.EMPTY))
                 .filter(step -> frame.navigation().voxelAt(step)
                         .map(voxel -> voxel.kind().isPassable())
                         .orElse(true))
@@ -1692,6 +1758,17 @@ public final class EndIslandIngressSkill
     ) {
         if (interactionActuator == null || interactionFrames == null) {
             return fail(NAME + ".mining_unavailable");
+        }
+        if (grid(face.block()).equals(frame.feet().below())) {
+            /* A top-face hit on the block carrying the body is an observation
+             * of support, not authorization to remove that support.  Let the
+             * next scan select a side/overhead obstruction instead. */
+            pendingBreakBlock = null;
+            phase = Phase.SCANNING;
+            requiredFreshRevision = frame.observationRevision();
+            nextScanTick = context.gameTick() + MINIMUM_SCAN_INTERVAL_TICKS;
+            lastChildFailureCode = "support_mining_guard";
+            return SkillTickResult.running(true, true);
         }
         if (minedBlocks >= parameters.maximumMinedBlocks()) {
             return fail(NAME + ".mining_budget_exhausted");

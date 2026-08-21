@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-21T22:02:40+09:00
+Last updated: 2026-08-22T01:45:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,30 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+- Current working-tree patch: `FightEnderDragonSkill` now routes a natural
+  centerward obsidian frontier through bounded fair island re-entry before a
+  lateral detour, and `EndIslandIngressSkill` rejects breaking the observed
+  support voxel under the body (including the corrected block/grid coordinate
+  conversion). The test-only terrain diagnostic records the natural platform
+  shape without being used by production decisions.
+- Focused ingress and combat JUnit suites pass, and the fresh Forge
+  65.0.0 `natural_end_island_ingress` selector passed in 5.835 seconds.
+- The latest completed zero-human Forge 65.1.1
+  `natural_end_dynamic_dragon_combat` gate remains `FAIL`: after 8,002 fight
+  ticks the vanilla AI-enabled manager dragon was loaded at approximately
+  `(4.513,81.966,-18.680)`, while the body remained near
+  `(47.652,49.0,0.500)`. The fight performed seven rally starts and mined 75
+  observed sky blocks; it fired zero arrows, dealt zero dragon damage, and did
+  not kill or return. The nested ingress timed out with one bridge step,
+  `frontierProbePending=true`, zero mined blocks, and no break target. No
+  teleport, command, hidden terrain read, dragon freeze, or fixture terrain
+  mutation was used. This is the active release blocker; it is not M2/M4 or
+  random-seed evidence.
+- Next action before publication is focused JUnit, full build, repository
+  preflight, and a Git Data API snapshot. The dynamic natural-End gate must
+  remain recorded as failed; real client/model, Hardcore random-seed, and
+  M1--M4 gates remain `NOT_RUN` or externally blocked.
 
 - The current uncommitted combat correction contains three narrowly bounded
   fair-perception changes. `FightEnderDragonSkill` now treats a changed face

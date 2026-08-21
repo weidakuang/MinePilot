@@ -864,6 +864,7 @@ public final class EndIslandIngressGameTests {
                             + ", faces=" + frame.visibleBlockFaces())
                         .orElse("unavailable")
                     + ", terrain=" + endTerrainProfile(body)
+                    + ", localTerrain=" + endLocalTerrainSlice(body)
                     + ", dragon=" + lastDynamicDragonPosition
                     + ", dragonHealth=" + lastDynamicDragonHealth
                     + ", dragonLoaded=" + lastDynamicDragonLoaded
@@ -908,6 +909,41 @@ public final class EndIslandIngressGameTests {
                 }
             }
             return profile.toString();
+        }
+
+        /** Diagnostic-only local terrain slice; never used by production AI. */
+        private String endLocalTerrainSlice(
+                final Optional<ServerPlayer> body
+        ) {
+            if (body.isEmpty()
+                    || !body.orElseThrow().level().dimension()
+                        .equals(Level.END)) {
+                return "unavailable";
+            }
+            final ServerLevel end = (ServerLevel) body.orElseThrow().level();
+            final BlockPos feet = body.orElseThrow().blockPosition();
+            final StringBuilder slice = new StringBuilder();
+            for (int y = feet.getY() - 1; y <= feet.getY() + 2; y++) {
+                if (!slice.isEmpty()) {
+                    slice.append('|');
+                }
+                slice.append('y').append(y).append(':');
+                for (int z = feet.getZ() - 4; z <= feet.getZ() + 4; z++) {
+                    if (z != feet.getZ() - 4) {
+                        slice.append('/');
+                    }
+                    for (int x = feet.getX() - 8;
+                            x <= feet.getX() + 8;
+                            x++) {
+                        final var block = end.getBlockState(
+                                new BlockPos(x, y, z)
+                        ).getBlock();
+                        slice.append(block == Blocks.OBSIDIAN ? 'O'
+                                : block == Blocks.END_STONE ? 'E' : '.');
+                    }
+                }
+            }
+            return slice.toString();
         }
 
         private void cleanup() {

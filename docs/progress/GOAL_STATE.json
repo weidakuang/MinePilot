@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T16:01:35Z",
-  "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
+  "updatedAtUtc": "2026-08-21T16:45:00Z",
+  "sourceState": "WORKTREE_FOCUSED_TESTS_AND_NATURAL_DYNAMIC_NEGATIVE_PENDING_PUBLICATION",
   "publicMainHead": "4adede3fe9e59eb1580e1bfca6091a36899025e4",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -364,13 +364,13 @@
     },
     "latestNaturalDynamicDragonGate": {
       "status": "FAIL_FORGE_65.1.1",
-      "details": "A fresh zero-human natural-End run with the vanilla manager-owned AI-enabled dragon reached the pillar-edge route but failed the dynamic fight after bounded rally, side-step, sky-clearance, and observed attachment recovery. The body reached approximately (49.752,49.0,0.498), mined 66 currently observed End-stone blocks, performed seven observed rally starts, consumed no arrows, dealt no dragon damage, and did not kill or return. No teleport, hidden terrain read, dragon freeze, or fixture mutation was used.",
+      "details": "A fresh zero-human natural-End run with the vanilla manager-owned AI-enabled dragon reached the pillar-edge route but failed the dynamic fight after bounded rally, side-step, sky-clearance, and observed attachment recovery. The body remained approximately (47.652,49.0,0.500), mined 75 currently observed sky blocks, performed seven observed rally starts, consumed no arrows, dealt no dragon damage, and did not kill or return. The nested ingress timed out after one bridge step with frontierProbePending=true and no break target. No teleport, hidden terrain read, dragon freeze, or fixture mutation was used.",
       "runRoot": "run/logs/latest.log",
       "failureCode": "fight_ender_dragon.no_visible_combat_target",
       "ingressFailure": null,
-      "bodyPosition": "49.752,49.0,0.498",
-      "scanTurns": 48,
-      "latestFixesExercised": "same-block face reacquisition, head-clearance-aware sky target selection, bounded observed lateral mining, and fresh supported side detours; the controller still exhausted its bounded fight search without a dragon damage event",
+      "bodyPosition": "47.652,49.0,0.500",
+      "scanTurns": 0,
+      "latestFixesExercised": "fair centerward re-entry before lateral detours, fresh crosshair-bound block actions, and support-voxel mining protection; the controller still exhausted the bounded re-entry timeout without a dragon damage event",
       "formalGate": "NOT_RUN"
     },
     "dynamicDragonObservedRally": {

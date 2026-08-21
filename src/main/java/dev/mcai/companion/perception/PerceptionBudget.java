@@ -58,7 +58,12 @@ public record PerceptionBudget(
 
     public static PerceptionBudget defaults() {
         return new PerceptionBudget(
-                32.0,
+                /* A player can visually track the Ender Dragon well beyond
+                 * the ordinary hostile-mob lane.  Keep the bounded sampler
+                 * within MAX_ENTITY_RANGE so this is still only fair
+                 * line-of-sight perception, but do not make a dragon vanish
+                 * merely because the body was knocked to the outer island. */
+                64.0,
                 110.0,
                 64,
                 32,

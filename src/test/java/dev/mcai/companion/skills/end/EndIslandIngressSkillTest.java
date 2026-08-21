@@ -704,6 +704,22 @@ final class EndIslandIngressSkillTest {
     }
 
     @Test
+    void sideStepTargetDoesNotInventAnOrthogonalCornerWhenAlreadyAligned() {
+        final PerceptionVec3 body = new PerceptionVec3(
+                53.50,
+                49.0,
+                0.36
+        );
+        final PerceptionVec3 target = EndIslandIngressSkill.sideStepTarget(
+                body,
+                new GridPos(52, 49, 0)
+        );
+
+        assertEquals(0.36, target.z(), 1.0E-9);
+        assertTrue(target.x() > 52.0 && target.x() < 52.5);
+    }
+
+    @Test
     void cancelQuiescesAnActiveSneakingBridgeAndUseAction() {
         final MutableFrames frames = new MutableFrames(
                 frame(

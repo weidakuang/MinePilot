@@ -17,6 +17,34 @@ pass.
 
 This section supersedes older chronological notes below when they conflict.
 
+- The current uncommitted combat correction contains three narrowly bounded
+  fair-perception changes. `FightEnderDragonSkill` now treats a changed face
+  on the same observed block as a valid reacquisition candidate, prioritizes
+  a current-column overhead block only while the head cell is actually
+  blocked, and permits a fresh observed lateral wall to be mined after head
+  clearance. It also permits a fresh, supported, two-block-clear neighboring
+  detour around an observed pillar when a strictly centerward cell is not
+  available; the detour remains inside the 56-block arena radius and never
+  reads hidden level state. The ingress target geometry and the 0.50 TravelTo
+  arrival bound were corrected in the same patch.
+- Focused `FightEnderDragonSkillTest`, dynamic-rally source-contract tests,
+  and `EndIslandIngressSkillTest` pass. The Forge 65.1.1 physical selector
+  `mcai_companion:natural_end_island_ingress` also passes in the current
+  worktree.
+- The latest zero-human natural dynamic-dragon selector was run on Forge
+  65.1.1 at 2026-08-22 00:55 JST and remains an honest failure. The body
+  reached approximately `(49.752,49.0,0.498)`, mined 66 currently observed
+  End-stone blocks, and performed seven observed rally starts; the live
+  manager dragon remained loaded, but there were zero arrows, damage events,
+  kill, or return. The terminal failure was
+  `fight_ender_dragon.no_visible_combat_target` after 2,649 skill ticks. This
+  is not dynamic-dragon, random-seed, Hardcore, speedrun, or M1--M4 evidence.
+- No model credential was used by this physical gate, and no production
+  teleport, command, hidden terrain read, dragon freeze, or fixture terrain
+  mutation was introduced. The next release decision is therefore gated on
+  full regression and a fresh review of this still-failing dynamic combat
+  path; do not promote this patch to a release claim.
+
 - Commit `cc877a4` records a `TowerUp` precondition rejection
   in `lastChildFailureCode`, allowing the already bounded frontier-probe path
   to run instead of silently retrying the same tower. Focused ingress/combat

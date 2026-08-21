@@ -14,6 +14,8 @@ import dev.mcai.companion.model.ModelGateway;
 import dev.mcai.companion.model.ModelOutcome;
 import dev.mcai.companion.model.PlannerInput;
 import dev.mcai.companion.model.RequestedObservation;
+import dev.mcai.companion.perception.FairPerceptionSampler;
+import dev.mcai.companion.perception.PerceptionVec3;
 import dev.mcai.companion.runtime.CompanionRuntime;
 import dev.mcai.companion.runtime.ServerRuntime;
 import dev.mcai.companion.skill.SkillContext;
@@ -248,6 +250,14 @@ public final class EndIslandIngressGameTests {
         private long dynamicCombatStartedAt = -1L;
         private Vec3 dynamicDragonStartPosition;
         private double dynamicDragonMaximumDisplacement;
+        private Vec3 lastDynamicDragonPosition;
+        private float lastDynamicDragonHealth;
+        private boolean lastDynamicDragonLoaded;
+        private double lastDynamicDragonDistance;
+        private long firstFairDragonVisibleTick = -1L;
+        private PerceptionVec3 firstFairDragonVisiblePosition;
+        private Vec3 firstFairDragonVisibleLook;
+        private double firstFairDragonVisibleDistance = Double.NaN;
         private final java.util.Set<String> dynamicDragonPhases =
                 new java.util.LinkedHashSet<>();
         private int initialBlocks;
@@ -326,7 +336,12 @@ public final class EndIslandIngressGameTests {
             body.fallDistance = 0.0F;
             body.getInventory().setItem(
                     0,
-                    new ItemStack(Items.IRON_PICKAXE)
+                    /* The dynamic gate spends one bounded reserve opening
+                     * natural pillar skirts and sky occlusions before the
+                     * dragon is visible.  Use a durable, ordinary survival
+                     * diamond pickaxe so the gate measures terrain/combat
+                     * behavior rather than an exhausted single iron tool. */
+                    new ItemStack(Items.DIAMOND_PICKAXE)
             );
             body.getInventory().setItem(
                     1,
@@ -586,6 +601,14 @@ public final class EndIslandIngressGameTests {
             dynamicDragonStartedAt = helper.getTick();
             dynamicDragonStartPosition = null;
             dynamicDragonMaximumDisplacement = 0.0D;
+            lastDynamicDragonPosition = null;
+            lastDynamicDragonHealth = -1.0F;
+            lastDynamicDragonLoaded = false;
+            lastDynamicDragonDistance = Double.NaN;
+            firstFairDragonVisibleTick = -1L;
+            firstFairDragonVisiblePosition = null;
+            firstFairDragonVisibleLook = null;
+            firstFairDragonVisibleDistance = Double.NaN;
             dynamicDragonPhases.clear();
             stage = Stage.VERIFYING_DYNAMIC_DRAGON;
         }
@@ -607,6 +630,12 @@ public final class EndIslandIngressGameTests {
             final List<? extends EnderDragon> dragons = end.getDragons();
             if (fight != null && !dragons.isEmpty()) {
                 for (final EnderDragon dragon : dragons) {
+                    lastDynamicDragonPosition = dragon.position();
+                    lastDynamicDragonHealth = dragon.getHealth();
+                    lastDynamicDragonLoaded = end.isLoaded(
+                            dragon.blockPosition()
+                    );
+                    lastDynamicDragonDistance = body.distanceTo(dragon);
                     helper.assertTrue(
                             !dragon.isNoAi(),
                             "Natural End fight exposed a frozen/no-AI dragon"
@@ -696,6 +725,7 @@ public final class EndIslandIngressGameTests {
                     body.level().dimension().equals(Level.END),
                     "Natural dynamic-dragon fight left the End"
             );
+            recordFairDragonVisibility(body);
             final SkillSupervisor.Snapshot snapshot = advanceSkill();
             if (snapshot.state() == SkillSupervisor.State.RUNNING
                     || snapshot.state() == SkillSupervisor.State.CANCEL_PENDING) {
@@ -714,6 +744,30 @@ public final class EndIslandIngressGameTests {
             );
             helper.succeed();
             stage = Stage.DONE;
+        }
+
+        private void recordFairDragonVisibility(final ServerPlayer body) {
+            if (firstFairDragonVisibleTick >= 0L) {
+                return;
+            }
+            final var visible = new FairPerceptionSampler().sample(body)
+                    .visibleEntities()
+                    .stream()
+                    .filter(entity ->
+                            entity.entityTypeId().equals(
+                                    "minecraft:ender_dragon"
+                            )
+                    )
+                    .findFirst();
+            if (visible.isEmpty()) {
+                return;
+            }
+            firstFairDragonVisibleTick = helper.getTick();
+            firstFairDragonVisiblePosition = visible.orElseThrow()
+                    .position();
+            firstFairDragonVisibleLook = body.getLookAngle();
+            firstFairDragonVisibleDistance = visible.orElseThrow()
+                    .distance();
         }
 
         private SkillSupervisor.Snapshot advanceSkill() {
@@ -796,10 +850,40 @@ public final class EndIslandIngressGameTests {
                     + ", frame=" + runtime.coreFrames().current()
                         .map(frame -> "revision="
                             + frame.observationRevision()
+                            + ", navRevision="
+                            + frame.navigation().revision()
+                            + ", feet=" + frame.feet()
+                            + ", supportVoxel=" + frame.navigation()
+                                .voxelAt(frame.feet().below())
+                            + ", feetVoxel=" + frame.navigation()
+                                .voxelAt(frame.feet())
+                            + ", headVoxel=" + frame.navigation()
+                                .voxelAt(frame.feet().above(2))
+                            + ", look=" + frame.lookDirection()
                             + ", position=" + frame.position()
                             + ", faces=" + frame.visibleBlockFaces())
                         .orElse("unavailable")
-                    + ", terrain=" + endTerrainProfile(body);
+                    + ", terrain=" + endTerrainProfile(body)
+                    + ", dragon=" + lastDynamicDragonPosition
+                    + ", dragonHealth=" + lastDynamicDragonHealth
+                    + ", dragonLoaded=" + lastDynamicDragonLoaded
+                    + ", dragonDistance=" + lastDynamicDragonDistance
+                    + ", firstFairDragonVisibleTick="
+                        + firstFairDragonVisibleTick
+                    + ", firstFairDragonVisiblePosition="
+                        + firstFairDragonVisiblePosition
+                    + ", firstFairDragonVisibleLook="
+                        + firstFairDragonVisibleLook
+                    + ", firstFairDragonVisibleDistance="
+                        + firstFairDragonVisibleDistance
+                    + ", freshSampler=" + body.map(player ->
+                            new FairPerceptionSampler().sample(player)
+                                    .visibleEntities()
+                                    .stream()
+                                    .map(entity -> entity.entityTypeId()
+                                            + "@" + entity.position())
+                                    .toList()
+                        ).orElse(List.of());
         }
 
         private String endTerrainProfile(

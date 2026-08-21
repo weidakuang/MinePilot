@@ -75,6 +75,9 @@ public final class EndIslandIngressSkill
      * observed destination cell so the vanilla child must actually cross the
      * grid boundary. */
     private static final double SIDE_STEP_EDGE_OFFSET = 0.44;
+    /* Keep a player-scale arrival envelope: TravelTo must enter the observed
+     * cell, after which the parent performs the exact support/clearance
+     * verification before accepting the landfall. */
     private static final double LANDFALL_ARRIVAL_RADIUS = 0.75;
     private static final double MINIMUM_CENTER_PROGRESS = 0.20;
     private static final double CURRENT_SUPPORT_CENTER_TOLERANCE = 0.72;
@@ -131,12 +134,18 @@ public final class EndIslandIngressSkill
     private BreakBlockSkill blockBreak;
     private BreakBlockParameters blockBreakParameters;
     private BlockCoordinate pendingBreakBlock;
+    private String lastBreakTarget = "";
+    private double bridgeStartRadius = Double.NaN;
+    private GridPos bridgeStartFeet;
+    private GridPos bridgeExpectedFeet;
+    private boolean bridgeRequiresCenterProgress;
     private long blockAlignmentStartedTick = -1;
     private long blockAlignmentReadyRevision = -1;
     private long stableGroundRecoveryStartedTick = -1;
     private TravelToSkill travel;
     private TravelToParameters travelParameters;
     private boolean completionPublished;
+    private boolean initialObservationPending;
 
     public EndIslandIngressSkill(
             final UUID expectedPlayerId,
@@ -345,12 +354,18 @@ public final class EndIslandIngressSkill
         blockBreak = null;
         blockBreakParameters = null;
         pendingBreakBlock = null;
+        lastBreakTarget = "";
+        bridgeStartRadius = Double.NaN;
+        bridgeStartFeet = null;
+        bridgeExpectedFeet = null;
+        bridgeRequiresCenterProgress = false;
         blockAlignmentStartedTick = -1;
         blockAlignmentReadyRevision = -1;
         stableGroundRecoveryStartedTick = -1;
         travel = null;
         travelParameters = null;
         completionPublished = false;
+        initialObservationPending = true;
     }
 
     @Override
@@ -397,6 +412,9 @@ public final class EndIslandIngressSkill
                                 + "\"scanTurns\":%d,"
                                 + "\"childFailures\":%d,"
                                 + "\"landfallAttempts\":%d,"
+                                + "\"frontierProbeIndex\":%d,"
+                                + "\"frontierProbePending\":%s,"
+                                + "\"lastBreakTarget\":\"%s\","
                                 + "\"lastChildFailure\":\"%s\","
                                 + "\"candidateSupport\":\"%s\"}",
                         phase.name(),
@@ -411,6 +429,9 @@ public final class EndIslandIngressSkill
                         scanTurns,
                         childFailures,
                         landfallAttempts,
+                        frontierProbeIndex,
+                        frontierProbePending,
+                        lastBreakTarget,
                         lastChildFailureCode,
                         candidateSupport == null
                                 ? ""
@@ -542,8 +563,10 @@ public final class EndIslandIngressSkill
             return tickBlockAlignment(context, parameters, frame, fresh);
         }
 
-        if (fresh
-                && frame.observationRevision() > requiredFreshRevision
+        final boolean mayComplete = !initialObservationPending;
+        initialObservationPending = false;
+        if (mayComplete
+                && frame.observationRevision() >= requiredFreshRevision
                 && verifiedCurrentEndStoneSupport(frame, parameters)) {
             quiesce();
             if (!completionPublished) {
@@ -553,6 +576,32 @@ public final class EndIslandIngressSkill
             phase = Phase.COMPLETED;
             candidateSupport = frame.feet().below();
             return SkillTickResult.completed();
+        }
+
+        /* A natural End-stone cell can be visible before the navigation
+         * mapper has refreshed the two-block head clearance.  Repeating the
+         * centerward floor scan in that state burns the route budget while a
+         * real player would simply look up once and re-check the landing
+         * cell.  Ask for that fair first-person observation explicitly; the
+         * completion predicate still requires the same-revision support,
+         * feet and head voxels and never infers a hidden island. */
+        if (EndArenaTopology.horizontalRadius(frame.position())
+                    <= completionRadius(parameters)
+                && visibleCurrentEndStoneSupport(frame)
+                && !verifiedCurrentEndStoneSupport(frame, parameters)) {
+            return orientForFreshSkyObservation(frame);
+        }
+
+        /* A knockback can leave the body standing on a legal bridge cell
+         * whose mapper record contains only BODY_CONTACT and no top-face
+         * affordance.  Do not reject every neighbouring route in that state:
+         * aim at the current support first, then let the next semantic frame
+         * prove its top.  This is the same player-visible observation a human
+         * makes before stepping around a pillar and never reads the level. */
+        if (historicalNavigationAllowed()
+                && EndArenaTopology.horizontalRadius(frame.position()) < 60.0
+                && currentSupportNeedsTopObservation(frame)) {
+            return orientForCurrentSupport(frame);
         }
 
         if (phase == Phase.VERIFYING_CURRENT_SUPPORT) {
@@ -661,6 +710,26 @@ public final class EndIslandIngressSkill
                     lateralWall.orElseThrow()
             );
         }
+        /* During bounded re-entry, a directly adjacent side face is a legal
+         * excavation target even when its lower support is not yet visible.
+         * Waiting for a complete landing column creates a deadlock: the wall
+         * hides the very support sample needed to approve the detour. Break
+         * only a nearby End-stone side face from the newest fan (at most two
+         * horizontal cells, still inside ordinary reach), then reacquire
+         * navigation before moving. */
+        final Optional<VisibleBlockFace> lateralObstruction =
+                visibleReentryExcavationTarget(frame);
+        if (interactionActuator != null
+                && historicalNavigationAllowed()
+                && currentRadius < 60.0
+                && lateralObstruction.isPresent()) {
+            return startVisibleBlockBreak(
+                    context,
+                    parameters,
+                    frame,
+                    lateralObstruction.orElseThrow()
+            );
+        }
         /* End crystal pillars are opaque obsidian and cannot be mined with
          * the survival pickaxe.  When the fair frame proves that such a wall
          * occupies the centerward feet/head column, climb one owned block to
@@ -721,8 +790,27 @@ public final class EndIslandIngressSkill
                 bridgeParameters
         );
         if (child.status() == SkillTickResult.Status.COMPLETED) {
+            if (bridgeRequiresCenterProgress
+                    && !bridgeMadeCenterProgress(frame)) {
+                bridge = null;
+                bridgeParameters = null;
+                bridgeStartRadius = Double.NaN;
+                bridgeStartFeet = null;
+                bridgeExpectedFeet = null;
+                bridgeRequiresCenterProgress = false;
+                return recoverChildFailure(
+                        context,
+                        parameters,
+                        frame,
+                        "bridge_to.no_center_progress"
+                );
+            }
             bridge = null;
             bridgeParameters = null;
+            bridgeStartRadius = Double.NaN;
+            bridgeStartFeet = null;
+            bridgeExpectedFeet = null;
+            bridgeRequiresCenterProgress = false;
             bridgeSteps++;
             childFailures = 0;
             phase = Phase.SCANNING;
@@ -734,6 +822,10 @@ public final class EndIslandIngressSkill
         if (child.status() == SkillTickResult.Status.FAILED) {
             bridge = null;
             bridgeParameters = null;
+            bridgeStartRadius = Double.NaN;
+            bridgeStartFeet = null;
+            bridgeExpectedFeet = null;
+            bridgeRequiresCenterProgress = false;
             final String code = child.failure()
                     .map(SkillFailure::code)
                     .orElse("bridge");
@@ -1007,9 +1099,6 @@ public final class EndIslandIngressSkill
                         .filter(face -> face.block().equals(
                                 pendingBreakBlock
                         ))
-                        .filter(face -> face.face().equals(
-                                crosshairFace.face()
-                        ))
                         .findFirst();
         if (executable.isEmpty()) {
             if (!actuator.move(MovementIntent.STOPPED).accepted()
@@ -1123,9 +1212,16 @@ public final class EndIslandIngressSkill
          * ordinary first-person looks and the destination remains unknown
          * until a newer semantic frame proves clearance and support.
          */
-        final boolean floorProbe = probePattern < 4;
-        final double targetY = floorProbe
-                ? frame.position().y() + 0.15
+        /* The old floor ray still aimed at the body-height horizon.  At the
+         * foot of a natural obsidian pillar that ray clips the upper pillar
+         * face and never publishes the adjacent bridge/support cell.  Keep
+         * the ordinary eye-level sweeps, but dedicate the first four probes
+         * to a lower, one-block-neighbour ray so a real player can inspect
+         * the side of their current bridge before deciding to place or step.
+         */
+        final boolean lowGroundProbe = probePattern < 4;
+        final double targetY = lowGroundProbe
+                ? frame.position().y() - 0.65
                 : frame.eyePosition().y() - 0.20;
         final double directionX;
         final double directionZ;
@@ -1145,7 +1241,7 @@ public final class EndIslandIngressSkill
         final double directionLength = Math.hypot(directionX, directionZ);
         final double normalX = directionX / directionLength;
         final double normalZ = directionZ / directionLength;
-        final double distance = floorProbe ? 1.10 : 2.0;
+        final double distance = lowGroundProbe ? 1.10 : 2.0;
         final PerceptionVec3 target = new PerceptionVec3(
                 frame.eyePosition().x() + normalX * distance,
                 targetY,
@@ -1243,8 +1339,32 @@ public final class EndIslandIngressSkill
         child.start(context, childParameters);
         bridge = child;
         bridgeParameters = childParameters;
+        bridgeStartRadius = EndArenaTopology.horizontalRadius(
+                frame.position()
+        );
+        bridgeStartFeet = frame.feet();
+        bridgeExpectedFeet = new GridPos(
+                (int) Math.floor(target.x()),
+                frame.feet().y(),
+                (int) Math.floor(target.z())
+        );
+        bridgeRequiresCenterProgress = true;
         phase = Phase.BRIDGING_ONE_STEP;
         return tickBridge(context, parameters, frame, true);
+    }
+
+    private boolean bridgeMadeCenterProgress(final CoreSkillFrame frame) {
+        if (!bridgeRequiresCenterProgress || bridgeStartFeet == null
+                || bridgeExpectedFeet == null
+                || !Double.isFinite(bridgeStartRadius)) {
+            return true;
+        }
+        final double currentRadius = EndArenaTopology.horizontalRadius(
+                frame.position()
+        );
+        return frame.feet().equals(bridgeExpectedFeet)
+                || currentRadius
+                    <= bridgeStartRadius - MINIMUM_CENTER_PROGRESS;
     }
 
     /**
@@ -1273,23 +1393,20 @@ public final class EndIslandIngressSkill
                         <= EndArenaTopology.horizontalRadius(frame.position())
                                 + 2.5)
                 .filter(step -> frame.navigation().voxelAt(step)
-                        .filter(voxel -> NavigationEvidence
-                                .hasFreshTraversalClearance(
-                                        voxel,
-                                        revision
-                                )).isPresent())
+                        .filter(voxel -> navigationTraversalClearance(
+                                voxel,
+                                revision
+                        )).isPresent())
                 .filter(step -> frame.navigation().voxelAt(step.above())
-                        .filter(voxel -> NavigationEvidence
-                                .hasFreshTraversalClearance(
-                                        voxel,
-                                        revision
-                                )).isPresent())
+                        .filter(voxel -> navigationTraversalClearance(
+                                voxel,
+                                revision
+                        )).isPresent())
                 .filter(step -> frame.navigation().voxelAt(step.below())
-                        .filter(voxel -> NavigationEvidence
-                                .isFreshStandingSupport(
-                                        voxel,
-                                        revision
-                                )).isPresent())
+                        .filter(voxel -> navigationStandingSupport(
+                                voxel,
+                                revision
+                        )).isPresent())
                 .min(Comparator.comparingDouble(
                         EndIslandIngressSkill::radiusOf
                 ));
@@ -1337,15 +1454,50 @@ public final class EndIslandIngressSkill
         final double centerZ = destination.z() + 0.5;
         final double deltaX = centerX - position.x();
         final double deltaZ = centerZ - position.z();
-        final double targetX = centerX + Math.copySign(
-                SIDE_STEP_EDGE_OFFSET,
-                Math.abs(deltaX) <= 1.0E-9 ? 1.0 : deltaX
-        );
-        final double targetZ = centerZ + Math.copySign(
-                SIDE_STEP_EDGE_OFFSET,
-                Math.abs(deltaZ) <= 1.0E-9 ? 1.0 : deltaZ
-        );
+        /* The step is cardinal.  Offsetting both coordinates pushed an
+         * already-aligned body toward the far corner of the destination
+         * cell, so BridgeTo's one-cell child could walk into the cell and
+         * still remain outside its arrival radius forever.  Keep the edge
+         * offset only on the movement axis.  On the orthogonal axis retain
+         * the body's coordinate when it is already inside the destination
+         * cell; otherwise enter that cell through its far edge.  This is a
+         * geometric target only--BridgeTo still requires fresh support,
+         * clearance and vanilla collision before crossing.
+         */
+        final boolean xStep = Math.abs(deltaX) >= Math.abs(deltaZ);
+        final double targetX = xStep
+                ? centerX + Math.copySign(
+                        SIDE_STEP_EDGE_OFFSET,
+                        Math.abs(deltaX) <= 1.0E-9 ? 1.0 : deltaX
+                )
+                : coordinateInsideDestinationCell(
+                        position.x(), destination.x()
+                );
+        final double targetZ = xStep
+                ? coordinateInsideDestinationCell(
+                        position.z(), destination.z()
+                )
+                : centerZ + Math.copySign(
+                        SIDE_STEP_EDGE_OFFSET,
+                        Math.abs(deltaZ) <= 1.0E-9 ? 1.0 : deltaZ
+                );
         return new PerceptionVec3(targetX, position.y(), targetZ);
+    }
+
+    private static double coordinateInsideDestinationCell(
+            final double coordinate,
+            final int cell
+    ) {
+        final double minimum = cell + 0.06;
+        final double maximum = cell + 0.94;
+        if (coordinate >= minimum && coordinate <= maximum) {
+            return coordinate;
+        }
+        final double center = cell + 0.5;
+        return center + Math.copySign(
+                SIDE_STEP_EDGE_OFFSET,
+                center - coordinate
+        );
     }
 
     /**
@@ -1383,7 +1535,17 @@ public final class EndIslandIngressSkill
                         return null;
                     }
                     final GridPos clicked = grid(face.block());
-                    return adjacent(clicked, parsed);
+                    final GridPos attached = adjacent(clicked, parsed);
+                    /* A side face of the block beneath the body is the
+                     * normal bridge attachment point.  Its adjacent voxel is
+                     * a support cell one level below the destination feet;
+                     * comparing it directly with the feet grid silently
+                     * discarded every legal side extension around a pillar.
+                     * Lift only that observed support cell and keep all other
+                     * coordinates unchanged. */
+                    return attached.y() == current.y() - 1
+                            ? attached.above()
+                            : attached;
                 })
                 .filter(Objects::nonNull)
                 .filter(neighbours::contains)
@@ -1539,6 +1701,15 @@ public final class EndIslandIngressSkill
             return fail(NAME + ".pickaxe_required");
         }
         pendingBreakBlock = face.block();
+        lastBreakTarget = String.format(
+                Locale.ROOT,
+                "%d,%d,%d/%s/%s",
+                face.block().x(),
+                face.block().y(),
+                face.block().z(),
+                face.blockTypeId(),
+                face.face()
+        );
         blockAlignmentStartedTick = context.gameTick();
         blockAlignmentReadyRevision = -1;
         requiredFreshRevision = frame.observationRevision();
@@ -1628,6 +1799,82 @@ public final class EndIslandIngressSkill
                     + MINIMUM_SCAN_INTERVAL_TICKS;
         }
         return SkillTickResult.running(true, true);
+    }
+
+    private SkillTickResult orientForFreshSkyObservation(
+            final CoreSkillFrame frame
+    ) {
+        if (!actuator.move(MovementIntent.STOPPED).accepted()) {
+            return fail(NAME + ".actuator_rejected");
+        }
+        final PerceptionVec3 direction = frame.lookDirection();
+        final float yaw = (float) Math.toDegrees(Math.atan2(
+                -direction.x(),
+                direction.z()
+        ));
+        if (!actuator.look(new LookIntent(yaw, -89.0F)).accepted()) {
+            return fail(NAME + ".actuator_rejected");
+        }
+        return SkillTickResult.running(true, true);
+    }
+
+    private SkillTickResult orientForCurrentSupport(
+            final CoreSkillFrame frame
+    ) {
+        if (!actuator.move(MovementIntent.STOPPED).accepted()) {
+            return fail(NAME + ".actuator_rejected");
+        }
+        final GridPos support = frame.feet().below();
+        final PerceptionVec3 target = new PerceptionVec3(
+                support.x() + 0.5,
+                support.y() + 1.0,
+                support.z() + 0.5
+        );
+        if (!actuator.look(lookAt(frame.eyePosition(), target)).accepted()) {
+            return fail(NAME + ".actuator_rejected");
+        }
+        return SkillTickResult.running(true, true);
+    }
+
+    private static double completionRadius(
+            final EndIslandIngressParameters parameters,
+            final double override
+    ) {
+        return Double.isFinite(override)
+                ? override
+                : parameters.arenaReadyRadius();
+    }
+
+    private double completionRadius(
+            final EndIslandIngressParameters parameters
+    ) {
+        return completionRadius(parameters, completionRadiusOverride);
+    }
+
+    private static boolean visibleCurrentEndStoneSupport(
+            final CoreSkillFrame frame
+    ) {
+        final GridPos support = frame.feet().below();
+        return frame.visibleBlockFaces().stream().anyMatch(face ->
+                END_STONE.equals(face.blockTypeId())
+                        && "up".equals(face.face())
+                        && face.topSupportAffordance()
+                            .safelySupportsStanding()
+                        && grid(face.block()).equals(support)
+        );
+    }
+
+    private static boolean currentSupportNeedsTopObservation(
+            final CoreSkillFrame frame
+    ) {
+        return frame.navigation().voxelAt(frame.feet().below())
+                .filter(voxel -> voxel.kind().supportsWeight())
+                .filter(voxel -> !voxel.topSupportAffordance()
+                        .safelySupportsStanding())
+                .filter(voxel -> voxel.occupancyEvidence()
+                        == dev.mcai.companion.navigation
+                            .OccupancyEvidence.BODY_CONTACT)
+                .isPresent();
     }
 
     private Optional<GridPos> selectLandfall(
@@ -1776,7 +2023,7 @@ public final class EndIslandIngressSkill
                 ));
     }
 
-    private static Optional<VisibleBlockFace> visibleLateralIngressWall(
+    private Optional<VisibleBlockFace> visibleLateralIngressWall(
             final CoreSkillFrame frame
     ) {
         final GridPos feet = frame.feet();
@@ -1818,20 +2065,134 @@ public final class EndIslandIngressSkill
                     final Optional<ObservedVoxel> support = frame.navigation()
                             .voxelAt(block.below());
                     return destination
-                            .filter(voxel -> voxel.kind().supportsWeight())
-                            .isPresent()
-                        && head.filter(voxel -> NavigationEvidence
-                                .hasFreshTraversalClearance(
-                                        voxel,
-                                        frame.observationRevision()
-                                )).isPresent()
-                        && support.filter(voxel -> NavigationEvidence
-                                .isFreshStandingSupport(
-                                        voxel,
-                                        frame.observationRevision()
-                                )).isPresent();
+                            .filter(voxel -> navigationStandingSupport(
+                                    voxel,
+                                    frame.observationRevision()
+                            )).isPresent()
+                        && head.filter(voxel -> navigationTraversalClearance(
+                                voxel,
+                                frame.observationRevision()
+                        )).isPresent()
+                        && support.filter(voxel -> navigationStandingSupport(
+                                voxel,
+                                frame.observationRevision()
+                        )).isPresent();
                 })
                 .min(Comparator.comparingDouble(VisibleBlockFace::distance));
+    }
+
+    private static Optional<VisibleBlockFace> visibleLateralBreakableWall(
+            final CoreSkillFrame frame
+    ) {
+        final GridPos feet = frame.feet();
+        final double centerwardX = EndArenaTopology.CENTER_X
+                - frame.position().x();
+        final double centerwardZ = EndArenaTopology.CENTER_Z
+                - frame.position().z();
+        final boolean centerwardAlongX = Math.abs(centerwardX)
+                >= Math.abs(centerwardZ);
+        return frame.visibleBlockFaces().stream()
+                .filter(face -> END_STONE.equals(face.blockTypeId()))
+                .filter(face -> {
+                    final GridPos block = grid(face.block());
+                    final int dx = block.x() - feet.x();
+                    final int dz = block.z() - feet.z();
+                    if (Math.abs(dx) + Math.abs(dz) != 1
+                            || block.y() < feet.y()
+                            || block.y() > feet.y() + 3) {
+                        return false;
+                    }
+                    if (centerwardAlongX ? dz == 0 : dx == 0) {
+                        return false;
+                    }
+                    final String faceName = face.face().toLowerCase(
+                            Locale.ROOT
+                    );
+                    return !faceName.endsWith(":up")
+                            && !faceName.equals("up")
+                            && !faceName.endsWith(":down")
+                            && !faceName.equals("down");
+                })
+                .min(Comparator.comparingDouble(VisibleBlockFace::distance));
+    }
+
+    /**
+     * Selects one directly adjacent or current-column upper End-stone face
+     * from the newest first-person fan while a fight is re-entering the
+     * island.  Natural island skirts often expose a forward wall, a lateral
+     * shoulder, and a one-block ceiling in alternating revisions; restricting
+     * the fallback to only the perpendicular face left the body oscillating
+     * between an uncleared face and a bridge target.  Every candidate remains
+     * an observed vanilla block, and the re-entry caller still requires an
+     * interaction actuator and a bounded completion-radius override.
+     */
+    private static Optional<VisibleBlockFace>
+            visibleReentryExcavationTarget(final CoreSkillFrame frame) {
+        final GridPos feet = frame.feet();
+        return frame.visibleBlockFaces().stream()
+                .filter(face -> END_STONE.equals(face.blockTypeId()))
+                .filter(face -> {
+                    final GridPos block = grid(face.block());
+                    final int horizontalDistance =
+                            Math.abs(block.x() - feet.x())
+                                    + Math.abs(block.z() - feet.z());
+                    if (horizontalDistance > 2
+                            || block.y() < feet.y()
+                            || block.y() > feet.y() + 3) {
+                        return false;
+                    }
+                    final String faceName = face.face().toLowerCase(
+                            Locale.ROOT
+                    );
+                    return !faceName.endsWith(":up")
+                            && !faceName.equals("up")
+                            && !faceName.endsWith(":down")
+                            && !faceName.equals("down");
+                })
+                .min(Comparator.comparingDouble(VisibleBlockFace::distance));
+    }
+
+    private boolean navigationTraversalClearance(
+            final ObservedVoxel voxel,
+            final long snapshotRevision
+    ) {
+        if (!historicalNavigationAllowed()) {
+            return NavigationEvidence.hasFreshTraversalClearance(
+                    voxel,
+                    snapshotRevision
+            );
+        }
+        final long age = snapshotRevision - voxel.observationRevision();
+        return age >= 0L
+                && age <= 20L
+                && NavigationEvidence.hasTraversalClearance(voxel);
+    }
+
+    private boolean navigationStandingSupport(
+            final ObservedVoxel voxel,
+            final long snapshotRevision
+    ) {
+        if (!historicalNavigationAllowed()) {
+            return NavigationEvidence.isFreshStandingSupport(
+                    voxel,
+                    snapshotRevision
+            );
+        }
+        final long age = snapshotRevision - voxel.observationRevision();
+        return age >= 0L
+                && age <= 20L
+                && voxel.kind().supportsWeight()
+                && voxel.topSupportAffordance().safelySupportsStanding()
+                && (voxel.occupancyEvidence()
+                            == dev.mcai.companion.navigation
+                                .OccupancyEvidence.SURFACE_HIT
+                    || voxel.occupancyEvidence()
+                            == dev.mcai.companion.navigation
+                                .OccupancyEvidence.BODY_CONTACT);
+    }
+
+    private boolean historicalNavigationAllowed() {
+        return Double.isFinite(completionRadiusOverride);
     }
 
     private static boolean visibleCenterwardObsidianWall(

@@ -102,8 +102,21 @@ public final class FightEnderDragonSkill
     private static final double OBSERVED_RALLY_ALIGNMENT_DEGREES = 18.0;
     private static final long OBSERVED_RALLY_SUPPORT_MAX_AGE = 4L;
     private static final long OBSERVED_RALLY_MEMORY_MAX_AGE = 512L;
-    /** Keep the dragon inside the body's normal first-person entity envelope. */
-    private static final double FIGHT_REENTRY_RADIUS = 32.0;
+    /* The End ingress contract already proves a fair standing cell inside
+     * the vanilla central-island envelope.  Re-entering the bridge/mining
+     * controller from any point inside that envelope is counterproductive:
+     * dragon knockback can push a valid fighter onto an observed edge and the
+     * old 24-block threshold made it rebuild the route while it could still
+     * legally fight.  Only a body outside the same 56-block evidence radius
+     * needs island re-entry; combat remains responsible for reacquiring the
+     * target from the current standing cell. */
+    private static final double FIGHT_REENTRY_RADIUS =
+            EndArenaTopology.ARENA_READY_RADIUS;
+    /* Re-entry must actually leave the outer lip before it can hand control
+     * back to combat.  Using the admission radius as the child completion
+     * radius let a valid current support cell complete immediately, even
+     * while the player was still behind the first wall. */
+    private static final double FIGHT_REENTRY_TARGET_RADIUS = 54.0;
     private static final double SKY_BREAK_ALIGNMENT_DEGREES = 2.0;
     /* A full bow flight at the maximum observed dragon distance is shorter
      * than this; leave enough time for the vanilla projectile to advance
@@ -168,9 +181,9 @@ public final class FightEnderDragonSkill
             "minecraft:wooden_pickaxe"
     );
     private static final float[] SCAN_PITCHES = {
-        -15.0F,
-        -35.0F,
-        -60.0F,
+        -30.0F,
+        -55.0F,
+        -75.0F,
         8.0F
     };
 
@@ -200,6 +213,12 @@ public final class FightEnderDragonSkill
     private int rallyAttempts;
     private int ingressAttempts;
     private String lastIngressResult = "";
+    /**
+     * Retains the final fair ingress checkpoint after the child is retired.
+     * The parent used to clear the child before its next checkpoint, which
+     * erased the only bounded explanation for a natural terrain failure.
+     */
+    private String lastIslandIngressCheckpoint = "";
     private int skyBlocksMined;
     private int skyBreakAttempts;
     private int skyAlignmentTicks;
@@ -248,6 +267,7 @@ public final class FightEnderDragonSkill
     private long rallyStepObservationRevision = -1L;
     private GridPos previousRallyStepTarget;
     private String lastRallyFailure = "";
+    private String lastInternalFailure = "";
     private EndIslandIngressSkill islandIngress;
     private EndIslandIngressParameters islandIngressParameters;
     private CagedCrystalTraversalPlanner.Plan cagePlan;
@@ -452,6 +472,7 @@ public final class FightEnderDragonSkill
         rallyAttempts = 0;
         ingressAttempts = 0;
         lastIngressResult = "";
+        lastIslandIngressCheckpoint = "";
         skyBlocksMined = 0;
         skyBreakAttempts = 0;
         skyAlignmentTicks = 0;
@@ -507,6 +528,7 @@ public final class FightEnderDragonSkill
         rallyStepObservationRevision = -1L;
         previousRallyStepTarget = null;
         lastRallyFailure = "";
+        lastInternalFailure = "";
         crystalStandOff = null;
         crystalStandOffParameters = null;
         crystalLane = null;
@@ -540,6 +562,11 @@ public final class FightEnderDragonSkill
         try {
             return tickSafely(context, parameters);
         } catch (RuntimeException exception) {
+            lastInternalFailure = exception.getClass().getSimpleName()
+                    + ":"
+                    + (exception.getMessage() == null
+                        ? ""
+                        : exception.getMessage().replace('"', '\''));
             return fail(context, NAME + ".internal_failure");
         }
     }
@@ -589,7 +616,8 @@ public final class FightEnderDragonSkill
                             + "\"rallyStepTimeouts\":%d,"
                             + "\"rallyStepAwaitingFreshObservation\":%s,"
                             + "\"rallyStepObservationRevision\":%d,"
-                            + "\"lastRallyFailure\":\"%s\"}",
+                            + "\"lastRallyFailure\":\"%s\","
+                            + "\"lastInternalFailure\":\"%s\"}",
                         phase.name(),
                         shotsDispatched,
                         meleeAttacks,
@@ -603,7 +631,7 @@ public final class FightEnderDragonSkill
                         islandIngress != null,
                         lastIngressResult.replace("\"", "'"),
                         islandIngress == null
-                            ? ""
+                            ? lastIslandIngressCheckpoint
                             : islandIngress.checkpoint(
                                     context,
                                     islandIngressParameters
@@ -645,7 +673,8 @@ public final class FightEnderDragonSkill
                         rallyStepTimeouts,
                         rallyStepAwaitingFreshObservation,
                         rallyStepObservationRevision,
-                        lastRallyFailure.replace("\"", "'")
+                        lastRallyFailure.replace("\"", "'"),
+                        lastInternalFailure.replace("\"", "'")
                 )
         );
     }
@@ -1145,7 +1174,7 @@ public final class FightEnderDragonSkill
         }
         final Optional<VisibleBlockFace> visible =
                 frame.visibleBlockFaces().stream()
-                        .filter(face -> sameObservedTarget(
+                        .filter(face -> sameObservedBlock(
                                 face,
                                 skyBreakTarget
                         ))
@@ -1159,6 +1188,30 @@ public final class FightEnderDragonSkill
          * wall from the new eye position.  Retrying an absent target is what
          * turns an ordinary camera update into action_target_occluded. */
         if (visible.isEmpty()) {
+            /* Turning toward a peripheral wall can briefly remove the
+             * retained block from the finite fan even though it remains the
+             * same observed, reachable block.  Reacquire it with a bounded
+             * first-person look before abandoning the action; no world read
+             * or hidden target refresh is performed. */
+            if (skyAlignmentTicks < 4) {
+                final PerceptionVec3 rememberedCenter = new PerceptionVec3(
+                        skyBreakTarget.x() + 0.5,
+                        skyBreakTarget.y() + 0.5,
+                        skyBreakTarget.z() + 0.5
+                );
+                if (!core.stop().accepted()
+                        || !core.look(lookAt(
+                                frame.eyePosition(),
+                                rememberedCenter
+                        )).accepted()) {
+                    return fail(
+                            context,
+                            NAME + ".sky_alignment_look_rejected"
+                    );
+                }
+                skyAlignmentTicks++;
+                return SkillTickResult.running(true, true);
+            }
             lastSkyFailure = "sky_target_not_current";
             cancelSkyBreak(context);
             phase = Phase.SEARCHING;
@@ -1167,7 +1220,7 @@ public final class FightEnderDragonSkill
         }
         final Optional<VisibleBlockFace> current =
                 interactionFrames.currentCrosshairBlock()
-                        .filter(face -> sameObservedTarget(
+                        .filter(face -> sameObservedBlock(
                                 face,
                                 skyBreakTarget
                         ))
@@ -1302,8 +1355,8 @@ public final class FightEnderDragonSkill
                 nextActionTick = context.gameTick() + 1;
                 core.stop();
                 coreFrames.current().ifPresent(currentFrame ->
-                        currentFrame.visibleBlockFaces().stream()
-                                .filter(face -> sameObservedTarget(
+                                currentFrame.visibleBlockFaces().stream()
+                                .filter(face -> sameObservedBlock(
                                         face,
                                         failedTarget
                                 ))
@@ -1373,6 +1426,36 @@ public final class FightEnderDragonSkill
                         reachableOverhead,
                         lateral
                 );
+        if (immediateDragonIndex(frame).isEmpty()) {
+            final Optional<GridPos> observedStep =
+                    selectObservedCenterwardStep(frame);
+            final Optional<GridPos> detour = observedStep.isPresent()
+                    || skyBlocksMined <= 0
+                    ? observedStep
+                    : selectObservedSideStep(frame);
+            if (detour.isPresent()) {
+                return startObservedRallyStep(
+                        context,
+                        frame,
+                        detour.orElseThrow(),
+                        fresh
+                );
+            }
+        }
+        /* The vanilla End entry can leave the body inside the 56-block
+         * combat envelope but behind a natural End-stone lip. That is still
+         * an ingress problem: mining only the overhead column never exposes
+         * the central island. Once the bounded overhead reserve is spent,
+         * reuse the fair ingress child to open the observed wall and return
+         * on a fresh standing proof. */
+        if (skyBlocksSinceRally
+                    >= SKY_BLOCKS_BEFORE_CENTERWARD_TRAVEL
+                && EndArenaTopology.horizontalRadius(frame.position())
+                    > FIGHT_REENTRY_TARGET_RADIUS
+                && visibleCenterwardEndStoneWall(frame)
+                && immediateDragonIndex(frame).isEmpty()) {
+            return startIslandReentry(context, fresh);
+        }
         if (clearanceTarget.isPresent()
                 && immediateDragonIndex(frame).isEmpty()
                 && frame.dangerSignals().stream().noneMatch(
@@ -1381,8 +1464,10 @@ public final class FightEnderDragonSkill
                 && clearanceTarget.isPresent()
                 && skyBlocksMined < MAXIMUM_SKY_BLOCKS_MINED
                 && skyBreakAttempts < MAXIMUM_SKY_BREAK_ATTEMPTS
-                && skyBlocksSinceRally
-                    < SKY_BLOCKS_BEFORE_CENTERWARD_TRAVEL) {
+                && (lateral.isPresent() || !freshHeadClearance(frame))
+                && (skyBlocksSinceRally
+                    < SKY_BLOCKS_BEFORE_CENTERWARD_TRAVEL
+                    || lateral.isPresent())) {
             return prepareSkyClearance(
                     context,
                     parameters,
@@ -1646,6 +1731,49 @@ public final class FightEnderDragonSkill
         return SkillTickResult.running(true, true);
     }
 
+    private static boolean visibleCenterwardEndStoneWall(
+            final CoreSkillFrame frame
+    ) {
+        final GridPos feet = frame.feet();
+        final double centerwardX = EndArenaTopology.CENTER_X
+                - frame.position().x();
+        final double centerwardZ = EndArenaTopology.CENTER_Z
+                - frame.position().z();
+        final boolean alongX = Math.abs(centerwardX)
+                >= Math.abs(centerwardZ);
+        final int direction = alongX
+                ? (centerwardX < 0.0 ? -1 : 1)
+                : (centerwardZ < 0.0 ? -1 : 1);
+        return frame.visibleBlockFaces().stream().anyMatch(face -> {
+            final GridPos block = new GridPos(
+                    face.block().x(),
+                    face.block().y(),
+                    face.block().z()
+            );
+            final int dx = block.x() - feet.x();
+            final int dz = block.z() - feet.z();
+            final int distance = Math.abs(dx) + Math.abs(dz);
+            final int forward = alongX ? dx * direction : dz * direction;
+            return "minecraft:end_stone".equals(face.blockTypeId())
+                    && distance >= 1
+                    && distance <= 2
+                    && forward == distance
+                    && block.y() >= feet.y()
+                    && block.y() <= feet.y() + 3;
+        });
+    }
+
+    private static boolean freshHeadClearance(
+            final CoreSkillFrame frame
+    ) {
+        final long revision = frame.observationRevision();
+        return frame.navigation()
+                .voxelAt(frame.feet().above(2))
+                .filter(voxel -> NavigationEvidence
+                        .hasFreshTraversalClearance(voxel, revision))
+                .isPresent();
+    }
+
     private SkillTickResult handleBlockedCrystal(
             final SkillContext context,
             final FightEnderDragonParameters parameters,
@@ -1852,7 +1980,7 @@ public final class FightEnderDragonSkill
                 plan.approach().x() + 0.5,
                 plan.approach().y(),
                 plan.approach().z() + 0.5,
-                0.45
+                0.50
         );
         travel = new TravelToSkill(
                 expectedPlayerId,
@@ -3054,14 +3182,44 @@ public final class FightEnderDragonSkill
             return startIslandReentry(context, fresh);
         }
         lastRallyFailure = "observed_step_unavailable_travel";
-        final PerceptionVec3 rallyPoint = selectObservedRallyPoint(frame)
-                .orElseGet(() -> centerwardSearchPoint(frame));
+        final Optional<PerceptionVec3> observedRallyPoint =
+                selectObservedRallyPoint(frame);
+        if (observedRallyPoint.isEmpty()) {
+            /* Do not hand an inferred one-cell fallback to TravelTo.  Its
+             * rolling planner is deliberately observation-bound, and the
+             * old three-block arrival radius reported that fallback as
+             * complete without moving.  First turn toward the centerward
+             * frontier and wait for a fresh semantic frame; that frame can
+             * either expose a legal cell for TravelTo or expose the wall/gap
+             * for the normal ingress controller. */
+            final PerceptionVec3 centerward = centerwardSearchPoint(frame);
+            final LookIntent look = lookAt(
+                    frame.eyePosition(),
+                    centerward
+            );
+            if (!core.stop().accepted() || !core.look(look).accepted()) {
+                return fail(context, NAME + ".rally_observation_rejected");
+            }
+            scanBaseYaw = look.yawDegrees();
+            scanTurns = 0;
+            rallyAttempts++;
+            lastRallyFailure = "centerward_observation";
+            nextActionTick = context.gameTick() + SCAN_INTERVAL_TICKS;
+            return SkillTickResult.running(true, true);
+        }
+        final PerceptionVec3 rallyPoint = observedRallyPoint.orElseThrow();
         travelParameters = new TravelToParameters(
                 parameters.dimension(),
                 rallyPoint.x(),
                 rallyPoint.y(),
                 rallyPoint.z(),
-                3.0
+                /* The centerward fallback is one observed-cell scale away.
+                 * A three-block arrival radius made TravelTo report
+                 * COMPLETED while the body had not moved at all, so every
+                 * scan revisited the same blind camera pose.  Keep arrival
+                 * precise; rolling travel must now cross the observed cell
+                 * or fail with an honest route result. */
+                0.50
         );
         travel = new TravelToSkill(
                 expectedPlayerId,
@@ -3104,13 +3262,22 @@ public final class FightEnderDragonSkill
         islandIngressParameters = new EndIslandIngressParameters(
                 128.0,
                 EndArenaTopology.ARENA_READY_RADIUS,
-                32,
+                56,
                 8,
-                32,
-                10.0,
+                /* Natural pillar skirts can expose several vertical layers
+                 * before the first-person frame reveals a walkable island
+                 * cell.  The previous 32-block cap stopped exactly while
+                 * making fair progress around the first pillar.  Keep the
+                 * action bounded, but use the ingress policy's normal 96
+         * observed-break reserve rather than terminating at an
+         * arbitrary halfway point. Re-entry also has the full local bridge
+         * and scan budgets because a knockback can land on the far edge of a
+         * pillar skirt rather than the original rally cell. */
                 96,
+                10.0,
+                128,
                 6,
-                4_000
+                6_000
         );
         islandIngress = new EndIslandIngressSkill(
                 expectedPlayerId,
@@ -3122,7 +3289,7 @@ public final class FightEnderDragonSkill
                 interactionFrames,
                 ignored -> {
                 },
-                FIGHT_REENTRY_RADIUS
+                FIGHT_REENTRY_TARGET_RADIUS
         );
         final Optional<SkillFailure> rejected = islandIngress.preconditions(
                 new SkillContext(
@@ -3163,6 +3330,11 @@ public final class FightEnderDragonSkill
         );
         if (result.status() == SkillTickResult.Status.COMPLETED) {
             lastIngressResult = "completed";
+            lastIslandIngressCheckpoint = islandIngress.checkpoint(
+                    context,
+                    islandIngressParameters
+            ).payload().replace("\"", "'")
+                    .replace("\\", "/");
             islandIngress = null;
             islandIngressParameters = null;
             phase = Phase.SEARCHING;
@@ -3181,6 +3353,11 @@ public final class FightEnderDragonSkill
                     .orElse(NAME + ".island_reentry_failed");
             final String diagnostic = islandIngress.diagnosticFailureCode()
                     .orElse(code);
+            lastIslandIngressCheckpoint = islandIngress.checkpoint(
+                    context,
+                    islandIngressParameters
+            ).payload().replace("\"", "'")
+                    .replace("\\", "/");
             lastIngressResult = "failed:" + diagnostic;
             islandIngress = null;
             islandIngressParameters = null;
@@ -3405,7 +3582,7 @@ public final class FightEnderDragonSkill
                                 candidate.y(),
                                 candidate.z() + 0.5
                         )
-                ) <= currentRadius + 0.50)
+                ) <= currentRadius - 0.05)
                 .filter(candidate -> !candidate.equals(
                         previousRallyStepTarget
                 ))
@@ -3435,6 +3612,97 @@ public final class FightEnderDragonSkill
                     final double dz = candidate.z() + 0.5 - frame.position().z();
                     return dx * towardX + dz * towardZ;
                 }));
+    }
+
+    /**
+     * Selects a strictly observed lateral detour when the four cardinal
+     * centerward candidates are blocked by a natural pillar or wall.  A
+     * player may need to spend one or two blocks of radial distance to get
+     * around an obstacle; requiring every step to reduce the radius makes
+     * the End entry controller deadlock at exactly that geometry.  The
+     * candidate is still bounded by the fair navigation snapshot, current
+     * support/clearance evidence, the ready arena radius, and the previous
+     * step guard.  No block state or inferred waypoint is used.
+     */
+    private Optional<GridPos> selectObservedSideStep(
+            final CoreSkillFrame frame
+    ) {
+        final long revision = frame.observationRevision();
+        final GridPos current = frame.feet();
+        final double currentRadius = EndArenaTopology.horizontalRadius(
+                frame.position()
+        );
+        final double towardX = EndArenaTopology.CENTER_X - frame.position().x();
+        final double towardZ = EndArenaTopology.CENTER_Z - frame.position().z();
+        return List.of(
+                new GridPos(current.x() - 1, current.y(), current.z()),
+                new GridPos(current.x() + 1, current.y(), current.z()),
+                new GridPos(current.x(), current.y(), current.z() - 1),
+                new GridPos(current.x(), current.y(), current.z() + 1)
+        ).stream()
+                .filter(candidate -> EndArenaTopology.insideArenaReadyRadius(
+                        new PerceptionVec3(
+                                candidate.x() + 0.5,
+                                candidate.y(),
+                                candidate.z() + 0.5
+                        )
+                ))
+                .filter(candidate -> !candidate.equals(
+                        previousRallyStepTarget
+                ))
+                .filter(candidate -> frame.navigation().voxelAt(candidate)
+                        .filter(voxel -> hasObservedRallyPlanningClearance(
+                                voxel,
+                                revision,
+                                false
+                        ))
+                        .isPresent())
+                .filter(candidate -> frame.navigation().voxelAt(candidate.above())
+                        .filter(voxel -> NavigationEvidence
+                                .hasFreshTraversalClearance(
+                                        voxel,
+                                        revision
+                                ))
+                        .isPresent())
+                .filter(candidate -> frame.navigation().voxelAt(candidate.below())
+                        .filter(voxel -> hasObservedRallySupport(
+                                voxel,
+                                revision,
+                                false
+                        ))
+                        .isPresent())
+                .filter(candidate -> {
+                    final double radius = EndArenaTopology.horizontalRadius(
+                            new PerceptionVec3(
+                                    candidate.x() + 0.5,
+                                    candidate.y(),
+                                    candidate.z() + 0.5
+                            )
+                    );
+                    return radius <= FIGHT_REENTRY_RADIUS
+                            && radius <= currentRadius + 2.5;
+                })
+                .min(Comparator
+                        .comparingDouble((GridPos candidate) -> {
+                            final double x = candidate.x() + 0.5;
+                            final double z = candidate.z() + 0.5;
+                            return EndArenaTopology.horizontalRadius(
+                                    new PerceptionVec3(
+                                            x,
+                                            candidate.y(),
+                                            z
+                                    )
+                            );
+                        })
+                        .thenComparingDouble(candidate -> {
+                            final double dx = candidate.x() + 0.5
+                                    - frame.position().x();
+                            final double dz = candidate.z() + 0.5
+                                    - frame.position().z();
+                            return -(dx * towardX + dz * towardZ);
+                        })
+                        .thenComparingInt(GridPos::x)
+                        .thenComparingInt(GridPos::z));
     }
 
     private static PerceptionVec3 centerwardSearchPoint(
@@ -3604,6 +3872,9 @@ public final class FightEnderDragonSkill
         if (result.status() != SkillTickResult.Status.RUNNING) {
             final TravelPurpose completedPurpose =
                     travelPurpose;
+            lastRallyFailure = "travel_result:" + result.status()
+                    + result.failure().map(failure -> "/" + failure.code())
+                            .orElse("");
             travel = null;
             travelParameters = null;
             travelPurpose = TravelPurpose.NONE;
@@ -4010,19 +4281,15 @@ public final class FightEnderDragonSkill
         if (lateral.isEmpty()) {
             return overhead;
         }
-        /* Prefer a visible lateral End-stone wall when it makes measurable
-         * progress toward the central island.  Mining an overhead lip first
-         * can create a legal-looking vertical tunnel that never exposes the
-         * dragon or a safe route. */
-        /* A natural island edge can put the only legal detour one cell
-         * sideways even when that cell is almost radial-neutral.  Keep the
-         * preference for centerward walls, but admit a small positive score
-         * so a visible wall can be opened instead of repeatedly mining an
-         * overhead lip.  The target is still bounded by the first-person
-         * fan, reach, collision and BreakBlock's retained crosshair check. */
-        return lateralCenterwardScore(frame, lateral.orElseThrow()) <= 0.50
-                ? lateral
-                : overhead;
+        /* If the current head cell is already freshly clear, a lateral wall
+         * is the only observed obstruction still worth opening. If it is not
+         * clear, remove the direct current-column overhead block first. This
+         * prevents an unnecessary ceiling mine from starving a visible side
+         * exit, while avoiding the old lateral-first churn when the head is
+         * genuinely blocked. Both branches remain bounded by the first-person
+         * fan, reach and BreakBlock's current-crosshair validation; no unseen
+         * terrain is inferred here. */
+        return freshHeadClearance(frame) ? lateral : overhead;
     }
 
     private static double lateralCenterwardScore(
@@ -4063,6 +4330,21 @@ public final class FightEnderDragonSkill
                 && face.block().z() == target.z()
                 && blockFace(face.face()).orElse(null)
                     == target.face();
+    }
+
+    /**
+     * A retained sky target may expose a different face after the player
+     * turns a few degrees around the same solid block.  The block identity is
+     * still fair, current first-person evidence; the interaction actuator
+     * supplies the exact current crosshair face immediately before mining.
+     */
+    private static boolean sameObservedBlock(
+            final VisibleBlockFace face,
+            final ObservedBlockTarget target
+    ) {
+        return face.block().x() == target.x()
+                && face.block().y() == target.y()
+                && face.block().z() == target.z();
     }
 
     private static boolean interactionLineClear(

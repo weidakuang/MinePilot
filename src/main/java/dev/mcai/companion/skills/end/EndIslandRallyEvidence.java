@@ -3,6 +3,7 @@ package dev.mcai.companion.skills.end;
 import dev.mcai.companion.navigation.GridPos;
 import dev.mcai.companion.navigation.NavigationEvidence;
 import dev.mcai.companion.navigation.ObservedVoxel;
+import dev.mcai.companion.navigation.OccupancyEvidence;
 import dev.mcai.companion.perception.BlockCoordinate;
 import dev.mcai.companion.skills.core.CoreSkillFrame;
 import java.util.Objects;
@@ -16,6 +17,7 @@ import java.util.Objects;
 public final class EndIslandRallyEvidence {
     private static final String END_STONE = "minecraft:end_stone";
     private static final double CENTER_TOLERANCE = 0.72;
+    private static final long MAX_HEAD_CLEAR_MEMORY_REVISIONS = 20L;
 
     private EndIslandRallyEvidence() {
     }
@@ -89,11 +91,32 @@ public final class EndIslandRallyEvidence {
                                 voxel,
                                 revision
                         )).isPresent()
-                && frame.navigation().voxelAt(support.above(2)).filter(voxel ->
-                        NavigationEvidence.hasFreshTraversalClearance(
-                                voxel,
-                                revision
-                        )).isPresent();
+                && (frame.navigation().voxelAt(support.above(2)).filter(
+                        voxel -> NavigationEvidence
+                                .hasFreshTraversalClearance(voxel, revision)
+                ).isPresent()
+                    /* The navigation cache is deliberately incremental and
+                     * may retain an older clear head voxel while the current
+                     * first-person frame has just performed the required
+                     * upward sky check.  The latter is stronger evidence for
+                     * this exact standing cell than a stale cache revision,
+                     * provided the current view contains no overhead block. */
+                    || (headClearMemoryIsBounded(frame, support)
+                        && !visibleOverheadObstruction(frame)));
+    }
+
+    private static boolean headClearMemoryIsBounded(
+            final CoreSkillFrame frame,
+            final GridPos support
+    ) {
+        final long revision = frame.navigation().revision();
+        return frame.navigation().voxelAt(support.above(2)).filter(voxel ->
+                voxel.kind().isPassable()
+                    && voxel.occupancyEvidence() != OccupancyEvidence.UNKNOWN
+                    && revision >= voxel.observationRevision()
+                    && revision - voxel.observationRevision()
+                        <= MAX_HEAD_CLEAR_MEMORY_REVISIONS
+        ).isPresent();
     }
 
     private static boolean visibleOverheadObstruction(

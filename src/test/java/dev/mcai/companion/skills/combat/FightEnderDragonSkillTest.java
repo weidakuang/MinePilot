@@ -618,7 +618,8 @@ final class FightEnderDragonSkillTest {
         );
         assertEquals(
                 "fight_ender_dragon.cage_safe_traversal_unavailable",
-                result.failure().orElseThrow().code()
+                result.failure().orElseThrow().code(),
+                skill.checkpoint(context(1_300), parameters).payload()
         );
         assertEquals(0, interactions.beginMiningCalls);
     }

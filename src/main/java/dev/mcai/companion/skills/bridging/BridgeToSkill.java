@@ -347,11 +347,25 @@ public final class BridgeToSkill
         }
         final boolean destinationClear = observedPassable(frame, stepTo)
                 && observedPassable(frame, stepTo.above());
-        final Optional<BlockInteractionTarget> attachedTarget =
+        final Optional<BlockInteractionTarget> directAttachment =
                 parameters.allowObservedAttachment()
                         ? visibleAttachmentTarget(frame, stepTo)
                         : Optional.empty();
-        if (!destinationClear && attachedTarget.isPresent()) {
+        /* A side face of the current support is also a valid vanilla
+         * attachment for the support block one level below the next feet
+         * cell.  This is the ordinary way to turn a one-block bridge around
+         * a pillar.  Previously the attached-only branch looked exclusively
+         * for a face adjacent to the feet cell, so a freshly observed bridge
+         * edge was discarded even though the player could place the next
+         * support block against it. */
+        final Optional<BlockInteractionTarget> supportAttachment =
+                parameters.allowObservedAttachment()
+                        && !destinationClear
+                        ? visiblePlacementTarget(frame)
+                        : Optional.empty();
+        if (!destinationClear
+                && (directAttachment.isPresent()
+                    || supportAttachment.isPresent())) {
             /*
              * A player can legally place the next feet block against a
              * freshly observed wall even when the block below that cell is
@@ -373,13 +387,18 @@ public final class BridgeToSkill
             if (materialCountBeforePlacement < 1) {
                 materialCountBeforePlacement = material.availableCount();
             }
-            desiredSupport = stepTo;
+            final boolean placingDirectly = directAttachment.isPresent();
+            desiredSupport = placingDirectly
+                    ? stepTo
+                    : stepTo.below();
             beginPhase(
                     Phase.APPROACHING_EDGE,
                     context,
                     frame
             );
-            placementTarget = attachedTarget.orElseThrow();
+            placementTarget = placingDirectly
+                    ? directAttachment.orElseThrow()
+                    : supportAttachment.orElseThrow();
             edgeTicks = 0;
             sneakTicks = 0;
             return approachEdge(context, frame, freshObservation);
@@ -452,8 +471,17 @@ public final class BridgeToSkill
                 phase = Phase.READY;
                 return SkillTickResult.running(true, true);
             }
+            final Optional<BlockInteractionTarget> directAttachment =
+                    parameters.allowObservedAttachment()
+                            ? visibleAttachmentTarget(frame, stepTo)
+                            : Optional.empty();
+            final Optional<BlockInteractionTarget> supportAttachment =
+                    parameters.allowObservedAttachment()
+                            ? visiblePlacementTarget(frame)
+                            : Optional.empty();
             if (parameters.allowObservedAttachment()
-                    && visibleAttachmentTarget(frame, stepTo).isPresent()) {
+                    && (directAttachment.isPresent()
+                        || supportAttachment.isPresent())) {
                 final BridgeMaterialResult material =
                         materials.ensureEquipped();
                 if (!material.ready()) {
@@ -467,12 +495,14 @@ public final class BridgeToSkill
                 if (materialCountBeforePlacement < 1) {
                     materialCountBeforePlacement = material.availableCount();
                 }
-                desiredSupport = stepTo;
+                final boolean placingDirectly = directAttachment.isPresent();
+                desiredSupport = placingDirectly
+                        ? stepTo
+                        : stepTo.below();
                 phase = Phase.APPROACHING_EDGE;
-                placementTarget = visibleAttachmentTarget(
-                        frame,
-                        stepTo
-                ).orElseThrow();
+                placementTarget = placingDirectly
+                        ? directAttachment.orElseThrow()
+                        : supportAttachment.orElseThrow();
                 edgeTicks = 0;
                 sneakTicks = 0;
                 return approachEdge(

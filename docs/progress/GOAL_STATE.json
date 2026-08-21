@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T17:50:01Z",
+  "updatedAtUtc": "2026-08-21T18:22:00Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
-  "publicMainHead": "a838d6c857f4dcb376c89ce688062518ec9ba4d3",
+  "publicMainHead": "a4b6df46e033d5321d420b01d1ae1bfc85093295",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.11-dev-mc26.2",
@@ -133,6 +133,21 @@
       "fixtureConstraint": "Controlled late-route portal fixture with ambient hostile pressure enabled. This is genuine negative live-model evidence: no fallback activation, teleport, command, or world mutation was used. It is not random-world, Hardcore, rendered-client, or formal M1-M4 evidence.",
       "supersededHarnessFailure": "The immediately preceding attempt failed before any model response because the test closed the chat connection during the first-human body relogin and surfaced No value present; the harness now waits for the same-UUID replacement body before submitting chat.",
       "runRoot": "run/gametestserver (2026-08-22T02:47+09:00 authorized rerun)",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveNetherMaterialsToVictory": {
+      "status": "INCOMPLETE_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "craft_recipe; return_via_verified_portal; triangulate_stronghold_search_area; search_stronghold_portal_room; reach_observed_stronghold",
+      "details": "A fresh real-model run completed Nether preparation, Eye crafting, verified return, and triangulation. The first portal-room search was fairly rejected with stronghold_evidence_required. The next request removed that rejected function and the model selected reach_observed_stronghold, which issued ordinary movement and exposed real stronghold blocks. Later bounded exploration recorded torch_place_target_occluded and search_exhausted failures; the last checkpoint had 120 visited nodes and 61 exhausted nodes in the stronghold search. The run was stopped before a terminal result, with no End entry, dragon kill, return, teleport, command, or hidden structure read.",
+      "modelRequests": 11,
+      "modelInputTokens": 99361,
+      "modelOutputTokens": 1419,
+      "modelTokensRecorded": 100780,
+      "lastServerTick": 13828,
+      "fixtureConstraint": "Controlled authored Nether/stronghold route with an embedded GameTest player; this validates live-model rejection recovery and vanilla exploration only, not random-world, Hardcore, rendered-client, or formal M1-M4 performance.",
+      "runRoot": "run/gametestserver (2026-08-22T03:07+09:00 authorized run)",
       "formalGate": "NOT_RUN"
     },
     "latestLiveEnderPearlReserve": {

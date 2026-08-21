@@ -739,6 +739,37 @@ final class MinecraftPlannerInputFactoryTest {
                         "search_stronghold_portal_room"
                 )
         );
+        final var evidenceRecovery = MinecraftPlannerInputFactory
+                .completionPhaseSkills(
+                        all,
+                        """
+                        {
+                          "lastSkillStartRejectionCode":
+                            "search_stronghold_portal_room.stronghold_evidence_required",
+                          "verifiedCompletionRouteData": {
+                            "profile": "COMPLETION",
+                            "nextObjectives": [
+                              "ACTIVATE_AND_ENTER_END_PORTAL"
+                            ],
+                            "verifiedMilestones": [
+                              "STRONGHOLD_SEARCH_AREA_TRIANGULATED"
+                            ]
+                          }
+                        }
+                        """
+                );
+        assertTrue(
+                evidenceRecovery.containsKey(
+                        "reach_observed_stronghold"
+                ),
+                "Evidence rejection must reopen fair stronghold ingress"
+        );
+        assertFalse(
+                evidenceRecovery.containsKey(
+                        "search_stronghold_portal_room"
+                ),
+                "The just-rejected portal search must not be retried"
+        );
         final var activatedEndPortal = MinecraftPlannerInputFactory
                 .completionPhaseSkills(
                         all,

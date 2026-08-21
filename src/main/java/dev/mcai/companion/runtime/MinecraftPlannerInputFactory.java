@@ -928,6 +928,23 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
     private static Set<String> portalDiscoveryPhaseSkills(
             final String trustedRuntimeJson
     ) {
+        final boolean portalRoomSearchNeedsEvidence =
+                hasLastSkillStartRejection(
+                        trustedRuntimeJson,
+                        "search_stronghold_portal_room.stronghold_evidence_required"
+                );
+        /*
+         * A measured intersection is a durable search-area milestone, not a
+         * durable claim that the current eyes can see stronghold blocks.  If
+         * the server has just rejected a portal-room search for that exact
+         * reason, make the fair route-recovery skill visible again and remove
+         * the rejected search from this request's schema.  This prevents a
+         * provider from repeating an invalid action while preserving the
+         * evidence gate in SearchObservedStrongholdPortalRoomSkill.
+         */
+        if (portalRoomSearchNeedsEvidence) {
+            return withCompletionUtility("reach_observed_stronghold");
+        }
         final Set<String> skills = new java.util.HashSet<>(
                 withCompletionUtility(
                         "search_stronghold_portal_room",
@@ -942,6 +959,25 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
             skills.add("reach_observed_stronghold");
         }
         return Set.copyOf(skills);
+    }
+
+    private static boolean hasLastSkillStartRejection(
+            final String trustedRuntimeJson,
+            final String expectedCode
+    ) {
+        try {
+            final var trusted = JsonParser.parseString(
+                    Objects.requireNonNullElse(trustedRuntimeJson, "")
+            ).getAsJsonObject();
+            return trusted.has("lastSkillStartRejectionCode")
+                    && expectedCode.equals(
+                            trusted.get(
+                                    "lastSkillStartRejectionCode"
+                            ).getAsString()
+                    );
+        } catch (RuntimeException malformedTrustedRuntime) {
+            return false;
+        }
     }
 
     private static boolean hasVerifiedMilestone(
@@ -2786,6 +2822,25 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
         final Optional<String> currentObjective =
                 currentCompletionObjective(trustedRuntimeJson);
         if (currentObjective.isPresent()) {
+            if ("ACTIVATE_AND_ENTER_END_PORTAL".equals(
+                        currentObjective.orElseThrow()
+                    )
+                    && hasLastSkillStartRejection(
+                        trustedRuntimeJson,
+                        "search_stronghold_portal_room.stronghold_evidence_required"
+                    )) {
+                return """
+                    Current verified completion phase:
+                    ACTIVATE_AND_ENTER_END_PORTAL recovery. The last portal
+                    room search was rejected because no current first-person
+                    stronghold evidence was visible. Do not repeat that
+                    search or activate a portal. Choose
+                    reach_observed_stronghold with no arguments so the local
+                    controller walks and exposes the measured search area
+                    fairly; only a fresh stronghold frame can reopen portal
+                    room search.
+                    """;
+            }
             final String currentPhase = switch (
                     currentObjective.orElseThrow()
             ) {

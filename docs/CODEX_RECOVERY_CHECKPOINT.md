@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T02:50:01+09:00
+Last updated: 2026-08-22T03:21:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -93,6 +93,22 @@ This section supersedes older chronological notes below when they conflict.
   zero active portal blocks, no End entry, and 25,927 recorded model tokens.
   This is a genuine negative model-to-safety result, not a fabricated action
   or a formal M2 claim.
+- A fresh authorized Forge 65.1.1 run of
+  `real_player_task_to_live_model_nether_materials_to_victory` exercised the
+  real MiMo model through Nether preparation, Eye crafting, verified portal
+  return, and stronghold triangulation. On the first portal-room request, the
+  server fairly rejected `search_stronghold_portal_room.stronghold_evidence_required`.
+  The next model request received a schema with that rejected action removed
+  and selected `reach_observed_stronghold`, which issued ordinary movement and
+  exposed a real stronghold structure. The route then encountered genuine
+  `excavate_safe_tunnel.torch_place_target_occluded` and
+  `search_stronghold_portal_room.search_exhausted` failures while continuing
+  bounded visible-node exploration (120 visited, 61 exhausted at the last
+  checkpoint). The run was stopped before a terminal result after 11 HTTP-200
+  model requests (99,361 input, 1,419 output, 100,780 total tokens); no End
+  entry, dragon kill, return, teleport, command, or hidden structure read was
+  claimed. This validates the rejection-recovery guard as controlled live-model
+  evidence, but remains incomplete and is not M2/M4 or random-seed evidence.
 - A fresh authorized Forge 65.1.1 live-model container slice also passed. The
   model first returned an invalid `use_block` envelope; local validation
   rejected it without an action, then the model corrected the decision,

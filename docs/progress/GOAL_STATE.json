@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T11:20:00Z",
+  "updatedAtUtc": "2026-08-21T12:47:10Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
-  "publicMainHead": "f530504557714f9b9eecb2c2f55b8daec26bfcb5",
+  "publicMainHead": "b2294c825c942626a676d64b276f105667c836d5",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.11-dev-mc26.2",
@@ -364,13 +364,13 @@
     },
     "latestNaturalDynamicDragonGate": {
       "status": "FAIL_FORGE_65.1.1",
-      "details": "A fresh zero-human natural-End run with the vanilla manager-owned AI-enabled dragon completed the fair ingress route but failed the dynamic fight at no_visible_combat_target after the bounded re-entry/attachment recovery. The body mined 30 observed End-stone blocks, consumed no arrows, dealt no dragon damage, and did not kill or return. No teleport, hidden terrain read, dragon freeze, or fixture mutation was used.",
-      "runRoot": "/tmp/mcai-dynamic-dragon-occlusion-skip-lRtQE2",
+      "details": "A fresh zero-human natural-End run with the vanilla manager-owned AI-enabled dragon reached the pillar-edge route but failed the dynamic fight at no_visible_combat_target after bounded rally, side-step, sky-clearance, and ingress recovery. The body mined 96 observed End-stone blocks, consumed no arrows, dealt no dragon damage, and did not kill or return. No teleport, hidden terrain read, dragon freeze, or fixture mutation was used.",
+      "runRoot": "/tmp/mcai-dynamic-dragon-sidestep-kY5x7c",
       "failureCode": "fight_ender_dragon.no_visible_combat_target",
-      "ingressFailure": "reach_end_island.timed_out",
-      "bodyPosition": "47.84,49.0,0.59",
+      "ingressFailure": "reach_end_island.scan_budget_exhausted",
+      "bodyPosition": "47.629,51.0,-0.121",
       "scanTurns": 48,
-      "latestFixesExercised": "fair crosshair rebind and one-target occlusion skip; the controller still exhausted its bounded sky-break attempts without a dragon damage event",
+      "latestFixesExercised": "fresh sky-target rebinding, observed lateral/overhead mining, safe side-step, and frontier probing after tower failure; the controller still exhausted its bounded ingress scan without a dragon damage event",
       "formalGate": "NOT_RUN"
     },
     "dynamicDragonObservedRally": {
@@ -390,7 +390,7 @@
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, and Forge compatibility validation after the focused End safety changes. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "c84c63e3d5259d21cde2c5874aba3321e96aed4cdc8815a45f0c421b9f257fcb",
+      "sha256": "ca2a6076694b393c36413ae222a9abf93ed59172089949b04f76117cce784863",
       "formalGate": "NOT_RUN"
     }
   },

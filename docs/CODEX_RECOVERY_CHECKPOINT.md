@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-21T21:41:20+09:00
+Last updated: 2026-08-21T21:47:10+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -17,7 +17,7 @@ pass.
 
 This section supersedes older chronological notes below when they conflict.
 
-- The current uncommitted End-combat patch adds fresh observed rally targets,
+- Commit `0f3ab2a` adds fresh observed rally targets,
   bounded sky-clearance target rebinding, observed lateral End-stone mining,
   safe side-step recovery before opaque pillar ascent, and a frontier probe
   after a failed tower child. It also records the nested ingress checkpoint so
@@ -42,8 +42,11 @@ This section supersedes older chronological notes below when they conflict.
 - The current release JAR is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
   `ca2a6076694b393c36413ae222a9abf93ed59172089949b04f76117cce784863`.
-  `git diff --check` is clean. Publication of this uncommitted snapshot is
-  pending a reviewed commit and fresh-clone verification.
+  The snapshot is published on public `main` as
+  `b2294c825c942626a676d64b276f105667c836d5` through Git Data API objects.
+  Fresh clone `/tmp/minepilot-public-7UJzUD` matched all four changed file
+  SHA-256 values byte-for-byte, and its Forge 65.1.1 `compileJava` passed.
+  `git diff --check` is clean after publication.
 
 - Commit `f0301fc4a4f95ccc42d2eb68dde7ed8f41964e51` adds a narrowly scoped
   observed-wall attachment path to `BridgeToSkill`: only the End ingress

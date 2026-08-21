@@ -49,6 +49,13 @@ This section supersedes older chronological notes below when they conflict.
   three oak planks. SQLite recorded the failure/recovery and accepted causal
   chains; this remains controlled chest evidence, not the formal Inventory
   black-box gate.
+- A fresh authorized Forge 65.1.1 live-model Zombie-defense slice passed. The
+  emergency lane guarded the body while the model request crossed its soft
+  deadline; the model then returned `START_SKILL engage_observed_entity`, the
+  body moved and attacked through vanilla combat, survived, and triggered
+  Monster Hunter. SQLite recorded the task/perception/HTTP-200/skill/action
+  chain. This remains one controlled hostile, not PVP, Horde, Hardcore, or
+  formal M2 evidence.
 - Focused JUnit, full build, repository preflight, Git Data API publication,
   fresh-clone byte comparison, and fresh-clone Forge `compileJava` all passed
   for this snapshot. The dynamic natural-End gate remains recorded as failed;

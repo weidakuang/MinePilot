@@ -68,6 +68,13 @@ public final class EndIslandIngressSkill
 
     private static final String END_STONE = "minecraft:end_stone";
     private static final double BRIDGE_ARRIVAL_RADIUS = 0.65;
+    /* BridgeToSkill intentionally accepts no arrival radius below 0.5.  A
+     * neighbouring cell center can nevertheless be within that radius when
+     * the body is standing on a cell edge, which would complete a side-step
+     * without changing feet().  Aim at the far, still-inside edge of the
+     * observed destination cell so the vanilla child must actually cross the
+     * grid boundary. */
+    private static final double SIDE_STEP_EDGE_OFFSET = 0.44;
     private static final double LANDFALL_ARRIVAL_RADIUS = 0.75;
     private static final double MINIMUM_CENTER_PROGRESS = 0.20;
     private static final double CURRENT_SUPPORT_CENTER_TOLERANCE = 0.72;
@@ -573,6 +580,15 @@ public final class EndIslandIngressSkill
                 return orientForFrontierProbe(context, frame);
             }
             frontierProbePending = false;
+            final Optional<SkillTickResult> attached =
+                    startObservedAttachedStep(
+                            context,
+                            parameters,
+                            frame
+                    );
+            if (attached.isPresent()) {
+                return attached.orElseThrow();
+            }
             final Optional<SkillTickResult> detour =
                     startObservedSideStep(context, parameters, frame);
             if (detour.isPresent()) {
@@ -651,6 +667,15 @@ public final class EndIslandIngressSkill
          * obtain a new eye-line instead of starting a bridge into occupied
          * terrain.  TowerUp owns the placement, jump and landing checks. */
         if (visibleCenterwardObsidianWall(frame)) {
+            final Optional<SkillTickResult> attached =
+                    startObservedAttachedStep(
+                            context,
+                            parameters,
+                            frame
+                    );
+            if (attached.isPresent()) {
+                return attached.orElseThrow();
+            }
             final Optional<SkillTickResult> sideStep =
                     startObservedSideStep(context, parameters, frame);
             if (sideStep.isPresent()) {
@@ -1272,12 +1297,13 @@ public final class EndIslandIngressSkill
             return Optional.empty();
         }
         final GridPos step = candidate.orElseThrow();
+        final PerceptionVec3 target = sideStepTarget(frame.position(), step);
         final BridgeToParameters childParameters =
                 new BridgeToParameters(
                         DimensionRef.END,
-                        step.x() + 0.5,
+                        target.x(),
                         frame.position().y(),
-                        step.z() + 0.5,
+                        target.z(),
                         BRIDGE_ARRIVAL_RADIUS,
                         1
                 );
@@ -1301,6 +1327,25 @@ public final class EndIslandIngressSkill
         return Optional.of(
                 tickBridge(context, parameters, frame, true)
         );
+    }
+
+    static PerceptionVec3 sideStepTarget(
+            final PerceptionVec3 position,
+            final GridPos destination
+    ) {
+        final double centerX = destination.x() + 0.5;
+        final double centerZ = destination.z() + 0.5;
+        final double deltaX = centerX - position.x();
+        final double deltaZ = centerZ - position.z();
+        final double targetX = centerX + Math.copySign(
+                SIDE_STEP_EDGE_OFFSET,
+                Math.abs(deltaX) <= 1.0E-9 ? 1.0 : deltaX
+        );
+        final double targetZ = centerZ + Math.copySign(
+                SIDE_STEP_EDGE_OFFSET,
+                Math.abs(deltaZ) <= 1.0E-9 ? 1.0 : deltaZ
+        );
+        return new PerceptionVec3(targetX, position.y(), targetZ);
     }
 
     /**

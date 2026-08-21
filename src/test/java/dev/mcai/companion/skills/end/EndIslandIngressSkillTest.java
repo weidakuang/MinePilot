@@ -682,6 +682,28 @@ final class EndIslandIngressSkillTest {
     }
 
     @Test
+    void sideStepTargetRequiresARealGridCrossingFromAnEdgePose() {
+        final PerceptionVec3 body = new PerceptionVec3(
+                47.63,
+                51.0,
+                -0.12
+        );
+        final PerceptionVec3 target = EndIslandIngressSkill.sideStepTarget(
+                body,
+                new GridPos(47, 51, 0)
+        );
+
+        assertTrue(target.x() > 47.0 && target.x() < 48.0);
+        assertTrue(target.z() > 0.5 && target.z() < 1.0);
+        assertTrue(
+                Math.hypot(target.x() - body.x(), target.z() - body.z())
+                        > 0.65,
+                "the adjacent-cell target must not be inside BridgeTo's "
+                        + "minimum arrival radius before the feet grid changes"
+        );
+    }
+
+    @Test
     void cancelQuiescesAnActiveSneakingBridgeAndUseAction() {
         final MutableFrames frames = new MutableFrames(
                 frame(

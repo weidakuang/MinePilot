@@ -17,6 +17,28 @@ pass.
 
 This section supersedes older chronological notes below when they conflict.
 
+- The next uncommitted correction makes observed side-step targets land near
+  the far edge of the destination cell instead of allowing `BridgeToSkill` to
+  complete inside its minimum arrival radius, and lets a fresh frontier probe
+  try a visible wall attachment before ordinary side travel. The new edge
+  target regression, focused ingress/combat suites, full JUnit suite, and Forge
+  65.1.1 build passed. The natural ingress selector passed in
+  `/tmp/mcai-natural-ingress-sidestep-w37BT4`.
+- A fresh zero-human natural dynamic-dragon run after this correction remains
+  a physical failure in `/tmp/mcai-dynamic-dragon-attachstep-YtWEcZ`: the
+  bounded fight reached 8,002 executed ticks, body approximately
+  `(47.433,51.0,-0.187)`, ingress ended with
+  `reach_end_island.scan_budget_exhausted`, and there were zero arrows, dragon
+  damage, kill, or return. The final fair frame exposed only observed
+  End-stone/obsidian faces at the pillar edge; no safe destination was inferred.
+  Dynamic combat and every formal M1--M4/random-Hardcore/speedrun claim remain
+  unreleased.
+- The current development JAR after this correction is
+  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
+  `d171284cb19242398cb9e2bfc408f277188a6d6eb0e7f9639d0af065a320a71f`.
+  The correction is not yet published; publication is pending the reviewed
+  commit and fresh-clone verification below.
+
 - Commit `0f3ab2a` adds fresh observed rally targets,
   bounded sky-clearance target rebinding, observed lateral End-stone mining,
   safe side-step recovery before opaque pillar ascent, and a frontier probe

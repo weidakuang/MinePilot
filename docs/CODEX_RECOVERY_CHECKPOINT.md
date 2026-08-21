@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T01:45:00+09:00
+Last updated: 2026-08-22T01:58:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -36,6 +36,12 @@ This section supersedes older chronological notes below when they conflict.
   teleport, command, hidden terrain read, dragon freeze, or fixture terrain
   mutation was used. This is the active release blocker; it is not M2/M4 or
   random-seed evidence.
+- A fresh authorized Forge 65.1.1 live-model movement slice passed in
+  `run/gametestserver`: SQLite recorded the real chat/task chain, HTTP-200
+  Responses output, 7,741 input and 194 output tokens, `START_SKILL
+  travel_to`, `skill_started`, and ordinary `move` actions. The body reached
+  the bounded target without teleport or command. This remains controlled
+  GameTest evidence, not rendered Actor/Observer or formal M1--M4 evidence.
 - Focused JUnit, full build, repository preflight, Git Data API publication,
   fresh-clone byte comparison, and fresh-clone Forge `compileJava` all passed
   for this snapshot. The dynamic natural-End gate remains recorded as failed;

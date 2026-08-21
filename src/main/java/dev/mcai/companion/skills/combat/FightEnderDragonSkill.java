@@ -10,6 +10,8 @@ import dev.mcai.companion.progression.CompletionResourceReadiness;
 import dev.mcai.companion.navigation.GridPos;
 import dev.mcai.companion.navigation.NavigationEvidence;
 import dev.mcai.companion.navigation.ObservedVoxel;
+import dev.mcai.companion.navigation.OccupancyEvidence;
+import dev.mcai.companion.navigation.VoxelKind;
 import dev.mcai.companion.perception.InventoryItemSummary;
 import dev.mcai.companion.perception.DangerKind;
 import dev.mcai.companion.perception.PerceptionVec3;
@@ -83,14 +85,23 @@ public final class FightEnderDragonSkill
     private static final int SCAN_INTERVAL_TICKS = 3;
     private static final int SCANS_BEFORE_RALLY = 48;
     private static final int MAXIMUM_RALLY_ATTEMPTS = 4;
-    /** A low natural End-stone roof may hide the sky from the entry cell. */
-    private static final int MAXIMUM_SKY_BLOCKS_MINED = 32;
-    private static final int MAXIMUM_SKY_BREAK_ATTEMPTS = 96;
+    /** A natural island edge can require several bounded two-block openings. */
+    private static final int MAXIMUM_SKY_BLOCKS_MINED = 96;
+    private static final int MAXIMUM_SKY_BREAK_ATTEMPTS = 240;
     private static final int SKY_BLOCKS_BEFORE_CENTERWARD_TRAVEL = 8;
     private static final int SKY_BREAK_ALIGNMENT_TICKS = 60;
+    /* A vanilla ray can change between the semantic frame and the action
+     * tick when the body is standing under a low natural island lip.  Rebind
+     * the same observed block a few times before abandoning it; this is a
+     * bounded first-person retry, not a relaxed target check. */
+    private static final int MAXIMUM_SKY_OCCLUSION_RETRIES = 4;
     private static final double SKY_BREAK_REACH = 6.0;
     private static final double SKY_BREAK_STANDING_REACH = 4.5;
     private static final int MAXIMUM_REENTRY_ATTEMPTS = 1;
+    private static final int OBSERVED_RALLY_STEP_TICKS = 32;
+    private static final double OBSERVED_RALLY_ALIGNMENT_DEGREES = 18.0;
+    private static final long OBSERVED_RALLY_SUPPORT_MAX_AGE = 4L;
+    private static final long OBSERVED_RALLY_MEMORY_MAX_AGE = 512L;
     /** Keep the dragon inside the body's normal first-person entity envelope. */
     private static final double FIGHT_REENTRY_RADIUS = 32.0;
     private static final double SKY_BREAK_ALIGNMENT_DEGREES = 2.0;
@@ -192,6 +203,8 @@ public final class FightEnderDragonSkill
     private int skyBlocksMined;
     private int skyBreakAttempts;
     private int skyAlignmentTicks;
+    private long skyAlignmentReadyTick = -1L;
+    private int skyOcclusionRetries;
     private String lastSkyFailure = "";
     private GridPos lastSkyOccludedBlock;
     private boolean skyJumpPending;
@@ -229,6 +242,12 @@ public final class FightEnderDragonSkill
     private PerceptionVec3 crystalStandOffPosition;
     private GridPos rallyStepTarget;
     private int rallyStepTicks;
+    private int rallyStepStarts;
+    private int rallyStepTimeouts;
+    private boolean rallyStepAwaitingFreshObservation;
+    private long rallyStepObservationRevision = -1L;
+    private GridPos previousRallyStepTarget;
+    private String lastRallyFailure = "";
     private EndIslandIngressSkill islandIngress;
     private EndIslandIngressParameters islandIngressParameters;
     private CagedCrystalTraversalPlanner.Plan cagePlan;
@@ -436,6 +455,8 @@ public final class FightEnderDragonSkill
         skyBlocksMined = 0;
         skyBreakAttempts = 0;
         skyAlignmentTicks = 0;
+        skyAlignmentReadyTick = -1L;
+        skyOcclusionRetries = 0;
         lastSkyFailure = "";
         lastSkyOccludedBlock = null;
         skyJumpPending = false;
@@ -480,6 +501,12 @@ public final class FightEnderDragonSkill
         islandIngressParameters = null;
         rallyStepTarget = null;
         rallyStepTicks = 0;
+        rallyStepStarts = 0;
+        rallyStepTimeouts = 0;
+        rallyStepAwaitingFreshObservation = false;
+        rallyStepObservationRevision = -1L;
+        previousRallyStepTarget = null;
+        lastRallyFailure = "";
         crystalStandOff = null;
         crystalStandOffParameters = null;
         crystalLane = null;
@@ -535,10 +562,13 @@ public final class FightEnderDragonSkill
                             + "\"ingressAttempts\":%d,"
                             + "\"islandIngressActive\":%s,"
                             + "\"lastIngressResult\":\"%s\","
+                            + "\"islandIngressCheckpoint\":\"%s\","
                             + "\"skyBlocksMined\":%d,"
                             + "\"skyBlocksSinceRally\":%d,"
                             + "\"skyBreakAttempts\":%d,"
                             + "\"lastSkyFailure\":\"%s\","
+                            + "\"lastSkyOccludedBlock\":\"%s\","
+                            + "\"skyBreakTarget\":\"%s\","
                             + "\"cageBarsMined\":%d,"
                             + "\"cageApproaches\":%d,"
                             + "\"cageRecoveryTurns\":%d,"
@@ -552,7 +582,14 @@ public final class FightEnderDragonSkill
                             + "\"recoveringSafetyReserve\":%s,"
                             + "\"cageStatus\":\"%s\","
                             + "\"visibleEntityTypes\":\"%s\","
-                            + "\"bodyPosition\":\"%s\"}",
+                            + "\"bodyPosition\":\"%s\","
+                            + "\"rallyStepTarget\":\"%s\","
+                            + "\"rallyStepTicks\":%d,"
+                            + "\"rallyStepStarts\":%d,"
+                            + "\"rallyStepTimeouts\":%d,"
+                            + "\"rallyStepAwaitingFreshObservation\":%s,"
+                            + "\"rallyStepObservationRevision\":%d,"
+                            + "\"lastRallyFailure\":\"%s\"}",
                         phase.name(),
                         shotsDispatched,
                         meleeAttacks,
@@ -565,10 +602,23 @@ public final class FightEnderDragonSkill
                         ingressAttempts,
                         islandIngress != null,
                         lastIngressResult.replace("\"", "'"),
+                        islandIngress == null
+                            ? ""
+                            : islandIngress.checkpoint(
+                                    context,
+                                    islandIngressParameters
+                              ).payload().replace("\"", "'")
+                                .replace("\\", "/"),
                         skyBlocksMined,
                         skyBlocksSinceRally,
                         skyBreakAttempts,
                         lastSkyFailure.replace("\"", "'"),
+                        lastSkyOccludedBlock == null
+                                ? ""
+                                : lastSkyOccludedBlock.toString(),
+                        skyBreakTarget == null
+                                ? ""
+                                : skyBreakTarget.toString(),
                         cageBarsMined,
                         cageApproachAttempts,
                         cageScanTurns,
@@ -584,7 +634,18 @@ public final class FightEnderDragonSkill
                         recoveringSafetyReserve,
                         cageStatus.name(),
                         visibleEntityTypes(),
-                        currentBodyPosition()
+                        currentBodyPosition(),
+                        rallyStepTarget == null
+                            ? ""
+                            : rallyStepTarget.x() + ","
+                                + rallyStepTarget.y() + ","
+                                + rallyStepTarget.z(),
+                        rallyStepTicks,
+                        rallyStepStarts,
+                        rallyStepTimeouts,
+                        rallyStepAwaitingFreshObservation,
+                        rallyStepObservationRevision,
+                        lastRallyFailure.replace("\"", "'")
                 )
         );
     }
@@ -1036,6 +1097,7 @@ public final class FightEnderDragonSkill
             }
             skyJumpPending = true;
             skyAlignmentTicks = 0;
+            skyAlignmentReadyTick = -1L;
             phase = Phase.ALIGNING_SKY;
             nextActionTick = context.gameTick() + 1;
             return SkillTickResult.running(true, true);
@@ -1051,6 +1113,7 @@ public final class FightEnderDragonSkill
                 return fail(context, NAME + ".sky_alignment_rejected");
             }
             skyAlignmentTicks = 0;
+            skyAlignmentReadyTick = -1L;
             phase = Phase.ALIGNING_SKY;
             nextActionTick = context.gameTick() + 1;
             return SkillTickResult.running(true, true);
@@ -1080,6 +1143,28 @@ public final class FightEnderDragonSkill
         if (!core.stop().accepted()) {
             return fail(context, NAME + ".sky_alignment_stop_rejected");
         }
+        final Optional<VisibleBlockFace> visible =
+                frame.visibleBlockFaces().stream()
+                        .filter(face -> sameObservedTarget(
+                                face,
+                                skyBreakTarget
+                        ))
+                        .filter(face -> "minecraft:end_stone".equals(
+                                face.blockTypeId()
+                        ))
+                        .findFirst();
+        /* The body can turn or move while the server applies the queued look.
+         * If the authored surface is no longer in the newest fair fan, keep
+         * no stale mining target alive: a real player would reacquire the
+         * wall from the new eye position.  Retrying an absent target is what
+         * turns an ordinary camera update into action_target_occluded. */
+        if (visible.isEmpty()) {
+            lastSkyFailure = "sky_target_not_current";
+            cancelSkyBreak(context);
+            phase = Phase.SEARCHING;
+            nextActionTick = context.gameTick() + SCAN_INTERVAL_TICKS;
+            return SkillTickResult.running(true, true);
+        }
         final Optional<VisibleBlockFace> current =
                 interactionFrames.currentCrosshairBlock()
                         .filter(face -> sameObservedTarget(
@@ -1090,16 +1175,8 @@ public final class FightEnderDragonSkill
                                 "minecraft:end_stone".equals(
                                         face.blockTypeId()
                                 ));
-        if (!fresh || current.isEmpty()) {
-            final Optional<VisibleBlockFace> visible =
-                    frame.visibleBlockFaces().stream()
-                            .filter(face -> sameObservedTarget(
-                                    face,
-                                    skyBreakTarget
-                            ))
-                            .findFirst();
-            if (visible.isPresent()
-                    && !core.look(lookAt(
+        if ((!fresh && skyAlignmentReadyTick < 0L) || current.isEmpty()) {
+            if (!core.look(lookAt(
                             frame.eyePosition(),
                             visible.orElseThrow().hitPosition()
                     )).accepted()) {
@@ -1112,6 +1189,17 @@ public final class FightEnderDragonSkill
                 skyBreakAttempts++;
                 nextActionTick = context.gameTick() + SCAN_INTERVAL_TICKS;
             }
+            return SkillTickResult.running(true, true);
+        }
+        /* The look command is applied by the vanilla server action pump at
+         * the end of the preceding tick.  Defer the mining start by one
+         * server tick after a matching crosshair sample so the actuator and
+         * the interaction frame cannot observe different rays. */
+        if (skyAlignmentReadyTick < 0L) {
+            skyAlignmentReadyTick = context.gameTick();
+            return SkillTickResult.running(true, true);
+        }
+        if (context.gameTick() <= skyAlignmentReadyTick) {
             return SkillTickResult.running(true, true);
         }
         /* The alignment frame is deliberately rebound to the exact current
@@ -1190,6 +1278,7 @@ public final class FightEnderDragonSkill
             skyBlocksMined++;
             skyBlocksSinceRally++;
             lastSkyOccludedBlock = null;
+            skyOcclusionRetries = 0;
             cancelSkyBreak(context);
             phase = Phase.SEARCHING;
             nextActionTick = context.gameTick() + 2;
@@ -1199,15 +1288,42 @@ public final class FightEnderDragonSkill
             lastSkyFailure = result.failure()
                     .map(SkillFailure::code)
                     .orElse("break_block.unknown_failure");
-            if (lastSkyFailure.endsWith(".action_target_occluded")
-                    && skyBreakTarget != null) {
-                lastSkyOccludedBlock = new GridPos(
-                        skyBreakTarget.x(),
-                        skyBreakTarget.y(),
-                        skyBreakTarget.z()
-                );
-            }
+            final ObservedBlockTarget failedTarget = skyBreakTarget;
             cancelSkyBreak(context);
+            if (lastSkyFailure.endsWith(".action_target_occluded")
+                    && failedTarget != null
+                    && skyOcclusionRetries
+                        < MAXIMUM_SKY_OCCLUSION_RETRIES) {
+                skyBreakTarget = failedTarget;
+                skyOcclusionRetries++;
+                skyAlignmentTicks = 0;
+                skyAlignmentReadyTick = -1L;
+                phase = Phase.ALIGNING_SKY;
+                nextActionTick = context.gameTick() + 1;
+                core.stop();
+                coreFrames.current().ifPresent(currentFrame ->
+                        currentFrame.visibleBlockFaces().stream()
+                                .filter(face -> sameObservedTarget(
+                                        face,
+                                        failedTarget
+                                ))
+                                .findFirst()
+                                .ifPresent(face -> core.look(lookAt(
+                                        currentFrame.eyePosition(),
+                                        face.hitPosition()
+                                )))
+                );
+                return SkillTickResult.running(true, true);
+            }
+            if (lastSkyFailure.endsWith(".action_target_occluded")
+                    && failedTarget != null) {
+                lastSkyOccludedBlock = new GridPos(
+                        failedTarget.x(),
+                        failedTarget.y(),
+                        failedTarget.z()
+                );
+                skyOcclusionRetries = 0;
+            }
             phase = Phase.SEARCHING;
             nextActionTick = context.gameTick() + SCAN_INTERVAL_TICKS;
             return SkillTickResult.running(true, true);
@@ -1230,6 +1346,7 @@ public final class FightEnderDragonSkill
         skyBreakParameters = null;
         skyBreakTarget = null;
         skyAlignmentTicks = 0;
+        skyAlignmentReadyTick = -1L;
         skyJumpPending = false;
     }
 
@@ -1246,13 +1363,17 @@ public final class FightEnderDragonSkill
         }
         final Optional<VisibleBlockFace> overhead =
                 visibleOverheadEndStone(frame, lastSkyOccludedBlock);
-        final Optional<VisibleBlockFace> clearanceTarget = overhead
-                .filter(face -> face.distance() <= SKY_BREAK_STANDING_REACH)
-                .or(() -> visibleLateralEndStone(
+        final Optional<VisibleBlockFace> reachableOverhead = overhead
+                .filter(face -> face.distance() <= SKY_BREAK_STANDING_REACH);
+        final Optional<VisibleBlockFace> lateral =
+                visibleLateralEndStone(frame, lastSkyOccludedBlock);
+        final Optional<VisibleBlockFace> clearanceTarget =
+                selectSkyClearanceTarget(
                         frame,
-                        lastSkyOccludedBlock
-                ));
-        if (overhead.isPresent()
+                        reachableOverhead,
+                        lateral
+                );
+        if (clearanceTarget.isPresent()
                 && immediateDragonIndex(frame).isEmpty()
                 && frame.dangerSignals().stream().noneMatch(
                         signal -> signal.severity() >= 0.65
@@ -1268,7 +1389,7 @@ public final class FightEnderDragonSkill
                     frame,
                     clearanceTarget.orElseThrow(),
                     clearanceTarget.orElseThrow().equals(
-                            overhead.orElse(null)
+                            reachableOverhead.orElse(null)
                     ),
                     fresh
             );
@@ -2913,14 +3034,12 @@ public final class FightEnderDragonSkill
          * bounded scan budget.  Re-enter the observed island route first;
          * the child still requires fresh support/clearance and owns every
          * movement, mining, and placement action. */
-        if (ingressAttempts < MAXIMUM_REENTRY_ATTEMPTS
-                && EndArenaTopology.horizontalRadius(frame.position())
-                    > FIGHT_REENTRY_RADIUS) {
-            return startIslandReentry(context, fresh);
-        }
         final Optional<GridPos> observedStep =
                 selectObservedCenterwardStep(frame);
-        if (observedStep.isPresent()) {
+        if (EndArenaTopology.horizontalRadius(frame.position())
+                    > FIGHT_REENTRY_RADIUS
+                && observedStep.isPresent()) {
+            lastRallyFailure = "observed_step_selected:" + observedStep.orElseThrow();
             return startObservedRallyStep(
                     context,
                     frame,
@@ -2928,6 +3047,13 @@ public final class FightEnderDragonSkill
                     fresh
             );
         }
+        if (ingressAttempts < MAXIMUM_REENTRY_ATTEMPTS
+                && EndArenaTopology.horizontalRadius(frame.position())
+                    > FIGHT_REENTRY_RADIUS) {
+            lastRallyFailure = "observed_step_unavailable_reentry";
+            return startIslandReentry(context, fresh);
+        }
+        lastRallyFailure = "observed_step_unavailable_travel";
         final PerceptionVec3 rallyPoint = selectObservedRallyPoint(frame)
                 .orElseGet(() -> centerwardSearchPoint(frame));
         travelParameters = new TravelToParameters(
@@ -2949,6 +3075,7 @@ public final class FightEnderDragonSkill
             travel = null;
             travelParameters = null;
             rallyAttempts++;
+            lastRallyFailure = "travel_precondition:" + precondition.orElseThrow().code();
             scanTurns = 0;
             scanBaseYaw = ActionMath.wrapDegrees(
                     scanBaseYaw + 15.0F
@@ -2956,6 +3083,7 @@ public final class FightEnderDragonSkill
             return SkillTickResult.running(true, true);
         }
         travel.start(context, travelParameters);
+        lastRallyFailure = "travel_started";
         rallyAttempts++;
         travelPurpose = TravelPurpose.RALLY;
         phase = Phase.TRAVELLING;
@@ -3083,6 +3211,7 @@ public final class FightEnderDragonSkill
     ) {
         if (!frame.onGround() || frame.inWater()) {
             rallyAttempts++;
+            lastRallyFailure = "start_not_grounded";
             return SkillTickResult.running(fresh, true);
         }
         final PerceptionVec3 targetCenter = new PerceptionVec3(
@@ -3091,13 +3220,16 @@ public final class FightEnderDragonSkill
                 target.z() + 0.5
         );
         if (!core.look(lookAt(frame.eyePosition(), targetCenter)).accepted()
-                || !core.move(new MovementIntent(0.78, 0.0, false, false))
-                        .accepted()) {
+                || !core.stop().accepted()) {
             rallyAttempts++;
+            lastRallyFailure = "start_actuator_rejected";
             return SkillTickResult.running(fresh, true);
         }
         rallyStepTarget = target;
         rallyStepTicks = 0;
+        rallyStepStarts++;
+        rallyStepAwaitingFreshObservation = true;
+        rallyStepObservationRevision = frame.observationRevision();
         phase = Phase.RALLY_STEPPING;
         return SkillTickResult.running(true, true);
     }
@@ -3108,8 +3240,12 @@ public final class FightEnderDragonSkill
     ) {
         final CoreSkillFrame frame = coreFrames.current().orElse(null);
         if (frame == null || rallyStepTarget == null) {
+            lastRallyFailure = "step_state_missing";
             rallyStepTarget = null;
             rallyStepTicks = 0;
+            rallyStepAwaitingFreshObservation = false;
+            rallyStepObservationRevision = -1L;
+            previousRallyStepTarget = null;
             phase = Phase.SEARCHING;
             nextActionTick = context.gameTick() + SCAN_INTERVAL_TICKS;
             return SkillTickResult.running(fresh, true);
@@ -3117,33 +3253,11 @@ public final class FightEnderDragonSkill
         if (!frame.onGround() || frame.inWater()) {
             core.stop();
             rallyAttempts++;
+            lastRallyFailure = "step_not_grounded";
             rallyStepTarget = null;
             rallyStepTicks = 0;
-            phase = Phase.SEARCHING;
-            nextActionTick = context.gameTick() + SCAN_INTERVAL_TICKS;
-            return SkillTickResult.running(true, true);
-        }
-        if (frame.feet().equals(rallyStepTarget)
-                || frame.position().subtract(new PerceptionVec3(
-                        rallyStepTarget.x() + 0.5,
-                        rallyStepTarget.y(),
-                        rallyStepTarget.z() + 0.5
-                )).length() <= 0.85) {
-            rallyStepTarget = null;
-            rallyStepTicks = 0;
-            rallyAttempts = 0;
-            skyBlocksSinceRally = 0;
-            localRallyPoint = frame.position();
-            phase = Phase.SEARCHING;
-            scanTurns = 0;
-            nextActionTick = context.gameTick() + 1;
-            return SkillTickResult.running(true, true);
-        }
-        if (rallyStepTicks++ >= 8) {
-            core.stop();
-            rallyAttempts++;
-            rallyStepTarget = null;
-            rallyStepTicks = 0;
+            rallyStepAwaitingFreshObservation = false;
+            rallyStepObservationRevision = -1L;
             phase = Phase.SEARCHING;
             nextActionTick = context.gameTick() + SCAN_INTERVAL_TICKS;
             return SkillTickResult.running(true, true);
@@ -3153,9 +3267,107 @@ public final class FightEnderDragonSkill
                 rallyStepTarget.y(),
                 rallyStepTarget.z() + 0.5
         );
-        if (!core.look(lookAt(frame.eyePosition(), targetCenter)).accepted()
-                || !core.move(new MovementIntent(0.78, 0.0, false, false))
-                        .accepted()) {
+        if (rallyStepAwaitingFreshObservation) {
+            final PerceptionVec3 clearanceCenter = new PerceptionVec3(
+                    rallyStepTarget.x() + 0.5,
+                    rallyStepTarget.y() + 1.5,
+                    rallyStepTarget.z() + 0.5
+            );
+            final boolean freshTarget = frame.observationRevision()
+                    > rallyStepObservationRevision
+                    && frame.navigation().voxelAt(rallyStepTarget)
+                        .filter(voxel -> hasObservedRallyPlanningClearance(
+                                voxel,
+                                frame.observationRevision(),
+                                true
+                        ))
+                        .isPresent()
+                    && frame.navigation().voxelAt(rallyStepTarget.above())
+                        .filter(voxel -> NavigationEvidence
+                                .hasFreshTraversalClearance(
+                                        voxel,
+                                        frame.observationRevision()
+                                ))
+                        .isPresent()
+                    && frame.navigation().voxelAt(rallyStepTarget.below())
+                        .filter(voxel -> hasObservedRallySupport(
+                                voxel,
+                                frame.observationRevision(),
+                                true
+                        ))
+                        .isPresent();
+            if (!freshTarget) {
+                if (!core.look(lookAt(
+                        frame.eyePosition(),
+                        clearanceCenter
+                )).accepted()) {
+                    lastRallyFailure = "step_fresh_observation_look_rejected";
+                    return fail(
+                            context,
+                            NAME + ".rally_step_alignment_rejected"
+                    );
+                }
+                return SkillTickResult.running(true, true);
+            }
+            rallyStepAwaitingFreshObservation = false;
+            rallyStepObservationRevision = frame.observationRevision();
+        }
+        /* A one-cell target can be only half a block from the current body
+         * centre while the player's feet are still in the old cell.  Using a
+         * radius here falsely completed the step before any vanilla travel
+         * occurred.  Require the authoritative feet grid to cross into the
+         * observed destination. */
+        if (frame.feet().equals(rallyStepTarget)) {
+            previousRallyStepTarget = rallyStepTarget;
+            rallyStepTarget = null;
+            rallyStepTicks = 0;
+            rallyStepAwaitingFreshObservation = false;
+            rallyStepObservationRevision = -1L;
+            lastRallyFailure = "";
+            rallyAttempts = 0;
+            skyBlocksSinceRally = 0;
+            localRallyPoint = frame.position();
+            phase = Phase.SEARCHING;
+            scanTurns = 0;
+            nextActionTick = context.gameTick() + 1;
+            return SkillTickResult.running(true, true);
+        }
+        if (rallyStepTicks++ >= OBSERVED_RALLY_STEP_TICKS) {
+            core.stop();
+            rallyAttempts++;
+            rallyStepTimeouts++;
+            lastRallyFailure = "step_timeout";
+            rallyStepTarget = null;
+            rallyStepTicks = 0;
+            rallyStepAwaitingFreshObservation = false;
+            rallyStepObservationRevision = -1L;
+            phase = Phase.SEARCHING;
+            nextActionTick = context.gameTick() + SCAN_INTERVAL_TICKS;
+            return SkillTickResult.running(true, true);
+        }
+        final PerceptionVec3 targetDirection = targetCenter.subtract(
+                frame.eyePosition()
+        );
+        if (angularError(
+                    frame.lookDirection(),
+                    targetDirection
+                ) > OBSERVED_RALLY_ALIGNMENT_DEGREES) {
+            if (!core.stop().accepted()
+                    || !core.look(lookAt(
+                            frame.eyePosition(),
+                            targetCenter
+                    )).accepted()) {
+                lastRallyFailure = "step_alignment_rejected";
+                return fail(
+                        context,
+                        NAME + ".rally_step_alignment_rejected"
+                );
+            }
+            return SkillTickResult.running(true, true);
+        }
+        if (!core.move(new MovementIntent(0.78, 0.0, false, false))
+                .accepted()) {
+            lastRallyFailure = "step_move_rejected";
             return fail(context, NAME + ".rally_step_actuator_rejected");
         }
         return SkillTickResult.running(true, true);
@@ -3166,6 +3378,12 @@ public final class FightEnderDragonSkill
     ) {
         final long revision = frame.observationRevision();
         final GridPos current = frame.feet();
+        final boolean allowHistorical = EndArenaTopology.horizontalRadius(
+                frame.position()
+        ) > FIGHT_REENTRY_RADIUS;
+        final double currentRadius = EndArenaTopology.horizontalRadius(
+                frame.position()
+        );
         final double towardX = EndArenaTopology.CENTER_X - frame.position().x();
         final double towardZ = EndArenaTopology.CENTER_Z - frame.position().z();
         return List.of(
@@ -3181,17 +3399,36 @@ public final class FightEnderDragonSkill
                                 candidate.z() + 0.5
                         )
                 ))
+                .filter(candidate -> EndArenaTopology.horizontalRadius(
+                        new PerceptionVec3(
+                                candidate.x() + 0.5,
+                                candidate.y(),
+                                candidate.z() + 0.5
+                        )
+                ) <= currentRadius + 0.50)
+                .filter(candidate -> !candidate.equals(
+                        previousRallyStepTarget
+                ))
                 .filter(candidate -> frame.navigation().voxelAt(candidate)
-                        .filter(voxel -> NavigationEvidence
-                                .hasFreshTraversalClearance(voxel, revision))
+                        .filter(voxel -> hasObservedRallyPlanningClearance(
+                                voxel,
+                                revision,
+                                allowHistorical
+                        ))
                         .isPresent())
                 .filter(candidate -> frame.navigation().voxelAt(candidate.above())
-                        .filter(voxel -> NavigationEvidence
-                                .hasFreshTraversalClearance(voxel, revision))
+                        .filter(voxel -> hasObservedRallyPlanningClearance(
+                                voxel,
+                                revision,
+                                allowHistorical
+                        ))
                         .isPresent())
                 .filter(candidate -> frame.navigation().voxelAt(candidate.below())
-                        .filter(voxel -> NavigationEvidence
-                                .isFreshStandingSupport(voxel, revision))
+                        .filter(voxel -> hasObservedRallySupport(
+                                voxel,
+                                revision,
+                                allowHistorical
+                        ))
                         .isPresent())
                 .max(Comparator.comparingDouble(candidate -> {
                     final double dx = candidate.x() + 0.5 - frame.position().x();
@@ -3209,6 +3446,68 @@ public final class FightEnderDragonSkill
         return EndArenaTopology.oneCardinalStepTowardCenter(
                 frame.position()
         );
+    }
+
+    private static boolean hasObservedRallySupport(
+            final ObservedVoxel voxel,
+            final long revision,
+            final boolean allowHistorical
+    ) {
+        return NavigationEvidence.isFreshStandingSupport(voxel, revision)
+                || allowHistorical
+                && voxel.kind().supportsWeight()
+                && (voxel.occupancyEvidence()
+                        == OccupancyEvidence.SURFACE_HIT
+                    || voxel.occupancyEvidence()
+                        == OccupancyEvidence.BODY_CONTACT)
+                && voxel.observationRevision() <= revision
+                && revision - voxel.observationRevision()
+                        <= OBSERVED_RALLY_MEMORY_MAX_AGE
+                && voxel.topSupportAffordance().safelySupportsStanding()
+                || NavigationEvidence.isRecentBodyContactSupport(
+                        voxel,
+                        revision,
+                        OBSERVED_RALLY_SUPPORT_MAX_AGE
+                );
+    }
+
+    private static boolean hasObservedRallyPlanningClearance(
+            final ObservedVoxel voxel,
+            final long revision,
+            final boolean allowHistorical
+    ) {
+        if (!allowHistorical) {
+            return hasObservedRallyClearance(voxel, revision);
+        }
+        return NavigationEvidence.hasFreshTraversalClearance(
+                voxel,
+                revision
+        ) || voxel.kind().isPassable()
+                && voxel.observationRevision() <= revision
+                && revision - voxel.observationRevision()
+                        <= OBSERVED_RALLY_MEMORY_MAX_AGE
+                && NavigationEvidence.hasTraversalClearance(voxel);
+    }
+
+    /**
+     * A body-occupied adjacent cell can legitimately straddle two semantic
+     * revisions while vanilla travel is settling. Treat that very narrow,
+     * recent self-contact as clearance; the head cell remains required to be
+     * fresh in the caller, so this does not authorize an unseen corridor.
+     */
+    private static boolean hasObservedRallyClearance(
+            final ObservedVoxel voxel,
+            final long revision
+    ) {
+        return NavigationEvidence.hasFreshTraversalClearance(
+                voxel,
+                revision
+        ) || voxel.kind() == VoxelKind.AIR
+                && voxel.occupancyEvidence()
+                        == OccupancyEvidence.BODY_OCCUPIED
+                && voxel.observationRevision() <= revision
+                && revision - voxel.observationRevision()
+                        <= OBSERVED_RALLY_SUPPORT_MAX_AGE;
     }
 
     /**
@@ -3695,9 +3994,35 @@ public final class FightEnderDragonSkill
                                                 face
                                         )
                         )
-                        .thenComparingDouble(
-                                VisibleBlockFace::distance
-                        ));
+                .thenComparingDouble(
+                        VisibleBlockFace::distance
+                ));
+    }
+
+    private static Optional<VisibleBlockFace> selectSkyClearanceTarget(
+            final CoreSkillFrame frame,
+            final Optional<VisibleBlockFace> overhead,
+            final Optional<VisibleBlockFace> lateral
+    ) {
+        if (overhead.isEmpty()) {
+            return lateral;
+        }
+        if (lateral.isEmpty()) {
+            return overhead;
+        }
+        /* Prefer a visible lateral End-stone wall when it makes measurable
+         * progress toward the central island.  Mining an overhead lip first
+         * can create a legal-looking vertical tunnel that never exposes the
+         * dragon or a safe route. */
+        /* A natural island edge can put the only legal detour one cell
+         * sideways even when that cell is almost radial-neutral.  Keep the
+         * preference for centerward walls, but admit a small positive score
+         * so a visible wall can be opened instead of repeatedly mining an
+         * overhead lip.  The target is still bounded by the first-person
+         * fan, reach, collision and BreakBlock's retained crosshair check. */
+        return lateralCenterwardScore(frame, lateral.orElseThrow()) <= 0.50
+                ? lateral
+                : overhead;
     }
 
     private static double lateralCenterwardScore(

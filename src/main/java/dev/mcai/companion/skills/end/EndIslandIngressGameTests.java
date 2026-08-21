@@ -63,6 +63,7 @@ public final class EndIslandIngressGameTests {
     private static final int END_SETTLE_TIMEOUT_TICKS = 400;
     private static final int DYNAMIC_DRAGON_TIMEOUT_TICKS = 1_200;
     private static final int DYNAMIC_DRAGON_OBSERVATION_TICKS = 240;
+    private static final int DYNAMIC_DRAGON_FIGHT_TIMEOUT_TICKS = 8_000;
     private static final int BRIDGE_BLOCKS = 64;
 
     private EndIslandIngressGameTests() {
@@ -700,7 +701,7 @@ public final class EndIslandIngressGameTests {
                     || snapshot.state() == SkillSupervisor.State.CANCEL_PENDING) {
                 helper.assertTrue(
                         helper.getTick() - dynamicCombatStartedAt
-                            <= MAX_TICKS,
+                            <= DYNAMIC_DRAGON_FIGHT_TIMEOUT_TICKS,
                         "Natural dynamic-dragon fight exceeded its bound: "
                             + diagnostics()
                 );

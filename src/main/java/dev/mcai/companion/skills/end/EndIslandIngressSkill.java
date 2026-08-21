@@ -627,6 +627,44 @@ public final class EndIslandIngressSkill
                 forwardWall.orElseThrow()
             );
         }
+        /* A natural End crystal pillar can occupy the centerward column while
+         * its two lateral cells are ordinary End stone.  A player opens one
+         * observed side cell and walks around the pillar; repeatedly placing
+         * a bridge into the opaque pillar cannot make progress.  The helper
+         * below admits only a lateral column with fresh support and head
+         * clearance (including an adjacent overhead lip), so this remains a
+         * fair, reversible vanilla mining action rather than an inferred
+         * detour. */
+        final Optional<VisibleBlockFace> lateralWall =
+                visibleLateralIngressWall(frame);
+        if (interactionActuator != null && lateralWall.isPresent()) {
+            return startVisibleBlockBreak(
+                    context,
+                    parameters,
+                    frame,
+                    lateralWall.orElseThrow()
+            );
+        }
+        /* End crystal pillars are opaque obsidian and cannot be mined with
+         * the survival pickaxe.  When the fair frame proves that such a wall
+         * occupies the centerward feet/head column, climb one owned block to
+         * obtain a new eye-line instead of starting a bridge into occupied
+         * terrain.  TowerUp owns the placement, jump and landing checks. */
+        if (visibleCenterwardObsidianWall(frame)) {
+            final Optional<SkillTickResult> sideStep =
+                    startObservedSideStep(context, parameters, frame);
+            if (sideStep.isPresent()) {
+                return sideStep.orElseThrow();
+            }
+            if (lastChildFailureCode.startsWith("tower_up.")) {
+                /* A pillar-side jump can be physically blocked by a newly
+                 * exposed overhang.  Rotate through the normal first-person
+                 * frontier probes before authorizing another tower attempt;
+                 * otherwise the same opaque wall consumes every retry. */
+                return prepareFrontierProbe(context, frame);
+            }
+            return startOneBlockTower(context, parameters, frame);
+        }
         if (centerwardRecoveryNeeded) {
             return startOneBlockBridge(context, parameters, frame);
         }
@@ -1690,6 +1728,83 @@ public final class EndIslandIngressSkill
                 .min(Comparator.comparingInt(face ->
                         grid(face.block()).y()
                 ));
+    }
+
+    private static Optional<VisibleBlockFace> visibleLateralIngressWall(
+            final CoreSkillFrame frame
+    ) {
+        final GridPos feet = frame.feet();
+        final double centerwardX = EndArenaTopology.CENTER_X
+                - frame.position().x();
+        final double centerwardZ = EndArenaTopology.CENTER_Z
+                - frame.position().z();
+        final boolean centerwardAlongX = Math.abs(centerwardX)
+                >= Math.abs(centerwardZ);
+        return frame.visibleBlockFaces().stream()
+                .filter(face -> END_STONE.equals(face.blockTypeId()))
+                .filter(face -> {
+                    final GridPos block = grid(face.block());
+                    final int dx = block.x() - feet.x();
+                    final int dz = block.z() - feet.z();
+                    if (Math.abs(dx) + Math.abs(dz) != 1
+                            || block.y() < feet.y()
+                            || block.y() > feet.y() + 3) {
+                        return false;
+                    }
+                    if (block.y() == feet.y()
+                            && ("up".equals(face.face())
+                                || "down".equals(face.face()))) {
+                        return false;
+                    }
+                    /* If the route points along X, only Z neighbours are
+                     * lateral; the inverse applies when it points along Z.
+                     * A tie admits either axis because both are equally fair
+                     * first-person alternatives. */
+                    return centerwardAlongX ? dz != 0 : dx != 0;
+                })
+                .filter(face -> {
+                    final GridPos block = grid(face.block());
+                    final Optional<ObservedVoxel> destination = frame
+                            .navigation()
+                            .voxelAt(block);
+                    final Optional<ObservedVoxel> head = frame.navigation()
+                            .voxelAt(block.above());
+                    final Optional<ObservedVoxel> support = frame.navigation()
+                            .voxelAt(block.below());
+                    return destination
+                            .filter(voxel -> voxel.kind().supportsWeight())
+                            .isPresent()
+                        && head.filter(voxel -> NavigationEvidence
+                                .hasFreshTraversalClearance(
+                                        voxel,
+                                        frame.observationRevision()
+                                )).isPresent()
+                        && support.filter(voxel -> NavigationEvidence
+                                .isFreshStandingSupport(
+                                        voxel,
+                                        frame.observationRevision()
+                                )).isPresent();
+                })
+                .min(Comparator.comparingDouble(VisibleBlockFace::distance));
+    }
+
+    private static boolean visibleCenterwardObsidianWall(
+            final CoreSkillFrame frame
+    ) {
+        final PerceptionVec3 target = EndArenaTopology
+                .oneCardinalStepTowardCenter(frame.position());
+        final GridPos targetFeet = new GridPos(
+                (int) Math.floor(target.x()),
+                frame.feet().y(),
+                (int) Math.floor(target.z())
+        );
+        return frame.visibleBlockFaces().stream()
+                .filter(face -> "minecraft:obsidian".equals(
+                        face.blockTypeId()
+                ))
+                .map(face -> grid(face.block()))
+                .anyMatch(block -> block.equals(targetFeet)
+                        || block.equals(targetFeet.above()));
     }
 
     private static Optional<VisibleBlockFace> visibleIngressObstruction(

@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-21T20:18:30+09:00
+Last updated: 2026-08-21T21:41:20+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,34 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+- The current uncommitted End-combat patch adds fresh observed rally targets,
+  bounded sky-clearance target rebinding, observed lateral End-stone mining,
+  safe side-step recovery before opaque pillar ascent, and a frontier probe
+  after a failed tower child. It also records the nested ingress checkpoint so
+  a failure remains diagnosable after the parent fight resumes. All movement,
+  mining, looking, and block use remain ordinary `ServerPlayer`/vanilla skill
+  actions authorized by fresh first-person semantic frames; no teleport,
+  hidden terrain read, command, or fixture world mutation is used by the
+  production controller.
+- Focused ingress/combat tests, the full JUnit suite, and the Forge 65.1.1
+  build passed after this patch. The fresh natural ingress selector
+  `mcai_companion:natural_end_island_ingress` passed in isolated directory
+  `/tmp/mcai-natural-ingress-posttower-HjoyRe` (`All 1 required tests passed`).
+- The latest zero-human natural dynamic-dragon selector remains an honest
+  failure in `/tmp/mcai-dynamic-dragon-sidestep-kY5x7c`: the body reached
+  approximately `(47.629,51.0,-0.121)`, but the ingress child ended with
+  `reach_end_island.scan_budget_exhausted` and the fight with
+  `fight_ender_dragon.no_visible_combat_target` after 7,045 executed ticks.
+  It recorded 17 rally starts and 96 observed sky blocks mined, but zero
+  arrows, dragon damage, kill, or return. Dynamic dragon combat therefore
+  remains a release blocker; no random-seed, Hardcore, two-hour, or M1--M4
+  claim is made.
+- The current release JAR is
+  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
+  `ca2a6076694b393c36413ae222a9abf93ed59172089949b04f76117cce784863`.
+  `git diff --check` is clean. Publication of this uncommitted snapshot is
+  pending a reviewed commit and fresh-clone verification.
 
 - Commit `f0301fc4a4f95ccc42d2eb68dde7ed8f41964e51` adds a narrowly scoped
   observed-wall attachment path to `BridgeToSkill`: only the End ingress

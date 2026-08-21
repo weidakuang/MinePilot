@@ -15413,6 +15413,7 @@ public final class LiveModelChatGameTests {
         private boolean fightSkillObserved;
         private boolean returnSkillObserved;
         private boolean priorRouteCheckpointInstalled;
+        private boolean chatSubmitted;
 
         private LiveEndPortalActivationScenario(
                 final GameTestHelper helper,
@@ -15545,48 +15546,60 @@ public final class LiveModelChatGameTests {
                     "Logged-in End-portal test player lacked task permission"
             );
             goalRevisionBefore = runtime.goals().snapshot().revision();
-            final String request = requireVictory
-                    ? runtime.worldData().displayName()
-                        + "，请从眼前的末地传送门继续通关Minecraft："
-                        + "放入末影之眼激活并进入末地，"
-                        + "击败末影龙，然后进入中央返回传送门"
-                        + "回到主世界。"
-                    : requireEntry
-                    ? runtime.worldData().displayName()
-                        + "，请激活你眼前的末地传送门，"
-                        + "把背包里的末影之眼放进框架，"
-                        + "然后进入传送门前往末地。"
-                    : runtime.worldData().displayName()
-                        + "，请激活你眼前的末地传送门，"
-                        + "把背包里的末影之眼放进框架。";
-            final Component submitted =
-                    ForgeHooks.onServerChatSubmittedEvent(
-                            human,
-                            Component.literal(request)
-                    );
-            helper.assertTrue(
-                    submitted != null,
-                    "Companion cancelled the End-portal chat command"
-            );
-            if (requireVictory) {
-                final GoalSnapshot installed =
-                        runtime.goals().snapshot();
-                if (installed.revision() > goalRevisionBefore
-                        && installed.status() == GoalStatus.RUNNING) {
-                    installPriorRouteCheckpoint(installed);
-                }
-            }
-            humanSession.close();
-            humanSession = null;
+            /*
+             * The first human login may synchronously remove and relogin the
+             * unanchored companion. Keep this real chat connection alive and
+             * defer submission until the replacement ServerPlayer is visible
+             * again. Closing it in the same tick as placeNewPlayer races the
+             * authoritative body transaction and produced a misleading
+             * Optional.get/"No value present" fixture failure before the
+             * model was ever called.
+             */
             stage = EndPortalStage.GOAL;
             stageStartedNanos = System.nanoTime();
         }
 
         private void waitForGoal() {
-            assertNoHumanPlayers();
             assertWithinModelDeadline(
                     "Live model did not classify the End-portal task"
             );
+            final Optional<ServerPlayer> bodyCandidate =
+                    AiPlayerManager.onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            helper.assertTrue(
+                    bodyId.equals(bodyCandidate.orElseThrow().getUUID()),
+                    "Initial-anchor relogin changed the companion UUID"
+            );
+            if (!chatSubmitted) {
+                final ServerPlayer human = humanSession.player();
+                final String request = requireVictory
+                        ? runtime.worldData().displayName()
+                            + "，请从眼前的末地传送门继续通关Minecraft："
+                            + "放入末影之眼激活并进入末地，"
+                            + "击败末影龙，然后进入中央返回传送门"
+                            + "回到主世界。"
+                        : requireEntry
+                        ? runtime.worldData().displayName()
+                            + "，请激活你眼前的末地传送门，"
+                            + "把背包里的末影之眼放进框架，"
+                            + "然后进入传送门前往末地。"
+                        : runtime.worldData().displayName()
+                            + "，请激活你眼前的末地传送门，"
+                            + "把背包里的末影之眼放进框架。";
+                final Component submitted =
+                        ForgeHooks.onServerChatSubmittedEvent(
+                                human,
+                                Component.literal(request)
+                        );
+                helper.assertTrue(
+                        submitted != null,
+                        "Companion cancelled the End-portal chat command"
+                );
+                chatSubmitted = true;
+                return;
+            }
             final GoalSnapshot goal = runtime.goals().snapshot();
             if (goal.revision() == goalRevisionBefore) {
                 return;
@@ -15602,6 +15615,8 @@ public final class LiveModelChatGameTests {
                     && !priorRouteCheckpointInstalled) {
                 installPriorRouteCheckpoint(goal);
             }
+            humanSession.close();
+            humanSession = null;
             activationGoalRevision = goal.revision();
             stage = EndPortalStage.SKILL;
             stageStartedNanos = System.nanoTime();

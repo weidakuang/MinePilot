@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T02:44:13+09:00
+Last updated: 2026-08-22T02:50:01+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -84,6 +84,15 @@ This section supersedes older chronological notes below when they conflict.
   recorded five gameplay planning requests and 40,964 total model tokens.
   This is bounded wheat-plot evidence only, not a long-term farm, random-world,
   rendered-client, or formal M1--M4 result.
+- The late End-completion rerun now reaches the real model after fixing the
+  initial-anchor chat race, but fails honestly at the portal handoff. MiMo
+  returned `START_SKILL activate_observed_end_portal` three times; each start
+  was rejected by the current safety/observation preconditions while ambient
+  hostile pressure displaced the body. The supervisor entered
+  `SAFE_IDLE/repeated_skill_rejection_without_world_change` at tick 2465 with
+  zero active portal blocks, no End entry, and 25,927 recorded model tokens.
+  This is a genuine negative model-to-safety result, not a fabricated action
+  or a formal M2 claim.
 - A fresh authorized Forge 65.1.1 live-model container slice also passed. The
   model first returned an invalid `use_block` envelope; local validation
   rejected it without an action, then the model corrected the decision,
@@ -750,6 +759,7 @@ Live MiMo ten-plus-ten hostile group             PASS (39.70-second slice; 20 vi
 Live MiMo iron-golem duel                         PASS (12.15-second bounded slice; 7,736 input/148 output tokens; model engage, vanilla attack, golem damage, verified incoming golem attack, body survival)
 Live MiMo water clutch                             PASS (15.26-second bounded slice; HTTP-200 REPLAN plus local emergency water placement, exactly one vanilla bucket use, no fall damage; 11,588 model tokens)
 Live MiMo farm work                                PASS (45.65-second bounded slice; two harvest/replant skills plus observed crop-field maintenance, A Seedy Place, 40,964 model tokens)
+Live MiMo late End completion handoff              FAIL (137-second bounded slice; three real portal-activation decisions rejected under hostile pressure, SAFE_IDLE, 25,927 model tokens; no End entry)
 Roof-jump physical recovery contract             PASS (no-model GameTest)
 Focused shelter-material/building JUnit tests    PASS
 Exact Forge 65.1.1 dedicated lifecycle smoke      PASS (real dedicated server; no functional claim)

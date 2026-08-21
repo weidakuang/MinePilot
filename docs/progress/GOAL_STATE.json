@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T17:44:13Z",
+  "updatedAtUtc": "2026-08-21T17:50:01Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
   "publicMainHead": "a838d6c857f4dcb376c89ce688062518ec9ba4d3",
   "releaseStatus": "NON_RELEASE",
@@ -120,6 +120,19 @@
       "modelTokensRecorded": 40964,
       "fixtureConstraint": "Bounded authored wheat plot with an embedded GameTest player and controlled crop count. This is live model-to-vanilla farm evidence, not a random-world, long-term economy, rendered-client, or formal M1-M4 gate.",
       "runRoot": "run/gametestserver (2026-08-22T02:39+09:00 authorized rerun)",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveLateEndCompletionChain": {
+      "status": "FAIL_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL activate_observed_end_portal (three rejected attempts)",
+      "details": "After the initial-anchor test race was fixed, the real model was called three times and returned the same portal-activation skill. Each start was rejected by current safety/observation preconditions; no portal frame was activated. The supervisor then entered SAFE_IDLE with detailCode repeated_skill_rejection_without_world_change at game tick 2465. The body had been displaced to approximately (-322.542,-60.0,-327.787), portalBlocks remained 0, and the route did not enter the End.",
+      "runtimeSeconds": 137.0,
+      "modelTokensRecorded": 25927,
+      "fixtureConstraint": "Controlled late-route portal fixture with ambient hostile pressure enabled. This is genuine negative live-model evidence: no fallback activation, teleport, command, or world mutation was used. It is not random-world, Hardcore, rendered-client, or formal M1-M4 evidence.",
+      "supersededHarnessFailure": "The immediately preceding attempt failed before any model response because the test closed the chat connection during the first-human body relogin and surfaced No value present; the harness now waits for the same-UUID replacement body before submitting chat.",
+      "runRoot": "run/gametestserver (2026-08-22T02:47+09:00 authorized rerun)",
       "formalGate": "NOT_RUN"
     },
     "latestLiveEnderPearlReserve": {

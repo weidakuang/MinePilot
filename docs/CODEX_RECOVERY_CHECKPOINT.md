@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T04:46:00+09:00
+Last updated: 2026-08-22T04:53:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -64,6 +64,12 @@ This section supersedes older chronological notes below when they conflict.
   resulting development artifact is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
   `2fe53c4a61c374ebd8e60529da171af297bb2e1f53033054f24ae1337af1f243`.
+- A diagnostic-only rerun with the obsidian-frontier re-entry completion
+  target tightened to 30 blocks was reverted: it moved the body to about
+  `(47.5,51.0,-0.3)` but the fair ingress child timed out after 6,000 ticks
+  with 51 bridge steps and two tower steps. This confirms that the tighter
+  target is not a safe standalone fix; it is not part of the published source
+  or any pass claim.
 - `EndIslandIngressSkill` now retains a bounded set of fairly observed
   landfall supports whose vanilla `TravelTo` child became stuck, excludes
   those cells from the next candidate search, and clears the set only after a

@@ -912,6 +912,24 @@ public final class BrainOrchestrator {
             emitNotice(goal.revision(), "skill_cancel_failed");
         } else {
             terminal(goal, GoalStatus.SAFE_IDLE, "goal_cancelled");
+            if (result.isPresent()
+                    && result.get().status() == SkillResult.Status.CANCELLED) {
+                /*
+                 * Cancellation can complete the skill in this same server
+                 * tick.  The normal handleSkillOutcome path deliberately
+                 * does not run again after sawActiveSkill is cleared, so
+                 * publish the lifecycle transition here while the
+                 * SkillSupervisor terminal result is authoritative.  This is
+                 * what lets a real teammate see "stopped" instead of only a
+                 * silent safe-idle goal revision.
+                 */
+                emitNotice(goal.revision(), "skill_cancelled");
+                emitSkillNotice(
+                        goal.revision(),
+                        "skill_cancelled",
+                        skillSnapshot.skillName()
+                );
+            }
         }
         sawActiveSkill = false;
     }

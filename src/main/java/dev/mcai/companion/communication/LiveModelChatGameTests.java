@@ -358,6 +358,33 @@ public final class LiveModelChatGameTests {
     }
 
     /**
+     * Exercises the teammate stop/resume contract with the configured live
+     * model. The player keeps a real chat session open, cancels an active
+     * follow at a safe checkpoint, verifies the idle state, and submits a
+     * fresh follow request without any teleport or direct world mutation.
+     */
+    public static void realPlayerTaskToLiveModelFollowStopResume(
+            final GameTestHelper helper
+    ) {
+        if (!Boolean.getBoolean("mcai.liveModelTest")) {
+            helper.succeed();
+            return;
+        }
+        final ServerRuntime runtime = CompanionRuntime.active()
+                .filter(candidate ->
+                        candidate.server() == helper.getLevel().getServer())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Companion runtime is unavailable"
+                ));
+        final LiveFollowScenario scenario = new LiveFollowScenario(
+                helper, runtime, true, true
+        );
+        helper.addCleanup(ignored -> scenario.cleanup());
+        scenario.start();
+        helper.onEachTick(scenario::tick);
+    }
+
+    /**
      * Inner-loop physical integration for the trusted immediate-follow lane.
      * A real PlayerList-backed test player submits ordinary Forge chat and
      * the production body must acquire {@code follow_entity} and walk the
@@ -2176,6 +2203,7 @@ public final class LiveModelChatGameTests {
         private final ServerRuntime runtime;
         private final long createdAt;
         private final boolean requireModelProbe;
+        private final boolean exerciseStopResume;
 
         private FollowStage stage = FollowStage.BODY;
         private CompletableFuture<CapabilityProbeOutcome> probe;
@@ -2192,6 +2220,9 @@ public final class LiveModelChatGameTests {
         private boolean secondLegStarted;
         private boolean sawActiveSkillArbiter;
         private boolean continuationNudgeSent;
+        private boolean stopSubmitted;
+        private Vec3 positionAtStop;
+        private int stopStableTicks;
         private HoldingModelGateway holdingGateway;
         private boolean followCourseRepositioned;
 
@@ -2200,9 +2231,19 @@ public final class LiveModelChatGameTests {
                 final ServerRuntime runtime,
                 final boolean requireModelProbe
         ) {
+            this(helper, runtime, requireModelProbe, false);
+        }
+
+        private LiveFollowScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime,
+                final boolean requireModelProbe,
+                final boolean exerciseStopResume
+        ) {
             this.helper = helper;
             this.runtime = runtime;
             this.requireModelProbe = requireModelProbe;
+            this.exerciseStopResume = exerciseStopResume;
             this.createdAt = helper.getTick();
             this.stageStartedNanos = System.nanoTime();
         }
@@ -2236,6 +2277,9 @@ public final class LiveModelChatGameTests {
                 case VISIBLE -> waitForVisibleHuman();
                 case GOAL -> waitForGoal();
                 case SKILL -> waitForFollowSkill();
+                case STOP -> waitForStop();
+                case RESUME_GOAL -> waitForResumeGoal();
+                case RESUME_SKILL -> waitForResumeSkill();
                 case FOLLOW -> waitForPhysicalFollow();
                 case DONE -> {
                     // GameTest is already terminal.
@@ -2440,6 +2484,20 @@ public final class LiveModelChatGameTests {
                     skill.boundGoalRevision() == followGoalRevision,
                     "follow_entity bound the wrong goal revision"
             );
+            if (exerciseStopResume) {
+                final Component stop = ForgeHooks.onServerChatSubmittedEvent(
+                        human,
+                        Component.literal("停下")
+                );
+                helper.assertTrue(
+                        stop != null,
+                        "Companion cancelled the local stop request"
+                );
+                stopSubmitted = true;
+                stage = FollowStage.STOP;
+                stageStartedNanos = System.nanoTime();
+                return;
+            }
             if (!continuationNudgeSent) {
                 final Component nudge =
                         ForgeHooks.onServerChatSubmittedEvent(
@@ -2478,6 +2536,112 @@ public final class LiveModelChatGameTests {
                     .onlinePlayer(runtime.server())
                     .orElseThrow()
                     .position();
+            stage = FollowStage.FOLLOW;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForStop() {
+            assertWithinModelDeadline(
+                    "Companion did not reach a safe stop checkpoint"
+            );
+            helper.assertTrue(
+                    stopSubmitted,
+                    "Stop stage started without a submitted player request"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            final var skill = runtime.skillSupervisor().snapshot();
+            if (goal.status() == GoalStatus.RUNNING
+                    || goal.status() == GoalStatus.CANCEL_PENDING
+                    || skill.state()
+                        == dev.mcai.companion.skill.SkillSupervisor.State.RUNNING) {
+                return;
+            }
+            helper.assertTrue(
+                    goal.status() == GoalStatus.SAFE_IDLE
+                            && goal.detailCode().equals("goal_cancelled"),
+                    "Stop request ended in an untruthful state: " + goal
+            );
+            final ServerPlayer body = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow();
+            if (positionAtStop == null) {
+                positionAtStop = body.position();
+                return;
+            }
+            helper.assertTrue(
+                    body.position().distanceTo(positionAtStop) <= 0.25D,
+                    "Body moved after the stop checkpoint: before="
+                            + positionAtStop + ", after=" + body.position()
+            );
+            stopStableTicks++;
+            if (stopStableTicks < 2) {
+                return;
+            }
+            body.setDeltaMovement(Vec3.ZERO);
+            human.setPos(
+                    body.getX() + INITIAL_LEAD,
+                    body.getY(),
+                    body.getZ()
+            );
+            human.setDeltaMovement(Vec3.ZERO);
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    human.getEyePosition()
+            );
+            body.setYHeadRot(body.getYRot());
+            goalRevisionBefore = goal.revision();
+            final Component resume = ForgeHooks.onServerChatSubmittedEvent(
+                    human,
+                    Component.literal(
+                            "跟我来，继续保持两三格距离，正常走，不要传送。"
+                    )
+            );
+            helper.assertTrue(
+                    resume != null,
+                    "Companion cancelled the follow-up request after stop"
+            );
+            bodyStart = body.position();
+            previousBodyPosition = bodyStart;
+            bodyPath = 0.0D;
+            secondLegStarted = false;
+            continuationNudgeSent = true;
+            stage = FollowStage.RESUME_GOAL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForResumeGoal() {
+            assertWithinModelDeadline(
+                    "Live model did not accept the follow-up after stop"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            if (goal.revision() == goalRevisionBefore) {
+                return;
+            }
+            helper.assertTrue(
+                    goal.revision() > goalRevisionBefore
+                            && goal.status() == GoalStatus.RUNNING
+                            && goal.goal().contains("跟我来"),
+                    "Follow-up chat did not become a running goal: " + goal
+            );
+            followGoalRevision = goal.revision();
+            stage = FollowStage.RESUME_SKILL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForResumeSkill() {
+            assertWithinModelDeadline(
+                    "Live model did not resume follow_entity after stop"
+            );
+            final var skill = runtime.skillSupervisor().snapshot();
+            if (!skill.skillName().equals("follow_entity")
+                    || skill.state()
+                        != dev.mcai.companion.skill.SkillSupervisor.State.RUNNING) {
+                return;
+            }
+            helper.assertTrue(
+                    skill.boundGoalRevision() == followGoalRevision,
+                    "Resumed follow bound the wrong goal revision: " + skill
+            );
             stage = FollowStage.FOLLOW;
             stageStartedNanos = System.nanoTime();
         }
@@ -2857,6 +3021,9 @@ public final class LiveModelChatGameTests {
         VISIBLE,
         GOAL,
         SKILL,
+        STOP,
+        RESUME_GOAL,
+        RESUME_SKILL,
         FOLLOW,
         DONE
     }

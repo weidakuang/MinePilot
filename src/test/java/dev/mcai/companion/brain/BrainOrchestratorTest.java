@@ -2408,6 +2408,8 @@ class BrainOrchestratorTest {
             assertEquals(1, fixture.skill.cancelCalls);
             assertEquals(GoalStatus.SAFE_IDLE, fixture.goals.snapshot().status());
             assertEquals("goal_cancelled", fixture.goals.snapshot().detailCode());
+            assertTrue(fixture.hasNotice("skill_cancelled"));
+            assertTrue(fixture.hasNotice("skill_cancelled.test"));
         }
     }
 

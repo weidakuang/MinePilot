@@ -42,6 +42,13 @@ This section supersedes older chronological notes below when they conflict.
   travel_to`, `skill_started`, and ordinary `move` actions. The body reached
   the bounded target without teleport or command. This remains controlled
   GameTest evidence, not rendered Actor/Observer or formal M1--M4 evidence.
+- A fresh authorized Forge 65.1.1 live-model container slice also passed. The
+  model first returned an invalid `use_block` envelope; local validation
+  rejected it without an action, then the model corrected the decision,
+  completed vanilla chest opening, and completed `transfer_menu_item` for
+  three oak planks. SQLite recorded the failure/recovery and accepted causal
+  chains; this remains controlled chest evidence, not the formal Inventory
+  black-box gate.
 - Focused JUnit, full build, repository preflight, Git Data API publication,
   fresh-clone byte comparison, and fresh-clone Forge `compileJava` all passed
   for this snapshot. The dynamic natural-End gate remains recorded as failed;

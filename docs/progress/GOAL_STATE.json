@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T20:33:53Z",
+  "updatedAtUtc": "2026-08-21T20:46:26Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
-  "publicMainHead": "1d1c75173c475470dde808582e4b07d70f1a7254",
+  "publicMainHead": "664e99d1532657d10ee20308877c3cf33f30b35d",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.11-dev-mc26.2",
@@ -504,16 +504,31 @@
       "supersededFailure": "The preceding run recorded repeated model replans and a stale collect_observed_item handle rejected by visible_dropped_item_required; it produced no movement or inventory claim.",
       "formalGate": "NOT_RUN"
     },
+    "professionalCompanionLiveStopResume": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL follow_entity -> local stop -> START_SKILL follow_entity",
+      "actions": "A real embedded player submitted an ordinary follow request. MiMo returned HTTP-200 START_SKILL follow_entity; the player then sent the local Chinese stop command while the skill was running. The server reached SAFE_IDLE at the cancellation checkpoint and emitted skill_cancelled.follow_entity. A second ordinary follow request produced a second HTTP-200 START_SKILL follow_entity and vanilla move actions. SQLite recorded both model chains, the cancellation event, and low_level_actions_issued(action=move).",
+      "modelInputTokens": 14292,
+      "modelOutputTokens": 356,
+      "modelTokensRecorded": 14648,
+      "providerLatencyMillis": 9439,
+      "runtimeSeconds": 19.80,
+      "runRoot": "/tmp/minepilot-live-follow-stop-resume-1787344952",
+      "fixtureConstraint": "Controlled Forge GameTest with one embedded player and a bounded follow course; not a rendered Actor/Observer client, random Hardcore, long-soak, or formal M3 result.",
+      "formalGate": "NOT_RUN"
+    },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, Forge compatibility validation, and a fresh-public-clone Forge 65.0.0 compile after the focused End safety changes. The changed production, GameTest, checkpoint, and goal-state files matched the published clone byte-for-byte. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "4f49c92df9d4383b370f337878b19498e8abeea2a0e283b5e3896ff8c2eddf03",
+      "sha256": "4aab889e6ca0b655fdd65c0746133bb7335eef1b7fc9477f107d73f4dc9f644d",
       "formalGate": "NOT_RUN"
     }
   },
   "nextActions": [
-    "Run a configured-model dedicated-server companion scenario that exercises chat acceptance, skill lifecycle status, local stop, safe cancellation, and resumed follow-up; retain M3 as NOT_RUN until the external Actor/Observer archive exists.",
+    "Extend the professional-companion lane to interruption during navigation and combat, with the same server-owned stop/resume and player-visible lifecycle evidence; retain M3 as NOT_RUN until the external Actor/Observer archive exists.",
     "Preserve the controlled stronghold-room-to-return PASS without promoting it to random-seed, Hardcore, dynamic-dragon, or M2/M4 evidence.",
     "Run the formal rendered Actor/Observer gate only on an authorized Linux/Xvfb worker with the exact frozen artifact.",
     "Use the recorded natural dynamic-dragon failure to continue the fair pillar-edge route: complete and rerun the observed attachment path, then add safe dynamic crystal/dragon damage and return gates before any hidden-seed statistical promotion.",

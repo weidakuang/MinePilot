@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T05:30:00+09:00
+Last updated: 2026-08-22T05:45:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,19 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+- A fresh authorized Forge 65.1.1 MiMo live-model stop/resume slice passed in
+  `/tmp/minepilot-live-follow-stop-resume-1787344952`. One real embedded
+  player chat produced HTTP-200 `START_SKILL follow_entity`; the same player
+  then sent the local `停下` command while the skill was running. The body
+  reached `SAFE_IDLE/goal_cancelled` at a safe checkpoint, emitted both
+  `skill_cancelled` and `skill_cancelled.follow_entity`, and a second ordinary
+  follow request produced another HTTP-200 `START_SKILL follow_entity` plus
+  vanilla `low_level_actions_issued(action=move)`. SQLite recorded two model
+  chains, 14,292 input and 356 output tokens (14,648 total), with 9,439 ms
+  aggregate provider latency. This is controlled professional-companion
+  evidence, not a rendered Actor/Observer, random Hardcore, long-soak, or
+  formal M3 gate.
 
 - A fresh authorized Forge 65.1.1 MiMo live-model run of
   `real_player_task_to_live_model_stronghold_portal_room_to_victory` passed
@@ -63,7 +76,7 @@ This section supersedes older chronological notes below when they conflict.
 - The current local `build` passed after these combat and ingress changes. The
   resulting development artifact is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `4f49c92df9d4383b370f337878b19498e8abeea2a0e283b5e3896ff8c2eddf03`.
+  `4aab889e6ca0b655fdd65c0746133bb7335eef1b7fc9477f107d73f4dc9f644d`.
 - A diagnostic-only rerun with the obsidian-frontier re-entry completion
   target tightened to 30 blocks was reverted: it moved the body to about
   `(47.5,51.0,-0.3)` but the fair ingress child timed out after 6,000 ticks
@@ -212,10 +225,10 @@ This section supersedes older chronological notes below when they conflict.
   real client/model, Hardcore random-seed, and M1--M4 gates remain `NOT_RUN`
   or externally blocked.
 - The current source snapshot is public `main` commit
-  `9c6bf5b14e851bbc2de300a1e518d6bb6814791a`; the ingress source, this
+  `664e99d1532657d10ee20308877c3cf33f30b35d`; the ingress source, this
   checkpoint, and the goal state match a fresh clone byte-for-byte; that clone
   parsed the goal JSON and passed Forge `compileJava`. The local source commit
-  is `0dc4b7b`; the controlled MiMo evidence is recorded above. Formal gates
+  is `d6cfe14`; the controlled MiMo evidence is recorded above. Formal gates
   remain `NOT_RUN` or externally blocked.
 
 - The current uncommitted combat correction contains three narrowly bounded

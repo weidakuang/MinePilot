@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T02:20:02+09:00
+Last updated: 2026-08-22T02:26:05+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -36,6 +36,13 @@ This section supersedes older chronological notes below when they conflict.
   pillar-edge route. No teleport, command, hidden terrain read, dragon freeze,
   or fixture terrain mutation was used. This is the active release blocker; it
   is not M2/M4 or random-seed evidence.
+- A short exploratory tower-recovery change was tested against the same fresh
+  natural selector and was immediately reverted because it regressed the
+  measured route: the body stopped near `(42.603,50.0,-4.500)`, the nested
+  ingress ended with `reach_end_island.scan_budget_exhausted` after
+  `travel_to.stuck`, and the dragon received zero damage. The run is retained
+  as negative experiment evidence only; the reverted change is not part of the
+  published source or any pass claim.
 - A fresh authorized Forge 65.1.1 live-model movement slice passed in
   `run/gametestserver`: SQLite recorded the real chat/task chain, HTTP-200
   Responses output, 7,741 input and 194 output tokens, `START_SKILL

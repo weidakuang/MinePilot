@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T17:29:51Z",
+  "updatedAtUtc": "2026-08-21T17:35:18Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
   "publicMainHead": "fa99bbe1b4f08f29ee1971d0b04eae0cdf8a9c17",
   "releaseStatus": "NON_RELEASE",
@@ -81,6 +81,21 @@
       "modelRequestSeconds": 5.294,
       "fixtureConstraint": "Isolated straight safe course with an embedded GameTest player; not a rendered Actor/Observer, random-world, Hardcore, or formal M1-M4 gate.",
       "runRoot": "run/gametestserver (2026-08-22T01:52+09:00)",
+      "formalGate": "NOT_RUN"
+    },
+    "latestLiveParkour": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL parkour_to",
+      "actions": "A fresh authorized run recorded three real model decision chains. The first parkour attempt failed missed_landing, the second failed unexpected_fall, and the third crossed three one-block gaps through ordinary jump and movement actions. No teleport or command was used.",
+      "runtimeSeconds": 26.61,
+      "modelTokensRecorded": 24461,
+      "fixtureConstraint": "Bounded three-gap parkour course with an embedded GameTest player; controlled retry evidence only, not rendered-client, PVP, Hardcore, random-seed, or formal M1-M4 evidence.",
+      "runRoot": "run/gametestserver (2026-08-22T02:34+09:00 authorized rerun)",
+      "supersededFailures": [
+        "The first real model attempt failed missed_landing and the second failed unexpected_fall; both were returned to the planner and are retained as genuine action feedback, not hidden retries."
+      ],
       "formalGate": "NOT_RUN"
     },
     "latestLiveEnderPearlReserve": {

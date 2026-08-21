@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T02:29:51+09:00
+Last updated: 2026-08-22T02:35:18+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -61,6 +61,14 @@ This section supersedes older chronological notes below when they conflict.
   travel_to`, `skill_started`, and ordinary `move` actions. The body reached
   the bounded target without teleport or command. This remains controlled
   GameTest evidence, not rendered Actor/Observer or formal M1--M4 evidence.
+- A fresh authorized Forge 65.1.1 live-model parkour slice passed in 26.61
+  seconds. The real model issued `START_SKILL parkour_to` three times: the
+  first attempt failed `missed_landing`, the second failed
+  `unexpected_fall`, and the third crossed the three one-block gaps. SQLite
+  recorded three HTTP-200 Responses chains, schema/revision acceptance, skill
+  starts, and ordinary movement actions; no teleport or command was used. This
+  is controlled parkour retry evidence, not a rendered-client, PVP, Hardcore,
+  random-seed, or M1--M4 gate.
 - A fresh authorized Forge 65.1.1 live-model container slice also passed. The
   model first returned an invalid `use_block` envelope; local validation
   rejected it without an action, then the model corrected the decision,

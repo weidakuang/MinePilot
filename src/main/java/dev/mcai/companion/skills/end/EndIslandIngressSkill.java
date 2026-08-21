@@ -1505,6 +1505,7 @@ public final class EndIslandIngressSkill
                 childParameters
         );
         if (rejected.isPresent()) {
+            lastChildFailureCode = rejected.orElseThrow().code();
             childFailures++;
             if (childFailures > parameters.maximumChildFailures()) {
                 return fail(NAME + ".tower_retry_exhausted");

@@ -17,6 +17,22 @@ pass.
 
 This section supersedes older chronological notes below when they conflict.
 
+- The next uncommitted correction records a `TowerUp` precondition rejection
+  in `lastChildFailureCode`, allowing the already bounded frontier-probe path
+  to run instead of silently retrying the same tower. Focused ingress/combat
+  tests, the full JUnit suite, and the Forge 65.1.1 build passed after this
+  one-line state fix.
+- The completed natural dynamic-dragon rerun
+  `/tmp/mcai-dynamic-dragon-towerfrontier-NnqCfv` still failed honestly at
+  8,002 executed ticks with `reach_end_island.scan_budget_exhausted`; body
+  `(47.433,51.0,-0.187)`, zero arrows, zero dragon damage, zero kill, and zero
+  return. The latest frame showed only observed End-stone and obsidian faces,
+  so no unsupported route was inferred. Publication of this state fix is
+  pending the reviewed commit and fresh-clone verification.
+- The current development JAR is
+  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
+  `ece574e8ca4b345d4ee2127bb72ad68d3163f10fbedd48a627c8341e964a1ac5`.
+
 - Commit `882d3e5` makes observed side-step targets land near
   the far edge of the destination cell instead of allowing `BridgeToSkill` to
   complete inside its minimum arrival radius, and lets a fresh frontier probe

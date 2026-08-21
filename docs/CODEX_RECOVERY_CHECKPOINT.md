@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-21T19:58:05+09:00
+Last updated: 2026-08-21T20:01:30+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -17,13 +17,18 @@ pass.
 
 This section supersedes older chronological notes below when they conflict.
 
-- The current uncommitted ingress patch adds a narrowly scoped observed-wall
-  attachment path to `BridgeToSkill`: only the End ingress caller enables it,
+- Commit `f0301fc4a4f95ccc42d2eb68dde7ed8f41964e51` adds a narrowly scoped
+  observed-wall attachment path to `BridgeToSkill`: only the End ingress
+  caller enables it,
   only a first-person visible solid face may authorize the adjacent placement,
   and a newer semantic frame must prove the placed block is weight-bearing
   before crossing. It also adds bounded low/side frontier observations and a
-  stable child-failure diagnostic. Full JUnit currently passes, but this patch
-  is not yet published or a release claim.
+  stable child-failure diagnostic. The commit is published as
+  `05b0697cc1e9bbfca7f17ba4c4ab84b00a2f3a7a` through Git Data API objects;
+  a fresh clone verified all five changed blob hashes and Forge 65.1.1
+  `compileJava` passed. The release JAR built from this commit is
+  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
+  `cd7727d7527e8deb9fa582a954a98d175b5a1b6a33b5c071b3cc24afdde6553f`.
 - A fresh real Forge 65.1.1 natural dynamic-dragon run after the eight-pattern
   cardinal frontier probe was `/tmp/mcai-dynamic-dragon-cardinalprobe-njnr9C`.
   It failed at 2026-08-21 03:50:28 with the same honest result:
@@ -37,8 +42,9 @@ This section supersedes older chronological notes below when they conflict.
 - The subsequent attached-step run directory
   `/tmp/mcai-dynamic-dragon-attachedstep-OJNTER` was interrupted before a
   server result directory was created. It is `NOT_RUN` evidence and must not
-  be counted as a pass. The exact production and test changes remain in the
-  dirty worktree until build, review, commit, and fresh-clone verification.
+  be counted as a pass. The attached-step implementation is included in the
+  published commit, but the physical behavior still requires a later
+  completed fresh gate.
 
 - The latest End-fight commit adds fair sky-clearance recovery,
   bounded observed one-cell rally movement, and one bounded reuse of

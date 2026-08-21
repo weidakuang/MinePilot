@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T16:55:00Z",
+  "updatedAtUtc": "2026-08-21T17:02:07Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
   "publicMainHead": "79040ccae309320dbe3c82155374e5bf31b25447",
   "releaseStatus": "NON_RELEASE",
@@ -165,12 +165,12 @@
       "providerModel": "mimo-v2.5",
       "forge": "65.1.1",
       "decision": "START_SKILL engage_observed_entity",
-      "actions": "A Chinese request to protect the player from ten Zombies and ten Skeletons reached the real model; HTTP-200 output passed schema/revision validation, SQLite recorded skill_started and low_level_actions_issued, and the causal evidence counted 16 of 20 authored targets damaged after the skill entered RUNNING. The body moved and remained at full health; the fixture threshold is 10 damaged targets.",
-      "runtimeSeconds": 39.70,
+      "actions": "A fresh Chinese request to protect the player from ten Zombies and ten Skeletons reached the real model; HTTP-200 output passed schema/revision validation, SQLite recorded skill_started and low_level_actions_issued, and the causal evidence counted 10 of 20 authored targets damaged after the skill entered RUNNING. The body moved and remained at full health; the fixture threshold is 10 damaged targets.",
+      "runtimeSeconds": 39.98,
       "fixtureConstraint": "Twenty controlled visible mobs (ten Zombies, ten Skeletons), owned iron equipment, and a bounded arena; not human PVP, Hardcore, random-seed, or M4 evidence.",
-      "runRoot": "run/gametestserver (2026-08-18T19:02Z authorized rerun)",
+      "runRoot": "run/gametestserver (2026-08-22T02:00+09:00 authorized rerun)",
       "supersededFailures": [
-        "The previous 38.28-second rerun counted all 20 authored targets and remains valid controlled evidence, but it is not the latest measurement.",
+        "The prior 39.70-second run counted 16 targets and the earlier 38.28-second rerun counted all 20 authored targets; both remain valid controlled evidence, but neither is the latest measurement.",
         "Earlier runs counted target death flags or ambient damage before model skill start and are explicitly superseded.",
         "A pre-recreation run lost all authored targets during the first-human body relogin and correctly failed with no visible hostile evidence."
       ],

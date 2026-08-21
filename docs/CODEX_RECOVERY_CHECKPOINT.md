@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T01:58:00+09:00
+Last updated: 2026-08-22T02:02:07+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -56,6 +56,13 @@ This section supersedes older chronological notes below when they conflict.
   Monster Hunter. SQLite recorded the task/perception/HTTP-200/skill/action
   chain. This remains one controlled hostile, not PVP, Horde, Hardcore, or
   formal M2 evidence.
+- A fresh authorized Forge 65.1.1 live-model ten-Zombie plus ten-Skeleton
+  horde slice passed in 39.98 seconds. The real model accepted the Chinese
+  protection request, selected `engage_observed_entity`, and SQLite recorded
+  HTTP-200 Responses, schema/revision acceptance, `skill_started`, and
+  `low_level_actions_issued`. The fixture observed 10 damaged targets out of
+  20, body movement, and full body health. This is controlled multi-hostile
+  evidence only; it is not human PVP, Hardcore, random-seed, or M4 evidence.
 - Focused JUnit, full build, repository preflight, Git Data API publication,
   fresh-clone byte comparison, and fresh-clone Forge `compileJava` all passed
   for this snapshot. The dynamic natural-End gate remains recorded as failed;
@@ -534,11 +541,12 @@ target death flags and local/ambient damage were counted before a model skill
 started, and the first-human relogin could unload the authored mobs. The
 fixture now recreates ten Zombies and ten Skeletons after the body relogin,
 requires `engage_observed_entity` to enter `RUNNING`, and compares health only
-against a post-start baseline. The latest real `mimo-v2.5` run passed in 39.70
-seconds: SQLite recorded the full model-to-skill-to-action chain, sixteen of
+against a post-start baseline. The latest authorized `mimo-v2.5` run passed in
+39.98 seconds: SQLite recorded the full model-to-skill-to-action chain, ten of
 twenty authored targets were damaged (the fixture threshold is ten), the body
-moved, and body health stayed full. A previous 38.28-second run damaged all
-twenty and remains retained controlled evidence.
+moved, and body health stayed full. The prior 39.70-second run with sixteen
+damaged targets and the earlier 38.28-second run with all twenty damaged remain
+retained controlled evidence.
 This remains a controlled multi-hostile slice, not human PVP, Hardcore,
 random-seed, or M4 evidence.
 

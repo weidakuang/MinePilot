@@ -911,8 +911,9 @@ seed statistic.
   publications must keep using blob/tree objects for large files. Generated
   run directories remain disposable and must not be staged.
 - API keys are process-only during live tests and are never written here.
-- The latest evidence snapshot is public `main` commit
-  `a838d6c857f4dcb376c89ce688062518ec9ba4d3`; a fresh clone matched both
-  evidence files byte-for-byte and passed `compileJava`. The immediately
+- The latest exact-blob repair snapshot is public `main` commit
+  `1d1c75173c475470dde808582e4b07d70f1a7254`; a fresh clone matched all
+  seven changed source, test, and evidence files byte-for-byte, parsed the
+  goal JSON, and passed Forge 65.1.1 `compileJava`. The immediately
   preceding publication was repaired after a shell-prefix upload corruption;
   the repaired blobs now match local Git object hashes exactly.

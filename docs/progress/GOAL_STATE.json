@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T20:06:41Z",
+  "updatedAtUtc": "2026-08-21T20:33:53Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
-  "publicMainHead": "f9eb37d585b0709112f76647d4102b613bf771c8",
+  "publicMainHead": "1d1c75173c475470dde808582e4b07d70f1a7254",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.11-dev-mc26.2",

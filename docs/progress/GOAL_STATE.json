@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T16:45:00Z",
-  "sourceState": "WORKTREE_FOCUSED_TESTS_AND_NATURAL_DYNAMIC_NEGATIVE_PENDING_PUBLICATION",
-  "publicMainHead": "4adede3fe9e59eb1580e1bfca6091a36899025e4",
+  "updatedAtUtc": "2026-08-21T16:55:00Z",
+  "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
+  "publicMainHead": "79040ccae309320dbe3c82155374e5bf31b25447",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.11-dev-mc26.2",
@@ -388,9 +388,9 @@
     },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
-      "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, Forge compatibility validation, and a fresh-public-clone Forge 65.1.1 compile after the focused End safety changes. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
+      "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, Forge compatibility validation, and a fresh-public-clone Forge 65.0.0 compile after the focused End safety changes. The changed production, GameTest, checkpoint, and goal-state files matched the published clone byte-for-byte. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "b32d578dab8770810ecbf0ad488193f7f1ae25348fa7831f3e5210a6edb88dd7",
+      "sha256": "a4df96aa859d98baf3b20156ec3b57c30d51d8c0340d135b0817a02888e851ad",
       "formalGate": "NOT_RUN"
     }
   },

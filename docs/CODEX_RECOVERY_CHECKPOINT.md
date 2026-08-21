@@ -17,7 +17,7 @@ pass.
 
 This section supersedes older chronological notes below when they conflict.
 
-- Current working-tree patch: `FightEnderDragonSkill` now routes a natural
+- Current published patch: `FightEnderDragonSkill` now routes a natural
   centerward obsidian frontier through bounded fair island re-entry before a
   lateral detour, and `EndIslandIngressSkill` rejects breaking the observed
   support voxel under the body (including the corrected block/grid coordinate
@@ -36,10 +36,11 @@ This section supersedes older chronological notes below when they conflict.
   teleport, command, hidden terrain read, dragon freeze, or fixture terrain
   mutation was used. This is the active release blocker; it is not M2/M4 or
   random-seed evidence.
-- Next action before publication is focused JUnit, full build, repository
-  preflight, and a Git Data API snapshot. The dynamic natural-End gate must
-  remain recorded as failed; real client/model, Hardcore random-seed, and
-  M1--M4 gates remain `NOT_RUN` or externally blocked.
+- Focused JUnit, full build, repository preflight, Git Data API publication,
+  fresh-clone byte comparison, and fresh-clone Forge `compileJava` all passed
+  for this snapshot. The dynamic natural-End gate remains recorded as failed;
+  real client/model, Hardcore random-seed, and M1--M4 gates remain `NOT_RUN`
+  or externally blocked.
 
 - The current uncommitted combat correction contains three narrowly bounded
   fair-perception changes. `FightEnderDragonSkill` now treats a changed face

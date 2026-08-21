@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T02:12:39+09:00
+Last updated: 2026-08-22T02:20:02+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -556,10 +556,13 @@ returned `START_SKILL(engage_observed_entity)` and SQLite recorded a vanilla
 a verified incoming attack. The root cause was stale creative/invulnerability
 state inherited by the test body, not a model decision. The latest authorized
 run clears those abilities and asserts genuine survival before chat. It
-passed in 12.21 seconds: HTTP-200 schema/revision acceptance, skill start,
-vanilla attack dispatch, body movement, golem damage, a real golem attack, and
-body survival. This is a controlled neutral-mob slice, not a human PVP or
-Hardcore result.
+passed in 12.15 seconds: SQLite recorded 7,736 input and 148 output tokens,
+HTTP-200 Responses output, schema/revision acceptance, skill start, vanilla
+attack dispatch, body movement, golem damage, a real golem attack, and body
+survival. This is a controlled neutral-mob slice, not a human PVP or Hardcore
+result. A preceding invocation passed a literal placeholder instead of a
+credential and made zero requests; it is harness/configuration negative
+evidence, not a combat result.
 
 ## Changes in the current worktree
 
@@ -697,7 +700,7 @@ Live MiMo directionless-damage shield regression PASS (offline JUnit; real stron
 Live MiMo directional-damage separation         PASS (real 15.27-second slice; model request plus emergency recovery)
 Live MiMo bounded hostile group                  PASS (40.14-second slice; six visible mobs, model engage RUNNING, 4 damaged, body moved/alive)
 Live MiMo ten-plus-ten hostile group             PASS (39.70-second slice; 20 visible mobs, model engage RUNNING, 16 damaged, body moved/alive; threshold 10)
-Live MiMo iron-golem duel                         PASS (12.21-second bounded slice; model engage, vanilla attack, golem damage, verified incoming golem attack, body survival)
+Live MiMo iron-golem duel                         PASS (12.15-second bounded slice; 7,736 input/148 output tokens; model engage, vanilla attack, golem damage, verified incoming golem attack, body survival)
 Roof-jump physical recovery contract             PASS (no-model GameTest)
 Focused shelter-material/building JUnit tests    PASS
 Exact Forge 65.1.1 dedicated lifecycle smoke      PASS (real dedicated server; no functional claim)

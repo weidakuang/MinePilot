@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T02:40:00+09:00
+Last updated: 2026-08-22T02:44:13+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -799,3 +799,8 @@ seed statistic.
   publications must keep using blob/tree objects for large files. Generated
   run directories remain disposable and must not be staged.
 - API keys are process-only during live tests and are never written here.
+- The latest evidence snapshot is public `main` commit
+  `a838d6c857f4dcb376c89ce688062518ec9ba4d3`; a fresh clone matched both
+  evidence files byte-for-byte and passed `compileJava`. The immediately
+  preceding publication was repaired after a shell-prefix upload corruption;
+  the repaired blobs now match local Git object hashes exactly.

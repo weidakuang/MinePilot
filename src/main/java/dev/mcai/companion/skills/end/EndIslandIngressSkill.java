@@ -125,6 +125,7 @@ public final class EndIslandIngressSkill
     private BreakBlockParameters blockBreakParameters;
     private BlockCoordinate pendingBreakBlock;
     private long blockAlignmentStartedTick = -1;
+    private long blockAlignmentReadyRevision = -1;
     private long stableGroundRecoveryStartedTick = -1;
     private TravelToSkill travel;
     private TravelToParameters travelParameters;
@@ -338,6 +339,7 @@ public final class EndIslandIngressSkill
         blockBreakParameters = null;
         pendingBreakBlock = null;
         blockAlignmentStartedTick = -1;
+        blockAlignmentReadyRevision = -1;
         stableGroundRecoveryStartedTick = -1;
         travel = null;
         travelParameters = null;
@@ -520,6 +522,7 @@ public final class EndIslandIngressSkill
             cancelChildren(context);
             pendingBreakBlock = null;
             blockAlignmentStartedTick = -1;
+            blockAlignmentReadyRevision = -1;
             stableGroundRecoveryStartedTick = context.gameTick();
             phase = Phase.RECOVERING_STABLE_GROUND;
             quiesce();
@@ -849,6 +852,7 @@ public final class EndIslandIngressSkill
                 >= BLOCK_ALIGNMENT_TIMEOUT_TICKS) {
             pendingBreakBlock = null;
             blockAlignmentStartedTick = -1;
+            blockAlignmentReadyRevision = -1;
             return recoverChildFailure(
                     context,
                     parameters,
@@ -873,6 +877,7 @@ public final class EndIslandIngressSkill
                         > requiredFreshRevision) {
                 pendingBreakBlock = null;
                 blockAlignmentStartedTick = -1;
+                blockAlignmentReadyRevision = -1;
                 return recoverChildFailure(
                         context,
                         parameters,
@@ -953,13 +958,40 @@ public final class EndIslandIngressSkill
             }
             return SkillTickResult.running(true, true);
         }
+        if (blockAlignmentReadyRevision < 0) {
+            /* The look intent is applied by the vanilla server player after
+             * this tick.  Require one newer first-person frame before
+             * beginning mining; otherwise a mathematically matching semantic
+             * face can still be rejected by the real crosshair actuator as
+             * TARGET_OCCLUDED. */
+            blockAlignmentReadyRevision = frame.observationRevision();
+            if (!actuator.move(MovementIntent.STOPPED).accepted()
+                    || !actuator.look(lookAt(
+                            frame.eyePosition(),
+                            executable.orElseThrow().hitPosition()
+                    )).accepted()) {
+                return fail(NAME + ".block_alignment_rejected");
+            }
+            return SkillTickResult.running(true, true);
+        }
+        if (!fresh
+                || frame.observationRevision()
+                    <= blockAlignmentReadyRevision) {
+            return SkillTickResult.running(false, true);
+        }
         pendingBreakBlock = null;
         blockAlignmentStartedTick = -1;
+        blockAlignmentReadyRevision = -1;
         return beginAlignedBlockBreak(
                 context,
                 parameters,
                 frame,
-                executable.orElseThrow()
+                /* Use the tick-local crosshair hit point for the vanilla
+                 * actuator.  The interaction frame proves block/face
+                 * identity; its semantic fan hit can be a few tenths away
+                 * from the exact ray clip and is rejected as occluded by the
+                 * real ServerPlayer reach check. */
+                crosshairFace
         );
     }
 
@@ -1424,6 +1456,7 @@ public final class EndIslandIngressSkill
         }
         pendingBreakBlock = face.block();
         blockAlignmentStartedTick = context.gameTick();
+        blockAlignmentReadyRevision = -1;
         requiredFreshRevision = frame.observationRevision();
         phase = Phase.ALIGNING_VISIBLE_BLOCK_BREAK;
         if (!actuator.move(MovementIntent.STOPPED).accepted()
@@ -1828,6 +1861,7 @@ public final class EndIslandIngressSkill
         blockBreakParameters = null;
         pendingBreakBlock = null;
         blockAlignmentStartedTick = -1;
+        blockAlignmentReadyRevision = -1;
         stableGroundRecoveryStartedTick = -1;
     }
 

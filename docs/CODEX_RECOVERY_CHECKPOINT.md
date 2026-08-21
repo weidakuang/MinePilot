@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-21T20:01:30+09:00
+Last updated: 2026-08-21T20:18:30+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -29,6 +29,22 @@ This section supersedes older chronological notes below when they conflict.
   `compileJava` passed. The release JAR built from this commit is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
   `cd7727d7527e8deb9fa582a954a98d175b5a1b6a33b5c071b3cc24afdde6553f`.
+- Commit `828c7ea` adds a server-tick-safe mining handoff: End ingress now
+  waits for a newer first-person frame before starting `BreakBlockSkill`, uses
+  the tick-local crosshair hit point, and equips material before an observed
+  wall attachment. Dragon sky-clearance retries remember one occluded target
+  and exclude it from the next bounded scan. The focused bridge, ingress, and
+  combat suites pass; the full JUnit suite and Forge 65.1.1 build also pass.
+- A completed Forge 65.1.1 natural dynamic-dragon rerun after this change is
+  `/tmp/mcai-dynamic-dragon-occlusion-skip-lRtQE2`. It still fails honestly at
+  `fight_ender_dragon.no_visible_combat_target` after 48 bounded scans with
+  `lastSkyFailure=break_block.action_target_occluded`, 30 sky blocks mined,
+  zero arrows/damage/kill/return, and body `(47.84,49.0,0.59)`. This is not a
+  release or speedrun result; the remaining gap is target reacquisition around
+  the natural pillar/ceiling edge.
+- The current development JAR after the full build is
+  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
+  `c84c63e3d5259d21cde2c5874aba3321e96aed4cdc8815a45f0c421b9f257fcb`.
 - A fresh real Forge 65.1.1 natural dynamic-dragon run after the eight-pattern
   cardinal frontier probe was `/tmp/mcai-dynamic-dragon-cardinalprobe-njnr9C`.
   It failed at 2026-08-21 03:50:28 with the same honest result:

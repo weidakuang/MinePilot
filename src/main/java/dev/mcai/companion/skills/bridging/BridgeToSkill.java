@@ -360,7 +360,19 @@ public final class BridgeToSkill
              * cell; this bounded mode instead places directly into stepTo and
              * only crosses after a newer frame proves that placed block is
              * weight-bearing.  No destination is inferred from absence.
-             */
+            */
+            final BridgeMaterialResult material = materials.ensureEquipped();
+            if (!material.ready()) {
+                return fail(material.failureCode().orElseThrow());
+            }
+            materialItemId = material.itemId();
+            materialCountBeforePlacement = inventoryCount(
+                    frame,
+                    materialItemId
+            );
+            if (materialCountBeforePlacement < 1) {
+                materialCountBeforePlacement = material.availableCount();
+            }
             desiredSupport = stepTo;
             beginPhase(
                     Phase.APPROACHING_EDGE,
@@ -442,6 +454,19 @@ public final class BridgeToSkill
             }
             if (parameters.allowObservedAttachment()
                     && visibleAttachmentTarget(frame, stepTo).isPresent()) {
+                final BridgeMaterialResult material =
+                        materials.ensureEquipped();
+                if (!material.ready()) {
+                    return fail(material.failureCode().orElseThrow());
+                }
+                materialItemId = material.itemId();
+                materialCountBeforePlacement = inventoryCount(
+                        frame,
+                        materialItemId
+                );
+                if (materialCountBeforePlacement < 1) {
+                    materialCountBeforePlacement = material.availableCount();
+                }
                 desiredSupport = stepTo;
                 phase = Phase.APPROACHING_EDGE;
                 placementTarget = visibleAttachmentTarget(

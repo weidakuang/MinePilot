@@ -1107,6 +1107,61 @@ final class BridgeSkillsTest {
     }
 
     @Test
+    void observedAttachmentPlacesAgainstVisibleWallWhenDestinationIsUnknown() {
+        final MutableFrames frames = new MutableFrames(
+                attachmentFrame(10, 0.5, 4, false)
+        );
+        final RecordingActuator actuator = new RecordingActuator();
+        final BridgeToSkill skill = new BridgeToSkill(
+                PLAYER_ID,
+                actuator,
+                frames,
+                () -> BridgeMaterialResult.ready(
+                        "minecraft:cobblestone",
+                        4
+                )
+        );
+        final BridgeToParameters parameters = new BridgeToParameters(
+                DimensionRef.OVERWORLD,
+                0.5,
+                64.0,
+                1.5,
+                0.5,
+                1,
+                true
+        );
+
+        assertTrue(
+                skill.preconditions(context(100, false, 0.0), parameters)
+                        .isEmpty()
+        );
+        skill.start(context(100, false, 0.0), parameters);
+        assertEquals(
+                SkillTickResult.Status.RUNNING,
+                skill.tick(context(101, false, 0.0), parameters).status()
+        );
+
+        frames.frame = attachmentFrame(11, 1.1, 4, false);
+        assertEquals(
+                SkillTickResult.Status.RUNNING,
+                skill.tick(context(102, false, 0.0), parameters).status()
+        );
+        frames.frame = attachmentFrame(12, 1.1, 4, false);
+        skill.tick(context(103, false, 0.0), parameters);
+        frames.frame = attachmentFrame(13, 1.1, 4, false);
+        skill.tick(context(104, false, 0.0), parameters);
+
+        assertEquals(1, actuator.uses.size());
+        assertEquals(1, actuator.uses.getFirst().x());
+        assertEquals(64, actuator.uses.getFirst().y());
+        assertEquals(1, actuator.uses.getFirst().z());
+        assertEquals(
+                dev.mcai.companion.action.BlockFace.WEST,
+                actuator.uses.getFirst().face()
+        );
+    }
+
+    @Test
     void refusesHardcoreRiskAndNeverUsesAnUnseenFace() {
         final MutableFrames frames = new MutableFrames(frame(
                 10,
@@ -1324,6 +1379,65 @@ final class BridgeSkillsTest {
                 faces,
                 look,
                 true
+        );
+    }
+
+    private static CoreSkillFrame attachmentFrame(
+            final long revision,
+            final double z,
+            final int blockCount,
+            final boolean destinationPlaced
+    ) {
+        final List<ObservedVoxel> voxels = new ArrayList<>();
+        voxels.add(voxel(0, 63, 0, VoxelKind.SOLID, revision));
+        voxels.add(voxel(0, 64, 0, VoxelKind.AIR, revision));
+        voxels.add(voxel(0, 65, 0, VoxelKind.AIR, revision));
+        if (destinationPlaced) {
+            voxels.add(voxel(0, 64, 1, VoxelKind.SOLID, revision));
+        }
+        final PerceptionVec3 eye = new PerceptionVec3(0.5, 65.62, z);
+        final PerceptionVec3 hit = new PerceptionVec3(1.0, 64.5, 1.5);
+        return new CoreSkillFrame(
+                PLAYER_ID,
+                DimensionRef.OVERWORLD,
+                revision,
+                revision,
+                new PerceptionVec3(0.5, 64.0, z),
+                eye,
+                hit.subtract(eye).normalized(),
+                true,
+                false,
+                0.0,
+                new LocalNavSnapshot(
+                        DimensionRef.OVERWORLD,
+                        revision,
+                        voxels
+                ),
+                List.of(new VisibleBlockFace(
+                        new BlockCoordinate(1, 64, 1),
+                        "minecraft:end_stone",
+                        "minecraft:west",
+                        hit,
+                        hit.subtract(eye).length(),
+                        PerceptionProvenance.BLOCK_SURFACE_RAY_CLIP,
+                        Map.of()
+                )),
+                20.0F,
+                20.0F,
+                20,
+                List.of(new InventoryItemSummary(
+                        "minecraft:cobblestone",
+                        blockCount
+                )),
+                new HeldItemSummary(
+                        "minecraft:cobblestone",
+                        blockCount,
+                        0,
+                        0
+                ),
+                HeldItemSummary.empty(),
+                List.of(),
+                List.of()
         );
     }
 

@@ -311,7 +311,31 @@ final class EndIslandIngressSkillTest {
         assertEquals(0, actuator.jumps);
         assertTrue(actuator.blockUses.isEmpty());
 
-        final CoreSkillFrame executable = wallAndOverheadFrame(3);
+        final CoreSkillFrame alignedFresh = wallAndOverheadFrame(3);
+        frames.frame = alignedFresh;
+        interactionFrames.frame = interactionFrame(alignedFresh, 14L);
+        interactionFrames.crosshair = alignedFresh.visibleBlockFaces()
+                .stream()
+                .filter(face -> face.block().equals(
+                        new BlockCoordinate(98, 51, 0)
+                ))
+                .findFirst()
+                .orElseThrow();
+        final SkillTickResult waitingForAppliedLook = skill.tick(
+                context(5),
+                parameters
+        );
+
+        assertEquals(SkillTickResult.Status.RUNNING, waitingForAppliedLook.status());
+        assertTrue(
+                skill.checkpoint(context(5), parameters)
+                        .payload()
+                        .contains("ALIGNING_VISIBLE_BLOCK_BREAK")
+        );
+        assertTrue(interactionActuator.equippedItems.isEmpty());
+        assertTrue(interactionActuator.miningTargets.isEmpty());
+
+        final CoreSkillFrame executable = wallAndOverheadFrame(4);
         frames.frame = executable;
         interactionFrames.frame = interactionFrame(executable, 14L);
         interactionFrames.crosshair = executable.visibleBlockFaces()
@@ -322,7 +346,7 @@ final class EndIslandIngressSkillTest {
                 .findFirst()
                 .orElseThrow();
         final SkillTickResult mining = skill.tick(
-                context(5),
+                context(6),
                 parameters
         );
 

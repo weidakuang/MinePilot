@@ -193,6 +193,7 @@ public final class FightEnderDragonSkill
     private int skyBreakAttempts;
     private int skyAlignmentTicks;
     private String lastSkyFailure = "";
+    private GridPos lastSkyOccludedBlock;
     private boolean skyJumpPending;
     private int skyBlocksSinceRally;
     private int cageScanTurns;
@@ -436,6 +437,7 @@ public final class FightEnderDragonSkill
         skyBreakAttempts = 0;
         skyAlignmentTicks = 0;
         lastSkyFailure = "";
+        lastSkyOccludedBlock = null;
         skyJumpPending = false;
         skyBlocksSinceRally = 0;
         cageScanTurns = 0;
@@ -1187,6 +1189,7 @@ public final class FightEnderDragonSkill
         if (result.status() == SkillTickResult.Status.COMPLETED) {
             skyBlocksMined++;
             skyBlocksSinceRally++;
+            lastSkyOccludedBlock = null;
             cancelSkyBreak(context);
             phase = Phase.SEARCHING;
             nextActionTick = context.gameTick() + 2;
@@ -1196,6 +1199,14 @@ public final class FightEnderDragonSkill
             lastSkyFailure = result.failure()
                     .map(SkillFailure::code)
                     .orElse("break_block.unknown_failure");
+            if (lastSkyFailure.endsWith(".action_target_occluded")
+                    && skyBreakTarget != null) {
+                lastSkyOccludedBlock = new GridPos(
+                        skyBreakTarget.x(),
+                        skyBreakTarget.y(),
+                        skyBreakTarget.z()
+                );
+            }
             cancelSkyBreak(context);
             phase = Phase.SEARCHING;
             nextActionTick = context.gameTick() + SCAN_INTERVAL_TICKS;
@@ -1234,10 +1245,13 @@ public final class FightEnderDragonSkill
             return SkillTickResult.running(fresh, true);
         }
         final Optional<VisibleBlockFace> overhead =
-                visibleOverheadEndStone(frame);
+                visibleOverheadEndStone(frame, lastSkyOccludedBlock);
         final Optional<VisibleBlockFace> clearanceTarget = overhead
                 .filter(face -> face.distance() <= SKY_BREAK_STANDING_REACH)
-                .or(() -> visibleLateralEndStone(frame));
+                .or(() -> visibleLateralEndStone(
+                        frame,
+                        lastSkyOccludedBlock
+                ));
         if (overhead.isPresent()
                 && immediateDragonIndex(frame).isEmpty()
                 && frame.dangerSignals().stream().noneMatch(
@@ -3620,7 +3634,8 @@ public final class FightEnderDragonSkill
     }
 
     private static Optional<VisibleBlockFace> visibleOverheadEndStone(
-            final CoreSkillFrame frame
+            final CoreSkillFrame frame,
+            final GridPos excluded
     ) {
         final GridPos feet = frame.feet();
         return frame.visibleBlockFaces().stream()
@@ -3632,6 +3647,12 @@ public final class FightEnderDragonSkill
                         && face.block().z() == feet.z()
                         && face.block().y() >= feet.y() + 2
                         && face.block().y() <= feet.y() + 8)
+                .filter(face -> excluded == null
+                        || !new GridPos(
+                                face.block().x(),
+                                face.block().y(),
+                                face.block().z()
+                        ).equals(excluded))
                 .filter(face -> face.distance() <= SKY_BREAK_REACH)
                 .min(Comparator.comparingInt(
                         face -> face.block().y()
@@ -3639,7 +3660,8 @@ public final class FightEnderDragonSkill
     }
 
     private static Optional<VisibleBlockFace> visibleLateralEndStone(
-            final CoreSkillFrame frame
+            final CoreSkillFrame frame,
+            final GridPos excluded
     ) {
         final GridPos feet = frame.feet();
         return frame.visibleBlockFaces().stream()
@@ -3656,6 +3678,12 @@ public final class FightEnderDragonSkill
                         && face.block().z() <= feet.z() + 1)
                 .filter(face -> face.block().x() != feet.x()
                         || face.block().z() != feet.z())
+                .filter(face -> excluded == null
+                        || !new GridPos(
+                                face.block().x(),
+                                face.block().y(),
+                                face.block().z()
+                        ).equals(excluded))
                 .filter(face -> blockFace(face.face())
                         .filter(value -> value != BlockFace.UP)
                         .isPresent())

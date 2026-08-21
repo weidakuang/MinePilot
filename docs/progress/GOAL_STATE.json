@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-20T14:19:00Z",
-  "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD",
+  "updatedAtUtc": "2026-08-21T11:20:00Z",
+  "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.11-dev-mc26.2",
@@ -361,6 +361,17 @@
       "fixtureConstraint": "Physical ingress and manager-presence evidence only. It does not prove dynamic dragon combat, random Hardcore completion, speedrun timing, rendered-client behavior, or formal M1-M4 gates.",
       "formalGate": "NOT_RUN"
     },
+    "latestNaturalDynamicDragonGate": {
+      "status": "FAIL_FORGE_65.1.1",
+      "details": "A fresh zero-human natural-End run with the vanilla manager-owned AI-enabled dragon completed the fair ingress route but failed the dynamic fight at no_visible_combat_target after the bounded re-entry/attachment recovery. The body mined 30 observed End-stone blocks, consumed no arrows, dealt no dragon damage, and did not kill or return. No teleport, hidden terrain read, dragon freeze, or fixture mutation was used.",
+      "runRoot": "/tmp/mcai-dynamic-dragon-occlusion-skip-lRtQE2",
+      "failureCode": "fight_ender_dragon.no_visible_combat_target",
+      "ingressFailure": "reach_end_island.timed_out",
+      "bodyPosition": "47.84,49.0,0.59",
+      "scanTurns": 48,
+      "latestFixesExercised": "fair crosshair rebind and one-target occlusion skip; the controller still exhausted its bounded sky-break attempts without a dragon damage event",
+      "formalGate": "NOT_RUN"
+    },
     "dynamicDragonObservedRally": {
       "status": "IMPLEMENTED_FOCUSED_TEST_ONLY",
       "details": "After an empty sky sweep, fight_ender_dragon can choose a fresh low-danger standing cell from the current first-person navigation frame, keep it inside the verified End radius, and require ordinary TravelTo preconditions before moving. A completed rally leg becomes the next bounded search anchor.",
@@ -378,14 +389,14 @@
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, and Forge compatibility validation after the focused End safety changes. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "44d9a8013c16a96c227046cef233e51c4ce6affa54d5d360ce2775f3c914512b",
+      "sha256": "c84c63e3d5259d21cde2c5874aba3321e96aed4cdc8815a45f0c421b9f257fcb",
       "formalGate": "NOT_RUN"
     }
   },
   "nextActions": [
     "Preserve the controlled stronghold-room-to-return PASS without promoting it to random-seed, Hardcore, dynamic-dragon, or M2/M4 evidence.",
     "Run the formal rendered Actor/Observer gate only on an authorized Linux/Xvfb worker with the exact frozen artifact.",
-    "Preserve the Forge 65.0.0/65.1.1 natural End ingress passes and implement a separate manager-owned, AI-enabled dynamic-dragon slice before any hidden-seed statistical promotion.",
+    "Use the recorded natural dynamic-dragon failure to continue the fair pillar-edge route: complete and rerun the observed attachment path, then add safe dynamic crystal/dragon damage and return gates before any hidden-seed statistical promotion.",
     "Keep missing infrastructure and unexecuted statistical gates explicitly marked NOT_RUN."
   ],
   "evidencePolicy": "No controlled test, model acknowledgement, historical run, or no-model arena may be promoted to a formal M0-M4 PASS."

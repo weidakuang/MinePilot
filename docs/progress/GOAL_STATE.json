@@ -439,13 +439,13 @@
     },
     "latestNaturalDynamicDragonGate": {
       "status": "FAIL_FORGE_65.1.1",
-      "details": "A fresh zero-human natural-End run with the vanilla manager-owned AI-enabled dragon reached the pillar-edge route but failed the dynamic fight after bounded rally, side-step, sky-clearance, and observed attachment recovery. The body reached approximately (46.636,51.0,-1.503); the nested fair ingress mined 29 observed blocks, placed 32 bridge blocks, reached 41 frontier probes, and exhausted its scan budget with tower_up.overhead_clearance_unverified after one failed landfall attempt. It consumed no arrows, dealt no dragon damage, and did not kill or return. The non-repeating visited-feet-cell guard and bounded failed-landfall memory prevent stale route reuse but do not close the natural pillar-edge route. No teleport, hidden terrain read, dragon freeze, or fixture mutation was used.",
-      "runRoot": "run/logs/latest.log",
-      "failureCode": "reach_end_island.scan_budget_exhausted",
-      "ingressFailure": "tower_up.overhead_clearance_unverified",
-      "bodyPosition": "46.636,51.0,-1.503",
-      "scanTurns": 105,
-      "latestFixesExercised": "fair centerward re-entry before lateral detours, fresh crosshair-bound block actions, support-voxel mining protection, a non-repeating visited-feet-cell route guard, and bounded failed-landfall memory; the controller still exhausted bounded re-entry without a dragon damage event",
+      "details": "A fresh zero-human natural-End run with the vanilla manager-owned AI-enabled dragon reached farther along the pillar-edge route but failed the dynamic fight after bounded rally, side-step, sky-clearance, observed attachment recovery, and tower-rejection mining recovery. The body reached approximately (43.523,51.0,6.334); the nested fair ingress mined 38 observed blocks, placed seven bridge steps, made four landfall attempts, and exhausted its bridge budget after repeated fresh support verification. It consumed no arrows, dealt no dragon damage, and did not kill or return. No teleport, hidden terrain read, dragon freeze, or fixture mutation was used.",
+      "runRoot": "run/logs/latest.log (isolated run root recorded in checkpoint)",
+      "failureCode": "reach_end_island.bridge_budget_exhausted",
+      "ingressFailure": "landfall_verification",
+      "bodyPosition": "43.523,51.0,6.334",
+      "scanTurns": 49,
+      "latestFixesExercised": "fair centerward re-entry before lateral detours, fresh crosshair-bound block actions, support-voxel mining protection, a non-repeating visited-feet-cell route guard, bounded failed-landfall memory, same-frame End-stone mining after tower rejection, and one freshly observed lateral-cell retry; the controller still exhausted bounded re-entry without a dragon damage event",
       "formalGate": "NOT_RUN"
     },
     "dynamicDragonObservedRally": {

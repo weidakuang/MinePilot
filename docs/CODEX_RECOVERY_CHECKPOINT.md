@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T04:05:00+09:00
+Last updated: 2026-08-22T04:15:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -43,15 +43,25 @@ This section supersedes older chronological notes below when they conflict.
   65.0.0 `natural_end_island_ingress` selector passed in 5.835 seconds.
 - The latest completed zero-human Forge 65.1.1
   `natural_end_dynamic_dragon_combat` gate remains `FAIL`: after 8,002 fight
-  ticks the body reached approximately `(46.636,51.0,-1.503)` but the vanilla
-  AI-enabled manager dragon remained unharmed. The nested fair ingress mined 29
-  observed blocks and placed 32 bridge blocks, reached 24 frontier probes, and
-  then exhausted its scan budget with `tower_up.overhead_clearance_unverified`;
-  it fired zero arrows and dealt zero dragon damage. The non-repeating visited
-  feet-cell guard improved physical displacement but did not close the natural
+- The latest completed zero-human Forge 65.1.1
+  `natural_end_dynamic_dragon_combat` gate remains `FAIL`: after 8,002 fight
+  ticks the body reached approximately `(43.523,51.0,6.334)` but the vanilla
+  AI-enabled manager dragon remained unharmed. The nested fair ingress mined 38
+  observed blocks, placed seven bridge steps, made four landfall attempts, and
+  then exhausted its bridge budget after repeated fresh support verification;
+  it fired zero arrows and dealt zero dragon damage. The new tower-rejection
+  recovery opened additional observed side faces and changed the route from
+  the prior `(46.636,51.0,-1.503)` failure, but did not close the natural
   pillar-edge route. No teleport, command, hidden terrain read, dragon freeze,
   or fixture terrain mutation was used. This is the active release blocker; it
   is not M2/M4 or random-seed evidence.
+- `EndIslandIngressSkill` now treats a failed fair `TowerUp` observation as a
+  local route event: a same-frame, nearby, side-facing End-stone block is
+  opened before another frontier probe, and a freshly observed lateral cell
+  may be retried after the invalidated eye-line. This remains bounded by the
+  existing mining, bridge, scan, child-failure, and timeout budgets; no hidden
+  terrain is admitted. The focused ingress and combat suites pass. The fresh
+  dynamic selector above is the required negative evidence for this change.
 - `EndIslandIngressSkill` now retains a bounded set of fairly observed
   landfall supports whose vanilla `TravelTo` child became stuck, excludes
   those cells from the next candidate search, and clears the set only after a

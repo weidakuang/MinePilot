@@ -663,6 +663,26 @@ public final class EndIslandIngressSkill
             }
         }
 
+        /* A failed tower is a route-local observation, not a reason to lose
+         * the next actionable mining frame.  Handle this before landfall/A*
+         * selection: the natural End spawn can expose a side End-stone face
+         * while the current-column head cell remains blocked, and asking the
+         * planner to score that frame first otherwise sends the controller
+         * back into the same opaque-wall probe loop. */
+        if (lastChildFailureCode.startsWith("tower_up.")
+                && interactionActuator != null) {
+            final Optional<VisibleBlockFace> recoveryTarget =
+                    visibleReentryExcavationTarget(frame);
+            if (recoveryTarget.isPresent()) {
+                return startVisibleBlockBreak(
+                        context,
+                        parameters,
+                        frame,
+                        recoveryTarget.orElseThrow()
+                );
+            }
+        }
+
         scanTurns++;
         if (scanTurns > parameters.maximumScanTurns()) {
             return fail(NAME + ".scan_budget_exhausted");
@@ -1479,7 +1499,16 @@ public final class EndIslandIngressSkill
                 current.offset(1, 0, 0)
         ).stream()
                 .filter(step -> !step.equals(current))
-                .filter(step -> !visitedIngressCells.contains(step))
+                /* A tower rejection invalidates the previous eye-line, not
+                 * the neighbouring cell itself.  Permit one freshly observed
+                 * side-step retry in that case even if an earlier probe
+                 * touched the same cell; otherwise a natural spawn-platform
+                 * wall can mark all safe lateral cells visited before the
+                 * controller has a usable overhead view.  Successful bridge
+                 * progress still resets the child-failure budget and the
+                 * route-level scan/bridge limits remain bounded. */
+                .filter(step -> !visitedIngressCells.contains(step)
+                        || lastChildFailureCode.startsWith("tower_up."))
                 .filter(step -> radiusOf(step)
                         <= EndArenaTopology.horizontalRadius(frame.position())
                                 + 2.5)

@@ -1,784 +1,1 @@
-# Codex Recovery Checkpoint
-
-Last updated: 2026-08-22T02:35:18+09:00
-
-This checkpoint is intentionally concise and English-only. Runtime chat and
-multilingual test fixtures may contain other languages; public repository
-documentation must not.
-
-## Current objective
-
-Continue the MinePilot M1â€“M4 objective on Minecraft Java 26.2 / Forge 65.x with
-real, fair `ServerPlayer` behavior. Do not claim professional-companion,
-random-seed, two-hour, or M0â€“M4 completion until the artifact-bound protocols
-pass.
-
-## Current recovery state
-
-This section supersedes older chronological notes below when they conflict.
-
-- Current published patch: `FightEnderDragonSkill` now routes a natural
-  centerward obsidian frontier through bounded fair island re-entry before a
-  lateral detour, and `EndIslandIngressSkill` rejects breaking the observed
-  support voxel under the body (including the corrected block/grid coordinate
-  conversion). The test-only terrain diagnostic records the natural platform
-  shape without being used by production decisions.
-- Focused ingress and combat JUnit suites pass, and the fresh Forge
-  65.0.0 `natural_end_island_ingress` selector passed in 5.835 seconds.
-- The latest completed zero-human Forge 65.1.1
-  `natural_end_dynamic_dragon_combat` gate remains `FAIL`: after 8,002 fight
-  ticks the body reached approximately `(46.636,51.0,-1.503)` but the vanilla
-  AI-enabled manager dragon remained unharmed. The nested fair ingress mined 29
-  observed blocks and placed 32 bridge blocks, reached 24 frontier probes, and
-  then exhausted its scan budget with `tower_up.overhead_clearance_unverified`;
-  it fired zero arrows and dealt zero dragon damage. The non-repeating visited
-  feet-cell guard improved physical displacement but did not close the natural
-  pillar-edge route. No teleport, command, hidden terrain read, dragon freeze,
-  or fixture terrain mutation was used. This is the active release blocker; it
-  is not M2/M4 or random-seed evidence.
-- `EndIslandIngressSkill` now retains a bounded set of fairly observed
-  landfall supports whose vanilla `TravelTo` child became stuck, excludes
-  those cells from the next candidate search, and clears the set only after a
-  real bridge, tower, mining, or completed-travel topology change. This is a
-  local liveness guard, not a route oracle or world read. Focused ingress and
-  dragon tests plus the full Gradle build pass with the change.
-- A fresh natural dynamic run with that guard still fails honestly after
-  8,002 fight ticks: body `(46.636,51.0,-1.503)`, ingress 29 observed mined
-  blocks and 32 placed bridge blocks, 41 frontier probes, one failed landfall
-  attempt, and `tower_up.overhead_clearance_unverified`; zero arrows, dragon
-  damage, kill, or return. The guard prevents stale landfall re-selection but
-  does not solve the natural pillar-edge route.
-- A short exploratory tower-recovery change was tested against the same fresh
-  natural selector and was immediately reverted because it regressed the
-  measured route: the body stopped near `(42.603,50.0,-4.500)`, the nested
-  ingress ended with `reach_end_island.scan_budget_exhausted` after
-  `travel_to.stuck`, and the dragon received zero damage. The run is retained
-  as negative experiment evidence only; the reverted change is not part of the
-  published source or any pass claim.
-- A fresh authorized Forge 65.1.1 live-model movement slice passed in
-  `run/gametestserver`: SQLite recorded the real chat/task chain, HTTP-200
-  Responses output, 7,741 input and 194 output tokens, `START_SKILL
-  travel_to`, `skill_started`, and ordinary `move` actions. The body reached
-  the bounded target without teleport or command. This remains controlled
-  GameTest evidence, not rendered Actor/Observer or formal M1--M4 evidence.
-- A fresh authorized Forge 65.1.1 live-model parkour slice passed in 26.61
-  seconds. The real model issued `START_SKILL parkour_to` three times: the
-  first attempt failed `missed_landing`, the second failed
-  `unexpected_fall`, and the third crossed the three one-block gaps. SQLite
-  recorded three HTTP-200 Responses chains, schema/revision acceptance, skill
-  starts, and ordinary movement actions; no teleport or command was used. This
-  is controlled parkour retry evidence, not a rendered-client, PVP, Hardcore,
-  random-seed, or M1--M4 gate.
-- A fresh authorized Forge 65.1.1 live-model container slice also passed. The
-  model first returned an invalid `use_block` envelope; local validation
-  rejected it without an action, then the model corrected the decision,
-  completed vanilla chest opening, and completed `transfer_menu_item` for
-  three oak planks. SQLite recorded the failure/recovery and accepted causal
-  chains; this remains controlled chest evidence, not the formal Inventory
-  black-box gate.
-- A fresh authorized Forge 65.1.1 live-model Zombie-defense slice passed. The
-  emergency lane guarded the body while the model request crossed its soft
-  deadline; the model then returned `START_SKILL engage_observed_entity`, the
-  body moved and attacked through vanilla combat, survived, and triggered
-  Monster Hunter. SQLite recorded the task/perception/HTTP-200/skill/action
-  chain. This remains one controlled hostile, not PVP, Horde, Hardcore, or
-  formal M2 evidence.
-- A fresh authorized Forge 65.1.1 live-model ten-Zombie plus ten-Skeleton
-  horde slice passed in 39.98 seconds. The real model accepted the Chinese
-  protection request, selected `engage_observed_entity`, and SQLite recorded
-  HTTP-200 Responses, schema/revision acceptance, `skill_started`, and
-  `low_level_actions_issued`. The fixture observed 10 damaged targets out of
-  20, body movement, and full body health. This is controlled multi-hostile
-  evidence only; it is not human PVP, Hardcore, random-seed, or M4 evidence.
-- Focused JUnit, full build, repository preflight, Git Data API publication,
-  fresh-clone byte comparison, and fresh-clone Forge `compileJava` all passed
-  for this snapshot. The dynamic natural-End gate remains recorded as failed;
-  real client/model, Hardcore random-seed, and M1--M4 gates remain `NOT_RUN`
-  or externally blocked.
-- The current source snapshot is public `main` commit
-  `fa99bbe1b4f08f29ee1971d0b04eae0cdf8a9c17`; the three changed blobs match a
-  fresh clone byte-for-byte and that clone passed Forge `compileJava`. The
-  locally built development JAR SHA-256 is
-  `9cf823383fcc36bb3ad98697cdb89db1498f48587c8109a5b638c05eeb8c07b5`.
-
-- The current uncommitted combat correction contains three narrowly bounded
-  fair-perception changes. `FightEnderDragonSkill` now treats a changed face
-  on the same observed block as a valid reacquisition candidate, prioritizes
-  a current-column overhead block only while the head cell is actually
-  blocked, and permits a fresh observed lateral wall to be mined after head
-  clearance. It also permits a fresh, supported, two-block-clear neighboring
-  detour around an observed pillar when a strictly centerward cell is not
-  available; the detour remains inside the 56-block arena radius and never
-  reads hidden level state. The ingress target geometry and the 0.50 TravelTo
-  arrival bound were corrected in the same patch.
-- Focused `FightEnderDragonSkillTest`, dynamic-rally source-contract tests,
-  and `EndIslandIngressSkillTest` pass. The Forge 65.1.1 physical selector
-  `mcai_companion:natural_end_island_ingress` also passes in the current
-  worktree.
-- The latest zero-human natural dynamic-dragon selector was run on Forge
-  65.1.1 at 2026-08-22 00:55 JST and remains an honest failure. The body
-  reached approximately `(49.752,49.0,0.498)`, mined 66 currently observed
-  End-stone blocks, and performed seven observed rally starts; the live
-  manager dragon remained loaded, but there were zero arrows, damage events,
-  kill, or return. The terminal failure was
-  `fight_ender_dragon.no_visible_combat_target` after 2,649 skill ticks. This
-  is not dynamic-dragon, random-seed, Hardcore, speedrun, or M1--M4 evidence.
-- No model credential was used by this physical gate, and no production
-  teleport, command, hidden terrain read, dragon freeze, or fixture terrain
-  mutation was introduced. The next release decision is therefore gated on
-  full regression and a fresh review of this still-failing dynamic combat
-  path; do not promote this patch to a release claim.
-
-- Commit `cc877a4` records a `TowerUp` precondition rejection
-  in `lastChildFailureCode`, allowing the already bounded frontier-probe path
-  to run instead of silently retrying the same tower. Focused ingress/combat
-  tests, the full JUnit suite, and the Forge 65.1.1 build passed after this
-  one-line state fix.
-- The completed natural dynamic-dragon rerun
-  `/tmp/mcai-dynamic-dragon-towerfrontier-NnqCfv` still failed honestly at
-  8,002 executed ticks with `reach_end_island.scan_budget_exhausted`; body
-  `(47.433,51.0,-0.187)`, zero arrows, zero dragon damage, zero kill, and zero
-  return. The latest frame showed only observed End-stone and obsidian faces,
-  so no unsupported route was inferred. The state fix is published on public
-  `main` as `fd20b5c52dc518b61e9fe2ba02f062764c225ae4` through Git Data API
-  objects. Fresh clone `/tmp/minepilot-tower-state-OO07E9` matched the three
-  changed file SHA-256 values byte-for-byte, its goal JSON parsed successfully,
-  and Forge 65.1.1 `compileJava` passed.
-- The current development JAR is
-  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `ece574e8ca4b345d4ee2127bb72ad68d3163f10fbedd48a627c8341e964a1ac5`.
-
-- Commit `882d3e5` makes observed side-step targets land near
-  the far edge of the destination cell instead of allowing `BridgeToSkill` to
-  complete inside its minimum arrival radius, and lets a fresh frontier probe
-  try a visible wall attachment before ordinary side travel. The new edge
-  target regression, focused ingress/combat suites, full JUnit suite, and Forge
-  65.1.1 build passed. The natural ingress selector passed in
-  `/tmp/mcai-natural-ingress-sidestep-w37BT4`.
-- A fresh zero-human natural dynamic-dragon run after this correction remains
-  a physical failure in `/tmp/mcai-dynamic-dragon-attachstep-YtWEcZ`: the
-  bounded fight reached 8,002 executed ticks, body approximately
-  `(47.433,51.0,-0.187)`, ingress ended with
-  `reach_end_island.scan_budget_exhausted`, and there were zero arrows, dragon
-  damage, kill, or return. The final fair frame exposed only observed
-  End-stone/obsidian faces at the pillar edge; no safe destination was inferred.
-  Dynamic combat and every formal M1--M4/random-Hardcore/speedrun claim remain
-  unreleased.
-- The current development JAR after this correction is
-  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `d171284cb19242398cb9e2bfc408f277188a6d6eb0e7f9639d0af065a320a71f`.
-  The correction is published on public `main` as
-  `e2e1d009797d59404e0fa59fe4e7b69745295da6` through Git Data API objects.
-  Fresh clone `/tmp/minepilot-side-step-J0hDs2` matched all four changed file
-  SHA-256 values byte-for-byte, its goal JSON parsed successfully, and Forge
-  65.1.1 `compileJava` passed.
-
-- Commit `0f3ab2a` adds fresh observed rally targets,
-  bounded sky-clearance target rebinding, observed lateral End-stone mining,
-  safe side-step recovery before opaque pillar ascent, and a frontier probe
-  after a failed tower child. It also records the nested ingress checkpoint so
-  a failure remains diagnosable after the parent fight resumes. All movement,
-  mining, looking, and block use remain ordinary `ServerPlayer`/vanilla skill
-  actions authorized by fresh first-person semantic frames; no teleport,
-  hidden terrain read, command, or fixture world mutation is used by the
-  production controller.
-- Focused ingress/combat tests, the full JUnit suite, and the Forge 65.1.1
-  build passed after this patch. The fresh natural ingress selector
-  `mcai_companion:natural_end_island_ingress` passed in isolated directory
-  `/tmp/mcai-natural-ingress-posttower-HjoyRe` (`All 1 required tests passed`).
-- The latest zero-human natural dynamic-dragon selector remains an honest
-  failure in `/tmp/mcai-dynamic-dragon-sidestep-kY5x7c`: the body reached
-  approximately `(47.629,51.0,-0.121)`, but the ingress child ended with
-  `reach_end_island.scan_budget_exhausted` and the fight with
-  `fight_ender_dragon.no_visible_combat_target` after 7,045 executed ticks.
-  It recorded 17 rally starts and 96 observed sky blocks mined, but zero
-  arrows, dragon damage, kill, or return. Dynamic dragon combat therefore
-  remains a release blocker; no random-seed, Hardcore, two-hour, or M1--M4
-  claim is made.
-- The current release JAR is
-  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `ca2a6076694b393c36413ae222a9abf93ed59172089949b04f76117cce784863`.
-  The snapshot is published on public `main` as
-  `b2294c825c942626a676d64b276f105667c836d5` through Git Data API objects.
-  Fresh clone `/tmp/minepilot-public-7UJzUD` matched all four changed file
-  SHA-256 values byte-for-byte, and its Forge 65.1.1 `compileJava` passed.
-  `git diff --check` is clean after publication.
-
-- Commit `f0301fc4a4f95ccc42d2eb68dde7ed8f41964e51` adds a narrowly scoped
-  observed-wall attachment path to `BridgeToSkill`: only the End ingress
-  caller enables it,
-  only a first-person visible solid face may authorize the adjacent placement,
-  and a newer semantic frame must prove the placed block is weight-bearing
-  before crossing. It also adds bounded low/side frontier observations and a
-  stable child-failure diagnostic. The commit is published as
-  `05b0697cc1e9bbfca7f17ba4c4ab84b00a2f3a7a` through Git Data API objects;
-  a fresh clone verified all five changed blob hashes and Forge 65.1.1
-  `compileJava` passed. The release JAR built from this commit is
-  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `cd7727d7527e8deb9fa582a954a98d175b5a1b6a33b5c071b3cc24afdde6553f`.
-- Commit `828c7ea` adds a server-tick-safe mining handoff: End ingress now
-  waits for a newer first-person frame before starting `BreakBlockSkill`, uses
-  the tick-local crosshair hit point, and equips material before an observed
-  wall attachment. Dragon sky-clearance retries remember one occluded target
-  and exclude it from the next bounded scan. The focused bridge, ingress, and
-  combat suites pass; the full JUnit suite and Forge 65.1.1 build also pass.
-- A completed Forge 65.1.1 natural dynamic-dragon rerun after this change is
-  `/tmp/mcai-dynamic-dragon-occlusion-skip-lRtQE2`. It still fails honestly at
-  `fight_ender_dragon.no_visible_combat_target` after 48 bounded scans with
-  `lastSkyFailure=break_block.action_target_occluded`, 30 sky blocks mined,
-  zero arrows/damage/kill/return, and body `(47.84,49.0,0.59)`. This is not a
-  release or speedrun result; the remaining gap is target reacquisition around
-  the natural pillar/ceiling edge.
-- The current development JAR after the full build is
-  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `c84c63e3d5259d21cde2c5874aba3321e96aed4cdc8815a45f0c421b9f257fcb`.
-- The commit is published on public `main` as `f530504557714f9b9eecb2c2f55b8daec26bfcb5`
-  through Git Data API objects. A fresh clone verified seven changed file
-  blob hashes byte-for-byte and passed Forge 65.1.1 `compileJava`.
-- A fresh real Forge 65.1.1 natural dynamic-dragon run after the eight-pattern
-  cardinal frontier probe was `/tmp/mcai-dynamic-dragon-cardinalprobe-njnr9C`.
-  It failed at 2026-08-21 03:50:28 with the same honest result:
-  `fight_ender_dragon.no_visible_combat_target`, ingress child
-  `reach_end_island.timed_out`, 30 observed End-stone blocks mined, zero
-  arrows/damage/kill/return, body approximately `(47.84,49.0,0.59)`, and
-  `scanTurns=48`. The natural terrain slice showed an observed/persisting
-  obsidian pillar frontier from x46 through x38 and End-stone beginning at
-  x37. This is evidence that the remaining gap is a real pillar-edge route,
-  not a missing model call.
-- The subsequent attached-step run directory
-  `/tmp/mcai-dynamic-dragon-attachedstep-OJNTER` was interrupted before a
-  server result directory was created. It is `NOT_RUN` evidence and must not
-  be counted as a pass. The attached-step implementation is included in the
-  published commit, but the physical behavior still requires a later
-  completed fresh gate.
-
-- The latest End-fight commit adds fair sky-clearance recovery,
-  bounded observed one-cell rally movement, and one bounded reuse of
-  `EndIslandIngressSkill` when the dragon scan reaches an observed frontier.
-  It uses only the existing `ServerPlayer` movement, mining, crouch/place, and
-  fresh semantic-frame contracts; it does not teleport, inspect a level, or
-  invent a bridge destination.
-- Focused combat and rally-evidence tests pass after that patch. The latest
-  real Forge 65.1.1 zero-human selector run was
-  `/tmp/mcai-dynamic-dragon-reentry-result-xQ0M6S`; it failed honestly after
-  2,311 fight ticks with `fight_ender_dragon.no_visible_combat_target`. The
-  body advanced to approximately `(47.8,49.0,0.6)`, mined 30 observed
-  End-stone blocks, consumed no arrows, and never produced a dragon damage
-  event or kill/return. The fight-specific ingress completion radius is now
-  32 blocks and the re-entry child ran once, ending with the bounded
-  `lastIngressResult=failed:skill_failure`; natural dynamic dragon combat
-  remains a release blocker and is not claimed as passed.
-- The earlier two real runs remain negative evidence: the one-cell movement
-  run ended at `(54.9,49.0,0.5)` with the sky budget exhausted; the prior
-  unpatched run ended near `(55.8,49.0,0.5)` after four rally scans. These
-  results show real physical progress but not a complete End fight.
-- Commit `bf70b73f891ab816d21ca8110d198654cd3ea369` is published on the
-  public `main` branch through Git Data API objects. A fresh clone verified
-  all five changed blob hashes byte-for-byte and `compileJava` passed for
-  Forge 65.1.1. The local release JAR remains
-  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `5e703f7945df7bdea2283033d9b36688a292609af20a017962c136935df69f67`.
-
-- The latest Forge 65.1.1 natural End ingress rerun passed in isolated
-  directory `/tmp/mcai-end-ingress-piTmLV`: `All 1 required tests passed` in
-  2.519 minutes. It reached natural End-stone inside the ready radius using
-  the production headless `ServerPlayer`, observed mining/bridge actions, and
-  no teleport or hidden terrain access. The preceding run that stalled in
-  `VERIFYING_CURRENT_SUPPORT` was stopped and the over-strict extra support
-  wait was removed; the focused JUnit suite is green again.
-- A new release-excluded natural dynamic-dragon combat selector was exercised
-  three times on Forge 65.1.1. Vanilla manager-dragon presence/motion remains
-  real and AI-enabled, but the production fight still fails honestly with
-  `fight_ender_dragon.no_visible_combat_target` after four bounded rally scans;
-  the latest failure ended near `(69.99,49.0,0.49)` with zero shots and a
-  first-person frame showing a low natural End-stone ceiling. This is now the
-  active P0 combat gap: the controller must mine/escape an observed overhead
-  obstruction and reacquire the live dragon before any dragon-kill claim.
-- Fight admission now requires the natural standing-cell evidence, then lets
-  the production skill clear a bounded, freshly observed low roof before
-  scanning for the dragon. Observed rally candidates are filtered to
-  centerward progress; the latest run still found no damageable dragon after
-  the bounded clearance and re-entry attempt. The focused
-  `FightEnderDragonSkillTest`, ingress tests, and
-  `EndIslandRallyEvidenceSourceContractTest` pass. The natural dynamic fight
-  gate remains `FAILED`, not a release or speedrun result.
-
-- The latest authorized real-model `mimo-v2.5` Ender-pearl reserve slice now
-  passes on Forge 65.1.1 after the epoch fix below. The model returned
-  `START_SKILL secure_ender_pearl_reserve`; the real ServerPlayer built the
-  observed roof, killed and picked up Endermen, reached 14 pearls with full
-  health, and Forge reported `All 1 required tests passed` in 3.094 minutes.
-  SQLite recorded `conversation_task_accepted`, HTTP-200 model response,
-  schema/revision acceptance, `skill_started`, and
-  `low_level_actions_issued`. This is a bounded live-model acquisition slice,
-  not random-world, Hardcore, speedrun, or M1-M4 evidence.
-- The preceding run reached the same 14-pearl state but failed its final tick
-  with `stale_world_revision`. The cause was an active skill's route milestone
-  changing while the skill was still authorized; the observation provider
-  released the frozen decision epoch on that ordinary progress change. Active
-  skills now retain their bound epoch until completion, so a long skill cannot
-  be rejected at the exact completion boundary. The regression is covered by
-  the observation-provider source contract and the 25-field route-snapshot
-  test.
-- The source/test fix is published on public `main` as the validated
-  production snapshot commit `50fb70bbbb0441b16e1456e5b96e6d2c08defdb5`
-  with tree `66cf4c51c975d8c0f82e7cb8659c2b8e4fdf5736`; later docs-only
-  commits carry the evidence updates. Fresh clones of the published line
-  matched the production blobs and Forge 65.1.1 `compileJava` passed.
-
-- The fair natural-End ingress gate now passes on both Forge 65.1.1 and
-  Forge 65.0.0 in fresh isolated GameTest server directories. The gate uses a
-  real vanilla End portal, zero human players, the production `ServerPlayer`
-  skill path, fresh first-person semantic frames, ordinary observed mining,
-  natural terrain, and no post-entry teleport or hidden terrain query in the
-  production controller. The body reached the strict natural End-stone
-  support/radius handoff in both runs. One seed had a continuous route and did
-  not need a bridge, so the fixture accepts zero block placement only when no
-  gap is encountered; a gap still requires ordinary owned block use.
-- A fresh Forge 65.1.1 rerun of
-  `mcai_companion:natural_end_island_ingress` also passed after the observed
-  wall/ceiling recovery changes. It completed in 2.518 minutes from the
-  isolated directory `/private/tmp/mcai-end-ingress-current.CKtNcl`, with
-  `All 1 required tests passed`. This remains physical ingress and
-  dynamic-presence evidence only; it is not a dragon-combat, random-seed,
-  Hardcore, speedrun, or rendered-client result.
-- The ingress budget was raised from 16/32 to a bounded 128 observed-block
-  mining allowance after real natural terrain showed a continuous End-stone
-  wall from the entry platform toward the central island. This remains an
-  observed BreakBlock path with an ordinary iron pickaxe, not a world scan or
-  teleport. The focused ingress, bridge, break, combat, route, and planner
-  tests pass after this change.
-- The immediate ingress production failure before the pass was
-  `reach_end_island.mining_budget_exhausted` at radii 90.8, 83.96, and 67.71;
-  those runs are retained as negative evidence. The final 65.1.1 and 65.0.0
-  runs both report `All 1 required tests passed`.
-- The release line is now `0.1.11-dev-mc26.2`. The clean Gradle `build`
-  passed after the ingress, rally-evidence, loadout, and planner-guide
-  changes. The release JAR is
-  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `44d9a8013c16a96c227046cef233e51c4ce6affa54d5d360ce2775f3c914512b`.
-- The validated production source tree is published on public `main` through
-  the snapshot above. A fresh public clone verified the same production blobs,
-  the previously truncated emergency-survival files, the new epoch/projection
-  and observed-rally fixes, and `compileJava` on Forge 65.1.1. The repository
-  remains `NON_RELEASE` because dynamic-dragon and formal M1--M4 gates are
-  not complete.
-- The natural End selector was extended with a strict dynamic-presence slice.
-  A fresh Forge 65.1.1 zero-human run observed the vanilla manager dragon with
-  `isNoAi=false`, a real displacement of 104.5 blocks in that run, and a
-  recorded vanilla phase; the selector passed. This verifies only manager
-  presence/motion. It does not claim dynamic dragon combat, crystal clearing,
-  survival, return, random Hardcore, or two-hour completion.
-- The dynamic dragon controller now has an observed rally search: after an
-  empty sky sweep it may choose a fresh, low-danger standing cell from the
-  current first-person navigation frame, bounded to the verified End radius,
-  and must pass the ordinary `TravelTo` precondition before moving. A completed
-  rally leg becomes the next bounded search anchor. Focused combat tests and
-  the fair-source contract pass; a natural manager-dragon combat/kill/return
-  gate remains `NOT_RUN`.
-- The dynamic-presence documentation and release-excluded fixture are also
-  published on `main` as commit `8edf819ba87c7a5624011a6a5b96ac11ae21af87`
-  with tree `1e537f0ca53b4283ce2687014fb6b99b5342f528`; a fresh clone matched
-  the local tree and compiled on Forge 65.1.1.
-- The current combat-safety patch also classifies an active, visible
-  ender-dragon breath cloud as a fair proximity threat; waiting or expired
-  clouds remain neutral. The focused perception source-contract test passes;
-  no hidden effect data or world mutation is used.
-- A fresh authorized MiMo movement slice on Forge 65.1.1 passed in an
-  isolated GameTest server. The SQLite chain was
-  `conversation_task_accepted â†’ model_request_started â†’
-  model_response_received(HTTP 200) â†’ decision_revision_accepted(START_SKILL
-  travel_to) â†’ skill_started â†’ low_level_actions_issued(move)`, and the body
-  reached its requested point with ordinary `ServerPlayer` movement. Forge
-  reported `All 1 required tests passed` in 22.86 seconds; the model request
-  itself completed in 7.136 seconds. This is controlled live evidence, not a
-  rendered Actor/Observer or formal M1-M4 gate.
-- The same provider's explicit multi-phase smoke test is retained as negative
-  evidence: capability negotiation succeeded, but its real structured answer
-  for `secure_ender_pearl_reserve` was `REPLAN` instead of the required
-  `START_SKILL`. The assertion failed after 67.66 seconds, and no fallback
-  action was invented.
-
-- Root causes closed in the current worktree: the vanilla End fight bootstrap
-  could retire a test dragon created before its legacy scan settled; a
-  headless player could retain the same section coordinates across dimensions
-  without refreshing the new level's ordinary player-tracking window; unsafe
-  optional cage traversal terminated the whole dragon fight instead of
-  reacquiring a visible dragon; and the continuous-route harness incorrectly
-  required destruction of one optional crystal and one artificial bar even
-  after vanilla had credited the dragon kill to the companion.
-- Two additional production defects are closed in the current worktree. The
-  emergency fall controller incorrectly treated the End as water-forbidden;
-  it now rejects water only in the Nether and retains all observed-surface and
-  vanilla-use gates. Dragon combat also used to enter ranged mode permanently
-  after its first finite melee burst; four completed arrows now reopen one
-  bounded melee window so a later perch can be used safely.
-- Current implementation files include `AiPlayerSession`,
-  `FightEnderDragonSkill`, and the controlled live/zero-human Forge GameTests.
-  Focused JUnit coverage includes risky-cage recovery, dimension-aware session
-  tracking, and Gradle selector wiring.
-- The last failed live gate reached `Free the End` but the harness rejected the
-  credited kill because of its over-constrained optional-obstacle assertion.
-  That failure is retained as negative harness evidence.
-- The corrected authorized `mimo-v2.5` run passed the complete controlled
-  stronghold-room-to-return chain on Forge 65.1.1 in 6.188 minutes. The model
-  selected normal skills for maze search, twelve-eye activation, End entry,
-  dragon combat, and return. Vanilla recorded `The End?`, `Free the End`, and
-  companion kill credit; route milestones recorded `DRAGON_KILLED` at game
-  tick 4802 and `RETURNED_FROM_END` at game tick 7425. SQLite records the
-  perception/request/HTTP-200/schema/revision/skill/action causal chain.
-- A zero-human, same-section Overworld-to-Nether regression passes on Forge
-  65.0.0 and 65.1.1. It verifies destination simulation, an outlying entity
-  and scheduled block tick, and retirement of the old dimension's window
-  without a test force-load at the destination.
-- The exact current-tree Gradle clean/test/build, release-JAR inspection, and
-  compatibility checker pass after the End safety corrections. The preceding
-  evidence-integrity snapshot separately passed all 65 Python protocol tests
-  and all ten mutation variants. The preceding 0.1.10 production JAR SHA-256
-  was
-  `79859cc6ce7d4ff1c7ec0bf16b13a7ef333c696ff9ff4f9ca863f7e4485cdac1`.
-  The last published snapshot before these two focused corrections is public
-  commit `11975c380c243aa331ac19edbb0e494d99663313`, exact tree
-  `32c864eff3c26c0119ee23f62537b58ff9acac49`; its fresh clone compiled
-  successfully. Formal
-  Actor/Observer, random Hardcore, and M0--M4 statistical gates remain
-  `NOT_RUN`.
-
-## Latest root cause and evidence
-
-The latest authorized `mimo-v2.5` live progression slices now include a
-complete controlled M1 foundation route, a complete controlled Nether portal
-handoff, and a complete End combat/return chain. Final evidence:
-
-- Forge 65.1.1, Java 25, real-time GameTest server;
-- model response was HTTP 200 and schema-valid `START_SKILL`;
-- `skill_started` and real melee/bow low-level actions were observed;
-- the body used a bounded first-person retreat of approximately eight ticks,
-  kept the crystal inside the observed firing corridor, and remained on the
-  constructed obsidian course;
-- the model-selected fight skill destroyed the visible crystal and dragon with
-  normal melee and bow actions; the route verifier recorded `DRAGON_KILLED` at
-  game tick 2164;
-- the same UUID then selected `find_and_enter_observed_portal`, physically
-  entered the activated End return portal, and the verifier recorded
-  `RETURNED_FROM_END` at game tick 2283;
-- test `real_player_task_to_live_model_end_victory_and_return` passed with
-  `All 1 required tests passed` in a 2.183-minute real-time GameTest run after
-  the cross-dimension initial-anchor guard and the 16-block observed-portal
-  approach policy were applied.
-
-The run also reproduced and closed two lifecycle/skill defects: a first human
-joining the overworld must not remove a body that is already in the End, and a
-visible return portal at roughly ten blocks must be eligible for ordinary
-approach. The model selected `fight_ender_dragon`, vanilla recorded `Monster
-Hunter` and `Free the End`, the route verifier recorded `DRAGON_KILLED` and
-`RETURNED_FROM_END`, and the stable body UUID returned to the overworld. The
-earlier run that ended in `embodiment_failed` and the run that ended in
-`portal_not_observed` remain failure evidence, not hidden successes.
-
-The End scenario is controlled and bounded: the test-only End arena disables
-ambient mob spawning after installing the dragon and crystal. The foundation
-and portal scenarios are also bounded fixtures. They are evidence for live
-model-to-vanilla causal chains, not random-seed or speedrun results.
-
-The latest stronghold entry slice also passed after two real-model failures
-exposed interaction bugs. The first failure came from an overly local final-eye
-fallback that kept the body rotating at one station; the second came from
-accepting a semantic hit in the 4.5-to-4.7 block range that vanilla correctly
-rejected. The fallback was removed and the candidate distance was tightened to
-4.45 blocks. Run `debug15` then passed with the real model: physical maze
-search, dead-end backtracking, a second turn, four-station portal activation,
-the full twelve-eye transaction, model-selected End entry, and the vanilla
-`The End?` advancement. The SQLite causal order included four model
-responses, four accepted skill starts, and low-level movement/use actions.
-This remains a controlled fixture, not an M2 or speedrun result.
-
-The next live End failure exposed a separate stale multipart index: after End
-entry, `ServerLevel.dragonParts()` retained old collider objects with the same
-UUIDs but positions 90--101 blocks from the live dragon root. The root-owned
-`getSubEntities()` objects were 2--8 blocks away and fully loaded, yet the
-old candidates consumed the fair FOV/LOS budget. Candidate collection now
-replaces same-UUID indexed parts with the current root-owned parts, uses the
-tracked dragon-fight UUID as a bounded fallback, and treats the canonical
-dragon root as a hostile boss for finite candidate prioritization. A separate
-standalone authorized MiMo End test passed dragon combat and the return portal
-in 1.958 minutes. A fresh repeat after the anchor and portal policy fixes also
-passed in 2.183 minutes. Those older full-route failures remain useful negative
-evidence, but the current controlled stronghold-room-to-return chain now passes
-as recorded in the current recovery state above.
-
-The latest damage-focused patch also makes a shielded body perform one bounded
-side-step after a directionless recent damage cue (such as indirect magic),
-instead of remaining shield-only. This is covered by a regression test and was
-present in the passing controlled full-route run; that single bounded pass is
-still not a random-world survival statistic.
-
-The latest live debugging found one concrete first-human lifecycle failure:
-the body could be removed before a malformed or void-like test anchor had a
-vanilla-safe placement, leaving no visible AI. `AiPlayerManager` now validates
-the bounded `SafeCompanionSpawnLocator` result before removing the current
-body; if no safe placement exists it keeps the authoritative body and claims
-the one-time startup provenance. The production zero-human delayed-login
-GameTest now passes with the body active before human login and safely present
-after the login. Real `mimo-v2.5` movement, follow, surprise-zombie defense,
-and golden-apple slices also pass on the patched line. The first movement run
-before this guard remains recorded as a genuine failure (`body did not return
-after initial-anchor relogin`), not silently upgraded.
-
-The first fresh live combat rerun exposed a test-fixture defect rather than a
-model or production combat result: the embedded test player was logged in at
-the vanilla world origin. That invalid login anchor caused the legitimate
-first-human lifecycle to remove the body before the chat packet reached the
-model, so the run was stopped and recorded as a failure. The combat fixture
-now logs the player in two blocks beside the live body through the normal
-`ServerPlayer` login path. The rerun passed with the supplied `mimo-v2.5`
-gateway in 18.80 seconds: Chinese chat acceptance, model response, schema and
-revision audit, `engage_observed_entity`, `skill_started`, low-level movement
-and attacks, and the vanilla `Monster Hunter` advancement were all observed.
-This remains a controlled one-zombie live slice, not a PVP, horde, Hardcore,
-random-seed, or M4 result.
-
-The next real-model surprise-defense rerun then exposed a production safety
-gap: a rear Zombie could deliver a fair, directional damage cue while the
-emergency lane only swept its view and waited for the planner. The first run
-(`run-live-surprise-20260814e`) killed the body at tick 251 and is retained as
-a genuine failure. `EmergencySurvivalController` now takes one bounded,
-sneak-protected step away from a recent damage direction after the first scan
-tick, using only the fair source vector and freshly observed adjacent-cell
-evidence. The same real `mimo-v2.5` scenario then passed in
-`run-live-surprise-20260814f`: the body reacquired the Zombie, dispatched
-ordinary vanilla attacks, survived, and triggered `Monster Hunter` before the
-test ended. The model lane returned a replan during the pressure window; the
-survival result is therefore evidence for emergency recovery plus a real
-model request, not a claim that the model alone cleared the encounter.
-
-The first bounded multi-hostile fixture exposed a harness anchoring defect:
-`run-live-horde-20260814j` left the six targets at their pre-login positions
-while the normal first-human anchor transaction moved the body, so the model
-correctly reported that no hostile was visible and selected a survey replan.
-The fixture now repositions those same entities around the authoritative body
-after the anchor transaction. The latest rerun recreates the authored targets
-after the replacement body is stable, discards ambient entities, requires the
-model skill to be genuinely `RUNNING`, and starts target-health attribution at
-that causal edge. The Chinese team request first produced a bounded model
-replan, then HTTP-200 `START_SKILL(engage_observed_entity)`,
-schema/revision acceptance, `skill_started`, and
-`low_level_actions_issued` in SQLite; the server log recorded four of six
-authored targets damaged, body movement, and full body health. The latest
-clean run passed in 40.14 seconds. This is not a human PVP, Hardcore,
-random-seed, or M4 protocol.
-
-The ten-plus-ten extension initially exposed two test-only attribution defects:
-target death flags and local/ambient damage were counted before a model skill
-started, and the first-human relogin could unload the authored mobs. The
-fixture now recreates ten Zombies and ten Skeletons after the body relogin,
-requires `engage_observed_entity` to enter `RUNNING`, and compares health only
-against a post-start baseline. The latest authorized `mimo-v2.5` run passed in
-39.98 seconds: SQLite recorded the full model-to-skill-to-action chain, ten of
-twenty authored targets were damaged (the fixture threshold is ten), the body
-moved, and body health stayed full. The prior 39.70-second run with sixteen
-damaged targets and the earlier 38.28-second run with all twenty damaged remain
-retained controlled evidence.
-This remains a controlled multi-hostile slice, not human PVP, Hardcore,
-random-seed, or M4 evidence.
-
-The first three live iron-golem attempts remain negative evidence: the model
-returned `START_SKILL(engage_observed_entity)` and SQLite recorded a vanilla
-`attack_entity` dispatch that damaged the golem, but the body did not receive
-a verified incoming attack. The root cause was stale creative/invulnerability
-state inherited by the test body, not a model decision. The latest authorized
-run clears those abilities and asserts genuine survival before chat. It
-passed in 12.15 seconds: SQLite recorded 7,736 input and 148 output tokens,
-HTTP-200 Responses output, schema/revision acceptance, skill start, vanilla
-attack dispatch, body movement, golem damage, a real golem attack, and body
-survival. This is a controlled neutral-mob slice, not a human PVP or Hardcore
-result. A preceding invocation passed a literal placeholder instead of a
-credential and made zero requests; it is harness/configuration negative
-evidence, not a combat result.
-
-## Changes in the current worktree
-
-- `AiPlayerSession`: refreshes the ordinary vanilla player chunk-tracking
-  window when the `ServerLevel` changes even if the section coordinates do
-  not.
-- `FightEnderDragonSkill`: an unsafe optional cage tower now clears tentative
-  traversal authority and resumes fair target scanning instead of terminating
-  the complete fight.
-- `LiveModelChatGameTests`: waits for vanilla End-fight settling, uses bounded
-  loaded geometry for the controlled arena, allows the historically measured
-  150-second combat window, and distinguishes credited physical dragon damage
-  from optional crystal/bar tactics.
-- `EmbodimentGameTests`: zero-human same-section cross-dimension simulation
-  regression for the headless player's vanilla tracking window.
-- `build.gradle`: supports the documented generic `test_selector`, preserves
-  `live_model_selector` as an alias, and rejects conflicting values.
-- `build.gradle`: disables caching only for ForgeGradle's merged main
-  `compileJava` output. A clean build had reported `FROM-CACHE` without
-  materializing `build/sourceSets/main`, causing `compileTestJava` to lose
-  production classes; the same clean command now compiles main locally and
-  passes.
-- Public governance: current security version, an auditable 0.1.9 chronology,
-  and an English Contributor Covenant-based code of conduct.
-
-- `FairPerceptionSampler`: multipart Ender Dragon samples begin at a collider
-  center and bounded horizontal points, with ordinary first-person LOS checks;
-  stale same-UUID index entries are replaced by current root-owned parts,
-  dragon roots and parts are prioritized as hostile candidates within the
-  finite budget, and sibling colliders publish once as one semantic parent.
-- `EmergencySurvivalController`: a recent directionless damage cue keeps a
-  shield lease but adds a bounded alternating side-step, preserving ordinary
-  collision and fall rules instead of allowing repeated magic damage to become
-  a stationary guard loop.
-- `FightEnderDragonSkill`: bounded 24-swing melee burst, eight-tick ranged
-  retreat, projectile/damage evasion, crystal firing-lane recovery, and
-  transient child-shot failure recovery.
-- `SkillSupervisor`: exposes the last checkpoint for timeout diagnostics.
-- `EmbodimentGameTests`: offline dragon window/arena diagnostics and 128-arrow
-  baseline.
-- `LiveModelChatGameTests`: live dragon/return evidence for visible entities,
-  dragon parts, danger signals, revisions, arrows, checkpoint state, and the
-  isolated no-ambient-mob End arena; diagnostics tolerate the intentional
-  one-tick initial-anchor relogin gap without masking a real failure.
-- `AiPlayerManager`: first-human initial anchoring preserves an active body
-  across dimensions and retains a validated same-tick retry anchor; it never
-  turns a gameplay portal transition into a hidden teleport.
-- `LiveModelChatGameTests`: the live combat fixture now creates its embedded
-  human at a safe position beside the companion, matching a real client login
-  and preventing the test from fabricating an invalid origin anchor.
-- `EmergencySurvivalController`: a recent directional damage cue now permits
-  one bounded observed-cell separation before the next model round trip,
-  closing the rear-hostile "look but do not move" death path without granting
-  hidden target coordinates or direct world mutation.
-- `EmergencySurvivalControllerTest`: regression coverage verifies the
-  directional damage separation is issued on the second 20-TPS tick and uses
-  a cautious vanilla movement input.
-- `LiveModelChatGameTests`: the bounded horde fixture now reanchors its six
-  existing hostile entities after the normal first-human login transaction, so
-  fair semantic visibility and damage assertions refer to the same body.
-- `LiveModelChatGameTests`: the live golem and horde fixtures now force
-  survival mode, clear invulnerability and stale creative abilities, and fail
-  closed unless the body is genuinely damageable before the model request.
-- `LiveModelChatGameTests`: the multi-hostile fixtures recreate authored
-  targets after the normal first-human body relogin, require the combat skill
-  to be `RUNNING`, and attribute damage only against a post-start health
-  baseline. This prevents speech-only, ambient, and target-death flags from
-  becoming false combat passes.
-- `MinecraftPlannerInputFactory`: explicit combat goals now receive a compact
-  hostile-only target playbook that forbids selecting dropped items or passive
-  entities and requires immediate `START_SKILL` when a legal hostile is in the
-  current fair frame.
-- `EngageObservedEntitySkill`: the fair target gate accepts canonical vanilla
-  hostile types even when a derived hostile bit is absent, while continuing to
-  reject passive mobs, projectiles, and dropped items.
-- `LiveModelHordeFixtureSourceContractTest` and planner/combat unit tests:
-  regression coverage for the ten-plus-ten registration, hostile-only prompt,
-  canonical hostile validation, and post-start damage attribution.
-- `EmbodimentGameTests`: the physical neutral-golem regression now exercises
-  the same delayed `NoAI` to vanilla-AI target activation lifecycle.
-- `PortalSkillPolicy`: the default observed-portal approach distance now uses
-  the full fair 16-block perception budget, while entry still requires a
-  current first-person visible face and vanilla reach.
-- `EndCrystalStandOffPlanner`: a bounded 20-block observed lateral firing-lane
-  search; the live fixture now places the test crystal off the dragon's direct
-  centerline so the scenario can verify crystal priority without an impossible
-  static occlusion.
-- `PrepareFoundationShelterMaterialsSkill`: remembered-table aiming now has a
-  short bounded alignment window and reacquires the table through ordinary
-  movement instead of remaining in a stale crosshair loop.
-- `BuildShelterStepSkill`: roof recovery opens a closed shelter door only via
-  the normal first-person use action when it occludes a pending roof face, and
-  resets one exhausted exterior fallback marker so a final roof corner can be
-  reached from the observed apron without a permanent interior retry loop.
-- `SearchObservedStrongholdPortalRoomSkill`: bounded inherited interior
-  confidence, fair frontier diagnostics, station yaw derived from actual
-  travel, and no walking from a first-person view without observed floor
-  support. The live harness keeps the chat sender connected until the initial
-  anchor transaction settles and places it in the safe locator's authored
-  corridor.
-- `ActivateObservedEndPortalSkill`: stale target outcomes are discarded rather
-  than replayed, final-eye movement uses the normal station route, and the
-  semantic candidate range fails closed below the survival block interaction
-  range. This prevents the observed "staring but doing nothing" loop while
-  preserving vanilla crosshair, reach, and inventory validation.
-- `FairPerceptionSupportSourceContractTest`, `FightEnderDragonSkillTest`, and
-  `EmergencySurvivalControllerTest`: regression coverage for collider-center,
-  transient shot failures, bounded retreat, and End fall recovery.
-- English-only public project documentation and a compact evidence status.
-
-## Last completed checks
-
-```text
-FightEnderDragonSkillTest                         PASS
-FairPerception focused tests                      PASS
-Offline End/dragon/return physical baseline       PASS (no model)
-Live MiMo standalone End victory and return      PASS (controlled real-model chain; Forge 65.1.1, 2.183 min)
-Live MiMo movement, follow, surprise defense, food PASS (four controlled live-model slices)
-Live MiMo container withdrawal and item collection PASS (two controlled live-model slices)
-Live MiMo foundation bootstrap and shelter       PASS (8.912-minute controlled slice; isolated SQLite)
-Live MiMo Nether portal build and entry          PASS (52.17-second controlled slice; isolated SQLite)
-Live MiMo stronghold search, portal activation, End entry PASS (controlled real-model prefix)
-Live MiMo stronghold-room-to-return chain        PASS (6.188-minute controlled real-model chain; not random Hardcore evidence)
-Live MiMo End return after anchor/portal fixes   PASS (model fight, vanilla return portal, stable UUID; bounded fixture)
-Live MiMo movement causal chain                  PASS (12.26-second real-time slice; START_SKILL travel_to and vanilla move)
-Live MiMo follow causal chain                    PASS (12.66-second real-time slice; ordinary unaddressed Chinese chat, START_SKILL follow_entity, vanilla move)
-Live MiMo surprise-zombie defense (pre-fix)     FAIL (12.69-second slice; rear hostile killed body while scanning)
-Live MiMo surprise-zombie defense (patched)     PASS (15.27-second real-time slice; bounded damage separation and vanilla counterattack)
-Live MiMo golden-apple consumption               PASS (15.26-second real-time slice; vanilla item-use consumption)
-Live MiMo Chinese combat task                    PASS (18.80-second real-time slice; engage_observed_entity, vanilla attack, Monster Hunter)
-Delayed first-human anchor lifecycle             PASS (production zero-human startup GameTest; no rendered-client claim)
-Delayed first-human anchor during emergency      PASS (Forge 65.1.1 production GameTest; deferred relogin after survival clears)
-Initial-anchor no-safe-placement guard           PASS (focused source contract and patched live movement slice)
-Live MiMo directionless-damage shield regression PASS (offline JUnit; real stronghold effectiveness NOT_PROVEN)
-Live MiMo directional-damage separation         PASS (real 15.27-second slice; model request plus emergency recovery)
-Live MiMo bounded hostile group                  PASS (40.14-second slice; six visible mobs, model engage RUNNING, 4 damaged, body moved/alive)
-Live MiMo ten-plus-ten hostile group             PASS (39.70-second slice; 20 visible mobs, model engage RUNNING, 16 damaged, body moved/alive; threshold 10)
-Live MiMo iron-golem duel                         PASS (12.15-second bounded slice; 7,736 input/148 output tokens; model engage, vanilla attack, golem damage, verified incoming golem attack, body survival)
-Roof-jump physical recovery contract             PASS (no-model GameTest)
-Focused shelter-material/building JUnit tests    PASS
-Exact Forge 65.1.1 dedicated lifecycle smoke      PASS (real dedicated server; no functional claim)
-Exact Forge 65.1.1 two-boot persistence smoke     PASS (real restart; no functional claim)
-Delayed first-human anchor client smoke           NOT_RUN (macOS lacks Linux/Xvfb; no client claim)
-Zero-human same-section cross-dimension simulation PASS (Forge 65.0.0 and 65.1.1; no fixture force-load at destination)
-Full current Gradle/JUnit, release jar, compatibility, and Python audit     PASS (63 Python tests; artifact SHA recorded above)
-Formal evidence nonce-binding regressions          PASS (65 Python tests; foreign/missing/mixed-run evidence rejected)
-Prepared manifest request-nonce binding             PASS (`BINDINGCHECK`; no model credential persisted)
-Clean cached Gradle release gate                    PASS after merged-main cache guard
-Formal Actor/Observer client gate                 NOT_RUN
-Hidden random Hardcore M1/M2/M4 gates             NOT_RUN
-M0/M1/M2/M3/M4 product milestones                 NOT_RUN
-```
-
-The offline baseline proves only a controlled vanilla physical lower bound. It
-does not substitute for a live model, rendered client, natural world, or hidden
-seed statistic.
-
-## Immediate next steps
-
-1. Preserve the closed formal-evidence nonce boundary: the manifest now owns
-   the externally expected nonce and both functional and delayed-anchor
-   verifiers bind every Actor, Observer, Oracle, and Oracle-result event to it.
-   Missing, mixed, and internally consistent foreign bundles fail closed.
-2. Preserve all live progression results as controlled evidence; do not
-   promote them to a random-seed or speedrun claim. The last formal-client
-   preflight remains `NOT_RUN` because this macOS host lacks Linux/Xvfb; the
-   next local verification command is the focused Python orchestrator suite.
-3. Run the formal Actor/Observer client gate only on an authorized Linux/Xvfb
-   worker with the exact frozen JAR, then extend the controlled chain into a
-   natural dynamic-dragon world and execute hidden-seed protocols only after
-   their exact artifact and worker prerequisites are satisfied.
-
-## Repository and release state
-
-- Public repository: `https://github.com/weidakuang/MinePilot`.
-- Public `main` before repair: `66bb2cff9362451fb08daf6fbf330a5d1058d589`.
-- Verified repair commit: `5edcdc7f7d37e91b1466fff460b571333c8312db`;
-  exact source tree: `e9ec6c1fab68dcbd04b9fa14063e9072bb6e44b1`.
-- Forge 65.x backup branch: `mc26.2-forge65`.
-- Local branch: `main`.
-- Public `main` is again a valid source backup. The two large
-  emergency-survival files were restored with full Git blob/tree objects;
-  byte counts and blob hashes match the local tree, and a fresh public clone
-  passed Gradle test/build/JAR/compatibility verification. Future connector
-  publications must keep using blob/tree objects for large files. Generated
-  run directories remain disposable and must not be staged.
-- API keys are process-only during live tests and are never written here.
+ıK®Ïğz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰n·°ı¸§ıºŞÀŒ½‘•àI•½Ù•Éä¡•­Á½¥¹Ğ()1…ÍĞÕÁ‘…Ñ•è€ÈÀÈØ´Àà´ÈÉPÀÈèĞÀèÀÀ¬ÀäèÀÀ()Q¡¥Ì¡•­Á½¥¹Ğ¥Ì¥¹Ñ•¹Ñ¥½¹…±±ä½¹¥Í”…¹¹±¥Í µ½¹±ä¸IÕ¹Ñ¥µ”¡…Ğ…¹)µÕ±Ñ¥±¥¹Õ…°Ñ•ÍĞ™¥áÑÕÉ•Ìµ…ä½¹Ñ…¥¸½Ñ¡•È±…¹Õ…•ÌìÁÕ‰±¥ŒÉ•Á½Í¥Ñ½Éä)‘½Õµ•¹Ñ…Ñ¥½¸µÕÍĞ¹½Ğ¸((ŒŒÕÉÉ•¹Ğ½‰©•Ñ¥Ù”()½¹Ñ¥¹Õ”Ñ¡”5¥¹•A¥±½Ğ4ÇŠM4Ğ½‰©•Ñ¥Ù”½¸5¥¹•É…™Ğ)…Ù„€ÈØ¸È€¼½É”€ØÔ¹àİ¥Ñ )É•…°°™…¥ÈM•ÉÙ•ÉA±…å•É€‰•¡…Ù¥½È¸¼¹½Ğ±…¥´ÁÉ½™•ÍÍ¥½¹…°µ½µÁ…¹¥½¸°)É…¹‘½´µÍ••°Ñİ¼µ¡½ÕÈ°½È4ÃŠM4Ğ½µÁ±•Ñ¥½¸Õ¹Ñ¥°Ñ¡”…ÉÑ¥™…Ğµ‰½Õ¹ÁÉ½Ñ½½±Ì)Á…ÍÌ¸((ŒŒÕÉÉ•¹ĞÉ•½Ù•ÉäÍÑ…Ñ”()Q¡¥ÌÍ•Ñ¥½¸ÍÕÁ•ÉÍ•‘•Ì½±‘•È¡É½¹½±½¥…°¹½Ñ•Ì‰•±½Üİ¡•¸Ñ¡•ä½¹™±¥Ğ¸((´ÕÉÉ•¹ĞÁÕ‰±¥Í¡•Á…Ñ è¥¡Ñ¹‘•ÉÉ…½¹M­¥±±€¹½ÜÉ½ÕÑ•Ì„¹…ÑÕÉ…°(€•¹Ñ•Éİ…É½‰Í¥‘¥…¸™É½¹Ñ¥•ÈÑ¡É½Õ ‰½Õ¹‘•™…¥È¥Í±…¹É”µ•¹ÑÉä‰•™½É”„(€±…Ñ•É…°‘•Ñ½ÕÈ°…¹¹‘%Í±…¹‘%¹É•ÍÍM­¥±±€É•©•ÑÌ‰É•…­¥¹œÑ¡”½‰Í•ÉÙ•(€ÍÕÁÁ½ÉĞÙ½á•°Õ¹‘•ÈÑ¡”‰½‘ä€¡¥¹±Õ‘¥¹œÑ¡”½ÉÉ•Ñ•‰±½¬½É¥½½É‘¥¹…Ñ”(€½¹Ù•ÉÍ¥½¸¤¸Q¡”Ñ•ÍĞµ½¹±äÑ•ÉÉ…¥¸‘¥…¹½ÍÑ¥ŒÉ•½É‘ÌÑ¡”¹…ÑÕÉ…°Á±…Ñ™½É´(€Í¡…Á”İ¥Ñ¡½ÕĞ‰•¥¹œÕÍ•‰äÁÉ½‘ÕÑ¥½¸‘•¥Í¥½¹Ì¸(´½ÕÍ•¥¹É•ÍÌ…¹½µ‰…Ğ)U¹¥ĞÍÕ¥Ñ•ÌÁ…ÍÌ°…¹Ñ¡”™É•Í ½É”(€€ØÔ¸À¸À¹…ÑÕÉ…±}•¹‘}¥Í±…¹‘}¥¹É•ÍÍ€Í•±•Ñ½ÈÁ…ÍÍ•¥¸€Ô¸àÌÔÍ•½¹‘Ì¸(´Q¡”±…Ñ•ÍĞ½µÁ±•Ñ•é•É¼µ¡Õµ…¸½É”€ØÔ¸Ä¸Ä(€¹…ÑÕÉ…±}•¹‘}‘å¹…µ¥}‘É…½¹}½µ‰…Ñ€…Ñ”É•µ…¥¹Ì%1€è…™Ñ•È€à°ÀÀÈ™¥¡Ğ(€Ñ¥­ÌÑ¡”‰½‘äÉ•…¡•…ÁÁÉ½á¥µ…Ñ•±ä€ ĞØ¸ØÌØ°ÔÄ¸À°´Ä¸ÔÀÌ¥€‰ÕĞÑ¡”Ù…¹¥±±„(€$µ•¹…‰±•µ…¹…•È‘É…½¸É•µ…¥¹•Õ¹¡…Éµ•¸Q¡”¹•ÍÑ•™…¥È¥¹É•ÍÌµ¥¹•€Èä(€½‰Í•ÉÙ•‰±½­Ì…¹Á±…•€ÌÈ‰É¥‘”‰±½­Ì°É•…¡•€ÈĞ™É½¹Ñ¥•ÈÁÉ½‰•Ì°…¹(€Ñ¡•¸•á¡…ÕÍÑ•¥ÑÌÍ…¸‰Õ‘•Ğİ¥Ñ Ñ½İ•É}ÕÀ¹½Ù•É¡•…‘}±•…É…¹•}Õ¹Ù•É¥™¥•‘€ì(€¥Ğ™¥É•é•É¼…ÉÉ½İÌ…¹‘•…±Ğé•É¼‘É…½¸‘…µ…”¸Q¡”¹½¸µÉ•Á•…Ñ¥¹œÙ¥Í¥Ñ•(€™••Ğµ•±°Õ…É¥µÁÉ½Ù•Á¡åÍ¥…°‘¥ÍÁ±…•µ•¹Ğ‰ÕĞ‘¥¹½Ğ±½Í”Ñ¡”¹…ÑÕÉ…°(€Á¥±±…Èµ•‘”É½ÕÑ”¸9¼Ñ•±•Á½ÉĞ°½µµ…¹°¡¥‘‘•¸Ñ•ÉÉ…¥¸É•…°‘É…½¸™É••é”°(€½È™¥áÑÕÉ”Ñ•ÉÉ…¥¸µÕÑ…Ñ¥½¸İ…ÌÕÍ•¸Q¡¥Ì¥ÌÑ¡”…Ñ¥Ù”É•±•…Í”‰±½­•Èì¥Ğ(€¥Ì¹½Ğ4È½4Ğ½ÈÉ…¹‘½´µÍ•••Ù¥‘•¹”¸(´¹‘%Í±…¹‘%¹É•ÍÍM­¥±±€¹½ÜÉ•Ñ…¥¹Ì„‰½Õ¹‘•Í•Ğ½˜™…¥É±ä½‰Í•ÉÙ•(€±…¹‘™…±°ÍÕÁÁ½ÉÑÌİ¡½Í”Ù…¹¥±±„QÉ…Ù•±Q½€¡¥±‰•…µ”ÍÑÕ¬°•á±Õ‘•Ì(€Ñ¡½Í”•±±Ì™É½´Ñ¡”¹•áĞ…¹‘¥‘…Ñ”Í•…É °…¹±•…ÉÌÑ¡”Í•Ğ½¹±ä…™Ñ•È„(€É•…°‰É¥‘”°Ñ½İ•È°µ¥¹¥¹œ°½È½µÁ±•Ñ•µÑÉ…Ù•°Ñ½Á½±½ä¡…¹”¸Q¡¥Ì¥Ì„(€±½…°±¥Ù•¹•ÍÌÕ…É°¹½Ğ„É½ÕÑ”½É…±”½Èİ½É±É•…¸½ÕÍ•¥¹É•ÍÌ…¹(€‘É…½¸Ñ•ÍÑÌÁ±ÕÌÑ¡”™Õ±°É…‘±”‰Õ¥±Á…ÍÌİ¥Ñ Ñ¡”¡…¹”¸(´™É•Í ¹…ÑÕÉ…°‘å¹…µ¥ŒÉÕ¸İ¥Ñ Ñ¡…ĞÕ…ÉÍÑ¥±°™…¥±Ì¡½¹•ÍÑ±ä…™Ñ•È(€€à°ÀÀÈ™¥¡ĞÑ¥­Ìè‰½‘ä€ ĞØ¸ØÌØ°ÔÄ¸À°´Ä¸ÔÀÌ¥€°¥¹É•ÍÌ€Èä½‰Í•ÉÙ•µ¥¹•(€‰±½­Ì…¹€ÌÈÁ±…•‰É¥‘”‰±½­Ì°€ĞÄ™É½¹Ñ¥•ÈÁÉ½‰•Ì°½¹”™…¥±•±…¹‘™…±°(€…ÑÑ•µÁĞ°…¹Ñ½İ•É}ÕÀ¹½Ù•É¡•…‘}±•…É…¹•}Õ¹Ù•É¥™¥•‘€ìé•É¼…ÉÉ½İÌ°‘É…½¸(€‘…µ…”°­¥±°°½ÈÉ•ÑÕÉ¸¸Q¡”Õ…ÉÁÉ•Ù•¹ÑÌÍÑ…±”±…¹‘™…±°É”µÍ•±•Ñ¥½¸‰ÕĞ(€‘½•Ì¹½ĞÍ½±Ù”Ñ¡”¹…ÑÕÉ…°Á¥±±…Èµ•‘”É½ÕÑ”¸(´Í¡½ÉĞ•áÁ±½É…Ñ½ÉäÑ½İ•ÈµÉ•½Ù•Éä¡…¹”İ…ÌÑ•ÍÑ•……¥¹ÍĞÑ¡”Í…µ”™É•Í (€¹…ÑÕÉ…°Í•±•Ñ½È…¹İ…Ì¥µµ•‘¥…Ñ•±äÉ•Ù•ÉÑ•‰•…ÕÍ”¥ĞÉ•É•ÍÍ•Ñ¡”(€µ•…ÍÕÉ•É½ÕÑ”èÑ¡”‰½‘äÍÑ½ÁÁ•¹•…È€ ĞÈ¸ØÀÌ°ÔÀ¸À°´Ğ¸ÔÀÀ¥€°Ñ¡”¹•ÍÑ•(€¥¹É•ÍÌ•¹‘•İ¥Ñ É•…¡}•¹‘}¥Í±…¹¹Í…¹}‰Õ‘•Ñ}•á¡…ÕÍÑ•‘€…™Ñ•È(€ÑÉ…Ù•±}Ñ¼¹ÍÑÕ­€°…¹Ñ¡”‘É…½¸É••¥Ù•é•É¼‘…µ…”¸Q¡”ÉÕ¸¥ÌÉ•Ñ…¥¹•(€…Ì¹•…Ñ¥Ù”•áÁ•É¥µ•¹Ğ•Ù¥‘•¹”½¹±äìÑ¡”É•Ù•ÉÑ•¡…¹”¥Ì¹½ĞÁ…ÉĞ½˜Ñ¡”(€ÁÕ‰±¥Í¡•Í½ÕÉ”½È…¹äÁ…ÍÌ±…¥´¸(´™É•Í …ÕÑ¡½É¥é•½É”€ØÔ¸Ä¸Ä±¥Ù”µµ½‘•°µ½Ù•µ•¹ĞÍ±¥”Á…ÍÍ•¥¸(€ÉÕ¸½…µ•Ñ•ÍÑÍ•ÉÙ•É€èME1¥Ñ”É•½É‘•Ñ¡”É•…°¡…Ğ½Ñ…Í¬¡…¥¸°!QQ@´ÈÀÀ(€I•ÍÁ½¹Í•Ì½ÕÑÁÕĞ°€Ü°ÜĞÄ¥¹ÁÕĞ…¹€ÄäĞ½ÕÑÁÕĞÑ½­•¹Ì°MQIQ}M-%10(€ÑÉ…Ù•±}Ñ½€°Í­¥±±}ÍÑ…ÉÑ•‘€°…¹½É‘¥¹…Éäµ½Ù•€…Ñ¥½¹Ì¸Q¡”‰½‘äÉ•…¡•(€Ñ¡”‰½Õ¹‘•Ñ…É•Ğİ¥Ñ¡½ÕĞÑ•±•Á½ÉĞ½È½µµ…¹¸Q¡¥ÌÉ•µ…¥¹Ì½¹ÑÉ½±±•(€…µ•Q•ÍĞ•Ù¥‘•¹”°¹½ĞÉ•¹‘•É•Ñ½È½=‰Í•ÉÙ•È½È™½Éµ…°4Ä´µ4Ğ•Ù¥‘•¹”¸(´™É•Í …ÕÑ¡½É¥é•½É”€ØÔ¸Ä¸Ä±¥Ù”µµ½‘•°Á…É­½ÕÈÍ±¥”Á…ÍÍ•¥¸€ÈØ¸ØÄ(€Í•½¹‘Ì¸Q¡”É•…°µ½‘•°¥ÍÍÕ•MQIQ}M-%10Á…É­½ÕÉ}Ñ½€Ñ¡É•”Ñ¥µ•ÌèÑ¡”(€™¥ÉÍĞ…ÑÑ•µÁĞ™…¥±•µ¥ÍÍ•‘}±…¹‘¥¹€°Ñ¡”Í•½¹™…¥±•(€Õ¹•áÁ•Ñ•‘}™…±±€°…¹Ñ¡”Ñ¡¥ÉÉ½ÍÍ•Ñ¡”Ñ¡É•”½¹”µ‰±½¬…ÁÌ¸ME1¥Ñ”(€É•½É‘•Ñ¡É•”!QQ@´ÈÀÀI•ÍÁ½¹Í•Ì¡…¥¹Ì°Í¡•µ„½É•Ù¥Í¥½¸…•ÁÑ…¹”°Í­¥±°(€ÍÑ…ÉÑÌ°…¹½É‘¥¹…Éäµ½Ù•µ•¹Ğ…Ñ¥½¹Ìì¹¼Ñ•±•Á½ÉĞ½È½µµ…¹İ…ÌÕÍ•¸Q¡¥Ì(€¥Ì½¹ÑÉ½±±•Á…É­½ÕÈÉ•ÑÉä•Ù¥‘•¹”°¹½Ğ„É•¹‘•É•µ±¥•¹Ğ°AY@°!…É‘½É”°(€É…¹‘½´µÍ••°½È4Ä´µ4Ğ…Ñ”¸(´™É•Í …ÕÑ¡½É¥é•½É”€ØÔ¸Ä¸Ä±¥Ù”µµ½‘•°İ…Ñ•Èµ±ÕÑ Í±¥”Á…ÍÍ•¥¸(€€ÄÔ¸ÈØÍ•½¹‘Ì¸5¥5¼É•ÑÕÉ¹•!QQ@€ÈÀÀİ¥Ñ „Í¡•µ„½É•Ù¥Í¥½¸µ…•ÁÑ•(€IA19€™½ÈÑ¡”¡¥¹•Í”™…±°µÉ•ÍÕ”É•ÅÕ•ÍĞìÑ¡”±½…°•µ•É•¹ä±…¹”Ñ¡•¸(€•ÅÕ¥ÁÁ•Ñ¡”½İ¹•İ…Ñ•È‰Õ­•Ğ°Á±…•½‰Í•ÉÙ•Ù…¹¥±±„İ…Ñ•È¥¸Ñ¡”¹°(€…¹½µÁ±•Ñ•Ñ¡”Ñİ•±Ù”µ‰±½¬™…±°İ¥Ñ •á…Ñ±ä½¹”Ù…¹¥±±„‰Õ­•ĞÕÍ”°(€™Õ±°¡•…±Ñ °…¹¹¼‘•…Ñ ¸Q¡¥ÌÁÉ½Ù•ÌÑ¡”™…¥È•µ•É•¹äÁ…Ñ Á±ÕÌ„É•…°(€µ½‘•°É•ÅÕ•ÍĞ°¹½Ğ„µ½‘•°µÍ•±•Ñ•İ…Ñ•ÈÍ­¥±°½È„É•¹‘•É•½É…¹‘½´µİ½É±(€…Ñ”¸Q¡”ÉÕ¸É•½É‘•€ÄÄ°Ôààµ½‘•°Ñ½­•¹Ì…¹É•µ…¥¹Ì½¹ÑÉ½±±••Ù¥‘•¹”¸(´™É•Í …ÕÑ¡½É¥é•½É”€ØÔ¸Ä¸Ä±¥Ù”µµ½‘•°™…É´µİ½É¬Í±¥”Á…ÍÍ•¥¸(€€ĞÔ¸ØÔÍ•½¹‘Ì¸5¥5¼Í•±•Ñ•¡…ÉÙ•ÍÑ}…¹‘}É•Á±…¹Ñ}ÍÑ•Á€Ñİ¥”…¹Ñ¡•¸(€µ…¥¹Ñ…¥¹}½‰Í•ÉÙ•‘}É½Á}™¥•±‘€ìÑ¡”‰½‘äÕÍ•½É‘¥¹…Éä½‰Í•ÉÙ•É½Àµ¥¹¥¹œ(€…¹Á±…¹Ñ¥¹œ…Ñ¥½¹Ì°…¹Ñ¡”Í•ÉÙ•ÈÉ•½É‘•M••‘äA±…•€¸ME1¥Ñ”(€É•½É‘•™¥Ù”…µ•Á±…äÁ±…¹¹¥¹œÉ•ÅÕ•ÍÑÌ…¹€ĞÀ°äØĞÑ½Ñ…°µ½‘•°Ñ½­•¹Ì¸(€Q¡¥Ì¥Ì‰½Õ¹‘•İ¡•…ĞµÁ±½Ğ•Ù¥‘•¹”½¹±ä°¹½Ğ„±½¹œµÑ•É´™…É´°É…¹‘½´µİ½É±°(€É•¹‘•É•µ±¥•¹Ğ°½È™½Éµ…°4Ä´µ4ĞÉ•ÍÕ±Ğ¸(´™É•Í …ÕÑ¡½É¥é•½É”€ØÔ¸Ä¸Ä±¥Ù”µµ½‘•°½¹Ñ…¥¹•ÈÍ±¥”…±Í¼Á…ÍÍ•¸Q¡”(€µ½‘•°™¥ÉÍĞÉ•ÑÕÉ¹•…¸¥¹Ù…±¥ÕÍ•}‰±½­€•¹Ù•±½Á”ì±½…°Ù…±¥‘…Ñ¥½¸(€É•©•Ñ•¥Ğİ¥Ñ¡½ÕĞ…¸…Ñ¥½¸°Ñ¡•¸Ñ¡”µ½‘•°½ÉÉ•Ñ•Ñ¡”‘•¥Í¥½¸°(€½µÁ±•Ñ•Ù…¹¥±±„¡•ÍĞ½Á•¹¥¹œ°…¹½µÁ±•Ñ•ÑÉ…¹Í™•É}µ•¹Õ}¥Ñ•µ€™½È(€Ñ¡É•”½…¬Á±…¹­Ì¸ME1¥Ñ”É•½É‘•Ñ¡”™…¥±ÕÉ”½É•½Ù•Éä…¹…•ÁÑ•…ÕÍ…°(€¡…¥¹ÌìÑ¡¥ÌÉ•µ…¥¹Ì½¹ÑÉ½±±•¡•ÍĞ•Ù¥‘•¹”°¹½ĞÑ¡”™½Éµ…°%¹Ù•¹Ñ½Éä(€‰±…¬µ‰½à…Ñ”¸(´™É•Í …ÕÑ¡½É¥é•½É”€ØÔ¸Ä¸Ä±¥Ù”µµ½‘•°i½µ‰¥”µ‘•™•¹Í”Í±¥”Á…ÍÍ•¸Q¡”(€•µ•É•¹ä±…¹”Õ…É‘•Ñ¡”‰½‘äİ¡¥±”Ñ¡”µ½‘•°É•ÅÕ•ÍĞÉ½ÍÍ•¥ÑÌÍ½™Ğ(€‘•…‘±¥¹”ìÑ¡”µ½‘•°Ñ¡•¸É•ÑÕÉ¹•MQIQ}M-%10•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñå€°Ñ¡”(€‰½‘äµ½Ù•…¹…ÑÑ…­•Ñ¡É½Õ Ù…¹¥±±„½µ‰…Ğ°ÍÕÉÙ¥Ù•°…¹ÑÉ¥•É•(€5½¹ÍÑ•È!Õ¹Ñ•È¸ME1¥Ñ”É•½É‘•Ñ¡”Ñ…Í¬½Á•É•ÁÑ¥½¸½!QQ@´ÈÀÀ½Í­¥±°½…Ñ¥½¸(€¡…¥¸¸Q¡¥ÌÉ•µ…¥¹Ì½¹”½¹ÑÉ½±±•¡½ÍÑ¥±”°¹½ĞAY@°!½É‘”°!…É‘½É”°½È(€™½Éµ…°4È•Ù¥‘•¹”¸(´™É•Í …ÕÑ¡½É¥é•½É”€ØÔ¸Ä¸Ä±¥Ù”µµ½‘•°Ñ•¸µi½µ‰¥”Á±ÕÌÑ•¸µM­•±•Ñ½¸(€¡½É‘”Í±¥”Á…ÍÍ•¥¸€Ìä¸äàÍ•½¹‘Ì¸Q¡”É•…°µ½‘•°…•ÁÑ•Ñ¡”¡¥¹•Í”(€ÁÉ½Ñ•Ñ¥½¸É•ÅÕ•ÍĞ°Í•±•Ñ••¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñå€°…¹ME1¥Ñ”É•½É‘•(€!QQ@´ÈÀÀI•ÍÁ½¹Í•Ì°Í¡•µ„½É•Ù¥Í¥½¸…•ÁÑ…¹”°Í­¥±±}ÍÑ…ÉÑ•‘€°…¹(€±½İ}±•Ù•±}…Ñ¥½¹Í}¥ÍÍÕ•‘€¸Q¡”™¥áÑÕÉ”½‰Í•ÉÙ•€ÄÀ‘…µ…•Ñ…É•ÑÌ½ÕĞ½˜(€€ÈÀ°‰½‘äµ½Ù•µ•¹Ğ°…¹™Õ±°‰½‘ä¡•…±Ñ ¸Q¡¥Ì¥Ì½¹ÑÉ½±±•µÕ±Ñ¤µ¡½ÍÑ¥±”(€•Ù¥‘•¹”½¹±äì¥Ğ¥Ì¹½Ğ¡Õµ…¸AY@°!…É‘½É”°É…¹‘½´µÍ••°½È4Ğ•Ù¥‘•¹”¸(´½ÕÍ•)U¹¥Ğ°™Õ±°‰Õ¥±°É•Á½Í¥Ñ½ÉäÁÉ•™±¥¡Ğ°¥Ğ…Ñ„A$ÁÕ‰±¥…Ñ¥½¸°(€™É•Í µ±½¹”‰åÑ”½µÁ…É¥Í½¸°…¹™É•Í µ±½¹”½É”½µÁ¥±•)…Ù…€…±°Á…ÍÍ•(€™½ÈÑ¡¥ÌÍ¹…ÁÍ¡½Ğ¸Q¡”‘å¹…µ¥Œ¹…ÑÕÉ…°µ¹…Ñ”É•µ…¥¹ÌÉ•½É‘•…Ì™…¥±•ì(€É•…°±¥•¹Ğ½µ½‘•°°!…É‘½É”É…¹‘½´µÍ••°…¹4Ä´µ4Ğ…Ñ•ÌÉ•µ…¥¸9=Q}IU9€(€½È•áÑ•É¹…±±ä‰±½­•¸(´Q¡”ÕÉÉ•¹ĞÍ½ÕÉ”Í¹…ÁÍ¡½Ğ¥ÌÁÕ‰±¥Œµ…¥¹€½µµ¥Ğ(€™„äå‰‰”ÅˆÑ˜Àá˜Èå•”ÄäÜÅÁˆÀÑ•…”Á‘˜á„åŒÄİ€ìÑ¡”Ñ¡É•”¡…¹•‰±½‰Ìµ…Ñ „(€™É•Í ±½¹”‰åÑ”µ™½Èµ‰åÑ”…¹Ñ¡…Ğ±½¹”Á…ÍÍ•½É”½µÁ¥±•)…Ù…€¸Q¡”(€±½…±±ä‰Õ¥±Ğ‘•Ù•±½Áµ•¹Ğ)HM!´ÈÔØ¥Ì(€€å˜àÈÌÌàÍ™ŒÌÙ‰ˆÍ…äàØäİ‘ˆàå‘ˆÄĞäá˜ĞàÔàİŒàÄÀå„ÕˆØÌáŒÀÕ••ˆáŒÀİˆÕ€¸((´Q¡”ÕÉÉ•¹ĞÕ¹½µµ¥ÑÑ•½µ‰…Ğ½ÉÉ•Ñ¥½¸½¹Ñ…¥¹ÌÑ¡É•”¹…ÉÉ½İ±ä‰½Õ¹‘•(€™…¥ÈµÁ•É•ÁÑ¥½¸¡…¹•Ì¸¥¡Ñ¹‘•ÉÉ…½¹M­¥±±€¹½ÜÑÉ•…ÑÌ„¡…¹•™…”(€½¸Ñ¡”Í…µ”½‰Í•ÉÙ•‰±½¬…Ì„Ù…±¥É•…ÅÕ¥Í¥Ñ¥½¸…¹‘¥‘…Ñ”°ÁÉ¥½É¥Ñ¥é•Ì(€„ÕÉÉ•¹Ğµ½±Õµ¸½Ù•É¡•…‰±½¬½¹±äİ¡¥±”Ñ¡”¡•…•±°¥Ì…ÑÕ…±±ä(€‰±½­•°…¹Á•Éµ¥ÑÌ„™É•Í ½‰Í•ÉÙ•±…Ñ•É…°İ…±°Ñ¼‰”µ¥¹•…™Ñ•È¡•…(€±•…É…¹”¸%Ğ…±Í¼Á•Éµ¥ÑÌ„™É•Í °ÍÕÁÁ½ÉÑ•°Ñİ¼µ‰±½¬µ±•…È¹•¥¡‰½É¥¹œ(€‘•Ñ½ÕÈ…É½Õ¹…¸½‰Í•ÉÙ•Á¥±±…Èİ¡•¸„ÍÑÉ¥Ñ±ä•¹Ñ•Éİ…É•±°¥Ì¹½Ğ(€…Ù…¥±…‰±”ìÑ¡”‘•Ñ½ÕÈÉ•µ…¥¹Ì¥¹Í¥‘”Ñ¡”€ÔØµ‰±½¬…É•¹„É…‘¥ÕÌ…¹¹•Ù•È(€É•…‘Ì¡¥‘‘•¸±•Ù•°ÍÑ…Ñ”¸Q¡”¥¹É•ÍÌÑ…É•Ğ•½µ•ÑÉä…¹Ñ¡”€À¸ÔÀQÉ…Ù•±Q¼(€…ÉÉ¥Ù…°‰½Õ¹İ•É”½ÉÉ•Ñ•¥¸Ñ¡”Í…µ”Á…Ñ ¸(´½ÕÍ•¥¡Ñ¹‘•ÉÉ…½¹M­¥±±Q•ÍÑ€°‘å¹…µ¥ŒµÉ…±±äÍ½ÕÉ”µ½¹ÑÉ…ĞÑ•ÍÑÌ°(€…¹¹‘%Í±…¹‘%¹É•ÍÍM­¥±±Q•ÍÑ€Á…ÍÌ¸Q¡”½É”€ØÔ¸Ä¸ÄÁ¡åÍ¥…°Í•±•Ñ½È(€µ…¥}½µÁ…¹¥½¸é¹…ÑÕÉ…±}•¹‘}¥Í±…¹‘}¥¹É•ÍÍ€…±Í¼Á…ÍÍ•Ì¥¸Ñ¡”ÕÉÉ•¹Ğ(€İ½É­ÑÉ•”¸(´Q¡”±…Ñ•ÍĞé•É¼µ¡Õµ…¸¹…ÑÕÉ…°‘å¹…µ¥Œµ‘É…½¸Í•±•Ñ½Èİ…ÌÉÕ¸½¸½É”(€€ØÔ¸Ä¸Ä…Ğ€ÈÀÈØ´Àà´ÈÈ€ÀÀèÔÔ)MP…¹É•µ…¥¹Ì…¸¡½¹•ÍĞ™…¥±ÕÉ”¸Q¡”‰½‘ä(€É•…¡•…ÁÁÉ½á¥µ…Ñ•±ä€ Ğä¸ÜÔÈ°Ğä¸À°À¸Ğäà¥€°µ¥¹•€ØØÕÉÉ•¹Ñ±ä½‰Í•ÉÙ•(€¹µÍÑ½¹”‰±½­Ì°…¹Á•É™½Éµ•Í•Ù•¸½‰Í•ÉÙ•É…±±äÍÑ…ÉÑÌìÑ¡”±¥Ù”(€µ…¹…•È‘É…½¸É•µ…¥¹•±½…‘•°‰ÕĞÑ¡•É”İ•É”é•É¼…ÉÉ½İÌ°‘…µ…”•Ù•¹ÑÌ°(€­¥±°°½ÈÉ•ÑÕÉ¸¸Q¡”Ñ•Éµ¥¹…°™…¥±ÕÉ”İ…Ì(€™¥¡Ñ}•¹‘•É}‘É…½¸¹¹½}Ù¥Í¥‰±•}½µ‰…Ñ}Ñ…É•Ñ€…™Ñ•È€È°ØĞäÍ­¥±°Ñ¥­Ì¸Q¡¥Ì(€¥Ì¹½Ğ‘å¹…µ¥Œµ‘É…½¸°É…¹‘½´µÍ••°!…É‘½É”°ÍÁ••‘ÉÕ¸°½È4Ä´µ4Ğ•Ù¥‘•¹”¸(´9¼µ½‘•°É•‘•¹Ñ¥…°İ…ÌÕÍ•‰äÑ¡¥ÌÁ¡åÍ¥…°…Ñ”°…¹¹¼ÁÉ½‘ÕÑ¥½¸(€Ñ•±•Á½ÉĞ°½µµ…¹°¡¥‘‘•¸Ñ•ÉÉ…¥¸É•…°‘É…½¸™É••é”°½È™¥áÑÕÉ”Ñ•ÉÉ…¥¸(€µÕÑ…Ñ¥½¸İ…Ì¥¹ÑÉ½‘Õ•¸Q¡”¹•áĞÉ•±•…Í”‘•¥Í¥½¸¥ÌÑ¡•É•™½É”…Ñ•½¸(€™Õ±°É•É•ÍÍ¥½¸…¹„™É•Í É•Ù¥•Ü½˜Ñ¡¥ÌÍÑ¥±°µ™…¥±¥¹œ‘å¹…µ¥Œ½µ‰…Ğ(€Á…Ñ ì‘¼¹½ĞÁÉ½µ½Ñ”Ñ¡¥ÌÁ…Ñ Ñ¼„É•±•…Í”±…¥´¸((´½µµ¥ĞŒàÜİ„Ñ€É•½É‘Ì„Q½İ•ÉUÁ€ÁÉ•½¹‘¥Ñ¥½¸É•©•Ñ¥½¸(€¥¸±…ÍÑ¡¥±‘…¥±ÕÉ•½‘•€°…±±½İ¥¹œÑ¡”…±É•…‘ä‰½Õ¹‘•™É½¹Ñ¥•ÈµÁÉ½‰”Á…Ñ (€Ñ¼ÉÕ¸¥¹ÍÑ•…½˜Í¥±•¹Ñ±äÉ•ÑÉå¥¹œÑ¡”Í…µ”Ñ½İ•È¸½ÕÍ•¥¹É•ÍÌ½½µ‰…Ğ(€Ñ•ÍÑÌ°Ñ¡”™Õ±°)U¹¥ĞÍÕ¥Ñ”°…¹Ñ¡”½É”€ØÔ¸Ä¸Ä‰Õ¥±Á…ÍÍ•…™Ñ•ÈÑ¡¥Ì(€½¹”µ±¥¹”ÍÑ…Ñ”™¥à¸(´Q¡”½µÁ±•Ñ•¹…ÑÕÉ…°‘å¹…µ¥Œµ‘É…½¸É•ÉÕ¸(€€½ÑµÀ½µ…¤µ‘å¹…µ¥Œµ‘É…½¸µÑ½İ•É™É½¹Ñ¥•Èµ9¹Å™Ù€ÍÑ¥±°™…¥±•¡½¹•ÍÑ±ä…Ğ(€€à°ÀÀÈ•á•ÕÑ•Ñ¥­Ìİ¥Ñ É•…¡}•¹‘}¥Í±…¹¹Í…¹}‰Õ‘•Ñ}•á¡…ÕÍÑ•‘€ì‰½‘ä(€€ ĞÜ¸ĞÌÌ°ÔÄ¸À°´À¸ÄàÜ¥€°é•É¼…ÉÉ½İÌ°é•É¼‘É…½¸‘…µ…”°é•É¼­¥±°°…¹é•É¼(€É•ÑÕÉ¸¸Q¡”±…Ñ•ÍĞ™É…µ”Í¡½İ•½¹±ä½‰Í•ÉÙ•¹µÍÑ½¹”…¹½‰Í¥‘¥…¸™…•Ì°(€Í¼¹¼Õ¹ÍÕÁÁ½ÉÑ•É½ÕÑ”İ…Ì¥¹™•ÉÉ•¸Q¡”ÍÑ…Ñ”™¥à¥ÌÁÕ‰±¥Í¡•½¸ÁÕ‰±¥Œ(€µ…¥¹€…Ì™ÈÁˆÕŒÔÉ‘ŒÔÄáˆØÅ”å™”É‰„ÀÉ˜ÀØÈÜØÑŒÈÈÕ…”Ñ€Ñ¡É½Õ ¥Ğ…Ñ„A$(€½‰©•ÑÌ¸É•Í ±½¹”€½ÑµÀ½µ¥¹•Á¥±½ĞµÑ½İ•ÈµÍÑ…Ñ”µ=<Àİå€µ…Ñ¡•Ñ¡”Ñ¡É•”(€¡…¹•™¥±”M!´ÈÔØÙ…±Õ•Ì‰åÑ”µ™½Èµ‰åÑ”°¥ÑÌ½…°)M=8Á…ÉÍ•ÍÕ•ÍÍ™Õ±±ä°(€…¹½É”€ØÔ¸Ä¸Ä½µÁ¥±•)…Ù…€Á…ÍÍ•¸(´Q¡”ÕÉÉ•¹Ğ‘•Ù•±½Áµ•¹Ğ)H¥Ì(€‰Õ¥±½±¥‰Ì½µ…¥}½µÁ…¹¥½¸´À¸Ä¸ÄÄµ‘•ØµµŒÈØ¸È¹©…É€İ¥Ñ M!´ÈÔØ(€•”ÔÜÑ”á„ÑˆÌĞÕÑ•”ÈÄÈİ‰ˆÜÉ…ØáÌÄØÍ˜ÄÁ™‰•‘Ğá„ØÈİŒàÌĞÅ”äØÑ„Å…ŒÕ€¸((´½µµ¥Ğ€ààÉÍ”Õ€µ…­•Ì½‰Í•ÉÙ•Í¥‘”µÍÑ•ÀÑ…É•ÑÌ±…¹¹•…È(€Ñ¡”™…È•‘”½˜Ñ¡”‘•ÍÑ¥¹…Ñ¥½¸•±°¥¹ÍÑ•…½˜…±±½İ¥¹œ	É¥‘•Q½M­¥±±€Ñ¼(€½µÁ±•Ñ”¥¹Í¥‘”¥ÑÌµ¥¹¥µÕ´…ÉÉ¥Ù…°É…‘¥ÕÌ°…¹±•ÑÌ„™É•Í ™É½¹Ñ¥•ÈÁÉ½‰”(€ÑÉä„Ù¥Í¥‰±”İ…±°…ÑÑ…¡µ•¹Ğ‰•™½É”½É‘¥¹…ÉäÍ¥‘”ÑÉ…Ù•°¸Q¡”¹•Ü•‘”(€Ñ…É•ĞÉ•É•ÍÍ¥½¸°™½ÕÍ•¥¹É•ÍÌ½½µ‰…ĞÍÕ¥Ñ•Ì°™Õ±°)U¹¥ĞÍÕ¥Ñ”°…¹½É”(€€ØÔ¸Ä¸Ä‰Õ¥±Á…ÍÍ•¸Q¡”¹…ÑÕÉ…°¥¹É•ÍÌÍ•±•Ñ½ÈÁ…ÍÍ•¥¸(€€½ÑµÀ½µ…¤µ¹…ÑÕÉ…°µ¥¹É•ÍÌµÍ¥‘•ÍÑ•ÀµÜÌİ	PÑ€¸(´™É•Í é•É¼µ¡Õµ…¸¹…ÑÕÉ…°‘å¹…µ¥Œµ‘É…½¸ÉÕ¸…™Ñ•ÈÑ¡¥Ì½ÉÉ•Ñ¥½¸É•µ…¥¹Ì(€„Á¡åÍ¥…°™…¥±ÕÉ”¥¸€½ÑµÀ½µ…¤µ‘å¹…µ¥Œµ‘É…½¸µ…ÑÑ…¡ÍÑ•ÀµeÑ]i€èÑ¡”(€‰½Õ¹‘•™¥¡ĞÉ•…¡•€à°ÀÀÈ•á•ÕÑ•Ñ¥­Ì°‰½‘ä…ÁÁÉ½á¥µ…Ñ•±ä(€€ ĞÜ¸ĞÌÌ°ÔÄ¸À°´À¸ÄàÜ¥€°¥¹É•ÍÌ•¹‘•İ¥Ñ (€É•…¡}•¹‘}¥Í±…¹¹Í…¹}‰Õ‘•Ñ}•á¡…ÕÍÑ•‘€°…¹Ñ¡•É”İ•É”é•É¼…ÉÉ½İÌ°‘É…½¸(€‘…µ…”°­¥±°°½ÈÉ•ÑÕÉ¸¸Q¡”™¥¹…°™…¥È™É…µ”•áÁ½Í•½¹±ä½‰Í•ÉÙ•(€¹µÍÑ½¹”½½‰Í¥‘¥…¸™…•Ì…ĞÑ¡”Á¥±±…È•‘”ì¹¼Í…™”‘•ÍÑ¥¹…Ñ¥½¸İ…Ì¥¹™•ÉÉ•¸(€å¹…µ¥Œ½µ‰…Ğ…¹•Ù•Éä™½Éµ…°4Ä´µ4Ğ½É…¹‘½´µ!…É‘½É”½ÍÁ••‘ÉÕ¸±…¥´É•µ…¥¸(€Õ¹É•±•…Í•¸(´Q¡”ÕÉÉ•¹Ğ‘•Ù•±½Áµ•¹Ğ)H…™Ñ•ÈÑ¡¥Ì½ÉÉ•Ñ¥½¸¥Ì(€‰Õ¥±½±¥‰Ì½µ…¥}½µÁ…¹¥½¸´À¸Ä¸ÄÄµ‘•ØµµŒÈØ¸È¹©…É€İ¥Ñ M!´ÈÔØ(€ÄÜÄÈàÑˆÄäÈĞÈÌäáˆå”É‰™ŒĞÀá˜ÈÜÜÄàá„ÙÙ•ˆÁ”İ˜äØÌåÁ…˜ÀØÕ„ÌÈÁ„ÜÅ™€¸(€Q¡”½ÉÉ•Ñ¥½¸¥ÌÁÕ‰±¥Í¡•½¸ÁÕ‰±¥Œµ…¥¹€…Ì(€”É”ÅÀÀäÜäİÔäĞÀÑ”Á™„Ôå™”Ñ”İˆØäÜĞÔÈäÕ‘„Ù€Ñ¡É½Õ ¥Ğ…Ñ„A$½‰©•ÑÌ¸(€É•Í ±½¹”€½ÑµÀ½µ¥¹•Á¥±½ĞµÍ¥‘”µÍÑ•Àµ(Á¡ÌÉ€µ…Ñ¡•…±°™½ÕÈ¡…¹•™¥±”(€M!´ÈÔØÙ…±Õ•Ì‰åÑ”µ™½Èµ‰åÑ”°¥ÑÌ½…°)M=8Á…ÉÍ•ÍÕ•ÍÍ™Õ±±ä°…¹½É”(€€ØÔ¸Ä¸Ä½µÁ¥±•)…Ù…€Á…ÍÍ•¸((´½µµ¥Ğ€Á˜Í…ˆÉ…€…‘‘Ì™É•Í ½‰Í•ÉÙ•É…±±äÑ…É•ÑÌ°(€‰½Õ¹‘•Í­äµ±•…É…¹”Ñ…É•ĞÉ•‰¥¹‘¥¹œ°½‰Í•ÉÙ•±…Ñ•É…°¹µÍÑ½¹”µ¥¹¥¹œ°(€Í…™”Í¥‘”µÍÑ•ÀÉ•½Ù•Éä‰•™½É”½Á…ÅÕ”Á¥±±…È…Í•¹Ğ°…¹„™É½¹Ñ¥•ÈÁÉ½‰”(€…™Ñ•È„™…¥±•Ñ½İ•È¡¥±¸%Ğ…±Í¼É•½É‘ÌÑ¡”¹•ÍÑ•¥¹É•ÍÌ¡•­Á½¥¹ĞÍ¼(€„™…¥±ÕÉ”É•µ…¥¹Ì‘¥…¹½Í…‰±”…™Ñ•ÈÑ¡”Á…É•¹Ğ™¥¡ĞÉ•ÍÕµ•Ì¸±°µ½Ù•µ•¹Ğ°(€µ¥¹¥¹œ°±½½­¥¹œ°…¹‰±½¬ÕÍ”É•µ…¥¸½É‘¥¹…ÉäM•ÉÙ•ÉA±…å•É€½Ù…¹¥±±„Í­¥±°(€…Ñ¥½¹Ì…ÕÑ¡½É¥é•‰ä™É•Í ™¥ÉÍĞµÁ•ÉÍ½¸Í•µ…¹Ñ¥Œ™É…µ•Ìì¹¼Ñ•±•Á½ÉĞ°(€¡¥‘‘•¸Ñ•ÉÉ…¥¸É•…°½µµ…¹°½È™¥áÑÕÉ”İ½É±µÕÑ…Ñ¥½¸¥ÌÕÍ•‰äÑ¡”(€ÁÉ½‘ÕÑ¥½¸½¹ÑÉ½±±•È¸(´½ÕÍ•¥¹É•ÍÌ½½µ‰…ĞÑ•ÍÑÌ°Ñ¡”™Õ±°)U¹¥ĞÍÕ¥Ñ”°…¹Ñ¡”½É”€ØÔ¸Ä¸Ä(€‰Õ¥±Á…ÍÍ•…™Ñ•ÈÑ¡¥ÌÁ…Ñ ¸Q¡”™É•Í ¹…ÑÕÉ…°¥¹É•ÍÌÍ•±•Ñ½È(€µ…¥}½µÁ…¹¥½¸é¹…ÑÕÉ…±}•¹‘}¥Í±…¹‘}¥¹É•ÍÍ€Á…ÍÍ•¥¸¥Í½±…Ñ•‘¥É•Ñ½Éä(€€½ÑµÀ½µ…¤µ¹…ÑÕÉ…°µ¥¹É•ÍÌµÁ½ÍÑÑ½İ•Èµ!©½åI•€€¡±°€ÄÉ•ÅÕ¥É•Ñ•ÍÑÌÁ…ÍÍ•‘€¤¸(´Q¡”±…Ñ•ÍĞé•É¼µ¡Õµ…¸¹…ÑÕÉ…°‘å¹…µ¥Œµ‘É…½¸Í•±•Ñ½ÈÉ•µ…¥¹Ì…¸¡½¹•ÍĞ(€™…¥±ÕÉ”¥¸€½ÑµÀ½µ…¤µ‘å¹…µ¥Œµ‘É…½¸µÍ¥‘•ÍÑ•Àµ­dÕàİ€èÑ¡”‰½‘äÉ•…¡•(€…ÁÁÉ½á¥µ…Ñ•±ä€ ĞÜ¸ØÈä°ÔÄ¸À°´À¸ÄÈÄ¥€°‰ÕĞÑ¡”¥¹É•ÍÌ¡¥±•¹‘•İ¥Ñ (€É•…¡}•¹‘}¥Í±…¹¹Í…¹}‰Õ‘•Ñ}•á¡…ÕÍÑ•‘€…¹Ñ¡”™¥¡Ğİ¥Ñ (€™¥¡Ñ}•¹‘•É}‘É…½¸¹¹½}Ù¥Í¥‰±•}½µ‰…Ñ}Ñ…É•Ñ€…™Ñ•È€Ü°ÀĞÔ•á•ÕÑ•Ñ¥­Ì¸(€%ĞÉ•½É‘•€ÄÜÉ…±±äÍÑ…ÉÑÌ…¹€äØ½‰Í•ÉÙ•Í­ä‰±½­Ìµ¥¹•°‰ÕĞé•É¼(€…ÉÉ½İÌ°‘É…½¸‘…µ…”°­¥±°°½ÈÉ•ÑÕÉ¸¸å¹…µ¥Œ‘É…½¸½µ‰…ĞÑ¡•É•™½É”(€É•µ…¥¹Ì„É•±•…Í”‰±½­•Èì¹¼É…¹‘½´µÍ••°!…É‘½É”°Ñİ¼µ¡½ÕÈ°½È4Ä´µ4Ğ(€±…¥´¥Ìµ…‘”¸(´Q¡”ÕÉÉ•¹ĞÉ•±•…Í”)H¥Ì(€‰Õ¥±½±¥‰Ì½µ…¥}½µÁ…¹¥½¸´À¸Ä¸ÄÄµ‘•ØµµŒÈØ¸È¹©…É€İ¥Ñ M!´ÈÔØ(€„É„ØÀÜØØäÑˆÌäÍŒÌØĞÄÍ…”ÈÈÉ„å…‰˜äÍ•ÔäÄÜÈÀàääĞåˆÀÑ˜ÜØÄÄİ”ÜàĞàØÍ€¸(€Q¡”Í¹…ÁÍ¡½Ğ¥ÌÁÕ‰±¥Í¡•½¸ÁÕ‰±¥Œµ…¥¹€…Ì(€ˆÈÈäÑŒàÈÕŒäĞÈØÈÙ„ØÜÙØÑˆÈÜÙ˜ÄÀÔØØİŒàÌÙÕ€Ñ¡É½Õ ¥Ğ…Ñ„A$½‰©•ÑÌ¸(€É•Í ±½¹”€½ÑµÀ½µ¥¹•Á¥±½ĞµÁÕ‰±¥Œ´İU)éU€µ…Ñ¡•…±°™½ÕÈ¡…¹•™¥±”(€M!´ÈÔØÙ…±Õ•Ì‰åÑ”µ™½Èµ‰åÑ”°…¹¥ÑÌ½É”€ØÔ¸Ä¸Ä½µÁ¥±•)…Ù…€Á…ÍÍ•¸(€¥Ğ‘¥™˜€´µ¡•­€¥Ì±•…¸…™Ñ•ÈÁÕ‰±¥…Ñ¥½¸¸((´½µµ¥Ğ˜ÀÌÀÅ™ŒÑ„Ñ˜äÕŒĞÉÉ•ˆØá‘‘”İ•á˜ĞÄäØÑ”ÔÅ€…‘‘Ì„¹…ÉÉ½İ±äÍ½Á•(€½‰Í•ÉÙ•µİ…±°…ÑÑ…¡µ•¹ĞÁ…Ñ Ñ¼	É¥‘•Q½M­¥±±€è½¹±äÑ¡”¹¥¹É•ÍÌ(€…±±•È•¹…‰±•Ì¥Ğ°(€½¹±ä„™¥ÉÍĞµÁ•ÉÍ½¸Ù¥Í¥‰±”Í½±¥™…”µ…ä…ÕÑ¡½É¥é”Ñ¡”…‘©…•¹ĞÁ±…•µ•¹Ğ°(€…¹„¹•İ•ÈÍ•µ…¹Ñ¥Œ™É…µ”µÕÍĞÁÉ½Ù”Ñ¡”Á±…•‰±½¬¥Ìİ•¥¡Ğµ‰•…É¥¹œ(€‰•™½É”É½ÍÍ¥¹œ¸%Ğ…±Í¼…‘‘Ì‰½Õ¹‘•±½Ü½Í¥‘”™É½¹Ñ¥•È½‰Í•ÉÙ…Ñ¥½¹Ì…¹„(€ÍÑ…‰±”¡¥±µ™…¥±ÕÉ”‘¥…¹½ÍÑ¥Œ¸Q¡”½µµ¥Ğ¥ÌÁÕ‰±¥Í¡•…Ì(€€ÀÕˆÀØäİŒÅ”å‰‰™„İ˜Äİ‰„ÑŒÑ…ˆàÑˆÀÁ„É˜Í„İ…€Ñ¡É½Õ ¥Ğ…Ñ„A$½‰©•ÑÌì(€„™É•Í ±½¹”Ù•É¥™¥•…±°™¥Ù”¡…¹•‰±½ˆ¡…Í¡•Ì…¹½É”€ØÔ¸Ä¸Ä(€½µÁ¥±•)…Ù…€Á…ÍÍ•¸Q¡”É•±•…Í”)H‰Õ¥±Ğ™É½´Ñ¡¥Ì½µµ¥Ğ¥Ì(€‰Õ¥±½±¥‰Ì½µ…¥}½µÁ…¹¥½¸´À¸Ä¸ÄÄµ‘•ØµµŒÈØ¸È¹©…É€İ¥Ñ M!´ÈÔØ(€ÜÜÈİÜÔÈİ”á‘•ˆå™„ÔàÉ„äÔÑ„äáÄÜÕˆÕ„ÅˆÙ„ÌÍˆÕŒÀÜÅˆÍŒÈÑ…™‘‘”ØÔÔÍ™€¸(´½µµ¥Ğ€àÈáŒİ•…€…‘‘Ì„Í•ÉÙ•ÈµÑ¥¬µÍ…™”µ¥¹¥¹œ¡…¹‘½™˜è¹¥¹É•ÍÌ¹½Ü(€İ…¥ÑÌ™½È„¹•İ•È™¥ÉÍĞµÁ•ÉÍ½¸™É…µ”‰•™½É”ÍÑ…ÉÑ¥¹œ	É•…­	±½­M­¥±±€°ÕÍ•Ì(€Ñ¡”Ñ¥¬µ±½…°É½ÍÍ¡…¥È¡¥ĞÁ½¥¹Ğ°…¹•ÅÕ¥ÁÌµ…Ñ•É¥…°‰•™½É”…¸½‰Í•ÉÙ•(€İ…±°…ÑÑ…¡µ•¹Ğ¸É…½¸Í­äµ±•…É…¹”É•ÑÉ¥•ÌÉ•µ•µ‰•È½¹”½±Õ‘•Ñ…É•Ğ(€…¹•á±Õ‘”¥Ğ™É½´Ñ¡”¹•áĞ‰½Õ¹‘•Í…¸¸Q¡”™½ÕÍ•‰É¥‘”°¥¹É•ÍÌ°…¹(€½µ‰…ĞÍÕ¥Ñ•ÌÁ…ÍÌìÑ¡”™Õ±°)U¹¥ĞÍÕ¥Ñ”…¹½É”€ØÔ¸Ä¸Ä‰Õ¥±…±Í¼Á…ÍÌ¸(´½µÁ±•Ñ•½É”€ØÔ¸Ä¸Ä¹…ÑÕÉ…°‘å¹…µ¥Œµ‘É…½¸É•ÉÕ¸…™Ñ•ÈÑ¡¥Ì¡…¹”¥Ì(€€½ÑµÀ½µ…¤µ‘å¹…µ¥Œµ‘É…½¸µ½±ÕÍ¥½¸µÍ­¥Àµ±IÑEÉ€¸%ĞÍÑ¥±°™…¥±Ì¡½¹•ÍÑ±ä…Ğ(€™¥¡Ñ}•¹‘•É}‘É…½¸¹¹½}Ù¥Í¥‰±•}½µ‰…Ñ}Ñ…É•Ñ€…™Ñ•È€Ğà‰½Õ¹‘•Í…¹Ìİ¥Ñ (€±…ÍÑM­å…¥±ÕÉ”õ‰É•…­}‰±½¬¹…Ñ¥½¹}Ñ…É•Ñ}½±Õ‘•‘€°€ÌÀÍ­ä‰±½­Ìµ¥¹•°(€é•É¼…ÉÉ½İÌ½‘…µ…”½­¥±°½É•ÑÕÉ¸°…¹‰½‘ä€ ĞÜ¸àĞ°Ğä¸À°À¸Ôä¥€¸Q¡¥Ì¥Ì¹½Ğ„(€É•±•…Í”½ÈÍÁ••‘ÉÕ¸É•ÍÕ±ĞìÑ¡”É•µ…¥¹¥¹œ…À¥ÌÑ…É•ĞÉ•…ÅÕ¥Í¥Ñ¥½¸…É½Õ¹(€Ñ¡”¹…ÑÕÉ…°Á¥±±…È½•¥±¥¹œ•‘”¸(´Q¡”ÕÉÉ•¹Ğ‘•Ù•±½Áµ•¹Ğ)H…™Ñ•ÈÑ¡”™Õ±°‰Õ¥±¥Ì(€‰Õ¥±½±¥‰Ì½µ…¥}½µÁ…¹¥½¸´À¸Ä¸ÄÄµ‘•ØµµŒÈØ¸È¹©…É€İ¥Ñ M!´ÈÔØ(€ŒàÑŒØÍ”ÍÔÈÔåÈÅ‘”ÉŒÔàÜÑ…‰„ÌÌÈÅ”äÙ…•Ñ‘ŒààÄÕ„ĞÕ˜ÁŒĞÈÅˆå˜ÈÔİ™‰€¸(´Q¡”½µµ¥Ğ¥ÌÁÕ‰±¥Í¡•½¸ÁÕ‰±¥Œµ…¥¹€…Ì˜ÔÌÀÔÀĞÔÔÜÜÄÑ˜åˆå••ˆÉŒÉ˜ÔÕˆá‘…•ŒÈÙ‰™ˆÕ€(€Ñ¡É½Õ ¥Ğ…Ñ„A$½‰©•ÑÌ¸™É•Í ±½¹”Ù•É¥™¥•Í•Ù•¸¡…¹•™¥±”(€‰±½ˆ¡…Í¡•Ì‰åÑ”µ™½Èµ‰åÑ”…¹Á…ÍÍ•½É”€ØÔ¸Ä¸Ä½µÁ¥±•)…Ù…€¸(´™É•Í É•…°½É”€ØÔ¸Ä¸Ä¹…ÑÕÉ…°‘å¹…µ¥Œµ‘É…½¸ÉÕ¸…™Ñ•ÈÑ¡”•¥¡ĞµÁ…ÑÑ•É¸(€…É‘¥¹…°™É½¹Ñ¥•ÈÁÉ½‰”İ…Ì€½ÑµÀ½µ…¤µ‘å¹…µ¥Œµ‘É…½¸µ…É‘¥¹…±ÁÉ½‰”µ¹©¹Èå€¸(€%Ğ™…¥±•…Ğ€ÈÀÈØ´Àà´ÈÄ€ÀÌèÔÀèÈàİ¥Ñ Ñ¡”Í…µ”¡½¹•ÍĞÉ•ÍÕ±Ğè(€™¥¡Ñ}•¹‘•É}‘É…½¸¹¹½}Ù¥Í¥‰±•}½µ‰…Ñ}Ñ…É•Ñ€°¥¹É•ÍÌ¡¥±(€É•…¡}•¹‘}¥Í±…¹¹Ñ¥µ•‘}½ÕÑ€°€ÌÀ½‰Í•ÉÙ•¹µÍÑ½¹”‰±½­Ìµ¥¹•°é•É¼(€…ÉÉ½İÌ½‘…µ…”½­¥±°½É•ÑÕÉ¸°‰½‘ä…ÁÁÉ½á¥µ…Ñ•±ä€ ĞÜ¸àĞ°Ğä¸À°À¸Ôä¥€°…¹(€Í…¹QÕÉ¹ÌôĞá€¸Q¡”¹…ÑÕÉ…°Ñ•ÉÉ…¥¸Í±¥”Í¡½İ•…¸½‰Í•ÉÙ•½Á•ÉÍ¥ÍÑ¥¹œ(€½‰Í¥‘¥…¸Á¥±±…È™É½¹Ñ¥•È™É½´àĞØÑ¡É½Õ àÌà…¹¹µÍÑ½¹”‰•¥¹¹¥¹œ…Ğ(€àÌÜ¸Q¡¥Ì¥Ì•Ù¥‘•¹”Ñ¡…ĞÑ¡”É•µ…¥¹¥¹œ…À¥Ì„É•…°Á¥±±…Èµ•‘”É½ÕÑ”°(€¹½Ğ„µ¥ÍÍ¥¹œµ½‘•°…±°¸(´Q¡”ÍÕ‰Í•ÅÕ•¹Ğ…ÑÑ…¡•µÍÑ•ÀÉÕ¸‘¥É•Ñ½Éä(€€½ÑµÀ½µ…¤µ‘å¹…µ¥Œµ‘É…½¸µ…ÑÑ…¡•‘ÍÑ•Àµ=)9QI€İ…Ì¥¹Ñ•ÉÉÕÁÑ•‰•™½É”„(€Í•ÉÙ•ÈÉ•ÍÕ±Ğ‘¥É•Ñ½Éäİ…ÌÉ•…Ñ•¸%Ğ¥Ì9=Q}IU9€•Ù¥‘•¹”…¹µÕÍĞ¹½Ğ(€‰”½Õ¹Ñ•…Ì„Á…ÍÌ¸Q¡”…ÑÑ…¡•µÍÑ•À¥µÁ±•µ•¹Ñ…Ñ¥½¸¥Ì¥¹±Õ‘•¥¸Ñ¡”(€ÁÕ‰±¥Í¡•½µµ¥Ğ°‰ÕĞÑ¡”Á¡åÍ¥…°‰•¡…Ù¥½ÈÍÑ¥±°É•ÅÕ¥É•Ì„±…Ñ•È(€½µÁ±•Ñ•™É•Í …Ñ”¸((´Q¡”±…Ñ•ÍĞ¹µ™¥¡Ğ½µµ¥Ğ…‘‘Ì™…¥ÈÍ­äµ±•…É…¹”É•½Ù•Éä°(€‰½Õ¹‘•½‰Í•ÉÙ•½¹”µ•±°É…±±äµ½Ù•µ•¹Ğ°…¹½¹”‰½Õ¹‘•É•ÕÍ”½˜(€¹‘%Í±…¹‘%¹É•ÍÍM­¥±±€İ¡•¸Ñ¡”‘É…½¸Í…¸É•…¡•Ì…¸½‰Í•ÉÙ•™É½¹Ñ¥•È¸(€%ĞÕÍ•Ì½¹±äÑ¡”•á¥ÍÑ¥¹œM•ÉÙ•ÉA±…å•É€µ½Ù•µ•¹Ğ°µ¥¹¥¹œ°É½Õ ½Á±…”°…¹(€™É•Í Í•µ…¹Ñ¥Œµ™É…µ”½¹ÑÉ…ÑÌì¥Ğ‘½•Ì¹½ĞÑ•±•Á½ÉĞ°¥¹ÍÁ•Ğ„±•Ù•°°½È(€¥¹Ù•¹Ğ„‰É¥‘”‘•ÍÑ¥¹…Ñ¥½¸¸(´½ÕÍ•½µ‰…Ğ…¹É…±±äµ•Ù¥‘•¹”Ñ•ÍÑÌÁ…ÍÌ…™Ñ•ÈÑ¡…ĞÁ…Ñ ¸Q¡”±…Ñ•ÍĞ(€É•…°½É”€ØÔ¸Ä¸Äé•É¼µ¡Õµ…¸Í•±•Ñ½ÈÉÕ¸İ…Ì(€€½ÑµÀ½µ…¤µ‘å¹…µ¥Œµ‘É…½¸µÉ••¹ÑÉäµÉ•ÍÕ±ĞµáDÁ4ÙM€ì¥Ğ™…¥±•¡½¹•ÍÑ±ä…™Ñ•È(€€È°ÌÄÄ™¥¡ĞÑ¥­Ìİ¥Ñ ™¥¡Ñ}•¹‘•É}‘É…½¸¹¹½}Ù¥Í¥‰±•}½µ‰…Ñ}Ñ…É•Ñ€¸Q¡”(€‰½‘ä…‘Ù…¹•Ñ¼…ÁÁÉ½á¥µ…Ñ•±ä€ ĞÜ¸à°Ğä¸À°À¸Ø¥€°µ¥¹•€ÌÀ½‰Í•ÉÙ•(€¹µÍÑ½¹”‰±½­Ì°½¹ÍÕµ•¹¼…ÉÉ½İÌ°…¹¹•Ù•ÈÁÉ½‘Õ•„‘É…½¸‘…µ…”(€•Ù•¹Ğ½È­¥±°½É•ÑÕÉ¸¸Q¡”™¥¡ĞµÍÁ•¥™¥Œ¥¹É•ÍÌ½µÁ±•Ñ¥½¸É…‘¥ÕÌ¥Ì¹½Ü(€€ÌÈ‰±½­Ì…¹Ñ¡”É”µ•¹ÑÉä¡¥±É…¸½¹”°•¹‘¥¹œİ¥Ñ Ñ¡”‰½Õ¹‘•(€±…ÍÑ%¹É•ÍÍI•ÍÕ±Ğõ™…¥±•éÍ­¥±±}™…¥±ÕÉ•€ì¹…ÑÕÉ…°‘å¹…µ¥Œ‘É…½¸½µ‰…Ğ(€É•µ…¥¹Ì„É•±•…Í”‰±½­•È…¹¥Ì¹½Ğ±…¥µ•…ÌÁ…ÍÍ•¸(´Q¡”•…É±¥•ÈÑİ¼É•…°ÉÕ¹ÌÉ•µ…¥¸¹•…Ñ¥Ù”•Ù¥‘•¹”èÑ¡”½¹”µ•±°µ½Ù•µ•¹Ğ(€ÉÕ¸•¹‘•…Ğ€ ÔĞ¸ä°Ğä¸À°À¸Ô¥€İ¥Ñ Ñ¡”Í­ä‰Õ‘•Ğ•á¡…ÕÍÑ•ìÑ¡”ÁÉ¥½È(€Õ¹Á…Ñ¡•ÉÕ¸•¹‘•¹•…È€ ÔÔ¸à°Ğä¸À°À¸Ô¥€…™Ñ•È™½ÕÈÉ…±±äÍ…¹Ì¸Q¡•Í”(€É•ÍÕ±ÑÌÍ¡½ÜÉ•…°Á¡åÍ¥…°ÁÉ½É•ÍÌ‰ÕĞ¹½Ğ„½µÁ±•Ñ”¹™¥¡Ğ¸(´½µµ¥Ğ‰˜ÜÁˆÜÍ˜àäÅ…ˆàÄÙÈÅ„àÄÄÁÄäàØÔÑÍ•„ÌØå€¥ÌÁÕ‰±¥Í¡•½¸Ñ¡”(€ÁÕ‰±¥Œµ…¥¹€‰É…¹ Ñ¡É½Õ ¥Ğ…Ñ„A$½‰©•ÑÌ¸™É•Í ±½¹”Ù•É¥™¥•(€…±°™¥Ù”¡…¹•‰±½ˆ¡…Í¡•Ì‰åÑ”µ™½Èµ‰åÑ”…¹½µÁ¥±•)…Ù…€Á…ÍÍ•™½È(€½É”€ØÔ¸Ä¸Ä¸Q¡”±½…°É•±•…Í”)HÉ•µ…¥¹Ì(€‰Õ¥±½±¥‰Ì½µ…¥}½µÁ…¹¥½¸´À¸Ä¸ÄÄµ‘•ØµµŒÈØ¸È¹©…É€İ¥Ñ M!´ÈÔØ(€€Õ”ÜÀÍ˜ÜäĞÕ‘˜İ‰‘•„ÈÈàÌÀÌÍåˆÌØØàá„ÈäÈØÀå…˜ÈÁ„ÀÄÜäØÉŒÄÌØäÌÕ‘˜Øå˜Øİ€¸((´Q¡”±…Ñ•ÍĞ½É”€ØÔ¸Ä¸Ä¹…ÑÕÉ…°¹¥¹É•ÍÌÉ•ÉÕ¸Á…ÍÍ•¥¸¥Í½±…Ñ•(€‘¥É•Ñ½Éä€½ÑµÀ½µ…¤µ•¹µ¥¹É•ÍÌµÁ¥Qµ1Y€è±°€ÄÉ•ÅÕ¥É•Ñ•ÍÑÌÁ…ÍÍ•‘€¥¸(€€È¸ÔÄäµ¥¹ÕÑ•Ì¸%ĞÉ•…¡•¹…ÑÕÉ…°¹µÍÑ½¹”¥¹Í¥‘”Ñ¡”É•…‘äÉ…‘¥ÕÌÕÍ¥¹œ(€Ñ¡”ÁÉ½‘ÕÑ¥½¸¡•…‘±•ÍÌM•ÉÙ•ÉA±…å•É€°½‰Í•ÉÙ•µ¥¹¥¹œ½‰É¥‘”…Ñ¥½¹Ì°…¹(€¹¼Ñ•±•Á½ÉĞ½È¡¥‘‘•¸Ñ•ÉÉ…¥¸…•ÍÌ¸Q¡”ÁÉ••‘¥¹œÉÕ¸Ñ¡…ĞÍÑ…±±•¥¸(€YI%e%9}UII9Q}MUAA=IQ€İ…ÌÍÑ½ÁÁ•…¹Ñ¡”½Ù•ÈµÍÑÉ¥Ğ•áÑÉ„ÍÕÁÁ½ÉĞ(€İ…¥Ğİ…ÌÉ•µ½Ù•ìÑ¡”™½ÕÍ•)U¹¥ĞÍÕ¥Ñ”¥ÌÉ••¸……¥¸¸(´¹•ÜÉ•±•…Í”µ•á±Õ‘•¹…ÑÕÉ…°‘å¹…µ¥Œµ‘É…½¸½µ‰…ĞÍ•±•Ñ½Èİ…Ì•á•É¥Í•(€Ñ¡É•”Ñ¥µ•Ì½¸½É”€ØÔ¸Ä¸Ä¸Y…¹¥±±„µ…¹…•Èµ‘É…½¸ÁÉ•Í•¹”½µ½Ñ¥½¸É•µ…¥¹Ì(€É•…°…¹$µ•¹…‰±•°‰ÕĞÑ¡”ÁÉ½‘ÕÑ¥½¸™¥¡ĞÍÑ¥±°™…¥±Ì¡½¹•ÍÑ±äİ¥Ñ (€™¥¡Ñ}•¹‘•É}‘É…½¸¹¹½}Ù¥Í¥‰±•}½µ‰…Ñ}Ñ…É•Ñ€…™Ñ•È™½ÕÈ‰½Õ¹‘•É…±±äÍ…¹Ìì(€Ñ¡”±…Ñ•ÍĞ™…¥±ÕÉ”•¹‘•¹•…È€ Øä¸ää°Ğä¸À°À¸Ğä¥€İ¥Ñ é•É¼Í¡½ÑÌ…¹„(€™¥ÉÍĞµÁ•ÉÍ½¸™É…µ”Í¡½İ¥¹œ„±½Ü¹…ÑÕÉ…°¹µÍÑ½¹”•¥±¥¹œ¸Q¡¥Ì¥Ì¹½ÜÑ¡”(€…Ñ¥Ù”@À½µ‰…Ğ…ÀèÑ¡”½¹ÑÉ½±±•ÈµÕÍĞµ¥¹”½•Í…Á”…¸½‰Í•ÉÙ•½Ù•É¡•…(€½‰ÍÑÉÕÑ¥½¸…¹É•…ÅÕ¥É”Ñ¡”±¥Ù”‘É…½¸‰•™½É”…¹ä‘É…½¸µ­¥±°±…¥´¸(´¥¡Ğ…‘µ¥ÍÍ¥½¸¹½ÜÉ•ÅÕ¥É•ÌÑ¡”¹…ÑÕÉ…°ÍÑ…¹‘¥¹œµ•±°•Ù¥‘•¹”°Ñ¡•¸±•ÑÌ(€Ñ¡”ÁÉ½‘ÕÑ¥½¸Í­¥±°±•…È„‰½Õ¹‘•°™É•Í¡±ä½‰Í•ÉÙ•±½ÜÉ½½˜‰•™½É”(€Í…¹¹¥¹œ™½ÈÑ¡”‘É…½¸¸=‰Í•ÉÙ•É…±±ä…¹‘¥‘…Ñ•Ì…É”™¥±Ñ•É•Ñ¼(€•¹Ñ•Éİ…ÉÁÉ½É•ÍÌìÑ¡”±…Ñ•ÍĞÉÕ¸ÍÑ¥±°™½Õ¹¹¼‘…µ…•…‰±”‘É…½¸…™Ñ•È(€Ñ¡”‰½Õ¹‘•±•…É…¹”…¹É”µ•¹ÑÉä…ÑÑ•µÁĞ¸Q¡”™½ÕÍ•(€¥¡Ñ¹‘•ÉÉ…½¹M­¥±±Q•ÍÑ€°¥¹É•ÍÌÑ•ÍÑÌ°…¹(€¹‘%Í±…¹‘I…±±åÙ¥‘•¹•M½ÕÉ•½¹ÑÉ…ÑQ•ÍÑ€Á…ÍÌ¸Q¡”¹…ÑÕÉ…°‘å¹…µ¥Œ™¥¡Ğ(€…Ñ”É•µ…¥¹Ì%1€°¹½Ğ„É•±•…Í”½ÈÍÁ••‘ÉÕ¸É•ÍÕ±Ğ¸((´Q¡”±…Ñ•ÍĞ…ÕÑ¡½É¥é•É•…°µµ½‘•°µ¥µ¼µØÈ¸Õ€¹‘•ÈµÁ•…É°É•Í•ÉÙ”Í±¥”¹½Ü(€Á…ÍÍ•Ì½¸½É”€ØÔ¸Ä¸Ä…™Ñ•ÈÑ¡”•Á½ ™¥à‰•±½Ü¸Q¡”µ½‘•°É•ÑÕÉ¹•(€MQIQ}M-%10Í•ÕÉ•}•¹‘•É}Á•…É±}É•Í•ÉÙ•€ìÑ¡”É•…°M•ÉÙ•ÉA±…å•È‰Õ¥±ĞÑ¡”(€½‰Í•ÉÙ•É½½˜°­¥±±•…¹Á¥­•ÕÀ¹‘•Éµ•¸°É•…¡•€ÄĞÁ•…É±Ìİ¥Ñ ™Õ±°(€¡•…±Ñ °…¹½É”É•Á½ÉÑ•±°€ÄÉ•ÅÕ¥É•Ñ•ÍÑÌÁ…ÍÍ•‘€¥¸€Ì¸ÀäĞµ¥¹ÕÑ•Ì¸(€ME1¥Ñ”É•½É‘•½¹Ù•ÉÍ…Ñ¥½¹}Ñ…Í­}…•ÁÑ•‘€°!QQ@´ÈÀÀµ½‘•°É•ÍÁ½¹Í”°(€Í¡•µ„½É•Ù¥Í¥½¸…•ÁÑ…¹”°Í­¥±±}ÍÑ…ÉÑ•‘€°…¹(€±½İ}±•Ù•±}…Ñ¥½¹Í}¥ÍÍÕ•‘€¸Q¡¥Ì¥Ì„‰½Õ¹‘•±¥Ù”µµ½‘•°…ÅÕ¥Í¥Ñ¥½¸Í±¥”°(€¹½ĞÉ…¹‘½´µİ½É±°!…É‘½É”°ÍÁ••‘ÉÕ¸°½È4Äµ4Ğ•Ù¥‘•¹”¸(´Q¡”ÁÉ••‘¥¹œÉÕ¸É•…¡•Ñ¡”Í…µ”€ÄĞµÁ•…É°ÍÑ…Ñ”‰ÕĞ™…¥±•¥ÑÌ™¥¹…°Ñ¥¬(€İ¥Ñ ÍÑ…±•}İ½É±‘}É•Ù¥Í¥½¹€¸Q¡”…ÕÍ”İ…Ì…¸…Ñ¥Ù”Í­¥±°ÌÉ½ÕÑ”µ¥±•ÍÑ½¹”(€¡…¹¥¹œİ¡¥±”Ñ¡”Í­¥±°İ…ÌÍÑ¥±°…ÕÑ¡½É¥é•ìÑ¡”½‰Í•ÉÙ…Ñ¥½¸ÁÉ½Ù¥‘•È(€É•±•…Í•Ñ¡”™É½é•¸‘•¥Í¥½¸•Á½ ½¸Ñ¡…Ğ½É‘¥¹…ÉäÁÉ½É•ÍÌ¡…¹”¸Ñ¥Ù”(€Í­¥±±Ì¹½ÜÉ•Ñ…¥¸Ñ¡•¥È‰½Õ¹•Á½ Õ¹Ñ¥°½µÁ±•Ñ¥½¸°Í¼„±½¹œÍ­¥±°…¹¹½Ğ(€‰”É•©•Ñ•…ĞÑ¡”•á…Ğ½µÁ±•Ñ¥½¸‰½Õ¹‘…Éä¸Q¡”É•É•ÍÍ¥½¸¥Ì½Ù•É•‰ä(€Ñ¡”½‰Í•ÉÙ…Ñ¥½¸µÁÉ½Ù¥‘•ÈÍ½ÕÉ”½¹ÑÉ…Ğ…¹Ñ¡”€ÈÔµ™¥•±É½ÕÑ”µÍ¹…ÁÍ¡½Ğ(€Ñ•ÍĞ¸(´Q¡”Í½ÕÉ”½Ñ•ÍĞ™¥à¥ÌÁÕ‰±¥Í¡•½¸ÁÕ‰±¥Œµ…¥¹€…ÌÑ¡”Ù…±¥‘…Ñ•(€ÁÉ½‘ÕÑ¥½¸Í¹…ÁÍ¡½Ğ½µµ¥Ğ€ÔÁ™ˆÜÁ‰‰‰ˆÀĞĞÅˆÄÙ”ÄĞÔÙ”ÕˆäÙ”ÙÉŒÀá‘•™‘ˆÕ€(€İ¥Ñ ÑÉ•”€ØÙ˜ÑŒÔÅŒäÜÕáŒÁ˜àÉ”İˆàØÔåŒÉˆá”Ñ™‘˜ÔÜÌÙ€ì±…Ñ•È‘½Ìµ½¹±ä(€½µµ¥ÑÌ…ÉÉäÑ¡”•Ù¥‘•¹”ÕÁ‘…Ñ•Ì¸É•Í ±½¹•Ì½˜Ñ¡”ÁÕ‰±¥Í¡•±¥¹”(€µ…Ñ¡•Ñ¡”ÁÉ½‘ÕÑ¥½¸‰±½‰Ì…¹½É”€ØÔ¸Ä¸Ä½µÁ¥±•)…Ù…€Á…ÍÍ•¸((´Q¡”™…¥È¹…ÑÕÉ…°µ¹¥¹É•ÍÌ…Ñ”¹½ÜÁ…ÍÍ•Ì½¸‰½Ñ ½É”€ØÔ¸Ä¸Ä…¹(€½É”€ØÔ¸À¸À¥¸™É•Í ¥Í½±…Ñ•…µ•Q•ÍĞÍ•ÉÙ•È‘¥É•Ñ½É¥•Ì¸Q¡”…Ñ”ÕÍ•Ì„(€É•…°Ù…¹¥±±„¹Á½ÉÑ…°°é•É¼¡Õµ…¸Á±…å•ÉÌ°Ñ¡”ÁÉ½‘ÕÑ¥½¸M•ÉÙ•ÉA±…å•É€(€Í­¥±°Á…Ñ °™É•Í ™¥ÉÍĞµÁ•ÉÍ½¸Í•µ…¹Ñ¥Œ™É…µ•Ì°½É‘¥¹…Éä½‰Í•ÉÙ•µ¥¹¥¹œ°(€¹…ÑÕÉ…°Ñ•ÉÉ…¥¸°…¹¹¼Á½ÍĞµ•¹ÑÉäÑ•±•Á½ÉĞ½È¡¥‘‘•¸Ñ•ÉÉ…¥¸ÅÕ•Éä¥¸Ñ¡”(€ÁÉ½‘ÕÑ¥½¸½¹ÑÉ½±±•È¸Q¡”‰½‘äÉ•…¡•Ñ¡”ÍÑÉ¥Ğ¹…ÑÕÉ…°¹µÍÑ½¹”(€ÍÕÁÁ½ÉĞ½É…‘¥ÕÌ¡…¹‘½™˜¥¸‰½Ñ ÉÕ¹Ì¸=¹”Í••¡…„½¹Ñ¥¹Õ½ÕÌÉ½ÕÑ”…¹‘¥(€¹½Ğ¹••„‰É¥‘”°Í¼Ñ¡”™¥áÑÕÉ”…•ÁÑÌé•É¼‰±½¬Á±…•µ•¹Ğ½¹±äİ¡•¸¹¼(€…À¥Ì•¹½Õ¹Ñ•É•ì„…ÀÍÑ¥±°É•ÅÕ¥É•Ì½É‘¥¹…Éä½İ¹•‰±½¬ÕÍ”¸(´™É•Í ½É”€ØÔ¸Ä¸ÄÉ•ÉÕ¸½˜(€µ…¥}½µÁ…¹¥½¸é¹…ÑÕÉ…±}•¹‘}¥Í±…¹‘}¥¹É•ÍÍ€…±Í¼Á…ÍÍ•…™Ñ•ÈÑ¡”½‰Í•ÉÙ•(€İ…±°½•¥±¥¹œÉ•½Ù•Éä¡…¹•Ì¸%Ğ½µÁ±•Ñ•¥¸€È¸ÔÄàµ¥¹ÕÑ•Ì™É½´Ñ¡”(€¥Í½±…Ñ•‘¥É•Ñ½Éä€½ÁÉ¥Ù…Ñ”½ÑµÀ½µ…¤µ•¹µ¥¹É•ÍÌµÕÉÉ•¹Ğ¹-Ñ9±€°İ¥Ñ (€±°€ÄÉ•ÅÕ¥É•Ñ•ÍÑÌÁ…ÍÍ•‘€¸Q¡¥ÌÉ•µ…¥¹ÌÁ¡åÍ¥…°¥¹É•ÍÌ…¹(€‘å¹…µ¥ŒµÁÉ•Í•¹”•Ù¥‘•¹”½¹±äì¥Ğ¥Ì¹½Ğ„‘É…½¸µ½µ‰…Ğ°É…¹‘½´µÍ••°(€!…É‘½É”°ÍÁ••‘ÉÕ¸°½ÈÉ•¹‘•É•µ±¥•¹ĞÉ•ÍÕ±Ğ¸(´Q¡”¥¹É•ÍÌ‰Õ‘•Ğİ…ÌÉ…¥Í•™É½´€ÄØ¼ÌÈÑ¼„‰½Õ¹‘•€ÄÈà½‰Í•ÉÙ•µ‰±½¬(€µ¥¹¥¹œ…±±½İ…¹”…™Ñ•ÈÉ•…°¹…ÑÕÉ…°Ñ•ÉÉ…¥¸Í¡½İ•„½¹Ñ¥¹Õ½ÕÌ¹µÍÑ½¹”(€İ…±°™É½´Ñ¡”•¹ÑÉäÁ±…Ñ™½É´Ñ½İ…ÉÑ¡”•¹ÑÉ…°¥Í±…¹¸Q¡¥ÌÉ•µ…¥¹Ì…¸(€½‰Í•ÉÙ•	É•…­	±½¬Á…Ñ İ¥Ñ …¸½É‘¥¹…Éä¥É½¸Á¥­…á”°¹½Ğ„İ½É±Í…¸½È(€Ñ•±•Á½ÉĞ¸Q¡”™½ÕÍ•¥¹É•ÍÌ°‰É¥‘”°‰É•…¬°½µ‰…Ğ°É½ÕÑ”°…¹Á±…¹¹•È(€Ñ•ÍÑÌÁ…ÍÌ…™Ñ•ÈÑ¡¥Ì¡…¹”¸(´Q¡”¥µµ•‘¥…Ñ”¥¹É•ÍÌÁÉ½‘ÕÑ¥½¸™…¥±ÕÉ”‰•™½É”Ñ¡”Á…ÍÌİ…Ì(€É•…¡}•¹‘}¥Í±…¹¹µ¥¹¥¹}‰Õ‘•Ñ}•á¡…ÕÍÑ•‘€…ĞÉ…‘¥¤€äÀ¸à°€àÌ¸äØ°…¹€ØÜ¸ÜÄì(€Ñ¡½Í”ÉÕ¹Ì…É”É•Ñ…¥¹•…Ì¹•…Ñ¥Ù”•Ù¥‘•¹”¸Q¡”™¥¹…°€ØÔ¸Ä¸Ä…¹€ØÔ¸À¸À(€ÉÕ¹Ì‰½Ñ É•Á½ÉĞ±°€ÄÉ•ÅÕ¥É•Ñ•ÍÑÌÁ…ÍÍ•‘€¸(´Q¡”É•±•…Í”±¥¹”¥Ì¹½Ü€À¸Ä¸ÄÄµ‘•ØµµŒÈØ¸É€¸Q¡”±•…¸É…‘±”‰Õ¥±‘€(€Á…ÍÍ•…™Ñ•ÈÑ¡”¥¹É•ÍÌ°É…±±äµ•Ù¥‘•¹”°±½…‘½ÕĞ°…¹Á±…¹¹•ÈµÕ¥‘”(€¡…¹•Ì¸Q¡”É•±•…Í”)H¥Ì(€‰Õ¥±½±¥‰Ì½µ…¥}½µÁ…¹¥½¸´À¸Ä¸ÄÄµ‘•ØµµŒÈØ¸È¹©…É€İ¥Ñ M!´ÈÔØ(€€ĞÑå„àÀÄÍŒÄÙ„äÙŒÈÈÜÀĞÙ•˜ÈÌÍ”ÔÅŒÑ”Ù…™™„ÔÑÕÌØÁ”ÈÜÜÕ˜ÍŒäÄĞÔÄÉ‰€¸(´Q¡”Ù…±¥‘…Ñ•ÁÉ½‘ÕÑ¥½¸Í½ÕÉ”ÑÉ•”¥ÌÁÕ‰±¥Í¡•½¸ÁÕ‰±¥Œµ…¥¹€Ñ¡É½Õ (€Ñ¡”Í¹…ÁÍ¡½Ğ…‰½Ù”¸™É•Í ÁÕ‰±¥Œ±½¹”Ù•É¥™¥•Ñ¡”Í…µ”ÁÉ½‘ÕÑ¥½¸‰±½‰Ì°(€Ñ¡”ÁÉ•Ù¥½ÕÍ±äÑÉÕ¹…Ñ••µ•É•¹äµÍÕÉÙ¥Ù…°™¥±•Ì°Ñ¡”¹•Ü•Á½ ½ÁÉ½©•Ñ¥½¸(€…¹½‰Í•ÉÙ•µÉ…±±ä™¥á•Ì°…¹½µÁ¥±•)…Ù…€½¸½É”€ØÔ¸Ä¸Ä¸Q¡”É•Á½Í¥Ñ½Éä(€É•µ…¥¹Ì9=9}I1M€‰•…ÕÍ”‘å¹…µ¥Œµ‘É…½¸…¹™½Éµ…°4Ä´µ4Ğ…Ñ•Ì…É”(€¹½Ğ½µÁ±•Ñ”¸(´Q¡”¹…ÑÕÉ…°¹Í•±•Ñ½Èİ…Ì•áÑ•¹‘•İ¥Ñ „ÍÑÉ¥Ğ‘å¹…µ¥ŒµÁÉ•Í•¹”Í±¥”¸(€™É•Í ½É”€ØÔ¸Ä¸Äé•É¼µ¡Õµ…¸ÉÕ¸½‰Í•ÉÙ•Ñ¡”Ù…¹¥±±„µ…¹…•È‘É…½¸İ¥Ñ (€¥Í9½¤õ™…±Í•€°„É•…°‘¥ÍÁ±…•µ•¹Ğ½˜€ÄÀĞ¸Ô‰±½­Ì¥¸Ñ¡…ĞÉÕ¸°…¹„(€É•½É‘•Ù…¹¥±±„Á¡…Í”ìÑ¡”Í•±•Ñ½ÈÁ…ÍÍ•¸Q¡¥ÌÙ•É¥™¥•Ì½¹±äµ…¹…•È(€ÁÉ•Í•¹”½µ½Ñ¥½¸¸%Ğ‘½•Ì¹½Ğ±…¥´‘å¹…µ¥Œ‘É…½¸½µ‰…Ğ°ÉåÍÑ…°±•…É¥¹œ°(€ÍÕÉÙ¥Ù…°°É•ÑÕÉ¸°É…¹‘½´!…É‘½É”°½ÈÑİ¼µ¡½ÕÈ½µÁ±•Ñ¥½¸¸(´Q¡”‘å¹…µ¥Œ‘É…½¸½¹ÑÉ½±±•È¹½Ü¡…Ì…¸½‰Í•ÉÙ•É…±±äÍ•…É è…™Ñ•È…¸(€•µÁÑäÍ­äÍİ••À¥Ğµ…ä¡½½Í”„™É•Í °±½Üµ‘…¹•ÈÍÑ…¹‘¥¹œ•±°™É½´Ñ¡”(€ÕÉÉ•¹Ğ™¥ÉÍĞµÁ•ÉÍ½¸¹…Ù¥…Ñ¥½¸™É…µ”°‰½Õ¹‘•Ñ¼Ñ¡”Ù•É¥™¥•¹É…‘¥ÕÌ°(€…¹µÕÍĞÁ…ÍÌÑ¡”½É‘¥¹…ÉäQÉ…Ù•±Q½€ÁÉ•½¹‘¥Ñ¥½¸‰•™½É”µ½Ù¥¹œ¸½µÁ±•Ñ•(€É…±±ä±•œ‰•½µ•ÌÑ¡”¹•áĞ‰½Õ¹‘•Í•…É …¹¡½È¸½ÕÍ•½µ‰…ĞÑ•ÍÑÌ…¹(€Ñ¡”™…¥ÈµÍ½ÕÉ”½¹ÑÉ…ĞÁ…ÍÌì„¹…ÑÕÉ…°µ…¹…•Èµ‘É…½¸½µ‰…Ğ½­¥±°½É•ÑÕÉ¸(€…Ñ”É•µ…¥¹Ì9=Q}IU9€¸(´Q¡”‘å¹…µ¥ŒµÁÉ•Í•¹”‘½Õµ•¹Ñ…Ñ¥½¸…¹É•±•…Í”µ•á±Õ‘•™¥áÑÕÉ”…É”…±Í¼(€ÁÕ‰±¥Í¡•½¸µ…¥¹€…Ì½µµ¥Ğ€á•‘˜àÄå‰„àİŒİ„ÔØÈĞÀÄÅ„Ù„ÕˆäÙ…ŒÄÅ…”ÈÅ…˜àİ€(€İ¥Ñ ÑÉ•”€Å”ÔÌİ˜Á„ÔÍˆĞÈàÍ”ÈØàÜÀÄÑ™ˆÙˆäåˆÔÌĞÉ˜ÔÈá€ì„™É•Í ±½¹”µ…Ñ¡•(€Ñ¡”±½…°ÑÉ•”…¹½µÁ¥±•½¸½É”€ØÔ¸Ä¸Ä¸(´Q¡”ÕÉÉ•¹Ğ½µ‰…ĞµÍ…™•ÑäÁ…Ñ …±Í¼±…ÍÍ¥™¥•Ì…¸…Ñ¥Ù”°Ù¥Í¥‰±”(€•¹‘•Èµ‘É…½¸‰É•…Ñ ±½Õ…Ì„™…¥ÈÁÉ½á¥µ¥ÑäÑ¡É•…Ğìİ…¥Ñ¥¹œ½È•áÁ¥É•(€±½Õ‘ÌÉ•µ…¥¸¹•ÕÑÉ…°¸Q¡”™½ÕÍ•Á•É•ÁÑ¥½¸Í½ÕÉ”µ½¹ÑÉ…ĞÑ•ÍĞÁ…ÍÍ•Ìì(€¹¼¡¥‘‘•¸•™™•Ğ‘…Ñ„½Èİ½É±µÕÑ…Ñ¥½¸¥ÌÕÍ•¸(´™É•Í …ÕÑ¡½É¥é•5¥5¼µ½Ù•µ•¹ĞÍ±¥”½¸½É”€ØÔ¸Ä¸ÄÁ…ÍÍ•¥¸…¸(€¥Í½±…Ñ•…µ•Q•ÍĞÍ•ÉÙ•È¸Q¡”ME1¥Ñ”¡…¥¸İ…Ì(€½¹Ù•ÉÍ…Ñ¥½¹}Ñ…Í­}…•ÁÑ•ƒŠHµ½‘•±}É•ÅÕ•ÍÑ}ÍÑ…ÉÑ•ƒŠH(€µ½‘•±}É•ÍÁ½¹Í•}É••¥Ù•¡!QQ@€ÈÀÀ¤ƒŠH‘•¥Í¥½¹}É•Ù¥Í¥½¹}…•ÁÑ•¡MQIQ}M-%10(€ÑÉ…Ù•±}Ñ¼¤ƒŠHÍ­¥±±}ÍÑ…ÉÑ•ƒŠH±½İ}±•Ù•±}…Ñ¥½¹Í}¥ÍÍÕ•¡µ½Ù”¥€°…¹Ñ¡”‰½‘ä(€É•…¡•¥ÑÌÉ•ÅÕ•ÍÑ•Á½¥¹Ğİ¥Ñ ½É‘¥¹…ÉäM•ÉÙ•ÉA±…å•É€µ½Ù•µ•¹Ğ¸½É”(€É•Á½ÉÑ•±°€ÄÉ•ÅÕ¥É•Ñ•ÍÑÌÁ…ÍÍ•‘€¥¸€ÈÈ¸àØÍ•½¹‘ÌìÑ¡”µ½‘•°É•ÅÕ•ÍĞ(€¥ÑÍ•±˜½µÁ±•Ñ•¥¸€Ü¸ÄÌØÍ•½¹‘Ì¸Q¡¥Ì¥Ì½¹ÑÉ½±±•±¥Ù”•Ù¥‘•¹”°¹½Ğ„(€É•¹‘•É•Ñ½È½=‰Í•ÉÙ•È½È™½Éµ…°4Äµ4Ğ…Ñ”¸(´Q¡”Í…µ”ÁÉ½Ù¥‘•ÈÌ•áÁ±¥¥ĞµÕ±Ñ¤µÁ¡…Í”Íµ½­”Ñ•ÍĞ¥ÌÉ•Ñ…¥¹•…Ì¹•…Ñ¥Ù”(€•Ù¥‘•¹”è…Á…‰¥±¥Ñä¹•½Ñ¥…Ñ¥½¸ÍÕ••‘•°‰ÕĞ¥ÑÌÉ•…°ÍÑÉÕÑÕÉ•…¹Íİ•È(€™½ÈÍ•ÕÉ•}•¹‘•É}Á•…É±}É•Í•ÉÙ•€İ…ÌIA19€¥¹ÍÑ•…½˜Ñ¡”É•ÅÕ¥É•(€MQIQ}M-%11€¸Q¡”…ÍÍ•ÉÑ¥½¸™…¥±•…™Ñ•È€ØÜ¸ØØÍ•½¹‘Ì°…¹¹¼™…±±‰…¬(€…Ñ¥½¸İ…Ì¥¹Ù•¹Ñ•¸((´I½½Ğ…ÕÍ•Ì±½Í•¥¸Ñ¡”ÕÉÉ•¹Ğİ½É­ÑÉ•”èÑ¡”Ù…¹¥±±„¹™¥¡Ğ‰½½ÑÍÑÉ…À(€½Õ±É•Ñ¥É”„Ñ•ÍĞ‘É…½¸É•…Ñ•‰•™½É”¥ÑÌ±•…äÍ…¸Í•ÑÑ±•ì„(€¡•…‘±•ÍÌÁ±…å•È½Õ±É•Ñ…¥¸Ñ¡”Í…µ”Í•Ñ¥½¸½½É‘¥¹…Ñ•Ì…É½ÍÌ‘¥µ•¹Í¥½¹Ì(€İ¥Ñ¡½ÕĞÉ•™É•Í¡¥¹œÑ¡”¹•Ü±•Ù•°Ì½É‘¥¹…ÉäÁ±…å•ÈµÑÉ…­¥¹œİ¥¹‘½ÜìÕ¹Í…™”(€½ÁÑ¥½¹…°…”ÑÉ…Ù•ÉÍ…°Ñ•Éµ¥¹…Ñ•Ñ¡”İ¡½±”‘É…½¸™¥¡Ğ¥¹ÍÑ•…½˜(€É•…ÅÕ¥É¥¹œ„Ù¥Í¥‰±”‘É…½¸ì…¹Ñ¡”½¹Ñ¥¹Õ½ÕÌµÉ½ÕÑ”¡…É¹•ÍÌ¥¹½ÉÉ•Ñ±ä(€É•ÅÕ¥É•‘•ÍÑÉÕÑ¥½¸½˜½¹”½ÁÑ¥½¹…°ÉåÍÑ…°…¹½¹”…ÉÑ¥™¥¥…°‰…È•Ù•¸(€…™Ñ•ÈÙ…¹¥±±„¡…É•‘¥Ñ•Ñ¡”‘É…½¸­¥±°Ñ¼Ñ¡”½µÁ…¹¥½¸¸(´Qİ¼…‘‘¥Ñ¥½¹…°ÁÉ½‘ÕÑ¥½¸‘•™•ÑÌ…É”±½Í•¥¸Ñ¡”ÕÉÉ•¹Ğİ½É­ÑÉ•”¸Q¡”(€•µ•É•¹ä™…±°½¹ÑÉ½±±•È¥¹½ÉÉ•Ñ±äÑÉ•…Ñ•Ñ¡”¹…Ìİ…Ñ•Èµ™½É‰¥‘‘•¸ì(€¥Ğ¹½ÜÉ•©•ÑÌİ…Ñ•È½¹±ä¥¸Ñ¡”9•Ñ¡•È…¹É•Ñ…¥¹Ì…±°½‰Í•ÉÙ•µÍÕÉ™…”…¹(€Ù…¹¥±±„µÕÍ”…Ñ•Ì¸É…½¸½µ‰…Ğ…±Í¼ÕÍ•Ñ¼•¹Ñ•ÈÉ…¹•µ½‘”Á•Éµ…¹•¹Ñ±ä(€…™Ñ•È¥ÑÌ™¥ÉÍĞ™¥¹¥Ñ”µ•±•”‰ÕÉÍĞì™½ÕÈ½µÁ±•Ñ•…ÉÉ½İÌ¹½ÜÉ•½Á•¸½¹”(€‰½Õ¹‘•µ•±•”İ¥¹‘½ÜÍ¼„±…Ñ•ÈÁ•É …¸‰”ÕÍ•Í…™•±ä¸(´ÕÉÉ•¹Ğ¥µÁ±•µ•¹Ñ…Ñ¥½¸™¥±•Ì¥¹±Õ‘”¥A±…å•ÉM•ÍÍ¥½¹€°(€¥¡Ñ¹‘•ÉÉ…½¹M­¥±±€°…¹Ñ¡”½¹ÑÉ½±±•±¥Ù”½é•É¼µ¡Õµ…¸½É”…µ•Q•ÍÑÌ¸(€½ÕÍ•)U¹¥Ğ½Ù•É…”¥¹±Õ‘•ÌÉ¥Í­äµ…”É•½Ù•Éä°‘¥µ•¹Í¥½¸µ…İ…É”Í•ÍÍ¥½¸(€ÑÉ…­¥¹œ°…¹É…‘±”Í•±•Ñ½Èİ¥É¥¹œ¸(´Q¡”±…ÍĞ™…¥±•±¥Ù”…Ñ”É•…¡•É•”Ñ¡”¹‘€‰ÕĞÑ¡”¡…É¹•ÍÌÉ•©•Ñ•Ñ¡”(€É•‘¥Ñ•­¥±°‰•…ÕÍ”½˜¥ÑÌ½Ù•Èµ½¹ÍÑÉ…¥¹•½ÁÑ¥½¹…°µ½‰ÍÑ…±”…ÍÍ•ÉÑ¥½¸¸(€Q¡…Ğ™…¥±ÕÉ”¥ÌÉ•Ñ…¥¹•…Ì¹•…Ñ¥Ù”¡…É¹•ÍÌ•Ù¥‘•¹”¸(´Q¡”½ÉÉ•Ñ•…ÕÑ¡½É¥é•µ¥µ¼µØÈ¸Õ€ÉÕ¸Á…ÍÍ•Ñ¡”½µÁ±•Ñ”½¹ÑÉ½±±•(€ÍÑÉ½¹¡½±µÉ½½´µÑ¼µÉ•ÑÕÉ¸¡…¥¸½¸½É”€ØÔ¸Ä¸Ä¥¸€Ø¸Äààµ¥¹ÕÑ•Ì¸Q¡”µ½‘•°(€Í•±•Ñ•¹½Éµ…°Í­¥±±Ì™½Èµ…é”Í•…É °Ñİ•±Ù”µ•å”…Ñ¥Ù…Ñ¥½¸°¹•¹ÑÉä°(€‘É…½¸½µ‰…Ğ°…¹É•ÑÕÉ¸¸Y…¹¥±±„É•½É‘•Q¡”¹ı€°É•”Ñ¡”¹‘€°…¹(€½µÁ…¹¥½¸­¥±°É•‘¥ĞìÉ½ÕÑ”µ¥±•ÍÑ½¹•ÌÉ•½É‘•I=9}-%11€…Ğ…µ”(€Ñ¥¬€ĞàÀÈ…¹IQUI9}I=5}9€…Ğ…µ”Ñ¥¬€ÜĞÈÔ¸ME1¥Ñ”É•½É‘ÌÑ¡”(€Á•É•ÁÑ¥½¸½É•ÅÕ•ÍĞ½!QQ@´ÈÀÀ½Í¡•µ„½É•Ù¥Í¥½¸½Í­¥±°½…Ñ¥½¸…ÕÍ…°¡…¥¸¸(´é•É¼µ¡Õµ…¸°Í…µ”µÍ•Ñ¥½¸=Ù•Éİ½É±µÑ¼µ9•Ñ¡•ÈÉ•É•ÍÍ¥½¸Á…ÍÍ•Ì½¸½É”(€€ØÔ¸À¸À…¹€ØÔ¸Ä¸Ä¸%ĞÙ•É¥™¥•Ì‘•ÍÑ¥¹…Ñ¥½¸Í¥µÕ±…Ñ¥½¸°…¸½ÕÑ±å¥¹œ•¹Ñ¥Ñä(€…¹Í¡•‘Õ±•‰±½¬Ñ¥¬°…¹É•Ñ¥É•µ•¹Ğ½˜Ñ¡”½±‘¥µ•¹Í¥½¸Ìİ¥¹‘½Ü(€İ¥Ñ¡½ÕĞ„Ñ•ÍĞ™½É”µ±½……ĞÑ¡”‘•ÍÑ¥¹…Ñ¥½¸¸(´Q¡”•á…ĞÕÉÉ•¹ĞµÑÉ•”É…‘±”±•…¸½Ñ•ÍĞ½‰Õ¥±°É•±•…Í”µ)H¥¹ÍÁ•Ñ¥½¸°…¹(€½µÁ…Ñ¥‰¥±¥Ñä¡•­•ÈÁ…ÍÌ…™Ñ•ÈÑ¡”¹Í…™•Ñä½ÉÉ•Ñ¥½¹Ì¸Q¡”ÁÉ••‘¥¹œ(€•Ù¥‘•¹”µ¥¹Ñ•É¥ÑäÍ¹…ÁÍ¡½ĞÍ•Á…É…Ñ•±äÁ…ÍÍ•…±°€ØÔAåÑ¡½¸ÁÉ½Ñ½½°Ñ•ÍÑÌ(€…¹…±°Ñ•¸µÕÑ…Ñ¥½¸Ù…É¥…¹ÑÌ¸Q¡”ÁÉ••‘¥¹œ€À¸Ä¸ÄÀÁÉ½‘ÕÑ¥½¸)HM!´ÈÔØ(€İ…Ì(€€ÜäàÔåŒÙ”İÑ™˜ÅŒİ•ŒÁ‰˜ÄÙˆÄÍ„İ•˜ÌÌÍŒØäÙ™˜å™˜Ñ˜å„àØÍ˜İ”ĞĞàÕ‘…ŒÅ€¸(€Q¡”±…ÍĞÁÕ‰±¥Í¡•Í¹…ÁÍ¡½Ğ‰•™½É”Ñ¡•Í”Ñİ¼™½ÕÍ•½ÉÉ•Ñ¥½¹Ì¥ÌÁÕ‰±¥Œ(€½µµ¥Ğ€ÄÄäÜÕŒÌàÁŒÈĞÍ…„ÌÌÅ…ŒÄå•‘‰ˆÁ”ĞäÑääØØÌÌÄÍ€°•á…ĞÑÉ•”(€€ÌÉŒàØÑ•™˜ÍŒÈÙŒÀÄÄå•”ÈÍ˜ØÈÔÌİˆÔá™˜å……ŒĞå€ì¥ÑÌ™É•Í ±½¹”½µÁ¥±•(€ÍÕ•ÍÍ™Õ±±ä¸½Éµ…°(€Ñ½È½=‰Í•ÉÙ•È°É…¹‘½´!…É‘½É”°…¹4À´µ4ĞÍÑ…Ñ¥ÍÑ¥…°…Ñ•ÌÉ•µ…¥¸(€9=Q}IU9€¸((ŒŒ1…Ñ•ÍĞÉ½½Ğ…ÕÍ”…¹•Ù¥‘•¹”()Q¡”±…Ñ•ÍĞ…ÕÑ¡½É¥é•µ¥µ¼µØÈ¸Õ€±¥Ù”ÁÉ½É•ÍÍ¥½¸Í±¥•Ì¹½Ü¥¹±Õ‘”„)½µÁ±•Ñ”½¹ÑÉ½±±•4Ä™½Õ¹‘…Ñ¥½¸É½ÕÑ”°„½µÁ±•Ñ”½¹ÑÉ½±±•9•Ñ¡•ÈÁ½ÉÑ…°)¡…¹‘½™˜°…¹„½µÁ±•Ñ”¹½µ‰…Ğ½É•ÑÕÉ¸¡…¥¸¸¥¹…°•Ù¥‘•¹”è((´½É”€ØÔ¸Ä¸Ä°)…Ù„€ÈÔ°É•…°µÑ¥µ”…µ•Q•ÍĞÍ•ÉÙ•Èì(´µ½‘•°É•ÍÁ½¹Í”İ…Ì!QQ@€ÈÀÀ…¹Í¡•µ„µÙ…±¥MQIQ}M-%11€ì(´Í­¥±±}ÍÑ…ÉÑ•‘€…¹É•…°µ•±•”½‰½Ü±½Üµ±•Ù•°…Ñ¥½¹Ìİ•É”½‰Í•ÉÙ•ì(´Ñ¡”‰½‘äÕÍ•„‰½Õ¹‘•™¥ÉÍĞµÁ•ÉÍ½¸É•ÑÉ•…Ğ½˜…ÁÁÉ½á¥µ…Ñ•±ä•¥¡ĞÑ¥­Ì°(€­•ÁĞÑ¡”ÉåÍÑ…°¥¹Í¥‘”Ñ¡”½‰Í•ÉÙ•™¥É¥¹œ½ÉÉ¥‘½È°…¹É•µ…¥¹•½¸Ñ¡”(€½¹ÍÑÉÕÑ•½‰Í¥‘¥…¸½ÕÉÍ”ì(´Ñ¡”µ½‘•°µÍ•±•Ñ•™¥¡ĞÍ­¥±°‘•ÍÑÉ½å•Ñ¡”Ù¥Í¥‰±”ÉåÍÑ…°…¹‘É…½¸İ¥Ñ (€¹½Éµ…°µ•±•”…¹‰½Ü…Ñ¥½¹ÌìÑ¡”É½ÕÑ”Ù•É¥™¥•ÈÉ•½É‘•I=9}-%11€…Ğ(€…µ”Ñ¥¬€ÈÄØĞì(´Ñ¡”Í…µ”UU%Ñ¡•¸Í•±•Ñ•™¥¹‘}…¹‘}•¹Ñ•É}½‰Í•ÉÙ•‘}Á½ÉÑ…±€°Á¡åÍ¥…±±ä(€•¹Ñ•É•Ñ¡”…Ñ¥Ù…Ñ•¹É•ÑÕÉ¸Á½ÉÑ…°°…¹Ñ¡”Ù•É¥™¥•ÈÉ•½É‘•(€IQUI9}I=5}9€…Ğ…µ”Ñ¥¬€ÈÈàÌì(´Ñ•ÍĞÉ•…±}Á±…å•É}Ñ…Í­}Ñ½}±¥Ù•}µ½‘•±}•¹‘}Ù¥Ñ½Éå}…¹‘}É•ÑÕÉ¹€Á…ÍÍ•İ¥Ñ (€±°€ÄÉ•ÅÕ¥É•Ñ•ÍÑÌÁ…ÍÍ•‘€¥¸„€È¸ÄàÌµµ¥¹ÕÑ”É•…°µÑ¥µ”…µ•Q•ÍĞÉÕ¸…™Ñ•È(€Ñ¡”É½ÍÌµ‘¥µ•¹Í¥½¸¥¹¥Ñ¥…°µ…¹¡½ÈÕ…É…¹Ñ¡”€ÄØµ‰±½¬½‰Í•ÉÙ•µÁ½ÉÑ…°(€…ÁÁÉ½… Á½±¥äİ•É”…ÁÁ±¥•¸()Q¡”ÉÕ¸…±Í¼É•ÁÉ½‘Õ•…¹±½Í•Ñİ¼±¥™•å±”½Í­¥±°‘•™•ÑÌè„™¥ÉÍĞ¡Õµ…¸)©½¥¹¥¹œÑ¡”½Ù•Éİ½É±µÕÍĞ¹½ĞÉ•µ½Ù”„‰½‘äÑ¡…Ğ¥Ì…±É•…‘ä¥¸Ñ¡”¹°…¹„)Ù¥Í¥‰±”É•ÑÕÉ¸Á½ÉÑ…°…ĞÉ½Õ¡±äÑ•¸‰±½­ÌµÕÍĞ‰”•±¥¥‰±”™½È½É‘¥¹…Éä)…ÁÁÉ½… ¸Q¡”µ½‘•°Í•±•Ñ•™¥¡Ñ}•¹‘•É}‘É…½¹€°Ù…¹¥±±„É•½É‘•5½¹ÍÑ•È)!Õ¹Ñ•É€…¹É•”Ñ¡”¹‘€°Ñ¡”É½ÕÑ”Ù•É¥™¥•ÈÉ•½É‘•I=9}-%11€…¹)IQUI9}I=5}9€°…¹Ñ¡”ÍÑ…‰±”‰½‘äUU%É•ÑÕÉ¹•Ñ¼Ñ¡”½Ù•Éİ½É±¸Q¡”)•…É±¥•ÈÉÕ¸Ñ¡…Ğ•¹‘•¥¸•µ‰½‘¥µ•¹Ñ}™…¥±•‘€…¹Ñ¡”ÉÕ¸Ñ¡…Ğ•¹‘•¥¸)Á½ÉÑ…±}¹½Ñ}½‰Í•ÉÙ•‘€É•µ…¥¸™…¥±ÕÉ”•Ù¥‘•¹”°¹½Ğ¡¥‘‘•¸ÍÕ•ÍÍ•Ì¸()Q¡”¹Í•¹…É¥¼¥Ì½¹ÑÉ½±±•…¹‰½Õ¹‘•èÑ¡”Ñ•ÍĞµ½¹±ä¹…É•¹„‘¥Í…‰±•Ì)…µ‰¥•¹Ğµ½ˆÍÁ…İ¹¥¹œ…™Ñ•È¥¹ÍÑ…±±¥¹œÑ¡”‘É…½¸…¹ÉåÍÑ…°¸Q¡”™½Õ¹‘…Ñ¥½¸)…¹Á½ÉÑ…°Í•¹…É¥½Ì…É”…±Í¼‰½Õ¹‘•™¥áÑÕÉ•Ì¸Q¡•ä…É”•Ù¥‘•¹”™½È±¥Ù”)µ½‘•°µÑ¼µÙ…¹¥±±„…ÕÍ…°¡…¥¹Ì°¹½ĞÉ…¹‘½´µÍ••½ÈÍÁ••‘ÉÕ¸É•ÍÕ±ÑÌ¸()Q¡”±…Ñ•ÍĞÍÑÉ½¹¡½±•¹ÑÉäÍ±¥”…±Í¼Á…ÍÍ•…™Ñ•ÈÑİ¼É•…°µµ½‘•°™…¥±ÕÉ•Ì)•áÁ½Í•¥¹Ñ•É…Ñ¥½¸‰ÕÌ¸Q¡”™¥ÉÍĞ™…¥±ÕÉ”…µ”™É½´…¸½Ù•É±ä±½…°™¥¹…°µ•å”)™…±±‰…¬Ñ¡…Ğ­•ÁĞÑ¡”‰½‘äÉ½Ñ…Ñ¥¹œ…Ğ½¹”ÍÑ…Ñ¥½¸ìÑ¡”Í•½¹…µ”™É½´)…•ÁÑ¥¹œ„Í•µ…¹Ñ¥Œ¡¥Ğ¥¸Ñ¡”€Ğ¸ÔµÑ¼´Ğ¸Ü‰±½¬É…¹”Ñ¡…ĞÙ…¹¥±±„½ÉÉ•Ñ±ä)É•©•Ñ•¸Q¡”™…±±‰…¬İ…ÌÉ•µ½Ù•…¹Ñ¡”…¹‘¥‘…Ñ”‘¥ÍÑ…¹”İ…ÌÑ¥¡Ñ•¹•Ñ¼(Ğ¸ĞÔ‰±½­Ì¸IÕ¸‘•‰ÕœÄÕ€Ñ¡•¸Á…ÍÍ•İ¥Ñ Ñ¡”É•…°µ½‘•°èÁ¡åÍ¥…°µ…é”)Í•…É °‘•…µ•¹‰…­ÑÉ…­¥¹œ°„Í•½¹ÑÕÉ¸°™½ÕÈµÍÑ…Ñ¥½¸Á½ÉÑ…°…Ñ¥Ù…Ñ¥½¸°)Ñ¡”™Õ±°Ñİ•±Ù”µ•å”ÑÉ…¹Í…Ñ¥½¸°µ½‘•°µÍ•±•Ñ•¹•¹ÑÉä°…¹Ñ¡”Ù…¹¥±±„)Q¡”¹ı€…‘Ù…¹•µ•¹Ğ¸Q¡”ME1¥Ñ”…ÕÍ…°½É‘•È¥¹±Õ‘•™½ÕÈµ½‘•°)É•ÍÁ½¹Í•Ì°™½ÕÈ…•ÁÑ•Í­¥±°ÍÑ…ÉÑÌ°…¹±½Üµ±•Ù•°µ½Ù•µ•¹Ğ½ÕÍ”…Ñ¥½¹Ì¸)Q¡¥ÌÉ•µ…¥¹Ì„½¹ÑÉ½±±•™¥áÑÕÉ”°¹½Ğ…¸4È½ÈÍÁ••‘ÉÕ¸É•ÍÕ±Ğ¸()Q¡”¹•áĞ±¥Ù”¹™…¥±ÕÉ”•áÁ½Í•„Í•Á…É…Ñ”ÍÑ…±”µÕ±Ñ¥Á…ÉĞ¥¹‘•àè…™Ñ•È¹)•¹ÑÉä°M•ÉÙ•É1•Ù•°¹‘É…½¹A…ÉÑÌ ¥€É•Ñ…¥¹•½±½±±¥‘•È½‰©•ÑÌİ¥Ñ Ñ¡”Í…µ”)UU%Ì‰ÕĞÁ½Í¥Ñ¥½¹Ì€äÀ´´ÄÀÄ‰±½­Ì™É½´Ñ¡”±¥Ù”‘É…½¸É½½Ğ¸Q¡”É½½Ğµ½İ¹•)•ÑMÕ‰¹Ñ¥Ñ¥•Ì ¥€½‰©•ÑÌİ•É”€È´´à‰±½­Ì…İ…ä…¹™Õ±±ä±½…‘•°å•ĞÑ¡”)½±…¹‘¥‘…Ñ•Ì½¹ÍÕµ•Ñ¡”™…¥È=X½1=L‰Õ‘•Ğ¸…¹‘¥‘…Ñ”½±±•Ñ¥½¸¹½Ü)É•Á±…•ÌÍ…µ”µUU%¥¹‘•á•Á…ÉÑÌİ¥Ñ Ñ¡”ÕÉÉ•¹ĞÉ½½Ğµ½İ¹•Á…ÉÑÌ°ÕÍ•ÌÑ¡”)ÑÉ…­•‘É…½¸µ™¥¡ĞUU%…Ì„‰½Õ¹‘•™…±±‰…¬°…¹ÑÉ•…ÑÌÑ¡”…¹½¹¥…°)‘É…½¸É½½Ğ…Ì„¡½ÍÑ¥±”‰½ÍÌ™½È™¥¹¥Ñ”…¹‘¥‘…Ñ”ÁÉ¥½É¥Ñ¥é…Ñ¥½¸¸Í•Á…É…Ñ”)ÍÑ…¹‘…±½¹”…ÕÑ¡½É¥é•5¥5¼¹Ñ•ÍĞÁ…ÍÍ•‘É…½¸½µ‰…Ğ…¹Ñ¡”É•ÑÕÉ¸Á½ÉÑ…°)¥¸€Ä¸äÔàµ¥¹ÕÑ•Ì¸™É•Í É•Á•…Ğ…™Ñ•ÈÑ¡”…¹¡½È…¹Á½ÉÑ…°Á½±¥ä™¥á•Ì…±Í¼)Á…ÍÍ•¥¸€È¸ÄàÌµ¥¹ÕÑ•Ì¸Q¡½Í”½±‘•È™Õ±°µÉ½ÕÑ”™…¥±ÕÉ•ÌÉ•µ…¥¸ÕÍ•™Õ°¹•…Ñ¥Ù”)•Ù¥‘•¹”°‰ÕĞÑ¡”ÕÉÉ•¹Ğ½¹ÑÉ½±±•ÍÑÉ½¹¡½±µÉ½½´µÑ¼µÉ•ÑÕÉ¸¡…¥¸¹½ÜÁ…ÍÍ•Ì)…ÌÉ•½É‘•¥¸Ñ¡”ÕÉÉ•¹ĞÉ•½Ù•ÉäÍÑ…Ñ”…‰½Ù”¸()Q¡”±…Ñ•ÍĞ‘…µ…”µ™½ÕÍ•Á…Ñ …±Í¼µ…­•Ì„Í¡¥•±‘•‰½‘äÁ•É™½É´½¹”‰½Õ¹‘•)Í¥‘”µÍÑ•À…™Ñ•È„‘¥É•Ñ¥½¹±•ÍÌÉ••¹Ğ‘…µ…”Õ”€¡ÍÕ …Ì¥¹‘¥É•Ğµ…¥Œ¤°)¥¹ÍÑ•…½˜É•µ…¥¹¥¹œÍ¡¥•±µ½¹±ä¸Q¡¥Ì¥Ì½Ù•É•‰ä„É•É•ÍÍ¥½¸Ñ•ÍĞ…¹İ…Ì)ÁÉ•Í•¹Ğ¥¸Ñ¡”Á…ÍÍ¥¹œ½¹ÑÉ½±±•™Õ±°µÉ½ÕÑ”ÉÕ¸ìÑ¡…ĞÍ¥¹±”‰½Õ¹‘•Á…ÍÌ¥Ì)ÍÑ¥±°¹½Ğ„É…¹‘½´µİ½É±ÍÕÉÙ¥Ù…°ÍÑ…Ñ¥ÍÑ¥Œ¸()Q¡”±…Ñ•ÍĞ±¥Ù”‘•‰Õ¥¹œ™½Õ¹½¹”½¹É•Ñ”™¥ÉÍĞµ¡Õµ…¸±¥™•å±”™…¥±ÕÉ”è)Ñ¡”‰½‘ä½Õ±‰”É•µ½Ù•‰•™½É”„µ…±™½Éµ•½ÈÙ½¥µ±¥­”Ñ•ÍĞ…¹¡½È¡…„)Ù…¹¥±±„µÍ…™”Á±…•µ•¹Ğ°±•…Ù¥¹œ¹¼Ù¥Í¥‰±”$¸¥A±…å•É5…¹…•É€¹½ÜÙ…±¥‘…Ñ•Ì)Ñ¡”‰½Õ¹‘•M…™•½µÁ…¹¥½¹MÁ…İ¹1½…Ñ½É€É•ÍÕ±Ğ‰•™½É”É•µ½Ù¥¹œÑ¡”ÕÉÉ•¹Ğ)‰½‘äì¥˜¹¼Í…™”Á±…•µ•¹Ğ•á¥ÍÑÌ¥Ğ­••ÁÌÑ¡”…ÕÑ¡½É¥Ñ…Ñ¥Ù”‰½‘ä…¹±…¥µÌ)Ñ¡”½¹”µÑ¥µ”ÍÑ…ÉÑÕÀÁÉ½Ù•¹…¹”¸Q¡”ÁÉ½‘ÕÑ¥½¸é•É¼µ¡Õµ…¸‘•±…å•µ±½¥¸)…µ•Q•ÍĞ¹½ÜÁ…ÍÍ•Ìİ¥Ñ Ñ¡”‰½‘ä…Ñ¥Ù”‰•™½É”¡Õµ…¸±½¥¸…¹Í…™•±äÁÉ•Í•¹Ğ)…™Ñ•ÈÑ¡”±½¥¸¸I•…°µ¥µ¼µØÈ¸Õ€µ½Ù•µ•¹Ğ°™½±±½Ü°ÍÕÉÁÉ¥Í”µé½µ‰¥”‘•™•¹Í”°)…¹½±‘•¸µ…ÁÁ±”Í±¥•Ì…±Í¼Á…ÍÌ½¸Ñ¡”Á…Ñ¡•±¥¹”¸Q¡”™¥ÉÍĞµ½Ù•µ•¹ĞÉÕ¸)‰•™½É”Ñ¡¥ÌÕ…ÉÉ•µ…¥¹ÌÉ•½É‘•…Ì„•¹Õ¥¹”™…¥±ÕÉ”€¡‰½‘ä‘¥¹½ĞÉ•ÑÕÉ¸)…™Ñ•È¥¹¥Ñ¥…°µ…¹¡½ÈÉ•±½¥¹€¤°¹½ĞÍ¥±•¹Ñ±äÕÁÉ…‘•¸()Q¡”™¥ÉÍĞ™É•Í ±¥Ù”½µ‰…ĞÉ•ÉÕ¸•áÁ½Í•„Ñ•ÍĞµ™¥áÑÕÉ”‘•™•ĞÉ…Ñ¡•ÈÑ¡…¸„)µ½‘•°½ÈÁÉ½‘ÕÑ¥½¸½µ‰…ĞÉ•ÍÕ±ĞèÑ¡”•µ‰•‘‘•Ñ•ÍĞÁ±…å•Èİ…Ì±½•¥¸…Ğ)Ñ¡”Ù…¹¥±±„İ½É±½É¥¥¸¸Q¡…Ğ¥¹Ù…±¥±½¥¸…¹¡½È…ÕÍ•Ñ¡”±•¥Ñ¥µ…Ñ”)™¥ÉÍĞµ¡Õµ…¸±¥™•å±”Ñ¼É•µ½Ù”Ñ¡”‰½‘ä‰•™½É”Ñ¡”¡…ĞÁ…­•ĞÉ•…¡•Ñ¡”)µ½‘•°°Í¼Ñ¡”ÉÕ¸İ…ÌÍÑ½ÁÁ•…¹É•½É‘•…Ì„™…¥±ÕÉ”¸Q¡”½µ‰…Ğ™¥áÑÕÉ”)¹½Ü±½ÌÑ¡”Á±…å•È¥¸Ñİ¼‰±½­Ì‰•Í¥‘”Ñ¡”±¥Ù”‰½‘äÑ¡É½Õ Ñ¡”¹½Éµ…°)M•ÉÙ•ÉA±…å•É€±½¥¸Á…Ñ ¸Q¡”É•ÉÕ¸Á…ÍÍ•İ¥Ñ Ñ¡”ÍÕÁÁ±¥•µ¥µ¼µØÈ¸Õ€)…Ñ•İ…ä¥¸€Äà¸àÀÍ•½¹‘Ìè¡¥¹•Í”¡…Ğ…•ÁÑ…¹”°µ½‘•°É•ÍÁ½¹Í”°Í¡•µ„…¹)É•Ù¥Í¥½¸…Õ‘¥Ğ°•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñå€°Í­¥±±}ÍÑ…ÉÑ•‘€°±½Üµ±•Ù•°µ½Ù•µ•¹Ğ)…¹…ÑÑ…­Ì°…¹Ñ¡”Ù…¹¥±±„5½¹ÍÑ•È!Õ¹Ñ•É€…‘Ù…¹•µ•¹Ğİ•É”…±°½‰Í•ÉÙ•¸)Q¡¥ÌÉ•µ…¥¹Ì„½¹ÑÉ½±±•½¹”µé½µ‰¥”±¥Ù”Í±¥”°¹½Ğ„AY@°¡½É‘”°!…É‘½É”°)É…¹‘½´µÍ••°½È4ĞÉ•ÍÕ±Ğ¸()Q¡”¹•áĞÉ•…°µµ½‘•°ÍÕÉÁÉ¥Í”µ‘•™•¹Í”É•ÉÕ¸Ñ¡•¸•áÁ½Í•„ÁÉ½‘ÕÑ¥½¸Í…™•Ñä)…Àè„É•…Èi½µ‰¥”½Õ±‘•±¥Ù•È„™…¥È°‘¥É•Ñ¥½¹…°‘…µ…”Õ”İ¡¥±”Ñ¡”)•µ•É•¹ä±…¹”½¹±äÍİ•ÁĞ¥ÑÌÙ¥•Ü…¹İ…¥Ñ•™½ÈÑ¡”Á±…¹¹•È¸Q¡”™¥ÉÍĞÉÕ¸(¡ÉÕ¸µ±¥Ù”µÍÕÉÁÉ¥Í”´ÈÀÈØÀàÄÑ•€¤­¥±±•Ñ¡”‰½‘ä…ĞÑ¥¬€ÈÔÄ…¹¥ÌÉ•Ñ…¥¹•…Ì)„•¹Õ¥¹”™…¥±ÕÉ”¸µ•É•¹åMÕÉÙ¥Ù…±½¹ÑÉ½±±•É€¹½ÜÑ…­•Ì½¹”‰½Õ¹‘•°)Í¹•…¬µÁÉ½Ñ•Ñ•ÍÑ•À…İ…ä™É½´„É••¹Ğ‘…µ…”‘¥É•Ñ¥½¸…™Ñ•ÈÑ¡”™¥ÉÍĞÍ…¸)Ñ¥¬°ÕÍ¥¹œ½¹±äÑ¡”™…¥ÈÍ½ÕÉ”Ù•Ñ½È…¹™É•Í¡±ä½‰Í•ÉÙ•…‘©…•¹Ğµ•±°)•Ù¥‘•¹”¸Q¡”Í…µ”É•…°µ¥µ¼µØÈ¸Õ€Í•¹…É¥¼Ñ¡•¸Á…ÍÍ•¥¸)ÉÕ¸µ±¥Ù”µÍÕÉÁÉ¥Í”´ÈÀÈØÀàÄÑ™€èÑ¡”‰½‘äÉ•…ÅÕ¥É•Ñ¡”i½µ‰¥”°‘¥ÍÁ…Ñ¡•)½É‘¥¹…ÉäÙ…¹¥±±„…ÑÑ…­Ì°ÍÕÉÙ¥Ù•°…¹ÑÉ¥•É•5½¹ÍÑ•È!Õ¹Ñ•É€‰•™½É”Ñ¡”)Ñ•ÍĞ•¹‘•¸Q¡”µ½‘•°±…¹”É•ÑÕÉ¹•„É•Á±…¸‘ÕÉ¥¹œÑ¡”ÁÉ•ÍÍÕÉ”İ¥¹‘½ÜìÑ¡”)ÍÕÉÙ¥Ù…°É•ÍÕ±Ğ¥ÌÑ¡•É•™½É”•Ù¥‘•¹”™½È•µ•É•¹äÉ•½Ù•ÉäÁ±ÕÌ„É•…°)µ½‘•°É•ÅÕ•ÍĞ°¹½Ğ„±…¥´Ñ¡…ĞÑ¡”µ½‘•°…±½¹”±•…É•Ñ¡”•¹½Õ¹Ñ•È¸()Q¡”™¥ÉÍĞ‰½Õ¹‘•µÕ±Ñ¤µ¡½ÍÑ¥±”™¥áÑÕÉ”•áÁ½Í•„¡…É¹•ÍÌ…¹¡½É¥¹œ‘•™•Ğè)ÉÕ¸µ±¥Ù”µ¡½É‘”´ÈÀÈØÀàÄÑ©€±•™ĞÑ¡”Í¥àÑ…É•ÑÌ…ĞÑ¡•¥ÈÁÉ”µ±½¥¸Á½Í¥Ñ¥½¹Ì)İ¡¥±”Ñ¡”¹½Éµ…°™¥ÉÍĞµ¡Õµ…¸…¹¡½ÈÑÉ…¹Í…Ñ¥½¸µ½Ù•Ñ¡”‰½‘ä°Í¼Ñ¡”µ½‘•°)½ÉÉ•Ñ±äÉ•Á½ÉÑ•Ñ¡…Ğ¹¼¡½ÍÑ¥±”İ…ÌÙ¥Í¥‰±”…¹Í•±•Ñ•„ÍÕÉÙ•äÉ•Á±…¸¸)Q¡”™¥áÑÕÉ”¹½ÜÉ•Á½Í¥Ñ¥½¹ÌÑ¡½Í”Í…µ”•¹Ñ¥Ñ¥•Ì…É½Õ¹Ñ¡”…ÕÑ¡½É¥Ñ…Ñ¥Ù”‰½‘ä)…™Ñ•ÈÑ¡”…¹¡½ÈÑÉ…¹Í…Ñ¥½¸¸Q¡”±…Ñ•ÍĞÉ•ÉÕ¸É•É•…Ñ•ÌÑ¡”…ÕÑ¡½É•Ñ…É•ÑÌ)…™Ñ•ÈÑ¡”É•Á±…•µ•¹Ğ‰½‘ä¥ÌÍÑ…‰±”°‘¥Í…É‘Ì…µ‰¥•¹Ğ•¹Ñ¥Ñ¥•Ì°É•ÅÕ¥É•ÌÑ¡”)µ½‘•°Í­¥±°Ñ¼‰”•¹Õ¥¹•±äIU99%9€°…¹ÍÑ…ÉÑÌÑ…É•Ğµ¡•…±Ñ …ÑÑÉ¥‰ÕÑ¥½¸…Ğ)Ñ¡…Ğ…ÕÍ…°•‘”¸Q¡”¡¥¹•Í”Ñ•…´É•ÅÕ•ÍĞ™¥ÉÍĞÁÉ½‘Õ•„‰½Õ¹‘•µ½‘•°)É•Á±…¸°Ñ¡•¸!QQ@´ÈÀÀMQIQ}M-%10¡•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñä¥€°)Í¡•µ„½É•Ù¥Í¥½¸…•ÁÑ…¹”°Í­¥±±}ÍÑ…ÉÑ•‘€°…¹)±½İ}±•Ù•±}…Ñ¥½¹Í}¥ÍÍÕ•‘€¥¸ME1¥Ñ”ìÑ¡”Í•ÉÙ•È±½œÉ•½É‘•™½ÕÈ½˜Í¥à)…ÕÑ¡½É•Ñ…É•ÑÌ‘…µ…•°‰½‘äµ½Ù•µ•¹Ğ°…¹™Õ±°‰½‘ä¡•…±Ñ ¸Q¡”±…Ñ•ÍĞ)±•…¸ÉÕ¸Á…ÍÍ•¥¸€ĞÀ¸ÄĞÍ•½¹‘Ì¸Q¡¥Ì¥Ì¹½Ğ„¡Õµ…¸AY@°!…É‘½É”°)É…¹‘½´µÍ••°½È4ĞÁÉ½Ñ½½°¸()Q¡”Ñ•¸µÁ±ÕÌµÑ•¸•áÑ•¹Í¥½¸¥¹¥Ñ¥…±±ä•áÁ½Í•Ñİ¼Ñ•ÍĞµ½¹±ä…ÑÑÉ¥‰ÕÑ¥½¸‘•™•ÑÌè)Ñ…É•Ğ‘•…Ñ ™±…Ì…¹±½…°½…µ‰¥•¹Ğ‘…µ…”İ•É”½Õ¹Ñ•‰•™½É”„µ½‘•°Í­¥±°)ÍÑ…ÉÑ•°…¹Ñ¡”™¥ÉÍĞµ¡Õµ…¸É•±½¥¸½Õ±Õ¹±½…Ñ¡”…ÕÑ¡½É•µ½‰Ì¸Q¡”)™¥áÑÕÉ”¹½ÜÉ•É•…Ñ•ÌÑ•¸i½µ‰¥•Ì…¹Ñ•¸M­•±•Ñ½¹Ì…™Ñ•ÈÑ¡”‰½‘äÉ•±½¥¸°)É•ÅÕ¥É•Ì•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñå€Ñ¼•¹Ñ•ÈIU99%9€°…¹½µÁ…É•Ì¡•…±Ñ ½¹±ä)……¥¹ÍĞ„Á½ÍĞµÍÑ…ÉĞ‰…Í•±¥¹”¸Q¡”±…Ñ•ÍĞ…ÕÑ¡½É¥é•µ¥µ¼µØÈ¸Õ€ÉÕ¸Á…ÍÍ•¥¸(Ìä¸äàÍ•½¹‘ÌèME1¥Ñ”É•½É‘•Ñ¡”™Õ±°µ½‘•°µÑ¼µÍ­¥±°µÑ¼µ…Ñ¥½¸¡…¥¸°Ñ•¸½˜)Ñİ•¹Ñä…ÕÑ¡½É•Ñ…É•ÑÌİ•É”‘…µ…•€¡Ñ¡”™¥áÑÕÉ”Ñ¡É•Í¡½±¥ÌÑ•¸¤°Ñ¡”‰½‘ä)µ½Ù•°…¹‰½‘ä¡•…±Ñ ÍÑ…å•™Õ±°¸Q¡”ÁÉ¥½È€Ìä¸ÜÀµÍ•½¹ÉÕ¸İ¥Ñ Í¥áÑ••¸)‘…µ…•Ñ…É•ÑÌ…¹Ñ¡”•…É±¥•È€Ìà¸ÈàµÍ•½¹ÉÕ¸İ¥Ñ …±°Ñİ•¹Ñä‘…µ…•É•µ…¥¸)É•Ñ…¥¹•½¹ÑÉ½±±••Ù¥‘•¹”¸)Q¡¥ÌÉ•µ…¥¹Ì„½¹ÑÉ½±±•µÕ±Ñ¤µ¡½ÍÑ¥±”Í±¥”°¹½Ğ¡Õµ…¸AY@°!…É‘½É”°)É…¹‘½´µÍ••°½È4Ğ•Ù¥‘•¹”¸()Q¡”™¥ÉÍĞÑ¡É•”±¥Ù”¥É½¸µ½±•´…ÑÑ•µÁÑÌÉ•µ…¥¸¹•…Ñ¥Ù”•Ù¥‘•¹”èÑ¡”µ½‘•°)É•ÑÕÉ¹•MQIQ}M-%10¡•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñä¥€…¹ME1¥Ñ”É•½É‘•„Ù…¹¥±±„)…ÑÑ…­}•¹Ñ¥Ñå€‘¥ÍÁ…Ñ Ñ¡…Ğ‘…µ…•Ñ¡”½±•´°‰ÕĞÑ¡”‰½‘ä‘¥¹½ĞÉ••¥Ù”)„Ù•É¥™¥•¥¹½µ¥¹œ…ÑÑ…¬¸Q¡”É½½Ğ…ÕÍ”İ…ÌÍÑ…±”É•…Ñ¥Ù”½¥¹ÙÕ±¹•É…‰¥±¥Ñä)ÍÑ…Ñ”¥¹¡•É¥Ñ•‰äÑ¡”Ñ•ÍĞ‰½‘ä°¹½Ğ„µ½‘•°‘•¥Í¥½¸¸Q¡”±…Ñ•ÍĞ…ÕÑ¡½É¥é•)ÉÕ¸±•…ÉÌÑ¡½Í”…‰¥±¥Ñ¥•Ì…¹…ÍÍ•ÉÑÌ•¹Õ¥¹”ÍÕÉÙ¥Ù…°‰•™½É”¡…Ğ¸%Ğ)Á…ÍÍ•¥¸€ÄÈ¸ÄÔÍ•½¹‘ÌèME1¥Ñ”É•½É‘•€Ü°ÜÌØ¥¹ÁÕĞ…¹€ÄĞà½ÕÑÁÕĞÑ½­•¹Ì°)!QQ@´ÈÀÀI•ÍÁ½¹Í•Ì½ÕÑÁÕĞ°Í¡•µ„½É•Ù¥Í¥½¸…•ÁÑ…¹”°Í­¥±°ÍÑ…ÉĞ°Ù…¹¥±±„)…ÑÑ…¬‘¥ÍÁ…Ñ °‰½‘äµ½Ù•µ•¹Ğ°½±•´‘…µ…”°„É•…°½±•´…ÑÑ…¬°…¹‰½‘ä)ÍÕÉÙ¥Ù…°¸Q¡¥Ì¥Ì„½¹ÑÉ½±±•¹•ÕÑÉ…°µµ½ˆÍ±¥”°¹½Ğ„¡Õµ…¸AY@½È!…É‘½É”)É•ÍÕ±Ğ¸ÁÉ••‘¥¹œ¥¹Ù½…Ñ¥½¸Á…ÍÍ•„±¥Ñ•É…°Á±…•¡½±‘•È¥¹ÍÑ•…½˜„)É•‘•¹Ñ¥…°…¹µ…‘”é•É¼É•ÅÕ•ÍÑÌì¥Ğ¥Ì¡…É¹•ÍÌ½½¹™¥ÕÉ…Ñ¥½¸¹•…Ñ¥Ù”)•Ù¥‘•¹”°¹½Ğ„½µ‰…ĞÉ•ÍÕ±Ğ¸((ŒŒ¡…¹•Ì¥¸Ñ¡”ÕÉÉ•¹Ğİ½É­ÑÉ•”((´¥A±…å•ÉM•ÍÍ¥½¹€èÉ•™É•Í¡•ÌÑ¡”½É‘¥¹…ÉäÙ…¹¥±±„Á±…å•È¡Õ¹¬µÑÉ…­¥¹œ(€İ¥¹‘½Üİ¡•¸Ñ¡”M•ÉÙ•É1•Ù•±€¡…¹•Ì•Ù•¸¥˜Ñ¡”Í•Ñ¥½¸½½É‘¥¹…Ñ•Ì‘¼(€¹½Ğ¸(´¥¡Ñ¹‘•ÉÉ…½¹M­¥±±€è…¸Õ¹Í…™”½ÁÑ¥½¹…°…”Ñ½İ•È¹½Ü±•…ÉÌÑ•¹Ñ…Ñ¥Ù”(€ÑÉ…Ù•ÉÍ…°…ÕÑ¡½É¥Ñä…¹É•ÍÕµ•Ì™…¥ÈÑ…É•ĞÍ…¹¹¥¹œ¥¹ÍÑ•…½˜Ñ•Éµ¥¹…Ñ¥¹œ(€Ñ¡”½µÁ±•Ñ”™¥¡Ğ¸(´1¥Ù•5½‘•±¡…Ñ…µ•Q•ÍÑÍ€èİ…¥ÑÌ™½ÈÙ…¹¥±±„¹µ™¥¡ĞÍ•ÑÑ±¥¹œ°ÕÍ•Ì‰½Õ¹‘•(€±½…‘••½µ•ÑÉä™½ÈÑ¡”½¹ÑÉ½±±•…É•¹„°…±±½İÌÑ¡”¡¥ÍÑ½É¥…±±äµ•…ÍÕÉ•(€€ÄÔÀµÍ•½¹½µ‰…Ğİ¥¹‘½Ü°…¹‘¥ÍÑ¥¹Õ¥Í¡•ÌÉ•‘¥Ñ•Á¡åÍ¥…°‘É…½¸‘…µ…”(€™É½´½ÁÑ¥½¹…°ÉåÍÑ…°½‰…ÈÑ…Ñ¥Ì¸(´µ‰½‘¥µ•¹Ñ…µ•Q•ÍÑÍ€èé•É¼µ¡Õµ…¸Í…µ”µÍ•Ñ¥½¸É½ÍÌµ‘¥µ•¹Í¥½¸Í¥µÕ±…Ñ¥½¸(€É•É•ÍÍ¥½¸™½ÈÑ¡”¡•…‘±•ÍÌÁ±…å•ÈÌÙ…¹¥±±„ÑÉ…­¥¹œİ¥¹‘½Ü¸(´‰Õ¥±¹É…‘±•€èÍÕÁÁ½ÉÑÌÑ¡”‘½Õµ•¹Ñ••¹•É¥ŒÑ•ÍÑ}Í•±•Ñ½É€°ÁÉ•Í•ÉÙ•Ì(€±¥Ù•}µ½‘•±}Í•±•Ñ½É€…Ì…¸…±¥…Ì°…¹É•©•ÑÌ½¹™±¥Ñ¥¹œÙ…±Õ•Ì¸(´‰Õ¥±¹É…‘±•€è‘¥Í…‰±•Ì…¡¥¹œ½¹±ä™½È½É•É…‘±”Ìµ•É•µ…¥¸(€½µÁ¥±•)…Ù…€½ÕÑÁÕĞ¸±•…¸‰Õ¥±¡…É•Á½ÉÑ•I=4µ!€İ¥Ñ¡½ÕĞ(€µ…Ñ•É¥…±¥é¥¹œ‰Õ¥±½Í½ÕÉ•M•ÑÌ½µ…¥¹€°…ÕÍ¥¹œ½µÁ¥±•Q•ÍÑ)…Ù…€Ñ¼±½Í”(€ÁÉ½‘ÕÑ¥½¸±…ÍÍ•ÌìÑ¡”Í…µ”±•…¸½µµ…¹¹½Ü½µÁ¥±•Ìµ…¥¸±½…±±ä…¹(€Á…ÍÍ•Ì¸(´AÕ‰±¥Œ½Ù•É¹…¹”èÕÉÉ•¹ĞÍ•ÕÉ¥ÑäÙ•ÉÍ¥½¸°…¸…Õ‘¥Ñ…‰±”€À¸Ä¸ä¡É½¹½±½ä°(€…¹…¸¹±¥Í ½¹ÑÉ¥‰ÕÑ½È½Ù•¹…¹Ğµ‰…Í•½‘”½˜½¹‘ÕĞ¸((´…¥ÉA•É•ÁÑ¥½¹M…µÁ±•É€èµÕ±Ñ¥Á…ÉĞ¹‘•ÈÉ…½¸Í…µÁ±•Ì‰•¥¸…Ğ„½±±¥‘•È(€•¹Ñ•È…¹‰½Õ¹‘•¡½É¥é½¹Ñ…°Á½¥¹ÑÌ°İ¥Ñ ½É‘¥¹…Éä™¥ÉÍĞµÁ•ÉÍ½¸1=L¡•­Ìì(€ÍÑ…±”Í…µ”µUU%¥¹‘•à•¹ÑÉ¥•Ì…É”É•Á±…•‰äÕÉÉ•¹ĞÉ½½Ğµ½İ¹•Á…ÉÑÌ°(€‘É…½¸É½½ÑÌ…¹Á…ÉÑÌ…É”ÁÉ¥½É¥Ñ¥é•…Ì¡½ÍÑ¥±”…¹‘¥‘…Ñ•Ìİ¥Ñ¡¥¸Ñ¡”(€™¥¹¥Ñ”‰Õ‘•Ğ°…¹Í¥‰±¥¹œ½±±¥‘•ÉÌÁÕ‰±¥Í ½¹”…Ì½¹”Í•µ…¹Ñ¥ŒÁ…É•¹Ğ¸(´µ•É•¹åMÕÉÙ¥Ù…±½¹ÑÉ½±±•É€è„É••¹Ğ‘¥É•Ñ¥½¹±•ÍÌ‘…µ…”Õ”­••ÁÌ„(€Í¡¥•±±•…Í”‰ÕĞ…‘‘Ì„‰½Õ¹‘•…±Ñ•É¹…Ñ¥¹œÍ¥‘”µÍÑ•À°ÁÉ•Í•ÉÙ¥¹œ½É‘¥¹…Éä(€½±±¥Í¥½¸…¹™…±°ÉÕ±•Ì¥¹ÍÑ•…½˜…±±½İ¥¹œÉ•Á•…Ñ•µ…¥Œ‘…µ…”Ñ¼‰•½µ”(€„ÍÑ…Ñ¥½¹…ÉäÕ…É±½½À¸(´¥¡Ñ¹‘•ÉÉ…½¹M­¥±±€è‰½Õ¹‘•€ÈĞµÍİ¥¹œµ•±•”‰ÕÉÍĞ°•¥¡ĞµÑ¥¬É…¹•(€É•ÑÉ•…Ğ°ÁÉ½©•Ñ¥±”½‘…µ…”•Ù…Í¥½¸°ÉåÍÑ…°™¥É¥¹œµ±…¹”É•½Ù•Éä°…¹(€ÑÉ…¹Í¥•¹Ğ¡¥±µÍ¡½Ğ™…¥±ÕÉ”É•½Ù•Éä¸(´M­¥±±MÕÁ•ÉÙ¥Í½É€è•áÁ½Í•ÌÑ¡”±…ÍĞ¡•­Á½¥¹Ğ™½ÈÑ¥µ•½ÕĞ‘¥…¹½ÍÑ¥Ì¸(´µ‰½‘¥µ•¹Ñ…µ•Q•ÍÑÍ€è½™™±¥¹”‘É…½¸İ¥¹‘½Ü½…É•¹„‘¥…¹½ÍÑ¥Ì…¹€ÄÈàµ…ÉÉ½Ü(€‰…Í•±¥¹”¸(´1¥Ù•5½‘•±¡…Ñ…µ•Q•ÍÑÍ€è±¥Ù”‘É…½¸½É•ÑÕÉ¸•Ù¥‘•¹”™½ÈÙ¥Í¥‰±”•¹Ñ¥Ñ¥•Ì°(€‘É…½¸Á…ÉÑÌ°‘…¹•ÈÍ¥¹…±Ì°É•Ù¥Í¥½¹Ì°…ÉÉ½İÌ°¡•­Á½¥¹ĞÍÑ…Ñ”°…¹Ñ¡”(€¥Í½±…Ñ•¹¼µ…µ‰¥•¹Ğµµ½ˆ¹…É•¹„ì‘¥…¹½ÍÑ¥ÌÑ½±•É…Ñ”Ñ¡”¥¹Ñ•¹Ñ¥½¹…°(€½¹”µÑ¥¬¥¹¥Ñ¥…°µ…¹¡½ÈÉ•±½¥¸…Àİ¥Ñ¡½ÕĞµ…Í­¥¹œ„É•…°™…¥±ÕÉ”¸(´¥A±…å•É5…¹…•É€è™¥ÉÍĞµ¡Õµ…¸¥¹¥Ñ¥…°…¹¡½É¥¹œÁÉ•Í•ÉÙ•Ì…¸…Ñ¥Ù”‰½‘ä(€…É½ÍÌ‘¥µ•¹Í¥½¹Ì…¹É•Ñ…¥¹Ì„Ù…±¥‘…Ñ•Í…µ”µÑ¥¬É•ÑÉä…¹¡½Èì¥Ğ¹•Ù•È(€ÑÕÉ¹Ì„…µ•Á±…äÁ½ÉÑ…°ÑÉ…¹Í¥Ñ¥½¸¥¹Ñ¼„¡¥‘‘•¸Ñ•±•Á½ÉĞ¸(´1¥Ù•5½‘•±¡…Ñ…µ•Q•ÍÑÍ€èÑ¡”±¥Ù”½µ‰…Ğ™¥áÑÕÉ”¹½ÜÉ•…Ñ•Ì¥ÑÌ•µ‰•‘‘•(€¡Õµ…¸…Ğ„Í…™”Á½Í¥Ñ¥½¸‰•Í¥‘”Ñ¡”½µÁ…¹¥½¸°µ…Ñ¡¥¹œ„É•…°±¥•¹Ğ±½¥¸(€…¹ÁÉ•Ù•¹Ñ¥¹œÑ¡”Ñ•ÍĞ™É½´™…‰É¥…Ñ¥¹œ…¸¥¹Ù…±¥½É¥¥¸…¹¡½È¸(´µ•É•¹åMÕÉÙ¥Ù…±½¹ÑÉ½±±•É€è„É••¹Ğ‘¥É•Ñ¥½¹…°‘…µ…”Õ”¹½ÜÁ•Éµ¥ÑÌ(€½¹”‰½Õ¹‘•½‰Í•ÉÙ•µ•±°Í•Á…É…Ñ¥½¸‰•™½É”Ñ¡”¹•áĞµ½‘•°É½Õ¹ÑÉ¥À°(€±½Í¥¹œÑ¡”É•…Èµ¡½ÍÑ¥±”€‰±½½¬‰ÕĞ‘¼¹½Ğµ½Ù”ˆ‘•…Ñ Á…Ñ İ¥Ñ¡½ÕĞÉ…¹Ñ¥¹œ(€¡¥‘‘•¸Ñ…É•Ğ½½É‘¥¹…Ñ•Ì½È‘¥É•Ğİ½É±µÕÑ…Ñ¥½¸¸(´µ•É•¹åMÕÉÙ¥Ù…±½¹ÑÉ½±±•ÉQ•ÍÑ€èÉ•É•ÍÍ¥½¸½Ù•É…”Ù•É¥™¥•ÌÑ¡”(€‘¥É•Ñ¥½¹…°‘…µ…”Í•Á…É…Ñ¥½¸¥Ì¥ÍÍÕ•½¸Ñ¡”Í•½¹€ÈÀµQALÑ¥¬…¹ÕÍ•Ì(€„…ÕÑ¥½ÕÌÙ…¹¥±±„µ½Ù•µ•¹Ğ¥¹ÁÕĞ¸(´1¥Ù•5½‘•±¡…Ñ…µ•Q•ÍÑÍ€èÑ¡”‰½Õ¹‘•¡½É‘”™¥áÑÕÉ”¹½ÜÉ•…¹¡½ÉÌ¥ÑÌÍ¥à(€•á¥ÍÑ¥¹œ¡½ÍÑ¥±”•¹Ñ¥Ñ¥•Ì…™Ñ•ÈÑ¡”¹½Éµ…°™¥ÉÍĞµ¡Õµ…¸±½¥¸ÑÉ…¹Í…Ñ¥½¸°Í¼(€™…¥ÈÍ•µ…¹Ñ¥ŒÙ¥Í¥‰¥±¥Ñä…¹‘…µ…”…ÍÍ•ÉÑ¥½¹ÌÉ•™•ÈÑ¼Ñ¡”Í…µ”‰½‘ä¸(´1¥Ù•5½‘•±¡…Ñ…µ•Q•ÍÑÍ€èÑ¡”±¥Ù”½±•´…¹¡½É‘”™¥áÑÕÉ•Ì¹½Ü™½É”(€ÍÕÉÙ¥Ù…°µ½‘”°±•…È¥¹ÙÕ±¹•É…‰¥±¥Ñä…¹ÍÑ…±”É•…Ñ¥Ù”…‰¥±¥Ñ¥•Ì°…¹™…¥°(€±½Í•Õ¹±•ÍÌÑ¡”‰½‘ä¥Ì•¹Õ¥¹•±ä‘…µ…•…‰±”‰•™½É”Ñ¡”µ½‘•°É•ÅÕ•ÍĞ¸(´1¥Ù•5½‘•±¡…Ñ…µ•Q•ÍÑÍ€èÑ¡”µÕ±Ñ¤µ¡½ÍÑ¥±”™¥áÑÕÉ•ÌÉ•É•…Ñ”…ÕÑ¡½É•(€Ñ…É•ÑÌ…™Ñ•ÈÑ¡”¹½Éµ…°™¥ÉÍĞµ¡Õµ…¸‰½‘äÉ•±½¥¸°É•ÅÕ¥É”Ñ¡”½µ‰…ĞÍ­¥±°(€Ñ¼‰”IU99%9€°…¹…ÑÑÉ¥‰ÕÑ”‘…µ…”½¹±ä……¥¹ÍĞ„Á½ÍĞµÍÑ…ÉĞ¡•…±Ñ (€‰…Í•±¥¹”¸Q¡¥ÌÁÉ•Ù•¹ÑÌÍÁ•• µ½¹±ä°…µ‰¥•¹Ğ°…¹Ñ…É•Ğµ‘•…Ñ ™±…Ì™É½´(€‰•½µ¥¹œ™…±Í”½µ‰…ĞÁ…ÍÍ•Ì¸(´5¥¹•É…™ÑA±…¹¹•É%¹ÁÕÑ…Ñ½Éå€è•áÁ±¥¥Ğ½µ‰…Ğ½…±Ì¹½ÜÉ••¥Ù”„½µÁ…Ğ(€¡½ÍÑ¥±”µ½¹±äÑ…É•ĞÁ±…å‰½½¬Ñ¡…Ğ™½É‰¥‘ÌÍ•±•Ñ¥¹œ‘É½ÁÁ•¥Ñ•µÌ½ÈÁ…ÍÍ¥Ù”(€•¹Ñ¥Ñ¥•Ì…¹É•ÅÕ¥É•Ì¥µµ•‘¥…Ñ”MQIQ}M-%11€İ¡•¸„±•…°¡½ÍÑ¥±”¥Ì¥¸Ñ¡”(€ÕÉÉ•¹Ğ™…¥È™É…µ”¸(´¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±±€èÑ¡”™…¥ÈÑ…É•Ğ…Ñ”…•ÁÑÌ…¹½¹¥…°Ù…¹¥±±„(€¡½ÍÑ¥±”ÑåÁ•Ì•Ù•¸İ¡•¸„‘•É¥Ù•¡½ÍÑ¥±”‰¥Ğ¥Ì…‰Í•¹Ğ°İ¡¥±”½¹Ñ¥¹Õ¥¹œÑ¼(€É•©•ĞÁ…ÍÍ¥Ù”µ½‰Ì°ÁÉ½©•Ñ¥±•Ì°…¹‘É½ÁÁ•¥Ñ•µÌ¸(´1¥Ù•5½‘•±!½É‘•¥áÑÕÉ•M½ÕÉ•½¹ÑÉ…ÑQ•ÍÑ€…¹Á±…¹¹•È½½µ‰…ĞÕ¹¥ĞÑ•ÍÑÌè(€É•É•ÍÍ¥½¸½Ù•É…”™½ÈÑ¡”Ñ•¸µÁ±ÕÌµÑ•¸É•¥ÍÑÉ…Ñ¥½¸°¡½ÍÑ¥±”µ½¹±äÁÉ½µÁĞ°(€…¹½¹¥…°¡½ÍÑ¥±”Ù…±¥‘…Ñ¥½¸°…¹Á½ÍĞµÍÑ…ÉĞ‘…µ…”…ÑÑÉ¥‰ÕÑ¥½¸¸(´µ‰½‘¥µ•¹Ñ…µ•Q•ÍÑÍ€èÑ¡”Á¡åÍ¥…°¹•ÕÑÉ…°µ½±•´É•É•ÍÍ¥½¸¹½Ü•á•É¥Í•Ì(€Ñ¡”Í…µ”‘•±…å•9½%€Ñ¼Ù…¹¥±±„µ$Ñ…É•Ğ…Ñ¥Ù…Ñ¥½¸±¥™•å±”¸(´A½ÉÑ…±M­¥±±A½±¥å€èÑ¡”‘•™…Õ±Ğ½‰Í•ÉÙ•µÁ½ÉÑ…°…ÁÁÉ½… ‘¥ÍÑ…¹”¹½ÜÕÍ•Ì(€Ñ¡”™Õ±°™…¥È€ÄØµ‰±½¬Á•É•ÁÑ¥½¸‰Õ‘•Ğ°İ¡¥±”•¹ÑÉäÍÑ¥±°É•ÅÕ¥É•Ì„(€ÕÉÉ•¹Ğ™¥ÉÍĞµÁ•ÉÍ½¸Ù¥Í¥‰±”™…”…¹Ù…¹¥±±„É•… ¸(´¹‘ÉåÍÑ…±MÑ…¹‘=™™A±…¹¹•É€è„‰½Õ¹‘•€ÈÀµ‰±½¬½‰Í•ÉÙ•±…Ñ•É…°™¥É¥¹œµ±…¹”(€Í•…É ìÑ¡”±¥Ù”™¥áÑÕÉ”¹½ÜÁ±…•ÌÑ¡”Ñ•ÍĞÉåÍÑ…°½™˜Ñ¡”‘É…½¸Ì‘¥É•Ğ(€•¹Ñ•É±¥¹”Í¼Ñ¡”Í•¹…É¥¼…¸Ù•É¥™äÉåÍÑ…°ÁÉ¥½É¥Ñäİ¥Ñ¡½ÕĞ…¸¥µÁ½ÍÍ¥‰±”(€ÍÑ…Ñ¥Œ½±ÕÍ¥½¸¸(´AÉ•Á…É•½Õ¹‘…Ñ¥½¹M¡•±Ñ•É5…Ñ•É¥…±ÍM­¥±±€èÉ•µ•µ‰•É•µÑ…‰±”…¥µ¥¹œ¹½Ü¡…Ì„(€Í¡½ÉĞ‰½Õ¹‘•…±¥¹µ•¹Ğİ¥¹‘½Ü…¹É•…ÅÕ¥É•ÌÑ¡”Ñ…‰±”Ñ¡É½Õ ½É‘¥¹…Éä(€µ½Ù•µ•¹Ğ¥¹ÍÑ•…½˜É•µ…¥¹¥¹œ¥¸„ÍÑ…±”É½ÍÍ¡…¥È±½½À¸(´	Õ¥±‘M¡•±Ñ•ÉMÑ•ÁM­¥±±€èÉ½½˜É•½Ù•Éä½Á•¹Ì„±½Í•Í¡•±Ñ•È‘½½È½¹±äÙ¥„(€Ñ¡”¹½Éµ…°™¥ÉÍĞµÁ•ÉÍ½¸ÕÍ”…Ñ¥½¸İ¡•¸¥Ğ½±Õ‘•Ì„Á•¹‘¥¹œÉ½½˜™…”°…¹(€É•Í•ÑÌ½¹”•á¡…ÕÍÑ••áÑ•É¥½È™…±±‰…¬µ…É­•ÈÍ¼„™¥¹…°É½½˜½É¹•È…¸‰”(€É•…¡•™É½´Ñ¡”½‰Í•ÉÙ•…ÁÉ½¸İ¥Ñ¡½ÕĞ„Á•Éµ…¹•¹Ğ¥¹Ñ•É¥½ÈÉ•ÑÉä±½½À¸(´M•…É¡=‰Í•ÉÙ•‘MÑÉ½¹¡½±‘A½ÉÑ…±I½½µM­¥±±€è‰½Õ¹‘•¥¹¡•É¥Ñ•¥¹Ñ•É¥½È(€½¹™¥‘•¹”°™…¥È™É½¹Ñ¥•È‘¥…¹½ÍÑ¥Ì°ÍÑ…Ñ¥½¸å…Ü‘•É¥Ù•™É½´…ÑÕ…°(€ÑÉ…Ù•°°…¹¹¼İ…±­¥¹œ™É½´„™¥ÉÍĞµÁ•ÉÍ½¸Ù¥•Üİ¥Ñ¡½ÕĞ½‰Í•ÉÙ•™±½½È(€ÍÕÁÁ½ÉĞ¸Q¡”±¥Ù”¡…É¹•ÍÌ­••ÁÌÑ¡”¡…ĞÍ•¹‘•È½¹¹•Ñ•Õ¹Ñ¥°Ñ¡”¥¹¥Ñ¥…°(€…¹¡½ÈÑÉ…¹Í…Ñ¥½¸Í•ÑÑ±•Ì…¹Á±…•Ì¥Ğ¥¸Ñ¡”Í…™”±½…Ñ½ÈÌ…ÕÑ¡½É•(€½ÉÉ¥‘½È¸(´Ñ¥Ù…Ñ•=‰Í•ÉÙ•‘¹‘A½ÉÑ…±M­¥±±€èÍÑ…±”Ñ…É•Ğ½ÕÑ½µ•Ì…É”‘¥Í…É‘•É…Ñ¡•È(€Ñ¡…¸É•Á±…å•°™¥¹…°µ•å”µ½Ù•µ•¹ĞÕÍ•ÌÑ¡”¹½Éµ…°ÍÑ…Ñ¥½¸É½ÕÑ”°…¹Ñ¡”(€Í•µ…¹Ñ¥Œ…¹‘¥‘…Ñ”É…¹”™…¥±Ì±½Í•‰•±½ÜÑ¡”ÍÕÉÙ¥Ù…°‰±½¬¥¹Ñ•É…Ñ¥½¸(€É…¹”¸Q¡¥ÌÁÉ•Ù•¹ÑÌÑ¡”½‰Í•ÉÙ•€‰ÍÑ…É¥¹œ‰ÕĞ‘½¥¹œ¹½Ñ¡¥¹œˆ±½½Àİ¡¥±”(€ÁÉ•Í•ÉÙ¥¹œÙ…¹¥±±„É½ÍÍ¡…¥È°É•… °…¹¥¹Ù•¹Ñ½ÉäÙ…±¥‘…Ñ¥½¸¸(´…¥ÉA•É•ÁÑ¥½¹MÕÁÁ½ÉÑM½ÕÉ•½¹ÑÉ…ÑQ•ÍÑ€°¥¡Ñ¹‘•ÉÉ…½¹M­¥±±Q•ÍÑ€°…¹(€µ•É•¹åMÕÉÙ¥Ù…±½¹ÑÉ½±±•ÉQ•ÍÑ€èÉ•É•ÍÍ¥½¸½Ù•É…”™½È½±±¥‘•Èµ•¹Ñ•È°(€ÑÉ…¹Í¥•¹ĞÍ¡½Ğ™…¥±ÕÉ•Ì°‰½Õ¹‘•É•ÑÉ•…Ğ°…¹¹™…±°É•½Ù•Éä¸(´¹±¥Í µ½¹±äÁÕ‰±¥ŒÁÉ½©•Ğ‘½Õµ•¹Ñ…Ñ¥½¸…¹„½µÁ…Ğ•Ù¥‘•¹”ÍÑ…ÑÕÌ¸((ŒŒ1…ÍĞ½µÁ±•Ñ•¡•­Ì()Ñ•áĞ)¥¡Ñ¹‘•ÉÉ…½¹M­¥±±Q•ÍĞ€€€€€€€€€€€€€€€€€€€€€€€€AML)…¥ÉA•É•ÁÑ¥½¸™½ÕÍ•Ñ•ÍÑÌ€€€€€€€€€€€€€€€€€€€€€AML)=™™±¥¹”¹½‘É…½¸½É•ÑÕÉ¸Á¡åÍ¥…°‰…Í•±¥¹”€€€€€€AML€¡¹¼µ½‘•°¤)1¥Ù”5¥5¼ÍÑ…¹‘…±½¹”¹Ù¥Ñ½Éä…¹É•ÑÕÉ¸€€€€€AML€¡½¹ÑÉ½±±•É•…°µµ½‘•°¡…¥¸ì½É”€ØÔ¸Ä¸Ä°€È¸ÄàÌµ¥¸¤)1¥Ù”5¥5¼µ½Ù•µ•¹Ğ°™½±±½Ü°ÍÕÉÁÉ¥Í”‘•™•¹Í”°™½½AML€¡™½ÕÈ½¹ÑÉ½±±•±¥Ù”µµ½‘•°Í±¥•Ì¤)1¥Ù”5¥5¼½¹Ñ…¥¹•Èİ¥Ñ¡‘É…İ…°…¹¥Ñ•´½±±•Ñ¥½¸AML€¡Ñİ¼½¹ÑÉ½±±•±¥Ù”µµ½‘•°Í±¥•Ì¤)1¥Ù”5¥5¼™½Õ¹‘…Ñ¥½¸‰½½ÑÍÑÉ…À…¹Í¡•±Ñ•È€€€€€€AML€ à¸äÄÈµµ¥¹ÕÑ”½¹ÑÉ½±±•Í±¥”ì¥Í½±…Ñ•ME1¥Ñ”¤)1¥Ù”5¥5¼9•Ñ¡•ÈÁ½ÉÑ…°‰Õ¥±…¹•¹ÑÉä€€€€€€€€€AML€ ÔÈ¸ÄÜµÍ•½¹½¹ÑÉ½±±•Í±¥”ì¥Í½±…Ñ•ME1¥Ñ”¤)1¥Ù”5¥5¼ÍÑÉ½¹¡½±Í•…É °Á½ÉÑ…°…Ñ¥Ù…Ñ¥½¸°¹•¹ÑÉäAML€¡½¹ÑÉ½±±•É•…°µµ½‘•°ÁÉ•™¥à¤)1¥Ù”5¥5¼ÍÑÉ½¹¡½±µÉ½½´µÑ¼µÉ•ÑÕÉ¸¡…¥¸€€€€€€€AML€ Ø¸Äààµµ¥¹ÕÑ”½¹ÑÉ½±±•É•…°µµ½‘•°¡…¥¸ì¹½ĞÉ…¹‘½´!…É‘½É”•Ù¥‘•¹”¤)1¥Ù”5¥5¼¹É•ÑÕÉ¸…™Ñ•È…¹¡½È½Á½ÉÑ…°™¥á•Ì€€AML€¡µ½‘•°™¥¡Ğ°Ù…¹¥±±„É•ÑÕÉ¸Á½ÉÑ…°°ÍÑ…‰±”UU%ì‰½Õ¹‘•™¥áÑÕÉ”¤)1¥Ù”5¥5¼µ½Ù•µ•¹Ğ…ÕÍ…°¡…¥¸€€€€€€€€€€€€€€€€€AML€ ÄÈ¸ÈØµÍ•½¹É•…°µÑ¥µ”Í±¥”ìMQIQ}M-%10ÑÉ…Ù•±}Ñ¼…¹Ù…¹¥±±„µ½Ù”¤)1¥Ù”5¥5¼™½±±½Ü…ÕÍ…°¡…¥¸€€€€€€€€€€€€€€€€€€€AML€ ÄÈ¸ØØµÍ•½¹É•…°µÑ¥µ”Í±¥”ì½É‘¥¹…ÉäÕ¹…‘‘É•ÍÍ•¡¥¹•Í”¡…Ğ°MQIQ}M-%10™½±±½İ}•¹Ñ¥Ñä°Ù…¹¥±±„µ½Ù”¤)1¥Ù”5¥5¼ÍÕÉÁÉ¥Í”µé½µ‰¥”‘•™•¹Í”€¡ÁÉ”µ™¥à¤€€€€%0€ ÄÈ¸ØäµÍ•½¹Í±¥”ìÉ•…È¡½ÍÑ¥±”­¥±±•‰½‘äİ¡¥±”Í…¹¹¥¹œ¤)1¥Ù”5¥5¼ÍÕÉÁÉ¥Í”µé½µ‰¥”‘•™•¹Í”€¡Á…Ñ¡•¤€€€€AML€ ÄÔ¸ÈÜµÍ•½¹É•…°µÑ¥µ”Í±¥”ì‰½Õ¹‘•‘…µ…”Í•Á…É…Ñ¥½¸…¹Ù…¹¥±±„½Õ¹Ñ•É…ÑÑ…¬¤)1¥Ù”5¥5¼½±‘•¸µ…ÁÁ±”½¹ÍÕµÁÑ¥½¸€€€€€€€€€€€€€€AML€ ÄÔ¸ÈØµÍ•½¹É•…°µÑ¥µ”Í±¥”ìÙ…¹¥±±„¥Ñ•´µÕÍ”½¹ÍÕµÁÑ¥½¸¤)1¥Ù”5¥5¼¡¥¹•Í”½µ‰…ĞÑ…Í¬€€€€€€€€€€€€€€€€€€€AML€ Äà¸àÀµÍ•½¹É•…°µÑ¥µ”Í±¥”ì•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñä°Ù…¹¥±±„…ÑÑ…¬°5½¹ÍÑ•È!Õ¹Ñ•È¤)•±…å•™¥ÉÍĞµ¡Õµ…¸…¹¡½È±¥™•å±”€€€€€€€€€€€€AML€¡ÁÉ½‘ÕÑ¥½¸é•É¼µ¡Õµ…¸ÍÑ…ÉÑÕÀ…µ•Q•ÍĞì¹¼É•¹‘•É•µ±¥•¹Ğ±…¥´¤)•±…å•™¥ÉÍĞµ¡Õµ…¸…¹¡½È‘ÕÉ¥¹œ•µ•É•¹ä€€€€€AML€¡½É”€ØÔ¸Ä¸ÄÁÉ½‘ÕÑ¥½¸…µ•Q•ÍĞì‘•™•ÉÉ•É•±½¥¸…™Ñ•ÈÍÕÉÙ¥Ù…°±•…ÉÌ¤)%¹¥Ñ¥…°µ…¹¡½È¹¼µÍ…™”µÁ±…•µ•¹ĞÕ…É€€€€€€€€€€AML€¡™½ÕÍ•Í½ÕÉ”½¹ÑÉ…Ğ…¹Á…Ñ¡•±¥Ù”µ½Ù•µ•¹ĞÍ±¥”¤)1¥Ù”5¥5¼‘¥É•Ñ¥½¹±•ÍÌµ‘…µ…”Í¡¥•±É•É•ÍÍ¥½¸AML€¡½™™±¥¹”)U¹¥ĞìÉ•…°ÍÑÉ½¹¡½±•™™•Ñ¥Ù•¹•ÍÌ9=Q}AI=Y8¤)1¥Ù”5¥5¼‘¥É•Ñ¥½¹…°µ‘…µ…”Í•Á…É…Ñ¥½¸€€€€€€€€AML€¡É•…°€ÄÔ¸ÈÜµÍ•½¹Í±¥”ìµ½‘•°É•ÅÕ•ÍĞÁ±ÕÌ•µ•É•¹äÉ•½Ù•Éä¤)1¥Ù”5¥5¼‰½Õ¹‘•¡½ÍÑ¥±”É½ÕÀ€€€€€€€€€€€€€€€€€AML€ ĞÀ¸ÄĞµÍ•½¹Í±¥”ìÍ¥àÙ¥Í¥‰±”µ½‰Ì°µ½‘•°•¹…”IU99%9°€Ğ‘…µ…•°‰½‘äµ½Ù•½…±¥Ù”¤)1¥Ù”5¥5¼Ñ•¸µÁ±ÕÌµÑ•¸¡½ÍÑ¥±”É½ÕÀ€€€€€€€€€€€€AML€ Ìä¸ÜÀµÍ•½¹Í±¥”ì€ÈÀÙ¥Í¥‰±”µ½‰Ì°µ½‘•°•¹…”IU99%9°€ÄØ‘…µ…•°‰½‘äµ½Ù•½…±¥Ù”ìÑ¡É•Í¡½±€ÄÀ¤)1¥Ù”5¥5¼¥É½¸µ½±•´‘Õ•°€€€€€€€€€€€€€€€€€€€€€€€€AML€ ÄÈ¸ÄÔµÍ•½¹‰½Õ¹‘•Í±¥”ì€Ü°ÜÌØ¥¹ÁÕĞ¼ÄĞà½ÕÑÁÕĞÑ½­•¹Ììµ½‘•°•¹…”°Ù…¹¥±±„…ÑÑ…¬°½±•´‘…µ…”°Ù•É¥™¥•¥¹½µ¥¹œ½±•´…ÑÑ…¬°‰½‘äÍÕÉÙ¥Ù…°¤)1¥Ù”5¥5¼İ…Ñ•È±ÕÑ €€€€€€€€€€€€€€€€€€€€€€€€€€€€AML€ ÄÔ¸ÈØµÍ•½¹‰½Õ¹‘•Í±¥”ì!QQ@´ÈÀÀIA18Á±ÕÌ±½…°•µ•É•¹äİ…Ñ•ÈÁ±…•µ•¹Ğ°•á…Ñ±ä½¹”Ù…¹¥±±„‰Õ­•ĞÕÍ”°¹¼™…±°‘…µ…”ì€ÄÄ°Ôààµ½‘•°Ñ½­•¹Ì¤)1¥Ù”5¥5¼™…É´İ½É¬€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€AML€ ĞÔ¸ØÔµÍ•½¹‰½Õ¹‘•Í±¥”ìÑİ¼¡…ÉÙ•ÍĞ½É•Á±…¹ĞÍ­¥±±ÌÁ±ÕÌ½‰Í•ÉÙ•É½Àµ™¥•±µ…¥¹Ñ•¹…¹”°M••‘äA±…”°€ĞÀ°äØĞµ½‘•°Ñ½­•¹Ì¤)I½½˜µ©ÕµÀÁ¡åÍ¥…°É•½Ù•Éä½¹ÑÉ…Ğ€€€€€€€€€€€€AML€¡¹¼µµ½‘•°…µ•Q•ÍĞ¤)½ÕÍ•Í¡•±Ñ•Èµµ…Ñ•É¥…°½‰Õ¥±‘¥¹œ)U¹¥ĞÑ•ÍÑÌ€€€AML)á…Ğ½É”€ØÔ¸Ä¸Ä‘•‘¥…Ñ•±¥™•å±”Íµ½­”€€€€€AML€¡É•…°‘•‘¥…Ñ•Í•ÉÙ•Èì¹¼™Õ¹Ñ¥½¹…°±…¥´¤)á…Ğ½É”€ØÔ¸Ä¸ÄÑİ¼µ‰½½ĞÁ•ÉÍ¥ÍÑ•¹”Íµ½­”€€€€AML€¡É•…°É•ÍÑ…ÉĞì¹¼™Õ¹Ñ¥½¹…°±…¥´¤)•±…å•™¥ÉÍĞµ¡Õµ…¸…¹¡½È±¥•¹ĞÍµ½­”€€€€€€€€€€9=Q}IU8€¡µ…=L±…­Ì1¥¹Õà½aÙ™ˆì¹¼±¥•¹Ğ±…¥´¤)i•É¼µ¡Õµ…¸Í…µ”µÍ•Ñ¥½¸É½ÍÌµ‘¥µ•¹Í¥½¸Í¥µÕ±…Ñ¥½¸AML€¡½É”€ØÔ¸À¸À…¹€ØÔ¸Ä¸Äì¹¼™¥áÑÕÉ”™½É”µ±½……Ğ‘•ÍÑ¥¹…Ñ¥½¸¤)Õ±°ÕÉÉ•¹ĞÉ…‘±”½)U¹¥Ğ°É•±•…Í”©…È°½µÁ…Ñ¥‰¥±¥Ñä°…¹AåÑ¡½¸…Õ‘¥Ğ€€€€AML€ ØÌAåÑ¡½¸Ñ•ÍÑÌì…ÉÑ¥™…ĞM!É•½É‘•…‰½Ù”¤)½Éµ…°•Ù¥‘•¹”¹½¹”µ‰¥¹‘¥¹œÉ•É•ÍÍ¥½¹Ì€€€€€€€€€AML€ ØÔAåÑ¡½¸Ñ•ÍÑÌì™½É•¥¸½µ¥ÍÍ¥¹œ½µ¥á•µÉÕ¸•Ù¥‘•¹”É•©•Ñ•¤)AÉ•Á…É•µ…¹¥™•ÍĞÉ•ÅÕ•ÍĞµ¹½¹”‰¥¹‘¥¹œ€€€€€€€€€€€€AML€¡	%9%9!-€ì¹¼µ½‘•°É•‘•¹Ñ¥…°Á•ÉÍ¥ÍÑ•¤)±•…¸…¡•É…‘±”É•±•…Í”…Ñ”€€€€€€€€€€€€€€€€€€€AML…™Ñ•Èµ•É•µµ…¥¸…¡”Õ…É)½Éµ…°Ñ½È½=‰Í•ÉÙ•È±¥•¹Ğ…Ñ”€€€€€€€€€€€€€€€€9=Q}IU8)!¥‘‘•¸É…¹‘½´!…É‘½É”4Ä½4È½4Ğ…Ñ•Ì€€€€€€€€€€€€9=Q}IU8)4À½4Ä½4È½4Ì½4ĞÁÉ½‘ÕĞµ¥±•ÍÑ½¹•Ì€€€€€€€€€€€€€€€€9=Q}IU8)€()Q¡”½™™±¥¹”‰…Í•±¥¹”ÁÉ½Ù•Ì½¹±ä„½¹ÑÉ½±±•Ù…¹¥±±„Á¡åÍ¥…°±½İ•È‰½Õ¹¸%Ğ)‘½•Ì¹½ĞÍÕ‰ÍÑ¥ÑÕÑ”™½È„±¥Ù”µ½‘•°°É•¹‘•É•±¥•¹Ğ°¹…ÑÕÉ…°İ½É±°½È¡¥‘‘•¸)Í••ÍÑ…Ñ¥ÍÑ¥Œ¸((ŒŒ%µµ•‘¥…Ñ”¹•áĞÍÑ•ÁÌ((Ä¸AÉ•Í•ÉÙ”Ñ¡”±½Í•™½Éµ…°µ•Ù¥‘•¹”¹½¹”‰½Õ¹‘…ÉäèÑ¡”µ…¹¥™•ÍĞ¹½Ü½İ¹Ì(€€Ñ¡”•áÑ•É¹…±±ä•áÁ•Ñ•¹½¹”…¹‰½Ñ ™Õ¹Ñ¥½¹…°…¹‘•±…å•µ…¹¡½È(€€Ù•É¥™¥•ÉÌ‰¥¹•Ù•ÉäÑ½È°=‰Í•ÉÙ•È°=É…±”°…¹=É…±”µÉ•ÍÕ±Ğ•Ù•¹ĞÑ¼¥Ğ¸(€€5¥ÍÍ¥¹œ°µ¥á•°…¹¥¹Ñ•É¹…±±ä½¹Í¥ÍÑ•¹Ğ™½É•¥¸‰Õ¹‘±•Ì™…¥°±½Í•¸(È¸AÉ•Í•ÉÙ”…±°±¥Ù”ÁÉ½É•ÍÍ¥½¸É•ÍÕ±ÑÌ…Ì½¹ÑÉ½±±••Ù¥‘•¹”ì‘¼¹½Ğ(€€ÁÉ½µ½Ñ”Ñ¡•´Ñ¼„É…¹‘½´µÍ••½ÈÍÁ••‘ÉÕ¸±…¥´¸Q¡”±…ÍĞ™½Éµ…°µ±¥•¹Ğ(€€ÁÉ•™±¥¡ĞÉ•µ…¥¹Ì9=Q}IU9€‰•…ÕÍ”Ñ¡¥Ìµ…=L¡½ÍĞ±…­Ì1¥¹Õà½aÙ™ˆìÑ¡”(€€¹•áĞ±½…°Ù•É¥™¥…Ñ¥½¸½µµ…¹¥ÌÑ¡”™½ÕÍ•AåÑ¡½¸½É¡•ÍÑÉ…Ñ½ÈÍÕ¥Ñ”¸(Ì¸IÕ¸Ñ¡”™½Éµ…°Ñ½È½=‰Í•ÉÙ•È±¥•¹Ğ…Ñ”½¹±ä½¸…¸…ÕÑ¡½É¥é•1¥¹Õà½aÙ™ˆ(€€İ½É­•Èİ¥Ñ Ñ¡”•á…Ğ™É½é•¸)H°Ñ¡•¸•áÑ•¹Ñ¡”½¹ÑÉ½±±•¡…¥¸¥¹Ñ¼„(€€¹…ÑÕÉ…°‘å¹…µ¥Œµ‘É…½¸İ½É±…¹•á•ÕÑ”¡¥‘‘•¸µÍ••ÁÉ½Ñ½½±Ì½¹±ä…™Ñ•È(€€Ñ¡•¥È•á…Ğ…ÉÑ¥™…Ğ…¹İ½É­•ÈÁÉ•É•ÅÕ¥Í¥Ñ•Ì…É”Í…Ñ¥Í™¥•¸((ŒŒI•Á½Í¥Ñ½Éä…¹É•±•…Í”ÍÑ…Ñ”((´AÕ‰±¥ŒÉ•Á½Í¥Ñ½Éäè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½İ•¥‘…­Õ…¹œ½5¥¹•A¥±½Ñ€¸(´AÕ‰±¥Œµ…¥¹€‰•™½É”É•Á…¥Èè€ØÙ‰ˆÉ™˜äÌØÈĞÔÅ™ˆÀá‘…˜Ù™‰˜ÌÌÁ„ÕÄÀÔáÔàå€¸(´Y•É¥™¥•É•Á…¥È½µµ¥Ğè€Õ•‘‘Œİ˜İÌİ”äÅˆÄĞØÙ™™˜ĞØÁˆÔÜÄÌÌÍŒàÌÄÉ‘‰€ì(€•á…ĞÍ½ÕÉ”ÑÉ•”è”å•ŒÙŒÅ™…ˆØá‘‰ÀÑˆå™„ÄĞÀØÍ”äÀÜÉ‰ˆÙ”ĞÑˆÅ€¸(´½É”€ØÔ¹à‰…­ÕÀ‰É…¹ èµŒÈØ¸Èµ™½É”ØÕ€¸(´1½…°‰É…¹ èµ…¥¹€¸(´AÕ‰±¥Œµ…¥¹€¥Ì……¥¸„Ù…±¥Í½ÕÉ”‰…­ÕÀ¸Q¡”Ñİ¼±…É”(€•µ•É•¹äµÍÕÉÙ¥Ù…°™¥±•Ìİ•É”É•ÍÑ½É•İ¥Ñ ™Õ±°¥Ğ‰±½ˆ½ÑÉ•”½‰©•ÑÌì(€‰åÑ”½Õ¹ÑÌ…¹‰±½ˆ¡…Í¡•Ìµ…Ñ Ñ¡”±½…°ÑÉ•”°…¹„™É•Í ÁÕ‰±¥Œ±½¹”(€Á…ÍÍ•É…‘±”Ñ•ÍĞ½‰Õ¥±½)H½½µÁ…Ñ¥‰¥±¥ÑäÙ•É¥™¥…Ñ¥½¸¸ÕÑÕÉ”½¹¹•Ñ½È(€ÁÕ‰±¥…Ñ¥½¹ÌµÕÍĞ­••ÀÕÍ¥¹œ‰±½ˆ½ÑÉ•”½‰©•ÑÌ™½È±…É”™¥±•Ì¸•¹•É…Ñ•(€ÉÕ¸‘¥É•Ñ½É¥•ÌÉ•µ…¥¸‘¥ÍÁ½Í…‰±”…¹µÕÍĞ¹½Ğ‰”ÍÑ…•¸(´A$­•åÌ…É”ÁÉ½•ÍÌµ½¹±ä‘ÕÉ¥¹œ±¥Ù”Ñ•ÍÑÌ…¹…É”¹•Ù•ÈİÉ¥ÑÑ•¸¡•É”¸(

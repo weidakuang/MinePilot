@@ -34,6 +34,8 @@ public final class MinecraftBrainEventSink implements BrainEventSink {
     private long lastModelHaltedStatusRevision = -1L;
     private long lastSafeIdleRejectionStatusRevision = -1L;
     private long lastCompletionWithoutActionStatusRevision = -1L;
+    private long lastSkillLifecycleStatusRevision = -1L;
+    private String lastSkillLifecycleStatusKey = "";
 
     public MinecraftBrainEventSink(
         final MinecraftServer server,
@@ -96,6 +98,7 @@ public final class MinecraftBrainEventSink implements BrainEventSink {
             type = "brain_notice";
             payload.addProperty("code", notice.code());
             emitModelAvailabilityStatus(notice);
+            emitSkillLifecycleStatus(notice);
             if (notice.code().equals("planner_no_action_backoff")
                     && notice.goalRevision()
                         != lastPlannerNoActionStatusRevision
@@ -310,5 +313,35 @@ public final class MinecraftBrainEventSink implements BrainEventSink {
             );
             lastModelHaltedStatusRevision = notice.goalRevision();
         }
+    }
+
+    /**
+     * Publish lifecycle updates only after the server-owned skill transition
+     * has been recorded.  A repeated audit row cannot spam the player, while
+     * distinct skills in one long task remain visible.
+     */
+    private void emitSkillLifecycleStatus(final BrainEvent.Notice notice) {
+        if (worldData.evaluationLocked()) {
+            return;
+        }
+        final var parsed = SkillLifecycleStatus.parse(notice.code());
+        if (parsed.isEmpty()) {
+            return;
+        }
+        final SkillLifecycleStatus status = parsed.orElseThrow();
+        final String key = status.key();
+        if (notice.goalRevision() == lastSkillLifecycleStatusRevision
+                && key.equals(lastSkillLifecycleStatusKey)) {
+            return;
+        }
+        server.getPlayerList().broadcastSystemMessage(
+                Component.literal(
+                        "[AI] " + worldData.displayName() + "："
+                                + status.chineseMessage()
+                ),
+                false
+        );
+        lastSkillLifecycleStatusRevision = notice.goalRevision();
+        lastSkillLifecycleStatusKey = key;
     }
 }

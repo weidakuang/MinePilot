@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T19:46:00Z",
+  "updatedAtUtc": "2026-08-21T20:15:00Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
   "publicMainHead": "9c6bf5b14e851bbc2de300a1e518d6bb6814791a",
   "releaseStatus": "NON_RELEASE",
@@ -461,6 +461,13 @@
       "fixtureConstraint": "Focused perception evidence only; dynamic dragon combat and rendered real-model gates remain NOT_RUN.",
       "formalGate": "NOT_RUN"
     },
+    "professionalCompanionLifecycleIncrement": {
+      "status": "PASS_FOCUSED_JVM_AND_SOURCE_CONTRACT",
+      "details": "Player-visible skill start, completion, failure, and cancellation messages now derive from server-owned SkillSupervisor transitions with duplicate suppression. Unambiguous stop, hold, pause, and Chinese cancellation phrases use the local safe-cancellation path without waiting for another model request.",
+      "tests": "SkillLifecycleStatusTest, PlayerTaskIntentCancellationTest, ConversationCommitmentSourceContractTest, and MinecraftBrainEventSinkSourceContractTest pass.",
+      "fixtureConstraint": "Code and focused test evidence only; no external rendered client, 100-hour soak, or formal M3 scenario archive is claimed.",
+      "formalGate": "NOT_RUN"
+    },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, Forge compatibility validation, and a fresh-public-clone Forge 65.0.0 compile after the focused End safety changes. The changed production, GameTest, checkpoint, and goal-state files matched the published clone byte-for-byte. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
@@ -470,6 +477,7 @@
     }
   },
   "nextActions": [
+    "Run a configured-model dedicated-server companion scenario that exercises chat acceptance, skill lifecycle status, local stop, safe cancellation, and resumed follow-up; retain M3 as NOT_RUN until the external Actor/Observer archive exists.",
     "Preserve the controlled stronghold-room-to-return PASS without promoting it to random-seed, Hardcore, dynamic-dragon, or M2/M4 evidence.",
     "Run the formal rendered Actor/Observer gate only on an authorized Linux/Xvfb worker with the exact frozen artifact.",
     "Use the recorded natural dynamic-dragon failure to continue the fair pillar-edge route: complete and rerun the observed attachment path, then add safe dynamic crystal/dragon damage and return gates before any hidden-seed statistical promotion.",

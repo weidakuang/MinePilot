@@ -230,6 +230,38 @@ final class PlayerTaskIntent {
     }
 
     /**
+     * A small, unambiguous teammate safety command.  Cancellation is handled
+     * locally so it remains responsive during a slow or unavailable model;
+     * it still goes through GoalCoordinator's evaluation lock and safe skill
+     * checkpoint rather than directly mutating the body.
+     */
+    static boolean isCancellationRequest(final String message) {
+        final String normalized = normalize(message)
+                .replaceAll("[.!?,，。！？~～]+$", "")
+                .strip()
+                .toLowerCase(Locale.ROOT);
+        if (normalized.isEmpty()) {
+            return false;
+        }
+        if (Set.of(
+                "停下",
+                "停止",
+                "别动",
+                "不要动",
+                "停一下",
+                "取消",
+                "取消任务",
+                "取消刚才的任务"
+        ).contains(normalized)) {
+            return true;
+        }
+        return normalized.matches(
+                "(?:please\\s+)?(?:stop|stop moving|hold|wait|cancel|"
+                        + "abort|pause)(?:\\s+now)?"
+        );
+    }
+
+    /**
      * Handles only the two low-risk social turns that should never wait for a
      * 90-second gameplay request slot: a greeting and an explicit language
      * capability question. The caller still requires the normal addressed

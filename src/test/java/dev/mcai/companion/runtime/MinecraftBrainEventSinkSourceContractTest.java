@@ -40,6 +40,10 @@ final class MinecraftBrainEventSinkSourceContractTest {
         assertTrue(source.contains("模型误判为暂停"));
         assertTrue(source.contains("model_completion_without_action"));
         assertTrue(source.contains("不会把口头回复当成完成"));
+        assertTrue(source.contains("emitSkillLifecycleStatus(notice)"));
+        assertTrue(source.contains("SkillLifecycleStatus.parse(notice.code())"));
+        assertTrue(source.contains("lastSkillLifecycleStatusKey"));
+        assertTrue(source.contains("status.chineseMessage()"));
         assertTrue(source.contains("conversation_task_accepted"));
         assertTrue(source.contains("messageSha256"));
         assertFalse(source.contains("taskAccepted.message()"));

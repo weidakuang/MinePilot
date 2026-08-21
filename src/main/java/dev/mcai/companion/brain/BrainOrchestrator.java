@@ -979,6 +979,11 @@ public final class BrainOrchestrator {
             case CANCELLED -> {
                 clearRepeatedSkillFailure();
                 emitNotice(goal.revision(), "skill_cancelled");
+                emitSkillNotice(
+                        goal.revision(),
+                        "skill_cancelled",
+                        skill.skillName()
+                );
                 scheduleBackoff(now, policy.minimumReplanBackoff());
             }
         }

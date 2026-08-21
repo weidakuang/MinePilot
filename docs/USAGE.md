@@ -61,6 +61,20 @@ The companion may ask a clear question when a task is unsafe, ambiguous,
 unauthorized, or impossible. It must not invent a location, claim to have used a
 menu it did not open, or silently terminate an active player goal.
 
+For an unambiguous interruption, say `stop`, `hold`, `pause`, `停下`, or
+`取消任务`. The command is handled locally and requests the current goal's
+safe cancellation checkpoint; it does not wait for another model response. A
+status is emitted only after the server accepts the cancellation, and the
+body's final stop remains subject to the skill's normal checkpoint contract.
+In multiplayer, the sender must be the addressed player and be allowed to
+control the companion. Hardcore evaluation keeps its permanent no-write lock.
+
+During a long task, player-visible lifecycle messages are grounded in the
+server-owned skill supervisor: `开始执行` follows `skill_started`, `动作完成`
+follows `skill_completed`, and failure/cancellation messages are emitted once
+per transition. A conversational acknowledgement by itself is not evidence
+that the body moved.
+
 ## Xaero shared waypoints
 
 Share a structured waypoint through the supported Xaero integration. The

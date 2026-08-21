@@ -37,6 +37,9 @@ abilities.
   timeouts, cancellation, revision checks, and redacted errors.
 - Twenty-TPS local movement, shielding, food, retreat, fall, water-clutch,
   parkour, and emergency-survival reactions while the model is thinking.
+- Grounded teammate lifecycle updates after server-owned skill start,
+  completion, failure, or cancellation, plus local `stop`/`hold`/`pause`
+  cancellation that remains responsive during model latency.
 - First-person semantic perception with distance, field-of-view, occlusion,
   provenance, sample sequence, and world/goal revision checks. Screenshots are
   task-triggered and never a continuous video upload.

@@ -70,6 +70,21 @@ final class ConversationCommitmentSourceContractTest {
     }
 
     @Test
+    void stopIsALocalSafeCheckpointCommandAndDoesNotNeedASecondModelTurn()
+            throws IOException {
+        final String source = Files.readString(Path.of(
+                "src/main/java/dev/mcai/companion/communication/"
+                        + "CompanionConversationCoordinator.java"
+        ));
+
+        assertTrue(source.contains("PlayerTaskIntent.isCancellationRequest"));
+        assertTrue(source.contains("cancelFromPlayer(sender, normalized)"));
+        assertTrue(source.contains("conversation_task_cancel_requested"));
+        assertTrue(source.contains("safe checkpoint"));
+        assertTrue(source.contains("GoalSource.PLAYER_CHAT"));
+    }
+
+    @Test
     void queuesOnlyWhileAStartupProbeIsActuallyInFlight() {
         assertTrue(
                 CompanionConversationCoordinator

@@ -274,6 +274,13 @@ public final class CompanionConversationCoordinator
         if (normalized.isEmpty()) {
             return;
         }
+        final boolean taskAddressed = singlePlayer || explicitlyAddressed;
+        if (maySetGoal
+                && taskAddressed
+                && PlayerTaskIntent.isCancellationRequest(normalized)) {
+            cancelFromPlayer(sender, normalized);
+            return;
+        }
         if (!modelReady.getAsBoolean()) {
             if (shouldQueueUntilModelReady(
                     false,
@@ -365,7 +372,6 @@ public final class CompanionConversationCoordinator
                                 goals.snapshot().goal()
                         ).filter(value -> !value.isBlank())
                 );
-        final boolean taskAddressed = singlePlayer || explicitlyAddressed;
         if (!maySetGoal && taskAddressed && immediateIntent.task()) {
             /*
              * Do not send an unauthorized imperative through the model lane.
@@ -444,6 +450,62 @@ public final class CompanionConversationCoordinator
                 false
         ));
         brain.prioritizePlayerConversation();
+    }
+
+    private void cancelFromPlayer(
+            final ServerPlayer sender,
+            final String message
+    ) {
+        brain.prioritizePlayerConversation();
+        final var result = goals.requestCancel(GoalSource.PLAYER_CHAT);
+        final boolean chinese = PlayerTaskIntent.prefersChinese(message);
+        if (result.accepted()) {
+            emitNotice(
+                    result.snapshot().revision(),
+                    "conversation_task_cancel_requested"
+            );
+            final String response = chinese
+                    ? "收到停止请求；我会在安全检查点停下，不会继续声称正在执行。"
+                    : "Stop request received; I will stop at a safe checkpoint and will not claim the task is still running.";
+            try {
+                events.emit(new BrainEvent.Speech(
+                        result.snapshot().revision(),
+                        "conversation-cancel-"
+                                + result.snapshot().revision(),
+                        response
+                ));
+            } catch (RuntimeException ignored) {
+                emitNotice(
+                        result.snapshot().revision(),
+                        "conversation_cancel_status_failed"
+                );
+            }
+            remember(message, response);
+            return;
+        }
+        final String response = result.code().equals("no_running_goal")
+                ? (chinese ? "当前没有正在执行的任务。"
+                        : "There is no running task to stop.")
+                : (chinese ? "停止请求未获准：" + result.code()
+                        : "The stop request was not accepted: " + result.code());
+        emitNotice(
+                goals.snapshot().revision(),
+                "conversation_task_cancel_rejected"
+        );
+        try {
+            events.emit(new BrainEvent.Speech(
+                    goals.snapshot().revision(),
+                    "conversation-cancel-rejected-"
+                            + goals.snapshot().revision(),
+                    response
+            ));
+        } catch (RuntimeException ignored) {
+            emitNotice(
+                    goals.snapshot().revision(),
+                    "conversation_cancel_status_failed"
+            );
+        }
+        remember(message, response);
     }
 
     private void installImmediateTask(

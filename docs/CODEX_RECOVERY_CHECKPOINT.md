@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T04:53:00+09:00
+Last updated: 2026-08-22T05:15:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -82,6 +82,13 @@ This section supersedes older chronological notes below when they conflict.
   attempt, and `tower_up.overhead_clearance_unverified`; zero arrows, dragon
   damage, kill, or return. The guard prevents stale landfall re-selection but
   does not solve the natural pillar-edge route.
+- The M3 professional-companion increment now derives player-visible
+  lifecycle messages only from accepted server-owned skill transitions. It
+  also accepts unambiguous `stop`/`hold`/`pause`/`停下`/`取消任务` chat as a
+  local GoalCoordinator cancellation request, preserving permissions,
+  Hardcore locks, and ordinary safe checkpoints. Focused JVM and source
+  contract tests pass; no formal M3 status is promoted by this code-only
+  change.
 - A short exploratory tower-recovery change was tested against the same fresh
   natural selector and was immediately reverted because it regressed the
   measured route: the body stopped near `(42.603,50.0,-4.500)`, the nested

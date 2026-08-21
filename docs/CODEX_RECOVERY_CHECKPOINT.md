@@ -45,6 +45,9 @@ This section supersedes older chronological notes below when they conflict.
 - The current development JAR after the full build is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
   `c84c63e3d5259d21cde2c5874aba3321e96aed4cdc8815a45f0c421b9f257fcb`.
+- The commit is published on public `main` as `f530504557714f9b9eecb2c2f55b8daec26bfcb5`
+  through Git Data API objects. A fresh clone verified seven changed file
+  blob hashes byte-for-byte and passed Forge 65.1.1 `compileJava`.
 - A fresh real Forge 65.1.1 natural dynamic-dragon run after the eight-pattern
   cardinal frontier probe was `/tmp/mcai-dynamic-dragon-cardinalprobe-njnr9C`.
   It failed at 2026-08-21 03:50:28 with the same honest result:

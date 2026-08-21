@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T04:43:00+09:00
+Last updated: 2026-08-22T04:46:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -171,10 +171,10 @@ This section supersedes older chronological notes below when they conflict.
   real client/model, Hardcore random-seed, and M1--M4 gates remain `NOT_RUN`
   or externally blocked.
 - The current source snapshot is public `main` commit
-  `702999dd216cf0a7c9fa481f5c54f7b346ef36c4`; the ingress source, this
+  `9c6bf5b14e851bbc2de300a1e518d6bb6814791a`; the ingress source, this
   checkpoint, and the goal state match a fresh clone byte-for-byte; that clone
   parsed the goal JSON and passed Forge `compileJava`. The local source commit
-  is `bd013d6`; the controlled MiMo evidence is recorded above. Formal gates
+  is `0dc4b7b`; the controlled MiMo evidence is recorded above. Formal gates
   remain `NOT_RUN` or externally blocked.
 
 - The current uncommitted combat correction contains three narrowly bounded

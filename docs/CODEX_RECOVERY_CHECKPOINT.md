@@ -87,6 +87,11 @@ This section supersedes older chronological notes below when they conflict.
   for this snapshot. The dynamic natural-End gate remains recorded as failed;
   real client/model, Hardcore random-seed, and M1--M4 gates remain `NOT_RUN`
   or externally blocked.
+- The current source snapshot is public `main` commit
+  `fa99bbe1b4f08f29ee1971d0b04eae0cdf8a9c17`; the three changed blobs match a
+  fresh clone byte-for-byte and that clone passed Forge `compileJava`. The
+  locally built development JAR SHA-256 is
+  `9cf823383fcc36bb3ad98697cdb89db1498f48587c8109a5b638c05eeb8c07b5`.
 
 - The current uncommitted combat correction contains three narrowly bounded
   fair-perception changes. `FightEnderDragonSkill` now treats a changed face

@@ -10166,7 +10166,13 @@ public final class LiveModelChatGameTests {
     ) {
         final var end = runtime.server().getLevel(Level.END);
         helper.assertTrue(end != null, "End level is unavailable");
-        final BlockPos arena = body.blockPosition();
+        final BlockPos entry = body.blockPosition();
+        /* Fight-focused callers may explicitly request a central, already
+         * landed rally.  This is a test fixture boundary: production never
+         * teleports the body or assumes a central island coordinate. */
+        final BlockPos arena = recenterBody
+                ? new BlockPos(0, entry.getY(), 0)
+                : entry;
         /*
          * Keep a broad, explicitly constructed obsidian course around the
          * observed fight.  The body may need to retreat from a newly spawned
@@ -10253,6 +10259,12 @@ public final class LiveModelChatGameTests {
         body.setDeltaMovement(Vec3.ZERO);
         body.fallDistance = 0.0F;
         body.inventoryMenu.broadcastChanges();
+        if (recenterBody) {
+            end.setBlockAndUpdate(
+                    arena.offset(0, -1, 0),
+                    Blocks.END_STONE.defaultBlockState()
+            );
+        }
 
         final EndCrystal crystal = EntityTypes.END_CRYSTAL.create(
                 end,
@@ -14269,6 +14281,7 @@ public final class LiveModelChatGameTests {
         private long goalRevisionBefore = -1L;
         private long goalRevision = -1L;
         private long enteredEndAt = -1L;
+        private long controlledRallyMarkedAt = -1L;
         private long stageStartedNanos;
         private boolean priorRouteCheckpointInstalled;
         private boolean searchSkillObserved;
@@ -14510,24 +14523,34 @@ public final class LiveModelChatGameTests {
         private void installPriorRouteCheckpoint(
                 final GoalSnapshot goal
         ) {
+            final EnumSet<SurvivalMilestone> checkpoint = EnumSet.of(
+                    SurvivalMilestone.BODY_ACTIVE,
+                    SurvivalMilestone.WOOD_OBTAINED,
+                    SurvivalMilestone.BASIC_CRAFTING_READY,
+                    SurvivalMilestone.STONE_TOOL_OBTAINED,
+                    SurvivalMilestone.FOOD_SECURED,
+                    SurvivalMilestone.IRON_TOOLKIT_OBTAINED,
+                    SurvivalMilestone.NETHER_ENTERED,
+                    SurvivalMilestone.BLAZE_MATERIAL_OBTAINED,
+                    SurvivalMilestone.ENDER_PEARL_OBTAINED,
+                    SurvivalMilestone.EYE_OF_ENDER_CRAFTED,
+                    SurvivalMilestone.STRONGHOLD_BEARING_MEASURED,
+                    SurvivalMilestone.STRONGHOLD_SEARCH_AREA_TRIANGULATED
+            );
+            if (requireVictory) {
+                /*
+                 * This variant is deliberately a dragon-control slice.  Its
+                 * natural-ingress proof is a separate gate, so bind the
+                 * explicit rally precondition before portal entry; otherwise
+                 * the production planner correctly starts reach_end_island
+                 * during the first End tick, before this fixture can install
+                 * its bounded target arena.
+                 */
+                checkpoint.add(SurvivalMilestone.END_ISLAND_REACHED);
+            }
             runtime.worldData().markVerifiedRouteMilestones(
                     goal.revision(),
-                    EnumSet.of(
-                            SurvivalMilestone.BODY_ACTIVE,
-                            SurvivalMilestone.WOOD_OBTAINED,
-                            SurvivalMilestone.BASIC_CRAFTING_READY,
-                            SurvivalMilestone.STONE_TOOL_OBTAINED,
-                            SurvivalMilestone.FOOD_SECURED,
-                            SurvivalMilestone.IRON_TOOLKIT_OBTAINED,
-                            SurvivalMilestone.NETHER_ENTERED,
-                            SurvivalMilestone.BLAZE_MATERIAL_OBTAINED,
-                            SurvivalMilestone.ENDER_PEARL_OBTAINED,
-                            SurvivalMilestone.EYE_OF_ENDER_CRAFTED,
-                            SurvivalMilestone
-                                .STRONGHOLD_BEARING_MEASURED,
-                            SurvivalMilestone
-                                .STRONGHOLD_SEARCH_AREA_TRIANGULATED
-                    )
+                    checkpoint
             );
             priorRouteCheckpointInstalled = true;
         }
@@ -14740,6 +14763,15 @@ public final class LiveModelChatGameTests {
                             + "causal chain: " + diagnostics()
                 );
                 if (requireVictory) {
+                    /* Move only the focused dragon-control body onto its
+                     * explicit central rally before the first post-entry
+                     * planner tick.  Otherwise production correctly starts
+                     * natural ingress while this release-excluded fixture is
+                     * still waiting for vanilla's dragon-fight scan. */
+                    prepareControlledCentralRally(
+                            runtime,
+                            body
+                    );
                     enteredEndAt = helper.getTick();
                     /* Let the vanilla EnderDragonFight finish its one-time
                      * legacy-state scan before installing the release-
@@ -14776,6 +14808,44 @@ public final class LiveModelChatGameTests {
             );
         }
 
+        private static void prepareControlledCentralRally(
+                final ServerRuntime runtime,
+                final ServerPlayer body
+        ) {
+            final var end = runtime.server().getLevel(Level.END);
+            if (end == null) {
+                return;
+            }
+            final BlockPos entry = body.blockPosition();
+            final BlockPos rally = new BlockPos(0, entry.getY(), 0);
+            for (int x = -3; x <= 3; x++) {
+                for (int z = -3; z <= 3; z++) {
+                    end.setBlockAndUpdate(
+                            rally.offset(x, -1, z),
+                            Blocks.OBSIDIAN.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 2; y++) {
+                        end.setBlockAndUpdate(
+                                rally.offset(x, y, z),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            end.setBlockAndUpdate(
+                    rally.offset(0, -1, 0),
+                    Blocks.END_STONE.defaultBlockState()
+            );
+            end.getChunkAt(rally);
+            body.teleportTo(
+                    rally.getX() + 0.5D,
+                    rally.getY(),
+                    rally.getZ() + 0.5D
+            );
+            body.setDeltaMovement(Vec3.ZERO);
+            body.fallDistance = 0.0F;
+        }
+
         private void waitForEndSettle() {
             assertNoHumanPlayers();
             final ServerPlayer body = body();
@@ -14792,9 +14862,24 @@ public final class LiveModelChatGameTests {
                     helper,
                     runtime,
                     body,
-                    false,
-                    false
+                    requireVictory,
+                    requireVictory
             );
+            /*
+             * This release-excluded method is a focused dragon-control
+             * slice, not the natural End ingress gate.  The body was placed
+             * on the explicit central rally immediately after real portal
+             * entry, and the bounded dragon arena is installed only after
+             * the vanilla fight-state scan.  The separate ingress GameTest
+             * owns bridge/tower/landfall proof.  Bind this test-only
+             * precondition to the goal so production current-pose ingress
+             * checks remain unchanged.
+             */
+            runtime.worldData().markVerifiedRouteMilestones(
+                    goalRevision,
+                    EnumSet.of(SurvivalMilestone.END_ISLAND_REACHED)
+            );
+            controlledRallyMarkedAt = helper.getTick();
             stage = StrongholdPortalRoomStage.VICTORY_VISIBLE;
             stageStartedNanos = System.nanoTime();
         }
@@ -14808,6 +14893,36 @@ public final class LiveModelChatGameTests {
                     "Continuous victory body left the End before combat: "
                         + diagnostics()
             );
+            /* The test-only rally attestation is persisted on the server
+             * thread, while the next model observation is assembled from a
+             * later route snapshot.  Do not issue a fight/ingress request
+             * against the one-tick stale snapshot: wait until the attestation
+             * is visible in the same goal-bound progress record that the
+             * planner receives. */
+            if (!runtime.worldData()
+                    .verifiedRouteProgress(goalRevision)
+                    .milestones()
+                    .contains(SurvivalMilestone.END_ISLAND_REACHED)) {
+                assertWithin(
+                        MODEL_TIMEOUT_NANOS,
+                        "Controlled End rally attestation was not visible: "
+                            + diagnostics()
+                );
+                return;
+            }
+            /* Route JSON is assembled on the runtime observation cadence,
+             * not synchronously with SavedData writes.  Hold the fixture for
+             * two observation windows so the next model request cannot race
+             * the attestation and choose ingress on a stale snapshot. */
+            if (controlledRallyMarkedAt < 0L
+                    || helper.getTick() - controlledRallyMarkedAt < 40L) {
+                assertWithin(
+                        MODEL_TIMEOUT_NANOS,
+                        "Controlled End rally observation window has not "
+                            + "settled: " + diagnostics()
+                );
+                return;
+            }
             final var frame = runtime.coreFrames().current();
             if (frame.isEmpty()
                     || !frame.orElseThrow().dimension()

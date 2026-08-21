@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T03:28:00+09:00
+Last updated: 2026-08-22T04:05:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,22 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+- A fresh authorized Forge 65.1.1 MiMo live-model run of
+  `real_player_task_to_live_model_stronghold_portal_room_to_victory` passed
+  its complete controlled causal chain. One ordinary player chat produced
+  real model decisions for stronghold search, portal activation, End entry,
+  dragon combat, and return. The production fight skill first rejected an
+  invalid spawn-envelope pose in an earlier fixture attempt; the corrected
+  fixture now establishes its explicit central End-stone rally before the
+  first post-entry planner tick, while the natural ingress gate remains
+  separate and strict. The passing run recorded six HTTP-200 model requests,
+  50,248 input and 778 output tokens (51,026 total), ordinary movement and
+  vanilla combat actions, the `Monster Hunter` and `Free the End` advancements,
+  `DRAGON_KILLED` at game tick 5,022, and `RETURNED_FROM_END` at tick 5,467.
+  The same ServerPlayer UUID completed the chain and the GameTest reported
+  all required tests passed in 4m45s. This is controlled live-model evidence,
+  not random-seed Hardcore, rendered Actor/Observer, or formal M2/M4 evidence.
 
 - Current published patch: `FightEnderDragonSkill` now routes a natural
   centerward obsidian frontier through bounded fair island re-entry before a

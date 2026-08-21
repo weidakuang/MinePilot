@@ -144,6 +144,7 @@ final class MiningSkillTestFixtures {
         int torchCount = 8;
         int emptySlots = 8;
         boolean publishPlacedTorch = true;
+        boolean publishCrosshair = true;
         final Map<GridPos, VoxelRecord> voxels = new HashMap<>();
         final Map<GridPos, Integer> voxelRevisionLags =
                 new HashMap<>();
@@ -211,6 +212,9 @@ final class MiningSkillTestFixtures {
                 @Override
                 public Optional<VisibleBlockFace>
                         currentCrosshairBlock() {
+                    if (!publishCrosshair) {
+                        return Optional.empty();
+                    }
                     final PerceptionVec3 eye = new PerceptionVec3(
                             position.x(),
                             position.y() + 1.62,

@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T03:21:00+09:00
+Last updated: 2026-08-22T03:28:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -109,6 +109,13 @@ This section supersedes older chronological notes below when they conflict.
   entry, dragon kill, return, teleport, command, or hidden structure read was
   claimed. This validates the rejection-recovery guard as controlled live-model
   evidence, but remains incomplete and is not M2/M4 or random-seed evidence.
+- `ExcavateSafeTunnelSkill` now treats a semantic torch-support face as turn
+  guidance only and waits for the live centre crosshair to hit the same block
+  and face before issuing vanilla `useOnBlock`. This closes the observed
+  `torch_place_target_occluded` timing mismatch without widening interaction
+  permissions. The focused excavation suite (including a stale-crosshair
+  regression), planner suite, and brain suite pass; no live victory claim is
+  attached to this fix yet.
 - A fresh authorized Forge 65.1.1 live-model container slice also passed. The
   model first returned an invalid `use_block` envelope; local validation
   rejected it without an action, then the model corrected the decision,

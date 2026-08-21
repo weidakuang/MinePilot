@@ -740,6 +740,47 @@ final class ExcavateSafeTunnelSkillTest {
     }
 
     @Test
+    void torchUseWaitsForTheLiveCentreCrosshair()
+            throws Exception {
+        final Scenario scenario = scenario(TunnelMode.HORIZONTAL);
+        scenario.frames.publishCrosshair = false;
+        assertTrue(
+                scenario.skill.preconditions(
+                        context(100, false, 0.0),
+                        scenario.parameters
+                ).isEmpty()
+        );
+        scenario.skill.start(
+                context(100, false, 0.0),
+                scenario.parameters
+        );
+        SkillTickResult result = null;
+        boolean gated = true;
+        for (long tick = 101; tick < 120; tick++) {
+            result = scenario.skill.tick(
+                    context(tick, false, 0.0),
+                    scenario.parameters
+            );
+            if (gated) {
+                assertTrue(
+                        scenario.interaction.placements.isEmpty(),
+                        "A semantic fan hit must not authorize a stale torch use"
+                );
+            }
+            if (gated && !scenario.core.looks.isEmpty()) {
+                scenario.frames.publishCrosshair = true;
+                gated = false;
+            }
+            scenario.frames.advance();
+            if (scenario.interaction.placements.size() == 1) {
+                break;
+            }
+        }
+        assertEquals(SkillTickResult.Status.RUNNING, result.status());
+        assertEquals(1, scenario.interaction.placements.size());
+    }
+
+    @Test
     void nearbyCurrentlyVisibleTorchIsReusedAcrossBoundedLegs() {
         final Scenario scenario = scenario(TunnelMode.HORIZONTAL);
         scenario.frames.addFace(

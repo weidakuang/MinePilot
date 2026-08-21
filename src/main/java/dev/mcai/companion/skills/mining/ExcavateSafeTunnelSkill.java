@@ -671,6 +671,25 @@ public final class ExcavateSafeTunnelSkill
                     policy.maximumAimTicks()
             );
         }
+        /*
+         * The semantic fan may be a few ticks older than the body's vanilla
+         * crosshair.  It is allowed to guide the turn, but it must never be
+         * replayed as an interaction target: the server-owned actuator
+         * correctly rejects that stale hit as TARGET_OCCLUDED.  Wait for the
+         * live centre ray to bind the same observed support face before
+         * issuing the ordinary torch use packet.
+         */
+        final Optional<VisibleBlockFace> selected =
+                interactionFrames.currentCrosshairBlock()
+                        .filter(current -> key(current).equals(key(visible)))
+                        .filter(current -> "up".equals(current.face()));
+        if (selected.isEmpty()) {
+            return waitOrFail(
+                    context,
+                    NAME + ".torch_aim_timed_out",
+                    policy.maximumAimTicks()
+            );
+        }
         final int count = itemCount(
                 snapshot.interaction(),
                 TORCH_ITEM_ID
@@ -680,7 +699,7 @@ public final class ExcavateSafeTunnelSkill
         }
         final ActionOutcome placed = interactionActuator.useOnBlock(
                 ActionHand.MAIN_HAND,
-                interactionTarget(visible)
+                interactionTarget(selected.orElseThrow())
         );
         if (!placed.accepted()) {
             return fail(

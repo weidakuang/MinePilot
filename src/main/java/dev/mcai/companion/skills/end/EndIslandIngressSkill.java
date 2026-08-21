@@ -13,6 +13,7 @@ import dev.mcai.companion.navigation.NavigationEvidence;
 import dev.mcai.companion.navigation.NavigationRiskProfile;
 import dev.mcai.companion.navigation.ObservedVoxel;
 import dev.mcai.companion.perception.BlockCoordinate;
+import dev.mcai.companion.perception.CollisionAffordance;
 import dev.mcai.companion.perception.PerceptionVec3;
 import dev.mcai.companion.perception.VisibleBlockFace;
 import dev.mcai.companion.skill.Skill;
@@ -111,6 +112,9 @@ public final class EndIslandIngressSkill
     private int scanTurns;
     private int childFailures;
     private int landfallAttempts;
+    private int frontierProbeIndex;
+    private boolean frontierProbePending;
+    private long frontierProbeRevision = -1;
     private String lastChildFailureCode = "";
     private GridPos candidateSupport;
     private BridgeToSkill bridge;
@@ -321,6 +325,9 @@ public final class EndIslandIngressSkill
         scanTurns = 0;
         childFailures = 0;
         landfallAttempts = 0;
+        frontierProbeIndex = 0;
+        frontierProbePending = false;
+        frontierProbeRevision = -1;
         lastChildFailureCode = "";
         candidateSupport = null;
         bridge = null;
@@ -431,6 +438,30 @@ public final class EndIslandIngressSkill
         };
     }
 
+    /**
+     * Returns a bounded diagnostic for the most recent ingress failure.
+     *
+     * <p>A retry-exhaustion identifier is assembled from a child failure and
+     * can exceed the public {@link SkillFailure} length contract.  The
+     * failure object correctly fails closed to {@code skill_failure} in that
+     * case, but callers still need the last stable child code to diagnose a
+     * physical gate without logging exception text or world data.</p>
+     */
+    public Optional<String> diagnosticFailureCode() {
+        if (failure == null) {
+            return lastChildFailureCode.isBlank()
+                    ? Optional.empty()
+                    : Optional.of(lastChildFailureCode);
+        }
+        if ("skill_failure".equals(failure.code())
+                && !lastChildFailureCode.isBlank()) {
+            return Optional.of(
+                    "retry_exhausted." + lastChildFailureCode
+            );
+        }
+        return Optional.of(failure.code());
+    }
+
     private SkillTickResult tickSafely(
             final SkillContext context,
             final EndIslandIngressParameters parameters
@@ -533,6 +564,19 @@ public final class EndIslandIngressSkill
             return orientForFreshObservation(context, parameters, frame);
         }
 
+        if (frontierProbePending) {
+            if (!fresh
+                    || frame.observationRevision() <= frontierProbeRevision) {
+                return orientForFrontierProbe(context, frame);
+            }
+            frontierProbePending = false;
+            final Optional<SkillTickResult> detour =
+                    startObservedSideStep(context, parameters, frame);
+            if (detour.isPresent()) {
+                return detour.orElseThrow();
+            }
+        }
+
         scanTurns++;
         if (scanTurns > parameters.maximumScanTurns()) {
             return fail(NAME + ".scan_budget_exhausted");
@@ -627,6 +671,27 @@ public final class EndIslandIngressSkill
             final String code = child.failure()
                     .map(SkillFailure::code)
                     .orElse("bridge");
+            if ("bridge_to.destination_column_unverified".equals(code)) {
+                final Optional<SkillTickResult> attached =
+                        startObservedAttachedStep(
+                                context,
+                                parameters,
+                                frame
+                        );
+                if (attached.isPresent()) {
+                    return attached.orElseThrow();
+                }
+                final Optional<SkillTickResult> detour =
+                        startObservedSideStep(
+                                context,
+                                parameters,
+                                frame
+                        );
+                if (detour.isPresent()) {
+                    return detour.orElseThrow();
+                }
+                return prepareFrontierProbe(context, frame);
+            }
             return recoverChildFailure(
                     context,
                     parameters,
@@ -937,6 +1002,83 @@ public final class EndIslandIngressSkill
         return SkillTickResult.running(true, true);
     }
 
+    private SkillTickResult orientForFrontierProbe(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        final double deltaX = EndArenaTopology.CENTER_X
+                - frame.position().x();
+        final double deltaZ = EndArenaTopology.CENTER_Z
+                - frame.position().z();
+        final double length = Math.hypot(deltaX, deltaZ);
+        if (!Double.isFinite(length) || length <= 1.0E-9) {
+            return SkillTickResult.running(true, true);
+        }
+        final double forwardX = deltaX / length;
+        final double forwardZ = deltaZ / length;
+        final int probePattern = frontierProbeIndex & 7;
+        final double sideSign = (probePattern & 1) == 0
+                ? -1.0
+                : 1.0;
+        /*
+         * A horizontal-only glance is not enough at a natural End pillar:
+         * the fair mapper can see the wall and the void while still having
+         * no proof that the adjacent feet cell carries the player.  Alternate
+         * a low, floor-seeking ray with the normal eye-level ray.  Both are
+         * ordinary first-person looks and the destination remains unknown
+         * until a newer semantic frame proves clearance and support.
+         */
+        final boolean floorProbe = probePattern < 4;
+        final double targetY = floorProbe
+                ? frame.position().y() + 0.15
+                : frame.eyePosition().y() - 0.20;
+        final double directionX;
+        final double directionZ;
+        if (probePattern == 0 || probePattern == 1) {
+            directionX = forwardX;
+            directionZ = forwardZ;
+        } else if (probePattern == 2 || probePattern == 3) {
+            directionX = -forwardZ * sideSign;
+            directionZ = forwardX * sideSign;
+        } else if (probePattern == 4 || probePattern == 5) {
+            directionX = forwardX - forwardZ * sideSign;
+            directionZ = forwardZ + forwardX * sideSign;
+        } else {
+            directionX = forwardX + forwardZ * sideSign;
+            directionZ = forwardZ - forwardX * sideSign;
+        }
+        final double directionLength = Math.hypot(directionX, directionZ);
+        final double normalX = directionX / directionLength;
+        final double normalZ = directionZ / directionLength;
+        final double distance = floorProbe ? 1.10 : 2.0;
+        final PerceptionVec3 target = new PerceptionVec3(
+                frame.eyePosition().x() + normalX * distance,
+                targetY,
+                frame.eyePosition().z() + normalZ * distance
+        );
+        if (!actuator.move(MovementIntent.STOPPED).accepted()
+                || !actuator.look(lookAt(
+                        frame.eyePosition(),
+                        target
+                )).accepted()) {
+            return fail(NAME + ".frontier_probe_rejected");
+        }
+        frontierProbeRevision = frame.observationRevision();
+        requiredFreshRevision = frame.observationRevision();
+        nextScanTick = context.gameTick() + MINIMUM_SCAN_INTERVAL_TICKS;
+        return SkillTickResult.running(true, true);
+    }
+
+    private SkillTickResult prepareFrontierProbe(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        frontierProbeIndex++;
+        frontierProbePending = true;
+        phase = Phase.SCANNING;
+        return orientForFrontierProbe(context, frame);
+    }
+
     private SkillTickResult startOneBlockBridge(
             final SkillContext context,
             final EndIslandIngressParameters parameters,
@@ -971,6 +1113,29 @@ public final class EndIslandIngressSkill
                 childParameters
         );
         if (rejected.isPresent()) {
+            if ("bridge_to.destination_column_unverified".equals(
+                    rejected.orElseThrow().code()
+            )) {
+                final Optional<SkillTickResult> attached =
+                        startObservedAttachedStep(
+                                context,
+                                parameters,
+                                frame
+                        );
+                if (attached.isPresent()) {
+                    return attached.orElseThrow();
+                }
+                final Optional<SkillTickResult> detour =
+                        startObservedSideStep(
+                                context,
+                                parameters,
+                                frame
+                        );
+                if (detour.isPresent()) {
+                    return detour.orElseThrow();
+                }
+                return prepareFrontierProbe(context, frame);
+            }
             childFailures++;
             if (childFailures > parameters.maximumChildFailures()) {
                 return fail(NAME + ".bridge_retry_exhausted");
@@ -985,6 +1150,174 @@ public final class EndIslandIngressSkill
         bridgeParameters = childParameters;
         phase = Phase.BRIDGING_ONE_STEP;
         return tickBridge(context, parameters, frame, true);
+    }
+
+    /**
+     * Routes around an observed solid frontier when the centerward adjacent
+     * column is not yet a fair bridge destination.  The candidate set is
+     * limited to the four horizontal neighbours in the current navigation
+     * snapshot; no heightmap, chunk read, or synthesized landing point is
+     * allowed.  A successful side step re-enters the ordinary scan phase and
+     * lets a later fresh frame choose the centerward route again.
+     */
+    private Optional<SkillTickResult> startObservedSideStep(
+            final SkillContext context,
+            final EndIslandIngressParameters parameters,
+            final CoreSkillFrame frame
+    ) {
+        final GridPos current = frame.feet();
+        final long revision = frame.navigation().revision();
+        final Optional<GridPos> candidate = List.of(
+                current.offset(0, 0, -1),
+                current.offset(0, 0, 1),
+                current.offset(-1, 0, 0),
+                current.offset(1, 0, 0)
+        ).stream()
+                .filter(step -> !step.equals(current))
+                .filter(step -> radiusOf(step)
+                        <= EndArenaTopology.horizontalRadius(frame.position())
+                                + 2.5)
+                .filter(step -> frame.navigation().voxelAt(step)
+                        .filter(voxel -> NavigationEvidence
+                                .hasFreshTraversalClearance(
+                                        voxel,
+                                        revision
+                                )).isPresent())
+                .filter(step -> frame.navigation().voxelAt(step.above())
+                        .filter(voxel -> NavigationEvidence
+                                .hasFreshTraversalClearance(
+                                        voxel,
+                                        revision
+                                )).isPresent())
+                .filter(step -> frame.navigation().voxelAt(step.below())
+                        .filter(voxel -> NavigationEvidence
+                                .isFreshStandingSupport(
+                                        voxel,
+                                        revision
+                                )).isPresent())
+                .min(Comparator.comparingDouble(
+                        EndIslandIngressSkill::radiusOf
+                ));
+        if (candidate.isEmpty()) {
+            return Optional.empty();
+        }
+        final GridPos step = candidate.orElseThrow();
+        final BridgeToParameters childParameters =
+                new BridgeToParameters(
+                        DimensionRef.END,
+                        step.x() + 0.5,
+                        frame.position().y(),
+                        step.z() + 0.5,
+                        BRIDGE_ARRIVAL_RADIUS,
+                        1
+                );
+        final BridgeToSkill child = new BridgeToSkill(
+                expectedPlayerId,
+                actuator,
+                frames,
+                materials
+        );
+        final Optional<SkillFailure> rejected = child.preconditions(
+                context,
+                childParameters
+        );
+        if (rejected.isPresent()) {
+            return Optional.empty();
+        }
+        child.start(context, childParameters);
+        bridge = child;
+        bridgeParameters = childParameters;
+        phase = Phase.BRIDGING_ONE_STEP;
+        return Optional.of(
+                tickBridge(context, parameters, frame, true)
+        );
+    }
+
+    /**
+     * Places one owned block directly into a currently unknown neighbour cell
+     * when a solid attachment face for that exact cell is visible in the
+     * current first-person sample.  This is the legal escape used beside a
+     * natural End pillar: it never assumes the void below the cell is safe,
+     * and BridgeToSkill will not cross until a newer frame proves the placed
+     * block carries the body.
+     */
+    private Optional<SkillTickResult> startObservedAttachedStep(
+            final SkillContext context,
+            final EndIslandIngressParameters parameters,
+            final CoreSkillFrame frame
+    ) {
+        final GridPos current = frame.feet();
+        final List<GridPos> neighbours = List.of(
+                current.offset(0, 0, -1),
+                current.offset(0, 0, 1),
+                current.offset(-1, 0, 0),
+                current.offset(1, 0, 0)
+        );
+        final Optional<GridPos> destination = frame.visibleBlockFaces()
+                .stream()
+                .filter(face -> !"minecraft:air".equals(
+                        face.blockTypeId()
+                ))
+                .filter(face -> face.collisionAffordance()
+                        != CollisionAffordance.EMPTY)
+                .map(face -> {
+                    final BlockFace parsed;
+                    try {
+                        parsed = blockFace(face.face());
+                    } catch (IllegalArgumentException ignored) {
+                        return null;
+                    }
+                    final GridPos clicked = grid(face.block());
+                    return adjacent(clicked, parsed);
+                })
+                .filter(Objects::nonNull)
+                .filter(neighbours::contains)
+                .filter(step -> radiusOf(step)
+                        <= EndArenaTopology.horizontalRadius(frame.position())
+                                + 1.5)
+                .filter(step -> frame.navigation().voxelAt(step)
+                        .map(voxel -> voxel.kind().isPassable())
+                        .orElse(true))
+                .filter(step -> frame.navigation().voxelAt(step.above())
+                        .map(voxel -> voxel.kind().isPassable())
+                        .orElse(true))
+                .min(Comparator.comparingDouble(
+                        EndIslandIngressSkill::radiusOf
+                ));
+        if (destination.isEmpty()) {
+            return Optional.empty();
+        }
+        final GridPos step = destination.orElseThrow();
+        final BridgeToParameters childParameters =
+                new BridgeToParameters(
+                        DimensionRef.END,
+                        step.x() + 0.5,
+                        frame.position().y(),
+                        step.z() + 0.5,
+                        BRIDGE_ARRIVAL_RADIUS,
+                        1,
+                        true
+                );
+        final BridgeToSkill child = new BridgeToSkill(
+                expectedPlayerId,
+                actuator,
+                frames,
+                materials
+        );
+        final Optional<SkillFailure> rejected = child.preconditions(
+                context,
+                childParameters
+        );
+        if (rejected.isPresent()) {
+            return Optional.empty();
+        }
+        child.start(context, childParameters);
+        bridge = child;
+        bridgeParameters = childParameters;
+        phase = Phase.BRIDGING_ONE_STEP;
+        return Optional.of(
+                tickBridge(context, parameters, frame, true)
+        );
     }
 
     private SkillTickResult startLandfallTravel(
@@ -1397,6 +1730,20 @@ public final class EndIslandIngressSkill
             default -> throw new IllegalArgumentException(
                     "Unknown observed block face"
             );
+        };
+    }
+
+    private static GridPos adjacent(
+            final GridPos position,
+            final BlockFace face
+    ) {
+        return switch (face) {
+            case DOWN -> position.offset(0, -1, 0);
+            case UP -> position.offset(0, 1, 0);
+            case NORTH -> position.offset(0, 0, -1);
+            case SOUTH -> position.offset(0, 0, 1);
+            case WEST -> position.offset(-1, 0, 0);
+            case EAST -> position.offset(1, 0, 0);
         };
     }
 

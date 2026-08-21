@@ -10,8 +10,28 @@ public record BridgeToParameters(
         double y,
         double z,
         double arrivalRadius,
-        int maxBlocks
+        int maxBlocks,
+        boolean allowObservedAttachment
 ) {
+    public BridgeToParameters(
+            final DimensionRef dimension,
+            final double x,
+            final double y,
+            final double z,
+            final double arrivalRadius,
+            final int maxBlocks
+    ) {
+        this(
+                dimension,
+                x,
+                y,
+                z,
+                arrivalRadius,
+                maxBlocks,
+                false
+        );
+    }
+
     public BridgeToParameters {
         Objects.requireNonNull(dimension, "dimension");
         if (!Double.isFinite(x)

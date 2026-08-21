@@ -3037,7 +3037,9 @@ public final class FightEnderDragonSkill
             final String code = result.failure()
                     .map(SkillFailure::code)
                     .orElse(NAME + ".island_reentry_failed");
-            lastIngressResult = "failed:" + code;
+            final String diagnostic = islandIngress.diagnosticFailureCode()
+                    .orElse(code);
+            lastIngressResult = "failed:" + diagnostic;
             islandIngress = null;
             islandIngressParameters = null;
             lastSkyFailure = code;

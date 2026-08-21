@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-21T03:08:00+09:00
+Last updated: 2026-08-21T19:58:05+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,29 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+- The current uncommitted ingress patch adds a narrowly scoped observed-wall
+  attachment path to `BridgeToSkill`: only the End ingress caller enables it,
+  only a first-person visible solid face may authorize the adjacent placement,
+  and a newer semantic frame must prove the placed block is weight-bearing
+  before crossing. It also adds bounded low/side frontier observations and a
+  stable child-failure diagnostic. Full JUnit currently passes, but this patch
+  is not yet published or a release claim.
+- A fresh real Forge 65.1.1 natural dynamic-dragon run after the eight-pattern
+  cardinal frontier probe was `/tmp/mcai-dynamic-dragon-cardinalprobe-njnr9C`.
+  It failed at 2026-08-21 03:50:28 with the same honest result:
+  `fight_ender_dragon.no_visible_combat_target`, ingress child
+  `reach_end_island.timed_out`, 30 observed End-stone blocks mined, zero
+  arrows/damage/kill/return, body approximately `(47.84,49.0,0.59)`, and
+  `scanTurns=48`. The natural terrain slice showed an observed/persisting
+  obsidian pillar frontier from x46 through x38 and End-stone beginning at
+  x37. This is evidence that the remaining gap is a real pillar-edge route,
+  not a missing model call.
+- The subsequent attached-step run directory
+  `/tmp/mcai-dynamic-dragon-attachedstep-OJNTER` was interrupted before a
+  server result directory was created. It is `NOT_RUN` evidence and must not
+  be counted as a pass. The exact production and test changes remain in the
+  dirty worktree until build, review, commit, and fresh-clone verification.
 
 - The latest End-fight commit adds fair sky-clearance recovery,
   bounded observed one-cell rally movement, and one bounded reuse of

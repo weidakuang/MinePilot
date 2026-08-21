@@ -11,6 +11,7 @@ import dev.mcai.companion.navigation.ObservedVoxel;
 import dev.mcai.companion.navigation.VoxelKind;
 import dev.mcai.companion.perception.PerceptionVec3;
 import dev.mcai.companion.perception.VisibleBlockFace;
+import dev.mcai.companion.perception.CollisionAffordance;
 import dev.mcai.companion.skill.Skill;
 import dev.mcai.companion.skill.SkillCheckpoint;
 import dev.mcai.companion.skill.SkillContext;
@@ -344,8 +345,34 @@ public final class BridgeToSkill
         if (!isObservedSupport(frame, stepFrom.below())) {
             return fail(NAME + ".current_support_unverified");
         }
-        if (!observedPassable(frame, stepTo)
-                || !observedPassable(frame, stepTo.above())) {
+        final boolean destinationClear = observedPassable(frame, stepTo)
+                && observedPassable(frame, stepTo.above());
+        final Optional<BlockInteractionTarget> attachedTarget =
+                parameters.allowObservedAttachment()
+                        ? visibleAttachmentTarget(frame, stepTo)
+                        : Optional.empty();
+        if (!destinationClear && attachedTarget.isPresent()) {
+            /*
+             * A player can legally place the next feet block against a
+             * freshly observed wall even when the block below that cell is
+             * still unknown (for example, the side of a natural End pillar).
+             * The ordinary bridge path places desiredSupport below the next
+             * cell; this bounded mode instead places directly into stepTo and
+             * only crosses after a newer frame proves that placed block is
+             * weight-bearing.  No destination is inferred from absence.
+             */
+            desiredSupport = stepTo;
+            beginPhase(
+                    Phase.APPROACHING_EDGE,
+                    context,
+                    frame
+            );
+            placementTarget = attachedTarget.orElseThrow();
+            edgeTicks = 0;
+            sneakTicks = 0;
+            return approachEdge(context, frame, freshObservation);
+        }
+        if (!destinationClear) {
             beginPhase(
                     Phase.SCANNING,
                     context,
@@ -412,6 +439,22 @@ public final class BridgeToSkill
                     && observedPassable(frame, stepTo.above())) {
                 phase = Phase.READY;
                 return SkillTickResult.running(true, true);
+            }
+            if (parameters.allowObservedAttachment()
+                    && visibleAttachmentTarget(frame, stepTo).isPresent()) {
+                desiredSupport = stepTo;
+                phase = Phase.APPROACHING_EDGE;
+                placementTarget = visibleAttachmentTarget(
+                        frame,
+                        stepTo
+                ).orElseThrow();
+                edgeTicks = 0;
+                sneakTicks = 0;
+                return approachEdge(
+                        context,
+                        frame,
+                        freshObservation
+                );
             }
         }
         if (scanSamples >= MAXIMUM_SCAN_SAMPLES) {
@@ -691,6 +734,53 @@ public final class BridgeToSkill
             );
             final GridPos adjacent = offset(clicked, face);
             if (!adjacent.equals(desiredSupport)) {
+                continue;
+            }
+            try {
+                return Optional.of(new BlockInteractionTarget(
+                        clicked.x(),
+                        clicked.y(),
+                        clicked.z(),
+                        face,
+                        new ActionVec3(
+                                visible.hitPosition().x(),
+                                visible.hitPosition().y(),
+                                visible.hitPosition().z()
+                        )
+                ));
+            } catch (IllegalArgumentException ignored) {
+                return Optional.empty();
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<BlockInteractionTarget> visibleAttachmentTarget(
+            final CoreSkillFrame frame,
+            final GridPos destination
+    ) {
+        final Optional<ObservedVoxel> existing = frame.navigation()
+                .voxelAt(destination);
+        if (existing.isPresent()
+                && !existing.orElseThrow().kind().isPassable()) {
+            return Optional.empty();
+        }
+        for (VisibleBlockFace visible : frame.visibleBlockFaces()) {
+            if (visible.collisionAffordance()
+                    == CollisionAffordance.EMPTY) {
+                continue;
+            }
+            final Optional<BlockFace> parsed = parseFace(visible.face());
+            if (parsed.isEmpty()) {
+                continue;
+            }
+            final BlockFace face = parsed.orElseThrow();
+            final GridPos clicked = new GridPos(
+                    visible.block().x(),
+                    visible.block().y(),
+                    visible.block().z()
+            );
+            if (!offset(clicked, face).equals(destination)) {
                 continue;
             }
             try {

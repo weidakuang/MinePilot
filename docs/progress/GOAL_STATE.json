@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T17:20:02Z",
+  "updatedAtUtc": "2026-08-21T17:29:51Z",
   "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
   "publicMainHead": "435e23d48a69f6afd392b169a1e1ab8ea0456356",
   "releaseStatus": "NON_RELEASE",
@@ -367,13 +367,13 @@
     },
     "latestNaturalDynamicDragonGate": {
       "status": "FAIL_FORGE_65.1.1",
-      "details": "A fresh zero-human natural-End run with the vanilla manager-owned AI-enabled dragon reached the pillar-edge route but failed the dynamic fight after bounded rally, side-step, sky-clearance, and observed attachment recovery. The body reached approximately (46.636,51.0,-1.503); the nested fair ingress mined 29 observed blocks, placed 32 bridge blocks, reached 24 frontier probes, and exhausted its scan budget with tower_up.overhead_clearance_unverified. It consumed no arrows, dealt no dragon damage, and did not kill or return. The non-repeating visited feet-cell guard improved physical displacement but did not close the natural pillar-edge route. No teleport, hidden terrain read, dragon freeze, or fixture mutation was used.",
+      "details": "A fresh zero-human natural-End run with the vanilla manager-owned AI-enabled dragon reached the pillar-edge route but failed the dynamic fight after bounded rally, side-step, sky-clearance, and observed attachment recovery. The body reached approximately (46.636,51.0,-1.503); the nested fair ingress mined 29 observed blocks, placed 32 bridge blocks, reached 41 frontier probes, and exhausted its scan budget with tower_up.overhead_clearance_unverified after one failed landfall attempt. It consumed no arrows, dealt no dragon damage, and did not kill or return. The non-repeating visited-feet-cell guard and bounded failed-landfall memory prevent stale route reuse but do not close the natural pillar-edge route. No teleport, hidden terrain read, dragon freeze, or fixture mutation was used.",
       "runRoot": "run/logs/latest.log",
       "failureCode": "reach_end_island.scan_budget_exhausted",
       "ingressFailure": "tower_up.overhead_clearance_unverified",
       "bodyPosition": "46.636,51.0,-1.503",
-      "scanTurns": 89,
-      "latestFixesExercised": "fair centerward re-entry before lateral detours, fresh crosshair-bound block actions, support-voxel mining protection, and a non-repeating visited-feet-cell route guard; the controller still exhausted bounded re-entry without a dragon damage event",
+      "scanTurns": 105,
+      "latestFixesExercised": "fair centerward re-entry before lateral detours, fresh crosshair-bound block actions, support-voxel mining protection, a non-repeating visited-feet-cell route guard, and bounded failed-landfall memory; the controller still exhausted bounded re-entry without a dragon damage event",
       "formalGate": "NOT_RUN"
     },
     "dynamicDragonObservedRally": {

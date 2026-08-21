@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T02:26:05+09:00
+Last updated: 2026-08-22T02:29:51+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -36,6 +36,18 @@ This section supersedes older chronological notes below when they conflict.
   pillar-edge route. No teleport, command, hidden terrain read, dragon freeze,
   or fixture terrain mutation was used. This is the active release blocker; it
   is not M2/M4 or random-seed evidence.
+- `EndIslandIngressSkill` now retains a bounded set of fairly observed
+  landfall supports whose vanilla `TravelTo` child became stuck, excludes
+  those cells from the next candidate search, and clears the set only after a
+  real bridge, tower, mining, or completed-travel topology change. This is a
+  local liveness guard, not a route oracle or world read. Focused ingress and
+  dragon tests plus the full Gradle build pass with the change.
+- A fresh natural dynamic run with that guard still fails honestly after
+  8,002 fight ticks: body `(46.636,51.0,-1.503)`, ingress 29 observed mined
+  blocks and 32 placed bridge blocks, 41 frontier probes, one failed landfall
+  attempt, and `tower_up.overhead_clearance_unverified`; zero arrows, dragon
+  damage, kill, or return. The guard prevents stale landfall re-selection but
+  does not solve the natural pillar-edge route.
 - A short exploratory tower-recovery change was tested against the same fresh
   natural selector and was immediately reverted because it regressed the
   measured route: the body stopped near `(42.603,50.0,-4.500)`, the nested

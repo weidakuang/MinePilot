@@ -137,6 +137,9 @@ public final class EndIslandIngressSkill
      * route guard; it never supplies terrain or support evidence.
      */
     private final Set<GridPos> visitedIngressCells = new LinkedHashSet<>();
+    /** Fairly observed landfall cells whose vanilla travel became stuck. */
+    private final Set<GridPos> failedLandfallSupports =
+            new LinkedHashSet<>();
     private String lastChildFailureCode = "";
     private GridPos candidateSupport;
     private BridgeToSkill bridge;
@@ -359,6 +362,7 @@ public final class EndIslandIngressSkill
         frontierProbeRevision = -1;
         visitedIngressCells.clear();
         visitedIngressCells.add(frame.feet());
+        failedLandfallSupports.clear();
         lastChildFailureCode = "";
         candidateSupport = null;
         bridge = null;
@@ -828,6 +832,7 @@ public final class EndIslandIngressSkill
             bridgeRequiresCenterProgress = false;
             bridgeSteps++;
             childFailures = 0;
+            failedLandfallSupports.clear();
             phase = Phase.SCANNING;
             requiredFreshRevision = frame.observationRevision();
             nextScanTick = context.gameTick()
@@ -897,6 +902,7 @@ public final class EndIslandIngressSkill
             visitedIngressCells.clear();
             visitedIngressCells.add(frame.feet());
             childFailures = 0;
+            failedLandfallSupports.clear();
             phase = Phase.VERIFYING_CURRENT_SUPPORT;
             requiredFreshRevision = frame.observationRevision();
             nextScanTick = context.gameTick()
@@ -906,6 +912,14 @@ public final class EndIslandIngressSkill
         if (child.status() == SkillTickResult.Status.FAILED) {
             travel = null;
             travelParameters = null;
+            if (candidateSupport != null) {
+                failedLandfallSupports.add(candidateSupport);
+                if (failedLandfallSupports.size() > 32) {
+                    final GridPos oldest = failedLandfallSupports.iterator()
+                            .next();
+                    failedLandfallSupports.remove(oldest);
+                }
+            }
             candidateSupport = null;
             final String code = child.failure()
                     .map(SkillFailure::code)
@@ -943,6 +957,7 @@ public final class EndIslandIngressSkill
             visitedIngressCells.add(frame.feet());
             towerSteps++;
             childFailures = 0;
+            failedLandfallSupports.clear();
             phase = Phase.SCANNING;
             requiredFreshRevision = frame.observationRevision();
             nextScanTick = context.gameTick()
@@ -988,6 +1003,7 @@ public final class EndIslandIngressSkill
             visitedIngressCells.add(frame.feet());
             minedBlocks++;
             childFailures = 0;
+            failedLandfallSupports.clear();
             phase = Phase.SCANNING;
             requiredFreshRevision = frame.observationRevision();
             nextScanTick = context.gameTick()
@@ -2001,6 +2017,7 @@ public final class EndIslandIngressSkill
                         support
                 ) <= parameters.maximumVisibleLandfallDistance())
                 .filter(support -> !support.equals(frame.feet().below()))
+                .filter(support -> !failedLandfallSupports.contains(support))
                 .filter(support -> radiusOf(support)
                         <= currentRadius - Math.max(
                                 MINIMUM_CENTER_PROGRESS,

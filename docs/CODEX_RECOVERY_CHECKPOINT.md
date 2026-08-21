@@ -63,7 +63,7 @@ This section supersedes older chronological notes below when they conflict.
 - The current local `build` passed after these combat and ingress changes. The
   resulting development artifact is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `2fe53c4a61c374ebd8e60529da171af297bb2e1f53033054f24ae1337af1f243`.
+  `4a6e7c7453a47712e8b1595b618e9d8ccdd46d2226c717a4faff2cdeebef886c`.
 - A diagnostic-only rerun with the obsidian-frontier re-entry completion
   target tightened to 30 blocks was reverted: it moved the body to about
   `(47.5,51.0,-0.3)` but the fair ingress child timed out after 6,000 ticks

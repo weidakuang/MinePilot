@@ -83,6 +83,11 @@ public final class EndIslandIngressSkill
     private static final double MINIMUM_CENTER_PROGRESS = 0.20;
     private static final double CURRENT_SUPPORT_CENTER_TOLERANCE = 0.72;
     private static final int MINIMUM_SCAN_INTERVAL_TICKS = 2;
+    /* A fight re-entry can reach its final occupied bridge cell on the same
+     * observation that the child deadline expires.  Allow a small, finite
+     * evidence grace for the completion proof; never extend an ordinary
+     * initial-ingress timeout. */
+    private static final int REENTRY_COMPLETION_GRACE_TICKS = 80;
     /* Rotation is applied through the vanilla input packet at post-tick.  A
      * fresh semantic frame can therefore arrive while the real crosshair is
      * still on the neighbouring wall.  Keep the retry finite, but allow
@@ -434,7 +439,9 @@ public final class EndIslandIngressSkill
                                 + "\"frontierProbePending\":%s,"
                                 + "\"lastBreakTarget\":\"%s\","
                                 + "\"lastChildFailure\":\"%s\","
-                                + "\"candidateSupport\":\"%s\"}",
+                                + "\"candidateSupport\":\"%s\","
+                                + "\"reentryOverride\":%.3f,"
+                                + "\"reentryEligible\":%s}",
                         phase.name(),
                         position.x(),
                         position.y(),
@@ -453,7 +460,14 @@ public final class EndIslandIngressSkill
                         lastChildFailureCode,
                         candidateSupport == null
                                 ? ""
-                                : candidateSupport.toString()
+                                : candidateSupport.toString(),
+                        completionRadiusOverride,
+                        current.map(frame ->
+                                verifiedCurrentReentrySupport(
+                                        frame,
+                                        parameters
+                                )
+                        ).orElse(false)
                 )
         );
     }
@@ -514,7 +528,11 @@ public final class EndIslandIngressSkill
             final SkillContext context,
             final EndIslandIngressParameters parameters
     ) {
-        if (context.gameTick() - startedAtTick >= parameters.timeoutTicks()) {
+        final long elapsedTicks = context.gameTick() - startedAtTick;
+        if (elapsedTicks >= parameters.timeoutTicks()
+                && (!Double.isFinite(completionRadiusOverride)
+                    || elapsedTicks >= parameters.timeoutTicks()
+                        + REENTRY_COMPLETION_GRACE_TICKS)) {
             return fail(NAME + ".timed_out");
         }
         if (currentSessionGeneration() != boundSessionGeneration) {
@@ -546,6 +564,61 @@ public final class EndIslandIngressSkill
                 > lastObservationRevision;
         if (fresh) {
             lastObservationRevision = frame.observationRevision();
+        }
+
+        /* Re-entry may finish on a currently occupied player-built bridge
+         * cell, but only after a fresh frame proves its body-contact support
+         * and clear feet/head voxels.  Keep this narrow completion check ahead
+         * of any active recovery child so a stale TowerUp/BreakBlock child
+         * cannot hold a safely recovered fighter until the ingress timeout.
+         * The initial ingress still reaches its strict End-stone completion
+         * check below after the active child has yielded. */
+        if (Double.isFinite(completionRadiusOverride)
+                && !initialObservationPending
+                && frame.observationRevision() >= requiredFreshRevision
+                && verifiedCurrentReentrySupport(frame, parameters)) {
+            quiesce();
+            if (!completionPublished) {
+                completionSink.accept(context.goalRevision());
+                completionPublished = true;
+            }
+            phase = Phase.COMPLETED;
+            candidateSupport = frame.feet().below();
+            return SkillTickResult.completed();
+        }
+
+        /* TowerUp owns the jump/placement transaction, but it must not keep
+         * looking upward when the newest first-person frame already proves
+         * that the current column is capped by a reachable End-stone block.
+         * A natural spawn wall can expose that ceiling only after a lateral
+         * step; waiting for TowerUp's scan budget leaves the parent in
+         * TOWERING_FOR_LANDFALL until the whole ingress timeout expires.  End
+         * the child here and mine the exact observed face through the normal
+         * alignment/break path.  This remains fair: the target, material and
+         * reach all come from the same semantic frame, and no level lookup is
+         * performed.
+         */
+        if (phase == Phase.TOWERING_FOR_LANDFALL
+                && interactionActuator != null) {
+            final Optional<VisibleBlockFace> overhead =
+                    visibleIngressObstruction(frame).filter(face ->
+                            isCurrentColumnOverhead(frame, face)
+                    );
+            if (overhead.isPresent()) {
+                if (tower != null && towerParameters != null) {
+                    tower.cancel(context, towerParameters);
+                }
+                tower = null;
+                towerParameters = null;
+                lastChildFailureCode =
+                        "tower_up.overhead_clearance_unverified";
+                return startVisibleBlockBreak(
+                        context,
+                        parameters,
+                        frame,
+                        overhead.orElseThrow()
+                );
+            }
         }
 
         if (phase == Phase.BRIDGING_ONE_STEP) {
@@ -2281,8 +2354,15 @@ public final class EndIslandIngressSkill
                             Math.abs(block.x() - feet.x())
                                     + Math.abs(block.z() - feet.z());
                     if (horizontalDistance > 2
-                            || block.y() < feet.y()
+                            || block.y() < feet.y() - 1
                             || block.y() > feet.y() + 3) {
+                        return false;
+                    }
+                    /* A lower shoulder can be the only visible side of a
+                     * natural island wall after a knockback.  It is safe to
+                     * open that observed block when it is adjacent, but the
+                     * exact support voxel under the body remains protected. */
+                    if (block.equals(feet.below())) {
                         return false;
                     }
                     final String faceName = face.face().toLowerCase(
@@ -2485,6 +2565,59 @@ public final class EndIslandIngressSkill
                 frame,
                 completionRadius
         );
+    }
+
+    /**
+     * Re-entry after dragon knockback may finish on a bridge cell that the
+     * companion itself placed and then physically occupied.  Requiring a
+     * natural End-stone top face again would discard that fair, player-owned
+     * route and make the child rebuild until timeout.  This relaxed predicate
+     * is intentionally available only with the fight's finite completion
+     * override; the initial End ingress continues to use the strict natural
+     * End-stone evidence above.  Body contact is direct vanilla physics
+     * evidence, while both feet and head clearance must still be fresh in the
+     * same navigation revision.
+     */
+    private boolean verifiedCurrentReentrySupport(
+            final CoreSkillFrame frame,
+            final EndIslandIngressParameters parameters
+    ) {
+        if (!Double.isFinite(completionRadiusOverride)
+                || !frame.onGround()
+                || frame.inWater()
+                || EndArenaTopology.horizontalRadius(frame.position())
+                    > completionRadius(parameters)
+                || frame.navigation().revision()
+                    != frame.observationRevision()) {
+            return false;
+        }
+        final GridPos support = frame.feet().below();
+        final double centerDistance = Math.hypot(
+                frame.position().x() - (support.x() + 0.5),
+                frame.position().z() - (support.z() + 0.5)
+        );
+        if (centerDistance > 0.72) {
+            return false;
+        }
+        final long revision = frame.observationRevision();
+        return frame.navigation().voxelAt(support).filter(voxel ->
+                    NavigationEvidence.supportsCurrentBody(
+                            voxel,
+                            revision
+                    )
+                ).isPresent()
+                && frame.navigation().voxelAt(support.above()).filter(
+                    voxel -> NavigationEvidence.hasFreshTraversalClearance(
+                            voxel,
+                            revision
+                    )
+                ).isPresent()
+                && frame.navigation().voxelAt(support.above(2)).filter(
+                    voxel -> NavigationEvidence.hasFreshTraversalClearance(
+                            voxel,
+                            revision
+                    )
+                ).isPresent();
     }
 
     private Optional<SkillFailure> validateBody(

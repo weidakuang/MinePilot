@@ -1454,7 +1454,7 @@ public final class FightEnderDragonSkill
                     return startIslandReentry(
                             context,
                             fresh,
-                            FIGHT_OBSTACLE_ESCAPE_RADIUS
+                            FIGHT_REENTRY_TARGET_RADIUS
                     );
                 }
                 final Optional<GridPos> sideStep =
@@ -3396,7 +3396,21 @@ public final class FightEnderDragonSkill
              * frontier and wait for a fresh semantic frame; that frame can
              * either expose a legal cell for TravelTo or expose the wall/gap
              * for the normal ingress controller. */
-            final PerceptionVec3 centerward = centerwardSearchPoint(frame);
+            final PerceptionVec3 baseCenterward = centerwardSearchPoint(frame);
+            /* Alternate the normal floor ray with a slightly elevated
+             * centerward ray.  At the natural island lip the floor ray can
+             * terminate on the near wall while the candidate's two-block
+             * clearance remains unknown; a player naturally raises their
+             * view before deciding whether to step around that wall.  Both
+             * rays remain first-person and bounded, and no destination is
+             * admitted until a newer navigation frame proves it. */
+            final PerceptionVec3 centerward = (rallyAttempts & 1) == 0
+                    ? baseCenterward
+                    : new PerceptionVec3(
+                            baseCenterward.x(),
+                            frame.position().y() + 1.0,
+                            baseCenterward.z()
+                    );
             final LookIntent look = lookAt(
                     frame.eyePosition(),
                     centerward
@@ -3475,6 +3489,11 @@ public final class FightEnderDragonSkill
             final boolean fresh,
             final double completionRadius
     ) {
+        if (ingressAttempts >= MAXIMUM_REENTRY_ATTEMPTS) {
+            lastIngressResult = "rejected:reentry_attempt_budget_exhausted";
+            nextActionTick = context.gameTick() + SCAN_INTERVAL_TICKS;
+            return SkillTickResult.running(fresh, true);
+        }
         islandIngressParameters = new EndIslandIngressParameters(
                 128.0,
                 EndArenaTopology.ARENA_READY_RADIUS,

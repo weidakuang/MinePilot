@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T04:15:00+09:00
+Last updated: 2026-08-22T04:43:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -43,18 +43,16 @@ This section supersedes older chronological notes below when they conflict.
   65.0.0 `natural_end_island_ingress` selector passed in 5.835 seconds.
 - The latest completed zero-human Forge 65.1.1
   `natural_end_dynamic_dragon_combat` gate remains `FAIL`: after 8,002 fight
-- The latest completed zero-human Forge 65.1.1
-  `natural_end_dynamic_dragon_combat` gate remains `FAIL`: after 8,002 fight
-  ticks the body reached approximately `(43.523,51.0,6.334)` but the vanilla
-  AI-enabled manager dragon remained unharmed. The nested fair ingress mined 38
-  observed blocks, placed seven bridge steps, made four landfall attempts, and
-  then exhausted its bridge budget after repeated fresh support verification;
-  it fired zero arrows and dealt zero dragon damage. The new tower-rejection
-  recovery opened additional observed side faces and changed the route from
-  the prior `(46.636,51.0,-1.503)` failure, but did not close the natural
-  pillar-edge route. No teleport, command, hidden terrain read, dragon freeze,
-  or fixture terrain mutation was used. This is the active release blocker; it
-  is not M2/M4 or random-seed evidence.
+  ticks the body reached approximately `(48.845,49.0,0.500)` and the dynamic
+  ingress child completed once on a player-owned bridge with fresh body-contact
+  support and two clear voxels. The fight then remained in `SEARCHING` with zero
+  arrows and zero dragon damage because the vanilla manager dragon stayed about
+  95.75 blocks away, beyond the 32-block semantic entity range. The unified
+  re-entry-attempt budget prevented duplicate child creation; this is now a fair
+  centerward-observation / target-acquisition gap, not a child-liveness loop. No
+  teleport, command, hidden terrain read, dragon freeze, or fixture terrain
+  mutation was used. This is the active release blocker; it is not M2/M4 or
+  random-seed evidence.
 - `EndIslandIngressSkill` now treats a failed fair `TowerUp` observation as a
   local route event: a same-frame, nearby, side-facing End-stone block is
   opened before another frontier probe, and a freshly observed lateral cell
@@ -62,6 +60,10 @@ This section supersedes older chronological notes below when they conflict.
   existing mining, bridge, scan, child-failure, and timeout budgets; no hidden
   terrain is admitted. The focused ingress and combat suites pass. The fresh
   dynamic selector above is the required negative evidence for this change.
+- The current local `build` passed after these combat and ingress changes. The
+  resulting development artifact is
+  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
+  `2fe53c4a61c374ebd8e60529da171af297bb2e1f53033054f24ae1337af1f243`.
 - `EndIslandIngressSkill` now retains a bounded set of fairly observed
   landfall supports whose vanilla `TravelTo` child became stuck, excludes
   those cells from the next candidate search, and clears the set only after a
@@ -189,6 +191,15 @@ This section supersedes older chronological notes below when they conflict.
   and `EndIslandIngressSkillTest` pass. The Forge 65.1.1 physical selector
   `mcai_companion:natural_end_island_ingress` also passes in the current
   worktree.
+- The latest natural dynamic run after the ingress recovery corrections is
+  `/tmp/mcai-dynamic-end-reentry-budget.QENpTy`. It still fails honestly at
+  8,002 fight ticks in `SEARCHING`: the body reached `(48.845,49.0,0.500)`,
+  the one permitted re-entry completed with `reentryEligible=true`, and the
+  re-entry budget then prevented duplicate child creation. The live dragon
+  remained outside the 32-block semantic entity range, so zero arrows and
+  zero dragon damage were recorded. This isolates the next gap to fair
+  centerward observation/target reacquisition rather than ingress timeout or
+  repeated-child liveness.
 - The latest zero-human natural dynamic-dragon selector was run on Forge
   65.1.1 at 2026-08-22 00:55 JST and remains an honest failure. The body
   reached approximately `(49.752,49.0,0.498)`, mined 66 currently observed

@@ -3940,6 +3940,21 @@ public final class EmbodimentGameTests {
     }
 
     @GameTest(
+        name = "real_player_task_to_live_model_movement_stop_resume",
+        environment = "exclusive_live_model_movement_stop_resume",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 900_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realPlayerTaskToLiveModelMovementStopResume(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelMovementStopResume(helper);
+    }
+
+    @GameTest(
         name = "real_player_chat_to_immediate_bound_follow",
         environment = "exclusive_immediate_bound_follow",
         structure = FOCUSED_TEST_STRUCTURE,

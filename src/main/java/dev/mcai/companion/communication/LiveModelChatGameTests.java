@@ -322,8 +322,39 @@ public final class LiveModelChatGameTests {
         final LiveMovementScenario scenario =
                 new LiveMovementScenario(
                         helper,
-                        runtime
+                        runtime,
+                        false
                 );
+        helper.addCleanup(ignored -> scenario.cleanup());
+        scenario.start();
+        helper.onEachTick(scenario::tick);
+    }
+
+    /**
+     * Exercises a server-owned navigation stop/resume rather than treating a
+     * spoken acknowledgement as completion.  A real chat task starts
+     * {@code travel_to}, the player interrupts it at a running-skill
+     * checkpoint, and a second coordinate task must start a fresh skill and
+     * reach its destination through ordinary player movement.
+     */
+    public static void realPlayerTaskToLiveModelMovementStopResume(
+            final GameTestHelper helper
+    ) {
+        if (!Boolean.getBoolean("mcai.liveModelTest")) {
+            helper.succeed();
+            return;
+        }
+        final ServerRuntime runtime = CompanionRuntime.active()
+                .filter(candidate -> candidate.server()
+                        == helper.getLevel().getServer())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Companion runtime is unavailable"
+                ));
+        final LiveMovementScenario scenario = new LiveMovementScenario(
+                helper,
+                runtime,
+                true
+        );
         helper.addCleanup(ignored -> scenario.cleanup());
         scenario.start();
         helper.onEachTick(scenario::tick);
@@ -1897,6 +1928,7 @@ public final class LiveModelChatGameTests {
         private final GameTestHelper helper;
         private final ServerRuntime runtime;
         private final long createdAt;
+        private final boolean exerciseStopResume;
 
         private PlacedHuman humanSession;
         private ServerPlayer human;
@@ -1909,13 +1941,29 @@ public final class LiveModelChatGameTests {
         private double targetX;
         private double targetY;
         private double targetZ;
+        private double resumeTargetX;
+        private double resumeTargetZ;
+        private Vec3 positionAtStop;
+        private Vec3 resumeStart;
+        private int stopStableTicks;
+        private boolean stopSubmitted;
+        private boolean resumeSkillStarted;
 
         private LiveMovementScenario(
                 final GameTestHelper helper,
                 final ServerRuntime runtime
         ) {
+            this(helper, runtime, false);
+        }
+
+        private LiveMovementScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime,
+                final boolean exerciseStopResume
+        ) {
             this.helper = helper;
             this.runtime = runtime;
+            this.exerciseStopResume = exerciseStopResume;
             this.createdAt = helper.getTick();
             this.stageStartedNanos = System.nanoTime();
         }
@@ -1941,6 +1989,9 @@ public final class LiveModelChatGameTests {
                 case PROBE -> waitForProbe();
                 case GOAL -> waitForGoal();
                 case MOVEMENT -> waitForMovement();
+                case STOP -> waitForStop();
+                case RESUME_GOAL -> waitForResumeGoal();
+                case RESUME_MOVEMENT -> waitForResumeMovement();
                 case DONE -> {
                     // GameTest is already terminal.
                 }
@@ -2027,14 +2078,18 @@ public final class LiveModelChatGameTests {
                     submitted != null,
                     "Companion cancelled the movement chat command"
             );
-            humanSession.close();
-            humanSession = null;
+            if (!exerciseStopResume) {
+                humanSession.close();
+                humanSession = null;
+            }
             stage = MovementStage.GOAL;
             stageStartedNanos = System.nanoTime();
         }
 
         private void waitForGoal() {
-            assertNoHumanPlayersDuringAutonomy();
+            if (!exerciseStopResume) {
+                assertNoHumanPlayersDuringAutonomy();
+            }
             assertWithinModelDeadline(
                     "Live model did not classify the movement task"
             );
@@ -2056,7 +2111,9 @@ public final class LiveModelChatGameTests {
         }
 
         private void waitForMovement() {
-            assertNoHumanPlayersDuringAutonomy();
+            if (!exerciseStopResume) {
+                assertNoHumanPlayersDuringAutonomy();
+            }
             /*
              * The first human login may still be completing the ordinary
              * initial-anchor remove/relogin transaction.  During that
@@ -2076,6 +2133,26 @@ public final class LiveModelChatGameTests {
                 return;
             }
             final ServerPlayer body = bodyCandidate.orElseThrow();
+            if (exerciseStopResume && !stopSubmitted) {
+                final var skill = runtime.skillSupervisor().snapshot();
+                if (skill.state()
+                        == dev.mcai.companion.skill.SkillSupervisor.State.RUNNING
+                        && skill.skillName().equals("travel_to")) {
+                    final Component stop =
+                            ForgeHooks.onServerChatSubmittedEvent(
+                                    human,
+                                    Component.literal("停下")
+                            );
+                    helper.assertTrue(
+                            stop != null,
+                            "Companion cancelled the navigation stop request"
+                    );
+                    stopSubmitted = true;
+                    stage = MovementStage.STOP;
+                    stageStartedNanos = System.nanoTime();
+                    return;
+                }
+            }
             final double moved = Math.hypot(
                     body.getX() - startX,
                     body.getZ() - startZ
@@ -2110,6 +2187,121 @@ public final class LiveModelChatGameTests {
             );
         }
 
+        private void waitForStop() {
+            assertWithinModelDeadline(
+                    "Companion did not reach a safe navigation stop"
+            );
+            helper.assertTrue(
+                    stopSubmitted,
+                    "Navigation stop stage started without a request"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            final var skill = runtime.skillSupervisor().snapshot();
+            if (goal.status() == GoalStatus.RUNNING
+                    || goal.status() == GoalStatus.CANCEL_PENDING
+                    || skill.state()
+                        == dev.mcai.companion.skill.SkillSupervisor.State.RUNNING) {
+                return;
+            }
+            helper.assertTrue(
+                    goal.status() == GoalStatus.SAFE_IDLE
+                            && goal.detailCode().equals("goal_cancelled"),
+                    "Navigation stop ended in an untruthful state: " + goal
+            );
+            final ServerPlayer body = AiPlayerManager
+                    .onlinePlayer(runtime.server())
+                    .orElseThrow();
+            if (positionAtStop == null) {
+                positionAtStop = body.position();
+                return;
+            }
+            helper.assertTrue(
+                    body.position().distanceTo(positionAtStop) <= 0.25D,
+                    "Body moved after navigation stop: before="
+                            + positionAtStop + ", after=" + body.position()
+            );
+            stopStableTicks++;
+            if (stopStableTicks < 2) {
+                return;
+            }
+            resumeTargetX = startX + 15.5D;
+            resumeTargetZ = startZ + 0.5D;
+            human.setPos(
+                    body.getX() + 2.0D,
+                    body.getY(),
+                    body.getZ()
+            );
+            human.setDeltaMovement(Vec3.ZERO);
+            goalRevisionBefore = goal.revision();
+            final Component resume = ForgeHooks.onServerChatSubmittedEvent(
+                    human,
+                    Component.literal("继续走到坐标 %.1f %.1f %.1f，正常步行，不要传送。"
+                            .formatted(resumeTargetX, targetY, resumeTargetZ))
+            );
+            helper.assertTrue(
+                    resume != null,
+                    "Companion cancelled the navigation resume request"
+            );
+            resumeStart = body.position();
+            stage = MovementStage.RESUME_GOAL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForResumeGoal() {
+            assertWithinModelDeadline(
+                    "Live model did not accept navigation resume"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            if (goal.revision() == goalRevisionBefore) {
+                return;
+            }
+            helper.assertTrue(
+                    goal.revision() > goalRevisionBefore
+                            && goal.status() == GoalStatus.RUNNING
+                            && goal.goal().contains("继续走到坐标"),
+                    "Navigation resume did not become a running goal: " + goal
+            );
+            stage = MovementStage.RESUME_MOVEMENT;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForResumeMovement() {
+            assertWithinModelDeadline(
+                    "Live model did not start navigation after stop"
+            );
+            final Optional<ServerPlayer> bodyCandidate =
+                    AiPlayerManager.onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            final var skill = runtime.skillSupervisor().snapshot();
+            if (skill.state()
+                    == dev.mcai.companion.skill.SkillSupervisor.State.RUNNING
+                    && skill.skillName().equals("travel_to")) {
+                resumeSkillStarted = true;
+            }
+            if (!resumeSkillStarted) {
+                return;
+            }
+            final double remaining = Math.sqrt(
+                    Math.pow(body.getX() - resumeTargetX, 2.0D)
+                            + Math.pow(body.getY() - targetY, 2.0D)
+                            + Math.pow(body.getZ() - resumeTargetZ, 2.0D)
+            );
+            if (remaining <= ARRIVAL_RADIUS) {
+                final double moved = body.position().distanceTo(resumeStart);
+                helper.assertTrue(
+                        moved >= MINIMUM_REAL_MOVEMENT,
+                        "Resumed navigation reached target without material movement: "
+                                + moved
+                );
+                stage = MovementStage.DONE;
+                helper.succeed();
+                return;
+            }
+        }
+
         private void assertNoHumanPlayersDuringAutonomy() {
             final long humanPlayers = runtime.server()
                     .getPlayerList()
@@ -2134,7 +2326,7 @@ public final class LiveModelChatGameTests {
             startZ = body.getZ();
             final BlockPos start = body.blockPosition();
             final int floorY = start.getY() - 1;
-            for (int dx = -2; dx <= 10; dx++) {
+            for (int dx = -2; dx <= 20; dx++) {
                 for (int dz = -2; dz <= 2; dz++) {
                     final BlockPos floor = new BlockPos(
                             start.getX() + dx,
@@ -2185,6 +2377,9 @@ public final class LiveModelChatGameTests {
         PROBE,
         GOAL,
         MOVEMENT,
+        STOP,
+        RESUME_GOAL,
+        RESUME_MOVEMENT,
         DONE
     }
 

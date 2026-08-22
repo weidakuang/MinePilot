@@ -1,3 +1,4 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 package dev.mcai.companion.brain;
 
 import com.google.gson.JsonArray;
@@ -1102,13 +1103,28 @@ public final class BrainOrchestrator {
                             observation,
                             worldDrift
                     );
-            if (rebased.isEmpty()) {
-                emitNotice(goal.revision(), "stale_or_duplicate_completion");
-                scheduleBackoff(now, policy.minimumReplanBackoff());
-                return;
+            if (rebased.isPresent()) {
+                decision = rebased.orElseThrow();
+                emitNotice(goal.revision(), "combat_decision_world_drift_rebased");
+            } else {
+                final Optional<DecisionEnvelope> nonActionRebased =
+                        rebaseNonActionDecision(
+                                decision,
+                                completion,
+                                observation,
+                                worldDrift
+                        );
+                if (nonActionRebased.isEmpty()) {
+                    emitNotice(goal.revision(), "stale_or_duplicate_completion");
+                    scheduleBackoff(now, policy.minimumReplanBackoff());
+                    return;
+                }
+                decision = nonActionRebased.orElseThrow();
+                emitNotice(
+                        goal.revision(),
+                        "non_action_decision_world_drift_rebased"
+                );
             }
-            decision = rebased.orElseThrow();
-            emitNotice(goal.revision(), "combat_decision_world_drift_rebased");
         }
         emitModelAudit(
             goal.revision(),
@@ -2947,6 +2963,45 @@ public final class BrainOrchestrator {
                 decision.decision(),
                 decision.skillName(),
                 decision.typedArguments(),
+                decision.requestedObservation(),
+                decision.optionalSpeech(),
+                decision.confidence()
+        ));
+    }
+
+    /**
+     * Rebinds a pure planning response after a small observation drift. A
+     * CONTINUE or REPLAN envelope carries no world mutation, target UUID,
+     * route, or skill lease, so accepting it against the newest fair sample
+     * is safe and avoids making a teammate appear frozen while the model was
+     * thinking. Action decisions remain strict: only the narrow combat
+     * rebase above may cross an epoch boundary.
+     */
+    private static Optional<DecisionEnvelope> rebaseNonActionDecision(
+            final DecisionEnvelope decision,
+            final PlannerCompletion completion,
+            final BrainObservation observation,
+            final long worldDrift
+    ) {
+        if (worldDrift <= 0L
+                || worldDrift > MAX_COMBAT_DECISION_REBASE_EPOCH_DRIFT
+                || (decision.decision() != DecisionKind.CONTINUE
+                    && decision.decision() != DecisionKind.REPLAN)
+                || !decision.requestId().equals(completion.requestId)
+                || decision.goalRevision() != completion.goalRevision
+                || decision.observedWorldRevision()
+                    != completion.observationEpoch
+                || !decision.skillName().isBlank()
+                || !decision.typedArguments().isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new DecisionEnvelope(
+                decision.requestId(),
+                observation.epoch(),
+                decision.goalRevision(),
+                decision.decision(),
+                "",
+                List.of(),
                 decision.requestedObservation(),
                 decision.optionalSpeech(),
                 decision.confidence()

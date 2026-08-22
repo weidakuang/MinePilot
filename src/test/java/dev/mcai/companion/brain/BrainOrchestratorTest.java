@@ -1,3 +1,4 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 package dev.mcai.companion.brain;
 
 import com.google.gson.JsonParser;
@@ -269,6 +270,35 @@ class BrainOrchestratorTest {
             fixture.clock.set(99);
             fixture.brain.tick();
             assertEquals(1, fixture.gateway.requestCount());
+            fixture.clock.set(100);
+            fixture.brain.tick();
+            assertEquals(2, fixture.gateway.requestCount());
+        }
+    }
+
+    @Test
+    void rebasesAStalePurePlanningDecisionAfterSmallWorldDrift() {
+        try (Fixture fixture = new Fixture()) {
+            fixture.startGoal();
+            fixture.brain.tick();
+            PlannerInput firstInput = fixture.gateway.lastInput();
+            fixture.observations.epoch++;
+            fixture.gateway.completeCurrent(success(
+                    firstInput,
+                    DecisionKind.REPLAN,
+                    "",
+                    "我重新评估当前情况。",
+                    List.of()
+            ));
+
+            fixture.brain.tick();
+
+            assertFalse(fixture.hasNotice("stale_or_duplicate_completion"));
+            assertTrue(fixture.hasNotice(
+                    "non_action_decision_world_drift_rebased"
+            ));
+            assertEquals(0, fixture.skill.startCalls);
+
             fixture.clock.set(100);
             fixture.brain.tick();
             assertEquals(2, fixture.gateway.requestCount());

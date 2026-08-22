@@ -1,6 +1,7 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-23T01:10:00+09:00
+Last updated: 2026-08-23T01:37:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +17,10 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+- A fresh authorized Forge 65.1.1 MiMo `real_player_task_to_live_model_zombie_defense_stop_resume` slice passed in `/tmp/minepilot-live-combat-stop-resume-lscf7F`. Two ordinary embedded-player chat turns produced two HTTP-200 MiMo planner responses; each valid non-action response was safely recovered from the current fair Zombie observation into `engage_observed_entity`. The first skill started, the player sent `stop`, the body reached the safe cancellation checkpoint and emitted `skill_cancelled.engage_observed_entity`, then the same ServerPlayer UUID accepted the second chat and started a fresh combat skill bound to the new goal revision. SQLite recorded two `skill_started` events, two `model_response_received` events, and `low_level_actions_issued`; the Zombie was killed and `Monster Hunter` was granted. Planner usage was 15,625 input plus 298 output tokens (15,923 planner tokens; 22,401 including the two conversation requests), with 43,258 ms aggregate planner latency. This is the first strict controlled combat stop/resume pass, not PVP, random Hardcore, rendered Actor/Observer, long-soak, or formal M3/M4 evidence.
+
+- The production brain now rebases only pure `CONTINUE`/`REPLAN` responses across a small observation drift. Skill-bearing or parameterized decisions remain strict except for the existing UUID-bound combat rebase. The new unit test covers this distinction; the strict live combat test requires an active skill bound to the resumed goal revision and therefore cannot pass from a stale terminal snapshot.
 
 - A fresh authorized Forge 65.1.1 MiMo live-model stop/resume slice passed in
   `/tmp/minepilot-live-follow-stop-resume-1787344952`. One real embedded

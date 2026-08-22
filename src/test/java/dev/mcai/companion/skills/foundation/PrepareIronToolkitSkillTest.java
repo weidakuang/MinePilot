@@ -73,6 +73,28 @@ final class PrepareIronToolkitSkillTest {
     }
 
     @Test
+    void workstationAndMachineCatalogDoesNotTreatInteractiveBlocksAsSupport() {
+        final List<String> interactive = List.of(
+                "minecraft:brewing_stand",
+                "minecraft:cauldron",
+                "minecraft:fletching_table",
+                "minecraft:hopper",
+                "minecraft:dispenser",
+                "minecraft:dropper",
+                "minecraft:observer",
+                "minecraft:piston",
+                "minecraft:sticky_piston",
+                "minecraft:repeater",
+                "minecraft:comparator",
+                "minecraft:redstone_lamp"
+        );
+        interactive.forEach(block -> assertTrue(
+                PrepareIronToolkitSkill.isInteractivePlacementSupport(block),
+                () -> block + " must be treated as an interactive block"
+        ));
+    }
+
+    @Test
     void visibleResourceBeyondInteractionReachIsDelegatedToApproach() {
         final VisibleBlockFace distantCoal = new VisibleBlockFace(
                 new BlockCoordinate(0, 64, 9),

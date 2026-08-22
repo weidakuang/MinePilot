@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-23T02:22:00+09:00
+Last updated: 2026-08-23T03:10:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,40 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+- The current 15.1--15.4 audit found no evidence that generic block/menu
+  interaction implied complete farm or machine commissioning. The detailed
+  English-only matrix is `docs/PROFESSIONAL_COMPANION_MATRIX.md`. The concrete
+  source gap fixed in this increment was the foundation placement guard: it
+  omitted brewing stands, cauldrons, fletching tables, hoppers, dispensers,
+  droppers, observers, pistons, repeaters, comparators, and redstone lamps.
+  The focused `PrepareIronToolkitSkillTest` now covers the complete added set.
+  This is a bounded guard fix, not an M3 promotion.
+
+- Internet validation confirms that real Minecraft co-play/coaching includes
+  survival, base building, exploration, combat/PvP, redstone/farms, mod/server
+  help, tailored live sessions, feedback, and continuity. The audit therefore
+  keeps social coaching, ownership, rendered presence, farm commissioning, and
+  machine rate/repair evidence as explicit unmet gates rather than claiming
+  them from a chat acknowledgement.
+
+- Modified files in this increment are
+  `src/main/java/dev/mcai/companion/skills/foundation/PrepareIronToolkitSkill.java`,
+  `src/test/java/dev/mcai/companion/skills/foundation/PrepareIronToolkitSkillTest.java`,
+  `docs/PROFESSIONAL_COMPANION_MATRIX.md`,
+  `docs/CAPABILITY_MATRIX.md`, `docs/verification/M3.md`,
+  `docs/IMPLEMENTATION_STATUS.md`, and
+  `docs/progress/GOAL_STATE.json`. Focused JUnit is the next completed gate;
+  the last formal failure remains the natural dynamic End dragon target
+  acquisition gate, and M0--M4 remain `NOT_RUN`.
+
+- Focused `PrepareIronToolkitSkillTest` passed, the full Gradle `test build`
+  passed, the 65 Python protocol tests passed, and the 10/10 mutation gate
+  passed. The rebuilt development JAR is
+  `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
+  `cc1387650326bf54b20ab3932dd4e31b96a5684dfc43e384c5c6d0efab0820ab`.
+  The next action is to publish this exact staged snapshot and then continue
+  with real Actor/Observer, farm commissioning, and machine repair gates.
 
 - The latest real MiMo iron-golem duel initially exposed a fixture defect: the
   model fairly bound a naturally spawned slime while the fixture activated the

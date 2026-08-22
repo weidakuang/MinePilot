@@ -2,6 +2,12 @@
 
 Last reviewed: 2026-08-23
 
+The detailed 15.1--15.4 professional-companion, workstation/transport, farm,
+and machine audit is maintained in
+[`PROFESSIONAL_COMPANION_MATRIX.md`](PROFESSIONAL_COMPANION_MATRIX.md). It is
+deliberately stricter than this implementation summary: a block interaction or
+bounded crop run is not a complete machine/farm or formal companion result.
+
 ## Current release line
 
 - Repository: `MinePilot`; mod id: `mcai_companion`.
@@ -63,6 +69,14 @@ or speedrun claim.
   counterattack after genuine vanilla damage. A clean real-MiMo iron-golem
   slice passed after the test fixture removed ambient targets. This remains
   controlled evidence, not a PVP or formal M3/M4 claim.
+
+- The 15.x capability audit found and fixed a placement-classification gap in
+  `PrepareIronToolkitSkill`: brewing stands, cauldrons, fletching tables,
+  hoppers, dispensers, droppers, observers, pistons, repeaters, comparators,
+  and redstone lamps are now treated as interactive surfaces. Focused
+  regression coverage prevents material placement from winning over ordinary
+  use. This fixes a foundation guard; it does not claim complete machine
+  construction or operation.
 
 ## Recent focused evidence
 

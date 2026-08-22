@@ -3002,9 +3002,21 @@ public final class PrepareIronToolkitSkill
                 || blockId.equals("minecraft:anvil")
                 || blockId.equals("minecraft:chipped_anvil")
                 || blockId.equals("minecraft:damaged_anvil")
+                || blockId.equals("minecraft:brewing_stand")
+                || blockId.equals("minecraft:cauldron")
+                || blockId.equals("minecraft:fletching_table")
                 || blockId.equals("minecraft:lectern")
                 || blockId.equals("minecraft:composter")
                 || blockId.equals("minecraft:respawn_anchor")
+                || blockId.equals("minecraft:hopper")
+                || blockId.equals("minecraft:dispenser")
+                || blockId.equals("minecraft:dropper")
+                || blockId.equals("minecraft:observer")
+                || blockId.equals("minecraft:piston")
+                || blockId.equals("minecraft:sticky_piston")
+                || blockId.equals("minecraft:repeater")
+                || blockId.equals("minecraft:comparator")
+                || blockId.equals("minecraft:redstone_lamp")
                 || blockId.endsWith("_shulker_box");
     }
 

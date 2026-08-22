@@ -5,7 +5,8 @@ MinePilot is the public repository name. The production Forge mod id is
 
 [Usage guide](docs/USAGE.md) · [Project charter](docs/PROJECT_CHARTER.md) ·
 [Contribution rules](CONTRIBUTING.md) · [Security policy](SECURITY.md) ·
-[Implementation status](docs/IMPLEMENTATION_STATUS.md)
+[Implementation status](docs/IMPLEMENTATION_STATUS.md) ·
+[15.x capability audit](docs/PROFESSIONAL_COMPANION_MATRIX.md)
 
 MinePilot adds a visible, account-free AI teammate to Minecraft Java 26.2 on
 Forge 65.x. It uses one authoritative vanilla `ServerPlayer`, normal server

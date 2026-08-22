@@ -4,6 +4,14 @@ MinePilot change log
 0.1.11-dev-mc26.2
 -----------------
 
+- Audited the 15.1 professional-companion, 15.2 workstation/transport,
+  15.3 farm, and 15.4 machine matrices against production skills, controlled
+  Forge contracts, and authorized live-model evidence. Added the detailed
+  English-only `docs/PROFESSIONAL_COMPANION_MATRIX.md` and kept all formal
+  M0--M4 gates honest.
+- Fixed foundation placement classification for brewing stands, cauldrons,
+  fletching tables, hoppers, dispensers, droppers, observers, pistons,
+  repeaters, comparators, and redstone lamps; added a focused regression test.
 - Added a fair natural-End ingress controller with fresh terrain evidence,
   bounded observed mining, bridge/tower recovery, and Forge 65.0.0/65.1.1
   physical GameTest passes.

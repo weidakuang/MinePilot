@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-23T01:40:00+09:00",
-  "sourceState": "PUBLIC_MAIN_VERIFIED_PROFESSIONAL_COMPANION_COMBAT_STOP_RESUME",
+  "updatedAtUtc": "2026-08-23T03:10:00+09:00",
+  "sourceState": "LOCAL_AUDIT_15_1_TO_15_4_WITH_PLACEMENT_GUARD_FIX",
   "publicMainHead": "0897b301130ff672ad5daf66b680ee66b6fd5c8c",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -37,6 +37,12 @@
     "delayedFirstHumanAnchorClient": "NOT_RUN_XVFB_MISSING"
   },
   "developmentEvidence": {
+    "capabilityMatrixAudit15x": {
+      "status": "PASS_CONTROLLED_SOURCE_AUDIT",
+      "details": "Audited professional companion, workstation/transport, farm, and machine capabilities against registered production skills, focused Forge contracts, controlled real-model slices, and the formal M3 protocol. Added explicit interaction-versus-commissioning boundaries and fixed the placement guard for brewing stands, cauldrons, fletching tables, hoppers, dispensers, droppers, observers, pistons, repeaters, comparators, and redstone lamps.",
+      "document": "docs/PROFESSIONAL_COMPANION_MATRIX.md",
+      "formalGate": "NOT_RUN"
+    },
     "offlineDragonBaseline": {
       "status": "PASS_CONTROLLED_NO_MODEL",
       "details": "Real ServerPlayer, visible multipart dragon, vanilla melee and arrows, 24 melee burst, eight-tick ranged retreat, 128-arrow budget, End return checks.",
@@ -594,13 +600,14 @@
     },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
-      "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, Forge compatibility validation, and a fresh-public-clone Forge 65.0.0 compile after the focused End safety changes. The changed production, GameTest, checkpoint, and goal-state files matched the published clone byte-for-byte. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
+      "details": "The exact current tree passed a clean Gradle test/build, production JAR content verification, Forge compatibility validation, the 65 Python protocol tests, and all ten mutation variants after the 15.x capability audit and placement-guard fix. The detailed audit remains source/controlled evidence only; formal M0-M4 gates remain NOT_RUN.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "fde3a6600b31b47a72b4e71fb6b1201e5ae034d93523414ca0d7d805afbafbd0",
+      "sha256": "cc1387650326bf54b20ab3932dd4e31b96a5684dfc43e384c5c6d0efab0820ab",
       "formalGate": "NOT_RUN"
     }
   },
   "nextActions": [
+    "Use the 15.1-15.4 audit as the active M3 backlog: complete workstation menu contracts, one site-generated farm commissioner at a time, and machine activation/rate/repair evidence without promoting generic interaction primitives.",
     "Extend the strict combat stop/resume contract to multi-target defense and human-PVP safety cases; preserve retained-target and world-drift binding while keeping M3 NOT_RUN until the external Actor/Observer archive exists.",
     "Preserve the passing navigation stop/resume contract and extend its server-owned lifecycle evidence to other long-running companion tasks.",
     "Preserve the controlled stronghold-room-to-return PASS without promoting it to random-seed, Hardcore, dynamic-dragon, or M2/M4 evidence.",

@@ -4,6 +4,10 @@
 Forge fixture has verified it. `Formal` requires the external client, natural
 world, and statistical protocol named by the plan.
 
+The detailed 15.1--15.4 audit, including the distinction between interaction,
+construction, commissioning, and formal companion evidence, is in
+[`PROFESSIONAL_COMPANION_MATRIX.md`](PROFESSIONAL_COMPANION_MATRIX.md).
+
 | Capability | Implemented | Inner-loop evidence | Formal status |
 |---|---:|---:|---:|
 | Stable visible ServerPlayer body | yes | Forge lifecycle and zero-human tests; current-source latest/floor checks include Forge 65.1.1 and 65.0.0 | NOT_RUN |
@@ -27,3 +31,12 @@ world, and statistical protocol named by the plan.
 | Codex loopback MCP | implemented | protocol/security tests | NOT_RUN |
 | Forge 66 adapter | no | not released/observed | NOT_APPLICABLE |
 | Create/MTR/Farmer's Delight expert adapters | SPI only | no contract runs | NOT_RUN |
+
+## 15.x audit summary
+
+| Section | Current honest result | Main missing proof |
+| --- | --- | --- |
+| 15.1 Professional companion | Bounded live slices for chat-to-action, follow, stop/resume, combat, farm work, containers, and portals; not a formal companion claim | Real Actor/Observer, social/ownership matrix, long-world memory, 100-hour soak |
+| 15.2 Workstations and transport | Crafting, furnace-family, chest/hopper/dispenser transactions and boat/minecart travel are bounded; broad workstation menus and cargo logistics are not complete | Per-workstation menu contracts, rail construction/stations, cargo vehicles, cross-dimension natural routes |
+| 15.3 Farm capability matrix | Manual crop/sugar-cane field work and dynamic crop planning; no complete animal, villager, iron, hostile-mob, or automatic crop farms | Site-generated builders, commissioning/rate/repair evidence across unseen variants |
+| 15.4 Machine capability matrix | Fair button/dispenser/door/hopper primitives and generic mechanism schema; no complete machine system | Redstone construction, activation, output/rate measurement, repair, and versioned mod adapters |

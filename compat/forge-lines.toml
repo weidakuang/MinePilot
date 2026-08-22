@@ -1,5 +1,5 @@
 schemaVersion = 2
-checkedAtUtc = "2026-08-18T19:02:47Z"
+checkedAtUtc = "2026-08-23T02:05:00+09:00"
 compatChecker = "scripts/validate-compat.py"
 sources = [
   "https://files.minecraftforge.net/net/minecraftforge/forge/index_26.2.html",
@@ -16,7 +16,7 @@ forgeMajor = 65
 minecraft = "26.2"
 minimumForge = "65.0.0"
 recommendedForge = "65.1.0"
-latestForge = "65.1.1"
+latestForge = "65.1.2"
 module = "forge65"
 status = "required"
 verificationStatus = "ACTIVE_UNVERIFIED_MATRIX"
@@ -38,6 +38,7 @@ publishedPatches = [
   "65.0.9",
   "65.1.0",
   "65.1.1",
+  "65.1.2",
 ]
 
 # These arrays are intentionally narrow.  Compilation and lifecycle smoke
@@ -55,6 +56,7 @@ compileVerifiedPatches = [
   "65.0.9",
   "65.1.0",
   "65.1.1",
+  "65.1.2",
 ]
 runtimeSmokeVerifiedPatches = [
   "65.0.0",
@@ -69,6 +71,7 @@ runtimeSmokeVerifiedPatches = [
   "65.0.9",
   "65.1.0",
   "65.1.1",
+  "65.1.2",
 ]
 runtimeSmokeTests = [
   "zero_human_dedicated_server_chunk_and_respawn",
@@ -87,6 +90,7 @@ formalMatrixUnverifiedPatches = [
   "65.0.9",
   "65.1.0",
   "65.1.1",
+  "65.1.2",
 ]
 
 floorMdk = { forge = "65.0.0", gradle = "9.3.1", eventbusValidator = "7.0.1", sha1 = "b3cf4244b88b3ac2dc184dd2f46c5a681cce2686", sha256 = "812efe4948f2b9560892cd4ae775358645ccb03a7c54adb61f1d2ab2b642c1cf" }

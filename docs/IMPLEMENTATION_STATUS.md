@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last reviewed: 2026-08-20
+Last reviewed: 2026-08-23
 
 ## Current release line
 
@@ -19,6 +19,11 @@ Last reviewed: 2026-08-20
   for the exact local and published snapshot identifiers.
 - Forge 65.x major-line backup branch: `mc26.2-forge65`.
 - Artifact status: `NON_RELEASE` until all formal gates pass.
+
+The official Forge 26.2 index now reports 65.1.2 as Latest and 65.1.0 as
+Recommended. The compatibility lock includes the published 65.1.2 patch, but
+its runtime and formal gameplay evidence remain unverified; no Forge 66 claim
+is made.
 
 ## Evidence levels
 

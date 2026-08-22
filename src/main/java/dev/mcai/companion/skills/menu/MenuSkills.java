@@ -127,6 +127,17 @@ public final class MenuSkills {
             [1,64],fuelItemId,fuelCount [1,64]. It requires an open empty
             furnace-family menu and uses normal loading, cook ticks and exact
             observed output. Stale/inexact actions fail safely.
+            Open-menu slot roles are affordance hints. Use the observed role,
+            never a remembered slot number: FURNACE_INPUT/FUEL/OUTPUT;
+            BREWING_BOTTLE/INGREDIENT/FUEL; CRAFTING_GRID/RESULT;
+            CARTOGRAPHY_MAP/ADDITION/OUTPUT; SMITHING_TEMPLATE/BASE/
+            ADDITION/OUTPUT; GRINDSTONE_INPUT_A/INPUT_B/OUTPUT;
+            ANVIL_INPUT/SACRIFICE/OUTPUT; STONECUTTER_INPUT/OUTPUT;
+            ENCHANTMENT_ITEM/LAPIS; LOOM_BANNER/DYE/OUTPUT; and
+            MERCHANT_PAYMENT_A/PAYMENT_B/OUTPUT. For a container, use
+            CONTAINER and PLAYER_INVENTORY roles with the exact observed
+            slot. A role never authorizes an unseen container or bypasses
+            vanilla recipe, XP, fuel, durability, or ownership checks.
             """;
     }
 }

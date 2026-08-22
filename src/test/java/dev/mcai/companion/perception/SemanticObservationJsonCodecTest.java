@@ -368,6 +368,8 @@ final class SemanticObservationJsonCodecTest {
             .get(0).getAsJsonObject().get("location").getAsString());
         assertEquals("PLAYER", menu.getAsJsonArray("slots")
             .get(1).getAsJsonObject().get("location").getAsString());
+        assertEquals("UNKNOWN", menu.getAsJsonArray("slots")
+            .get(0).getAsJsonObject().get("role").getAsString());
         assertEquals(
                 "merchant_offer",
                 menu.getAsJsonArray("options")

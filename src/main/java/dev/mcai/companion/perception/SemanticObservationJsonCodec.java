@@ -15,7 +15,7 @@ import java.util.Objects;
  * model. Internal player/entity UUIDs are intentionally omitted.
  */
 public final class SemanticObservationJsonCodec {
-    public static final int FORMAT_VERSION = 8;
+    public static final int FORMAT_VERSION = 9;
     public static final int MAX_JSON_CHARACTERS = 262_144;
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
@@ -284,6 +284,7 @@ public final class SemanticObservationJsonCodec {
                 "location",
                 slot.playerInventory() ? "PLAYER" : "MENU"
             );
+            encoded.addProperty("role", slot.role());
             encoded.addProperty("mayPickup", slot.mayPickup());
             slots.add(encoded);
         }

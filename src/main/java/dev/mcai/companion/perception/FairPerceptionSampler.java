@@ -38,9 +38,16 @@ import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.SingleRecipeInput;
 import net.minecraft.world.item.crafting.StonecutterRecipe;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.AnvilMenu;
+import net.minecraft.world.inventory.BrewingStandMenu;
+import net.minecraft.world.inventory.CartographyTableMenu;
+import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.EnchantmentMenu;
+import net.minecraft.world.inventory.FurnaceMenu;
+import net.minecraft.world.inventory.GrindstoneMenu;
 import net.minecraft.world.inventory.LoomMenu;
 import net.minecraft.world.inventory.MerchantMenu;
+import net.minecraft.world.inventory.SmithingMenu;
 import net.minecraft.world.inventory.StonecutterMenu;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.level.BlockGetter;
@@ -176,7 +183,8 @@ public final class FairPerceptionSampler {
                 stack.getDamageValue(),
                 stack.getMaxDamage(),
                 slot.container == player.getInventory(),
-                slot.mayPickup(player)
+                slot.mayPickup(player),
+                menuSlotRole(menu, index, slot.container == player.getInventory())
             ));
         }
         final ItemStack carried = menu.getCarried();
@@ -199,6 +207,102 @@ public final class FairPerceptionSampler {
             carriedSummary,
             sampleMenuOptions(menu, player)
         ));
+    }
+
+    /**
+     * Labels only slots of the menu that is already open. The label is an
+     * affordance hint; the action still binds the exact observed slot and
+     * vanilla menu state before it can mutate anything.
+     */
+    private static String menuSlotRole(
+            final AbstractContainerMenu menu,
+            final int slot,
+            final boolean playerInventory
+    ) {
+        if (playerInventory) {
+            return "PLAYER_INVENTORY";
+        }
+        if (menu instanceof FurnaceMenu) {
+            return switch (slot) {
+                case 0 -> "FURNACE_INPUT";
+                case 1 -> "FURNACE_FUEL";
+                case 2 -> "FURNACE_OUTPUT";
+                default -> "CONTAINER";
+            };
+        }
+        if (menu instanceof BrewingStandMenu) {
+            return switch (slot) {
+                case 0, 1, 2 -> "BREWING_BOTTLE";
+                case 3 -> "BREWING_INGREDIENT";
+                case 4 -> "BREWING_FUEL";
+                default -> "CONTAINER";
+            };
+        }
+        if (menu instanceof CraftingMenu) {
+            return slot == 0
+                    ? "CRAFTING_RESULT"
+                    : slot <= 9 ? "CRAFTING_GRID" : "CONTAINER";
+        }
+        if (menu instanceof StonecutterMenu) {
+            return slot == 0
+                    ? "STONECUTTER_INPUT"
+                    : slot == 1 ? "STONECUTTER_OUTPUT" : "CONTAINER";
+        }
+        if (menu instanceof EnchantmentMenu) {
+            return slot == 0
+                    ? "ENCHANTMENT_ITEM"
+                    : slot == 1 ? "ENCHANTMENT_LAPIS" : "CONTAINER";
+        }
+        if (menu instanceof MerchantMenu) {
+            return switch (slot) {
+                case 0 -> "MERCHANT_PAYMENT_A";
+                case 1 -> "MERCHANT_PAYMENT_B";
+                case 2 -> "MERCHANT_OUTPUT";
+                default -> "CONTAINER";
+            };
+        }
+        if (menu instanceof LoomMenu) {
+            return switch (slot) {
+                case 0 -> "LOOM_BANNER";
+                case 1 -> "LOOM_DYE";
+                case 2 -> "LOOM_OUTPUT";
+                default -> "CONTAINER";
+            };
+        }
+        if (menu instanceof CartographyTableMenu) {
+            return switch (slot) {
+                case 0 -> "CARTOGRAPHY_MAP";
+                case 1 -> "CARTOGRAPHY_ADDITION";
+                case 2 -> "CARTOGRAPHY_OUTPUT";
+                default -> "CONTAINER";
+            };
+        }
+        if (menu instanceof SmithingMenu) {
+            return switch (slot) {
+                case 0 -> "SMITHING_TEMPLATE";
+                case 1 -> "SMITHING_BASE";
+                case 2 -> "SMITHING_ADDITION";
+                case 3 -> "SMITHING_OUTPUT";
+                default -> "CONTAINER";
+            };
+        }
+        if (menu instanceof GrindstoneMenu) {
+            return switch (slot) {
+                case 0 -> "GRINDSTONE_INPUT_A";
+                case 1 -> "GRINDSTONE_INPUT_B";
+                case 2 -> "GRINDSTONE_OUTPUT";
+                default -> "CONTAINER";
+            };
+        }
+        if (menu instanceof AnvilMenu) {
+            return switch (slot) {
+                case 0 -> "ANVIL_INPUT";
+                case 1 -> "ANVIL_SACRIFICE";
+                case 2 -> "ANVIL_OUTPUT";
+                default -> "CONTAINER";
+            };
+        }
+        return "CONTAINER";
     }
 
     /**

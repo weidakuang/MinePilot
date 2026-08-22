@@ -9,6 +9,11 @@ MinePilot change log
   Forge contracts, and authorized live-model evidence. Added the detailed
   English-only `docs/PROFESSIONAL_COMPANION_MATRIX.md` and kept all formal
   M0--M4 gates honest.
+- Added fair role labels to currently open vanilla menu slots (furnace,
+  brewing, crafting, cartography, smithing, grindstone, anvil, enchanting,
+  loom, stonecutter, merchant, and player inventory) so the model can bind
+  inputs and outputs without relying on remembered slot numbers. Labels are
+  hints only; exact menu revisions and vanilla validation remain mandatory.
 - Fixed foundation placement classification for brewing stands, cauldrons,
   fletching tables, hoppers, dispensers, droppers, observers, pistons,
   repeaters, comparators, and redstone lamps; added a focused regression test.

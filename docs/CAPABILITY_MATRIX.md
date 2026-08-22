@@ -21,7 +21,7 @@ construction, commissioning, and formal companion evidence, is in
 | Boat and minecart transport | yes | integrated Forge lifecycle fixture drives vanilla mount, boat travel, powered-rail minecart travel | NOT_RUN |
 | Parkour and water-clutch safety | yes | controlled physical fixtures | NOT_RUN |
 | Combat emergency lane | yes | Enderman/Slime Forge fixtures | NOT_RUN |
-| Workstations, containers, crafting, smelting | yes | 65.1.0 lifecycle/menu transactions plus furnace/charcoal/water/portal atoms | NOT_RUN |
+| Workstations, containers, crafting, smelting | yes | 65.1.0 lifecycle/menu transactions across furnace, brewing, cartography, stonecutter, merchant, enchanting, loom, smithing, grindstone, anvil, chest/barrel/hopper/dispenser/ender chest/shulker plus role-labeled open-menu observations | NOT_RUN |
 | Shelter/foundation construction | yes | controlled dynamic shelter fixtures | NOT_RUN |
 | Nether/portal/stronghold/End components | partial | bounded component fixtures plus one controlled live-model stronghold-room-to-return chain; static End arena, not random/dynamic-dragon evidence | NOT_RUN |
 | Random Hardcore completion ≤2h | no claim | none | NOT_RUN |
@@ -37,6 +37,6 @@ construction, commissioning, and formal companion evidence, is in
 | Section | Current honest result | Main missing proof |
 | --- | --- | --- |
 | 15.1 Professional companion | Bounded live slices for chat-to-action, follow, stop/resume, combat, farm work, containers, and portals; not a formal companion claim | Real Actor/Observer, social/ownership matrix, long-world memory, 100-hour soak |
-| 15.2 Workstations and transport | Crafting, furnace-family, chest/hopper/dispenser transactions and boat/minecart travel are bounded; broad workstation menus and cargo logistics are not complete | Per-workstation menu contracts, rail construction/stations, cargo vehicles, cross-dimension natural routes |
+| 15.2 Workstations and transport | Crafting, furnace-family, chest/hopper/dispenser transactions, role-labeled vanilla workstation menus, and boat/minecart travel are bounded; cargo logistics are not complete | Per-workstation live-model slices, rail construction/stations, cargo vehicles, cross-dimension natural routes |
 | 15.3 Farm capability matrix | Manual crop/sugar-cane field work and dynamic crop planning; no complete animal, villager, iron, hostile-mob, or automatic crop farms | Site-generated builders, commissioning/rate/repair evidence across unseen variants |
 | 15.4 Machine capability matrix | Fair button/dispenser/door/hopper primitives and generic mechanism schema; no complete machine system | Redstone construction, activation, output/rate measurement, repair, and versioned mod adapters |

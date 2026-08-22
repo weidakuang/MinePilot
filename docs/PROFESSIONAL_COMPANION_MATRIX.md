@@ -59,8 +59,8 @@ are not equivalent to one successful model call.
 | Blast furnace and smoker | Implemented at generic menu level | Controlled menu contracts exist; no dedicated live-model task for each |
 | Chest/double chest and barrel | Implemented at generic menu level | Live chest withdrawal; barrel/container contracts are bounded |
 | Hopper and dispenser inventory | Implemented at transaction/interaction level | Hopper menu and dispenser/button contracts; no complete item-sorter commissioning |
-| Loom, cartography table, smithing table, grindstone, stonecutter | Detection/interaction boundary exists | No complete menu-operation contract for every family |
-| Anvil, enchanting table, brewing stand, cauldron | Placement/recognition boundary exists | No complete recipe/XP/potion transaction skill; must remain `NOT_RUN` |
+| Loom, cartography table, smithing table, grindstone, stonecutter | Observed-slot transaction contracts are implemented and covered by Forge menu fixtures | No model-driven live slice for each family; recipe/XP/material selection still requires the model to bind the current frame |
+| Anvil, enchanting table, brewing stand, cauldron | Observed-slot transactions exist for anvil/enchanting/brewing; cauldron remains interaction-only | No model-driven live slice for each family; no potion recipe/XP workflow claim |
 | Lectern, fletching table, composter | Recognition/placement boundary exists | Villager workstation use and librarian/trade workflows are not complete |
 | Ender chest and shulker box | Partial recognition | No formal cross-session storage/ownership transaction |
 | Respawn anchor and bed | Survival/portal-related partial support | No complete Nether respawn safety commissioning matrix |
@@ -71,6 +71,14 @@ pistons, repeaters, comparators, and redstone lamps as interactive blocks.
 This prevents a foundation material routine from trying to place a block on a
 surface whose normal use should win. It does **not** claim that the companion
 can build or operate a complete machine from those blocks.
+
+Open-menu observations now also attach a bounded, server-derived `role` to
+each visible slot (for example `FURNACE_FUEL`, `SMITHING_TEMPLATE`,
+`ANVIL_OUTPUT`, or `PLAYER_INVENTORY`). The role is only a hint for the
+currently open menu; every action still binds `sampleSequence`, `containerId`,
+`stateId`, and the exact slot before vanilla validation. This removes a major
+source of model confusion without reading closed containers or bypassing
+Minecraft's recipe, fuel, XP, durability, or ownership rules.
 
 ### Transport matrix
 
@@ -182,7 +190,8 @@ not justify claiming that MinePilot already meets those formal gates.
 The placement-guard gap is fixed and covered by a focused regression test.
 The matrices now make the remaining work explicit:
 
-1. complete the missing workstation menu transactions;
+1. exercise the role-labeled workstation transactions with real model-driven
+   live slices instead of treating Forge fixtures as companion evidence;
 2. add fair, site-generated farm commissioners one family at a time;
 3. add machine activation/rate/repair evidence rather than only block
    interaction;

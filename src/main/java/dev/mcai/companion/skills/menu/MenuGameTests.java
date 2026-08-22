@@ -203,6 +203,17 @@ public final class MenuGameTests {
 
         helper.onEachTick(() -> {
             publish(sampler, player, currentFrame);
+            if (stage.get() == 0) {
+                final var observedSlots = currentFrame.get().menu().slots();
+                helper.assertTrue(
+                        observedSlots.get(0).role().equals("BREWING_BOTTLE")
+                                && observedSlots.get(1).role().equals("BREWING_BOTTLE")
+                                && observedSlots.get(2).role().equals("BREWING_BOTTLE")
+                                && observedSlots.get(3).role().equals("BREWING_INGREDIENT")
+                                && observedSlots.get(4).role().equals("BREWING_FUEL"),
+                        "Brewing menu roles were not derived from the open vanilla menu"
+                );
+            }
             final MenuBinding binding = binding(currentFrame.get());
             switch (stage.get()) {
                 case 0 -> {
@@ -552,6 +563,15 @@ public final class MenuGameTests {
                 (CartographyTableMenu) player.containerMenu;
         publish(sampler, player, currentFrame);
         helper.assertTrue(
+                currentFrame.get().menu().slots().get(0).role()
+                                .equals("CARTOGRAPHY_MAP")
+                        && currentFrame.get().menu().slots().get(1).role()
+                                .equals("CARTOGRAPHY_ADDITION")
+                        && currentFrame.get().menu().slots().get(2).role()
+                                .equals("CARTOGRAPHY_OUTPUT"),
+                "Cartography menu roles were not derived from the open vanilla menu"
+        );
+        helper.assertTrue(
                 actuator.transfer(new TransferMenuItemParameters(
                         binding(currentFrame.get()),
                         menu.findSlot(player.getInventory(), 0).orElseThrow(),
@@ -637,6 +657,13 @@ public final class MenuGameTests {
         );
         final StonecutterMenu menu = (StonecutterMenu) player.containerMenu;
         publish(sampler, player, currentFrame);
+        helper.assertTrue(
+                currentFrame.get().menu().slots().get(0).role()
+                                .equals("STONECUTTER_INPUT")
+                        && currentFrame.get().menu().slots().get(1).role()
+                                .equals("STONECUTTER_OUTPUT"),
+                "Stonecutter menu roles were not derived from the open vanilla menu"
+        );
         helper.assertTrue(
                 actuator.transfer(new TransferMenuItemParameters(
                         binding(currentFrame.get()),
@@ -1613,6 +1640,17 @@ public final class MenuGameTests {
         );
         final AbstractContainerMenu smithingMenu = player.containerMenu;
         publish(sampler, player, currentFrame);
+        helper.assertTrue(
+                currentFrame.get().menu().slots().get(0).role()
+                                .equals("SMITHING_TEMPLATE")
+                        && currentFrame.get().menu().slots().get(1).role()
+                                .equals("SMITHING_BASE")
+                        && currentFrame.get().menu().slots().get(2).role()
+                                .equals("SMITHING_ADDITION")
+                        && currentFrame.get().menu().slots().get(3).role()
+                                .equals("SMITHING_OUTPUT"),
+                "Smithing menu roles were not derived from the open vanilla menu"
+        );
         helper.assertTrue(
                 actuator.transfer(new TransferMenuItemParameters(
                         binding(currentFrame.get()),

@@ -41,6 +41,12 @@ final class MenuSkillsRegistrationTest {
         assertTrue(MenuSkills.plannerGuide().contains(
                 "smelt_menu_batch"
         ));
+        assertTrue(MenuSkills.plannerGuide().contains(
+                "SMITHING_TEMPLATE"
+        ));
+        assertTrue(MenuSkills.plannerGuide().contains(
+                "PLAYER_INVENTORY"
+        ));
     }
 
     private static final class SuccessfulActuator

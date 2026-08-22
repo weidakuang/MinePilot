@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-23T03:10:00+09:00",
-  "sourceState": "LOCAL_AUDIT_15_1_TO_15_4_WITH_PLACEMENT_GUARD_FIX",
+  "updatedAtUtc": "2026-08-23T03:35:00+09:00",
+  "sourceState": "LOCAL_AUDIT_15_1_TO_15_4_WITH_MENU_ROLE_HINTS",
   "publicMainHead": "28857095b51ae4716ebdbc40717b275c3098af23",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
@@ -39,7 +39,7 @@
   "developmentEvidence": {
     "capabilityMatrixAudit15x": {
       "status": "PASS_CONTROLLED_SOURCE_AUDIT",
-      "details": "Audited professional companion, workstation/transport, farm, and machine capabilities against registered production skills, focused Forge contracts, controlled real-model slices, and the formal M3 protocol. Added explicit interaction-versus-commissioning boundaries and fixed the placement guard for brewing stands, cauldrons, fletching tables, hoppers, dispensers, droppers, observers, pistons, repeaters, comparators, and redstone lamps.",
+      "details": "Audited professional companion, workstation/transport, farm, and machine capabilities against registered production skills, focused Forge contracts, controlled real-model slices, and the formal M3 protocol. Added explicit interaction-versus-commissioning boundaries, fixed the interactive placement guard, and added open-menu role hints for vanilla workstation input, fuel, output, payment, and player-inventory slots. Live model slices and machine commissioning remain separate gates.",
       "document": "docs/PROFESSIONAL_COMPANION_MATRIX.md",
       "formalGate": "NOT_RUN"
     },
@@ -600,14 +600,14 @@
     },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
-      "details": "The exact current tree passed a clean Gradle test/build, production JAR content verification, Forge compatibility validation, the 65 Python protocol tests, and all ten mutation variants after the 15.x capability audit and placement-guard fix. The detailed audit remains source/controlled evidence only; formal M0-M4 gates remain NOT_RUN.",
+      "details": "The exact current tree passed a clean Gradle test/build, production JAR content verification, Forge compatibility validation, the 65 Python protocol tests, all ten mutation variants, and a Forge 65.0.0 brewing GameTest with explicit open-menu role assertions after the 15.x capability audit, placement-guard fix, and menu-role enhancement. The detailed audit remains source/controlled evidence only; formal M0-M4 gates remain NOT_RUN.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "cc1387650326bf54b20ab3932dd4e31b96a5684dfc43e384c5c6d0efab0820ab",
+      "sha256": "c77d1374e96c0e3bac3ded1a38e21bcf3faaa336220cc02360d6c9a0d3203160",
       "formalGate": "NOT_RUN"
     }
   },
   "nextActions": [
-    "Use the 15.1-15.4 audit as the active M3 backlog: complete workstation menu contracts, one site-generated farm commissioner at a time, and machine activation/rate/repair evidence without promoting generic interaction primitives.",
+    "Use the 15.1-15.4 audit as the active M3 backlog: exercise role-labeled workstation transactions with real model slices, then add one site-generated farm commissioner at a time and machine activation/rate/repair evidence without promoting generic interaction primitives.",
     "Extend the strict combat stop/resume contract to multi-target defense and human-PVP safety cases; preserve retained-target and world-drift binding while keeping M3 NOT_RUN until the external Actor/Observer archive exists.",
     "Preserve the passing navigation stop/resume contract and extend its server-owned lifecycle evidence to other long-running companion tasks.",
     "Preserve the controlled stronghold-room-to-return PASS without promoting it to random-seed, Hardcore, dynamic-dragon, or M2/M4 evidence.",

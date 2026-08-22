@@ -58,6 +58,9 @@ or speedrun claim.
 - First-person fair perception, loaded-chunk bounds, FOV/occlusion/LOS,
   multipart dragon collider evidence, semantic memory, SQLite WAL/FTS5/R*Tree,
   waypoints, portal graph, MCP, and Xaero structured waypoint intake.
+- Open-menu observations now include bounded role hints for vanilla input,
+  fuel, output, payment, and player-inventory slots. Actions remain bound to
+  the exact observed menu revision and still execute through vanilla menus.
 - Local 20-TPS survival and movement lane: follow, travel, mining, crafting,
   menus, food, shielding, fall/water clutch, conservative parkour, bridge and
   tower skills, emergency PVE, visible item pickup, shelters, crops, portal

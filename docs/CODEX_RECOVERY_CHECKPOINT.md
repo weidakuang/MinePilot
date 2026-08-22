@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-23T03:10:00+09:00
+Last updated: 2026-08-23T03:35:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -24,7 +24,12 @@ This section supersedes older chronological notes below when they conflict.
   omitted brewing stands, cauldrons, fletching tables, hoppers, dispensers,
   droppers, observers, pistons, repeaters, comparators, and redstone lamps.
   The focused `PrepareIronToolkitSkillTest` now covers the complete added set.
-  This is a bounded guard fix, not an M3 promotion.
+  This is a bounded guard fix, not an M3 promotion. The follow-up audit also
+  found that the Forge menu suite already exercises brewing, cartography,
+  stonecutter, merchant, enchanting, loom, smithing, grindstone, anvil,
+  barrels, shulker boxes, hoppers, dispensers, and ender chests. Production
+  observations now expose bounded role hints for those currently open menus;
+  live model slices for each family and machine commissioning remain open.
 
 - Internet validation confirms that real Minecraft co-play/coaching includes
   survival, base building, exploration, combat/PvP, redstone/farms, mod/server
@@ -43,13 +48,36 @@ This section supersedes older chronological notes below when they conflict.
   the last formal failure remains the natural dynamic End dragon target
   acquisition gate, and M0--M4 remain `NOT_RUN`.
 
-- Focused `PrepareIronToolkitSkillTest` passed, the full Gradle `test build`
+- Current follow-up modified files are
+  `src/main/java/dev/mcai/companion/perception/MenuSlotSummary.java`,
+  `src/main/java/dev/mcai/companion/perception/PerceptionValidation.java`,
+  `src/main/java/dev/mcai/companion/perception/FairPerceptionSampler.java`,
+  `src/main/java/dev/mcai/companion/perception/SemanticObservationJsonCodec.java`,
+  `src/main/java/dev/mcai/companion/skills/menu/MenuSkills.java`, the two
+  focused perception/menu tests, and the English audit/status/changelog files.
+  The semantic observation format advanced from 8 to 9 because each open
+  slot now carries a role hint. The role is derived only from the open
+  vanilla menu and never authorizes an unobserved or direct mutation.
+  Focused tests passed after the source change; the next gate is the full
+  Gradle test/build plus Forge menu GameTest run.
+
+- Focused `PrepareIronToolkitSkillTest` and menu/perception tests passed, the
+  full Gradle `test build`
   passed, the 65 Python protocol tests passed, and the 10/10 mutation gate
   passed. The rebuilt development JAR is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `cc1387650326bf54b20ab3932dd4e31b96a5684dfc43e384c5c6d0efab0820ab`.
-  The next action is to publish this exact staged snapshot and then continue
-  with real Actor/Observer, farm commissioning, and machine repair gates.
+  `c77d1374e96c0e3bac3ded1a38e21bcf3faaa336220cc02360d6c9a0d3203160`.
+  The Forge 65.0.0 `real_brewing_stand_batch` GameTest also passed with
+  explicit assertions for all five open-menu role labels. The next action is
+  to publish this exact staged snapshot and then continue with real
+  Actor/Observer, farm commissioning, and machine repair gates.
+
+- The broader `headless_player_lifecycle_state_and_fair_action` composite was
+  re-run after the role changes but still failed later in its existing Nether
+  portal phase with `build_and_light_nether_portal.visible_face_unavailable`.
+  It did not fail in a menu transaction; the focused brewing, cartography,
+  and stonecutter tests passed. This composite failure remains negative
+  evidence for the portal/lifecycle gate and is not promoted or hidden.
 
 - Public GitHub `main` now points to commit
   `28857095b51ae4716ebdbc40717b275c3098af23` and tree

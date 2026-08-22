@@ -12,8 +12,31 @@ public record MenuSlotSummary(
         int damage,
         int maxDamage,
         boolean playerInventory,
-        boolean mayPickup
+        boolean mayPickup,
+        String role
 ) {
+    /** Backward-compatible constructor for callers without role metadata. */
+    public MenuSlotSummary(
+            final int slot,
+            final String itemId,
+            final int count,
+            final int damage,
+            final int maxDamage,
+            final boolean playerInventory,
+            final boolean mayPickup
+    ) {
+        this(
+                slot,
+                itemId,
+                count,
+                damage,
+                maxDamage,
+                playerInventory,
+                mayPickup,
+                "UNKNOWN"
+        );
+    }
+
     public MenuSlotSummary {
         if (slot < 0 || slot > 4_096) {
             throw new IllegalArgumentException("menu slot is outside its bound");
@@ -33,5 +56,6 @@ public record MenuSlotSummary(
                 "Empty menu slot must use the canonical air summary"
             );
         }
+        role = PerceptionValidation.token(role, "role", 48);
     }
 }

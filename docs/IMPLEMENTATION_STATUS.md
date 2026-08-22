@@ -8,11 +8,12 @@ Last reviewed: 2026-08-23
 - Minecraft Java 26.2; Forge 65.0.0 inclusive through 66.0.0 exclusive;
   Java 25.
 - Development version: `0.1.11-dev-mc26.2`.
-- Public repository: `https://github.com/weidakuang/MinePilot`; the validated
-  production source snapshot is commit `50fb70bbbb0441b16e1456e5b96e6d2c08defdb5`
-  with tree `66cf4c51c975d8c0f82e7cb8659c2b8e4fdf5736`. A fresh clone of the
-  published `main` line, including its later documentation commits, passes
-  `compileJava` on Forge 65.1.1.
+- Public repository: `https://github.com/weidakuang/MinePilot`; the latest
+  verified source snapshot is public `main` commit
+  `11cdc5c9b1d4d95d03a558ba8d9af38900d8be5c` with tree
+  `5338c883c17c0607f5c347d2729c07bfa4b4d1d9`. The changed source, test, and
+  evidence files match local Git blob hashes; the public tree remains English-
+  only for documentation.
 - Local development branch: `main`.
 - Current development includes the focused End fall-recovery and bounded
   dragon melee-cycle corrections described below. Git remains the authority

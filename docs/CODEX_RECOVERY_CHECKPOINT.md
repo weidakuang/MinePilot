@@ -975,6 +975,14 @@ seed statistic.
 
 ## Repository and release state
 
+- Latest verified public `main` backup: commit
+  `11cdc5c9b1d4d95d03a558ba8d9af38900d8be5c`, tree
+  `5338c883c17c0607f5c347d2729c07bfa4b4d1d9`. The nine changed source,
+  test, and evidence files in this recovery match their local Git blob hashes
+  exactly. The public history includes two repair commits because an initial
+  connector upload accidentally included a shell-prefix/base64 payload; the
+  current tree is corrected and verified, and no secret was published.
+
 - Public repository: `https://github.com/weidakuang/MinePilot`.
 - Public `main` before repair: `66bb2cff9362451fb08daf6fbf330a5d1058d589`.
 - Verified repair commit: `5edcdc7f7d37e91b1466fff460b571333c8312db`;

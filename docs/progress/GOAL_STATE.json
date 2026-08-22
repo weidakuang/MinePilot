@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "updatedAtUtc": "2026-08-23T03:10:00+09:00",
   "sourceState": "LOCAL_AUDIT_15_1_TO_15_4_WITH_PLACEMENT_GUARD_FIX",
-  "publicMainHead": "0897b301130ff672ad5daf66b680ee66b6fd5c8c",
+  "publicMainHead": "28857095b51ae4716ebdbc40717b275c3098af23",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.11-dev-mc26.2",

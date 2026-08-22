@@ -51,6 +51,12 @@ This section supersedes older chronological notes below when they conflict.
   The next action is to publish this exact staged snapshot and then continue
   with real Actor/Observer, farm commissioning, and machine repair gates.
 
+- Public GitHub `main` now points to commit
+  `28857095b51ae4716ebdbc40717b275c3098af23` and tree
+  `e01d8d19acc3d29330db959924c428b698ab7c64`. All ten changed file blobs were
+  re-read with a non-login shell and matched their local Git blob hashes before
+  the ref update; the public tree is English-only for documentation.
+
 - The latest real MiMo iron-golem duel initially exposed a fixture defect: the
   model fairly bound a naturally spawned slime while the fixture activated the
   authored golem, so that death was not a valid golem-target result. The

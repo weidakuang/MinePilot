@@ -1,4 +1,3 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 package dev.mcai.companion.skills.combat;
 
 import static dev.mcai.companion.skills.combat.CombatSkillTestFixtures.PLAYER_ID;

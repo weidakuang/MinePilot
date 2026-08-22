@@ -1,4 +1,3 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 package dev.mcai.companion.skills.core;
 
 import dev.mcai.companion.action.ActionHand;

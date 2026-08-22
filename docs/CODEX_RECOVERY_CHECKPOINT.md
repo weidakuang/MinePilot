@@ -1,4 +1,3 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # Codex Recovery Checkpoint
 
 Last updated: 2026-08-23T02:22:00+09:00

@@ -1,4 +1,3 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # Implementation Status
 
 Last reviewed: 2026-08-23

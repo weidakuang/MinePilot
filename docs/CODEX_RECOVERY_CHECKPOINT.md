@@ -20,7 +20,7 @@ This section supersedes older chronological notes below when they conflict.
 - A fresh authorized Forge 65.1.1 MiMo live-model stop/resume slice passed in
   `/tmp/minepilot-live-follow-stop-resume-1787344952`. One real embedded
   player chat produced HTTP-200 `START_SKILL follow_entity`; the same player
-  then sent the local `停下` command while the skill was running. The body
+  then sent the local `stop` command while the skill was running. The body
   reached `SAFE_IDLE/goal_cancelled` at a safe checkpoint, emitted both
   `skill_cancelled` and `skill_cancelled.follow_entity`, and a second ordinary
   follow request produced another HTTP-200 `START_SKILL follow_entity` plus
@@ -33,7 +33,7 @@ This section supersedes older chronological notes below when they conflict.
 - A fresh authorized Forge 65.1.1 MiMo navigation stop/resume slice passed in
   `/tmp/minepilot-live-movement-stop-resume-1787345589`. A real embedded
   player request produced HTTP-200 `START_SKILL travel_to`; the player then
-  sent `停下` while the skill was running. The body reached
+  sent `stop` while the skill was running. The body reached
   `SAFE_IDLE/goal_cancelled`, remained within the bounded stop envelope, and a
   second coordinate request produced another HTTP-200 `START_SKILL travel_to`
   and `low_level_actions_issued(action=move)`. SQLite recorded two model
@@ -47,7 +47,22 @@ This section supersedes older chronological notes below when they conflict.
   response was rejected by the fair `stale_world` binding after the body had
   changed during the long request. No combat stop, resume, damage, or victory
   claim was recorded. This is actionable negative evidence for the next
-  combat-lifecycle fix, not a passing test.
+  combat-lifecycle fix, not a passing test. It is superseded only for the
+  ordinary combat task by the bounded recovery result below; the stop/resume
+  combat lifecycle remains unverified.
+
+- A fresh authorized Forge 65.1.1 MiMo `real_player_task_to_live_model_zombie_defense`
+  run passed after the combat recovery fix in
+  `/tmp/minepilot-live-combat-recovery-1787415200`. The provider first returned
+  a non-action response while the local emergency lane guarded; the server
+  then copied one currently visible hostile observation into the normal
+  `engage_observed_entity` skill, which started, moved, attacked, and killed
+  the Zombie through vanilla actions. SQLite recorded one conversation chain,
+  one planner chain (7,702 input and 172 output tokens),
+  `combat_action_recovered_from_no_action`, `skill_started`, and
+  `low_level_actions_issued`. The GameTest passed in 30 seconds. This is
+  controlled professional-companion evidence, not combat stop/resume, PVP,
+  random Hardcore, rendered Actor/Observer, or formal M3 evidence.
 
 - A fresh authorized Forge 65.1.1 MiMo live-model run of
   `real_player_task_to_live_model_stronghold_portal_room_to_victory` passed
@@ -95,7 +110,7 @@ This section supersedes older chronological notes below when they conflict.
 - The current local `build` passed after these combat and ingress changes. The
   resulting development artifact is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `4aab889e6ca0b655fdd65c0746133bb7335eef1b7fc9477f107d73f4dc9f644d`.
+  `4b89e7027851e03832d8ef444723d78dc9efbec1b08c164199095e44d7e281e1`.
 - A diagnostic-only rerun with the obsidian-frontier re-entry completion
   target tightened to 30 blocks was reverted: it moved the body to about
   `(47.5,51.0,-0.3)` but the fair ingress child timed out after 6,000 ticks
@@ -116,7 +131,7 @@ This section supersedes older chronological notes below when they conflict.
   does not solve the natural pillar-edge route.
 - The M3 professional-companion increment now derives player-visible
   lifecycle messages only from accepted server-owned skill transitions. It
-  also accepts unambiguous `stop`/`hold`/`pause`/`停下`/`取消任务` chat as a
+  also accepts unambiguous `stop`/`hold`/`pause` chat as a
   local GoalCoordinator cancellation request, preserving permissions,
   Hardcore locks, and ordinary safe checkpoints. Focused JVM and source
   contract tests pass; no formal M3 status is promoted by this code-only

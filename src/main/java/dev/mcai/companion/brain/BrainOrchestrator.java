@@ -55,6 +55,15 @@ public final class BrainOrchestrator {
      * no authorized action.
      */
     private static final int MAX_CONSECUTIVE_NO_ACTION_DECISIONS = 4;
+    /**
+     * A long model request may overlap one or more local emergency ticks.
+     * Melee is the one skill that can safely revalidate its target from the
+     * retained first-person sample: the skill binds the original observed
+     * UUID, then requires that same UUID to be visible again before starting.
+     * Permit only this narrow, bounded world-drift handoff; every other
+     * stale decision remains rejected.
+     */
+    private static final long MAX_COMBAT_DECISION_REBASE_EPOCH_DRIFT = 256L;
 
     private final GoalCoordinator goals;
     private final ModelGateway modelGateway;
@@ -1017,8 +1026,7 @@ public final class BrainOrchestrator {
             PlannerCompletion completion,
             long now
     ) {
-        if (goal.revision() != completion.goalRevision
-                || observation.epoch() != completion.observationEpoch) {
+        if (goal.revision() != completion.goalRevision) {
             emitNotice(goal.revision(), "stale_or_duplicate_completion");
             scheduleBackoff(now, policy.minimumReplanBackoff());
             return;
@@ -1084,6 +1092,24 @@ public final class BrainOrchestrator {
                 success.usage()
         );
         DecisionEnvelope decision = success.decision();
+        final long worldDrift = observation.epoch()
+                - completion.observationEpoch;
+        if (observation.epoch() != completion.observationEpoch) {
+            final Optional<DecisionEnvelope> rebased =
+                    rebaseCombatDecision(
+                            decision,
+                            completion,
+                            observation,
+                            worldDrift
+                    );
+            if (rebased.isEmpty()) {
+                emitNotice(goal.revision(), "stale_or_duplicate_completion");
+                scheduleBackoff(now, policy.minimumReplanBackoff());
+                return;
+            }
+            decision = rebased.orElseThrow();
+            emitNotice(goal.revision(), "combat_decision_world_drift_rebased");
+        }
         emitModelAudit(
             goal.revision(),
             completion.requestId,
@@ -1104,9 +1130,8 @@ public final class BrainOrchestrator {
         );
         if (!decision.requestId().equals(completion.requestId)
                 || decision.goalRevision() != completion.goalRevision
-                || decision.observedWorldRevision() != completion.observationEpoch
+                || decision.observedWorldRevision() != observation.epoch()
                 || goal.revision() != completion.goalRevision
-                || observation.epoch() != completion.observationEpoch
                 || decision.requestId().equals(lastAppliedRequestId)) {
             emitNotice(goal.revision(), "stale_or_duplicate_decision");
             scheduleBackoff(now, policy.minimumReplanBackoff());
@@ -1977,6 +2002,15 @@ public final class BrainOrchestrator {
         if (follow.isPresent()) {
             return follow;
         }
+        final Optional<DecisionEnvelope> combat =
+                recoverExplicitCombatDecision(
+                        goal,
+                        observation,
+                        noActionDecision
+                );
+        if (combat.isPresent()) {
+            return combat;
+        }
         final Optional<DecisionEnvelope> food = recoverBoundFoodDecision(
                 goal,
                 observation,
@@ -2007,6 +2041,139 @@ public final class BrainOrchestrator {
             immediateItemSurveyGoalRevision = goal.revision();
         }
         return survey;
+    }
+
+    /**
+     * Recovers a concrete melee action when a player has explicitly asked for
+     * combat and the provider returned a valid non-action response. This is
+     * not a general combat planner: it copies one currently visible hostile
+     * observation into the registered skill envelope, and the skill still
+     * performs its UUID/reach/occlusion revalidation before any attack. The
+     * fallback is limited to ordinary player/MCP goals and never runs for a
+     * locked Hardcore evaluation.
+     */
+    private static Optional<DecisionEnvelope> recoverExplicitCombatDecision(
+            final GoalSnapshot goal,
+            final BrainObservation observation,
+            final DecisionEnvelope noActionDecision
+    ) {
+        Objects.requireNonNull(goal, "goal");
+        Objects.requireNonNull(observation, "observation");
+        Objects.requireNonNull(noActionDecision, "noActionDecision");
+        if ((goal.source() != GoalSource.PLAYER_CHAT
+                    && goal.source() != GoalSource.MCP)
+                || goal.externalWritesLocked()
+                || !looksLikeExplicitCombatGoal(goal.goal())
+                || (noActionDecision.decision() != DecisionKind.CONTINUE
+                    && noActionDecision.decision() != DecisionKind.REPLAN
+                    && noActionDecision.decision() != DecisionKind.ASK_PLAYER
+                    && noActionDecision.decision() != DecisionKind.SAFE_IDLE
+                    && noActionDecision.decision() != DecisionKind.COMPLETE_GOAL)) {
+            return Optional.empty();
+        }
+        try {
+            final JsonObject root = JsonParser.parseString(
+                    observation.semanticJson()
+            ).getAsJsonObject();
+            final long sampleSequence = root.get("sampleSequence")
+                    .getAsLong();
+            if (sampleSequence < 0L) {
+                return Optional.empty();
+            }
+            final JsonArray visible = root.getAsJsonArray(
+                    "visibleEntities"
+            );
+            if (visible == null) {
+                return Optional.empty();
+            }
+            for (int index = 0; index < visible.size(); index++) {
+                if (!visible.get(index).isJsonObject()) {
+                    continue;
+                }
+                final JsonObject entity = visible.get(index)
+                        .getAsJsonObject();
+                final String type = entity.has("type")
+                        ? entity.get("type").getAsString()
+                        : "";
+                final boolean hostile = entity.has("hostile")
+                        && entity.get("hostile").getAsBoolean();
+                final boolean projectile = entity.has("projectile")
+                        && entity.get("projectile").getAsBoolean();
+                if (projectile || !combatTargetType(type, hostile, goal.goal())) {
+                    continue;
+                }
+                return Optional.of(new DecisionEnvelope(
+                        noActionDecision.requestId(),
+                        noActionDecision.observedWorldRevision(),
+                        noActionDecision.goalRevision(),
+                        DecisionKind.START_SKILL,
+                        "engage_observed_entity",
+                        List.of(
+                                new SkillArgument(
+                                        "sampleSequence",
+                                        Long.toString(sampleSequence)
+                                ),
+                                new SkillArgument(
+                                        "observationId",
+                                        "visible-" + index
+                                )
+                        ),
+                        dev.mcai.companion.model.RequestedObservation.none(),
+                        "",
+                        0.96
+                ));
+            }
+            return Optional.empty();
+        } catch (RuntimeException malformedObservation) {
+            return Optional.empty();
+        }
+    }
+
+    private static boolean combatTargetType(
+            final String type,
+            final boolean hostile,
+            final String goal
+    ) {
+        if (hostile) {
+            return true;
+        }
+        final String lowerGoal = Objects.requireNonNullElse(
+                goal,
+                ""
+        ).toLowerCase(Locale.ROOT);
+        if ("minecraft:iron_golem".equals(type)) {
+            return lowerGoal.contains("golem")
+                    || goal.contains("铁傀儡");
+        }
+        return "minecraft:player".equals(type)
+                && (lowerGoal.contains("pvp")
+                    || lowerGoal.contains("player")
+                    || lowerGoal.contains("duel")
+                    || goal.contains("玩家")
+                    || goal.contains("单挑"));
+    }
+
+    private static boolean looksLikeExplicitCombatGoal(final String goal) {
+        final String value = Objects.requireNonNullElse(goal, "");
+        final String lower = value.toLowerCase(Locale.ROOT);
+        return lower.contains("protect")
+                || lower.contains("attack")
+                || lower.contains("fight")
+                || lower.contains("kill")
+                || lower.contains("defend")
+                || lower.contains("combat")
+                || lower.contains("zombie")
+                || lower.contains("skeleton")
+                || lower.contains("golem")
+                || lower.contains("pvp")
+                || value.contains("僵尸")
+                || value.contains("骷髅")
+                || value.contains("铁傀儡")
+                || value.contains("保护")
+                || value.contains("攻击")
+                || value.contains("战斗")
+                || value.contains("击杀")
+                || value.contains("击退");
     }
 
     /**
@@ -2090,6 +2257,7 @@ public final class BrainOrchestrator {
                     isItemCollectionGoal(goal.goal())
                             ? "item_search"
                             : "follow_search";
+            case "engage_observed_entity" -> "combat_action";
             case "collect_observed_item" ->
                     isFoodGoal(goal.goal()) ? "food_pickup" : "item_pickup";
             case "consume_owned_food" -> "food_consumption";
@@ -2711,6 +2879,7 @@ public final class BrainOrchestrator {
                 || ResourceGatheringSkills
                     .GATHER_VISIBLE_BLOCK_CLUSTER
                     .equals(decision.skillName())
+                || "engage_observed_entity".equals(decision.skillName())
                 || decision.typedArguments().stream().noneMatch(
                     argument -> "sampleSequence".equals(
                             argument.name()
@@ -2738,6 +2907,50 @@ public final class BrainOrchestrator {
                 decision.optionalSpeech(),
                 decision.confidence()
         );
+    }
+
+    /**
+     * Rebinds only a melee intent that crossed a local emergency tick while
+     * the provider was thinking.  The original observation sequence remains
+     * in the decision so {@code EngageObservedEntitySkill} can resolve and
+     * retain the original visible UUID; it then requires that exact UUID to
+     * be visible in the current first-person sample before any attack starts.
+     * This prevents index retargeting while avoiding a false no-action loop
+     * caused by a legal shield/backstep changing the world epoch.
+     */
+    private static Optional<DecisionEnvelope> rebaseCombatDecision(
+            final DecisionEnvelope decision,
+            final PlannerCompletion completion,
+            final BrainObservation observation,
+            final long worldDrift
+    ) {
+        if (worldDrift <= 0L
+                || worldDrift > MAX_COMBAT_DECISION_REBASE_EPOCH_DRIFT
+                || decision.decision() != DecisionKind.START_SKILL
+                || !"engage_observed_entity".equals(
+                        decision.skillName()
+                )
+                || !decision.requestId().equals(completion.requestId)
+                || decision.goalRevision() != completion.goalRevision
+                || decision.observedWorldRevision()
+                    != completion.observationEpoch
+                || decision.typedArguments().stream().noneMatch(argument ->
+                        "sampleSequence".equals(argument.name()))
+                || decision.typedArguments().stream().noneMatch(argument ->
+                        "observationId".equals(argument.name()))) {
+            return Optional.empty();
+        }
+        return Optional.of(new DecisionEnvelope(
+                decision.requestId(),
+                observation.epoch(),
+                decision.goalRevision(),
+                decision.decision(),
+                decision.skillName(),
+                decision.typedArguments(),
+                decision.requestedObservation(),
+                decision.optionalSpeech(),
+                decision.confidence()
+        ));
     }
 
     private static long semanticSampleSequence(

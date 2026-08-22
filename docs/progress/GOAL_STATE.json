@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-22T16:15:00Z",
-  "sourceState": "PUBLIC_MAIN_PENDING_VERIFIED_NAVIGATION_STOP_RESUME",
-  "publicMainHead": "681decd2fb5651dae23621d5b7ee9dcc12e86b93",
+  "updatedAtUtc": "2026-08-22T16:10:00Z",
+  "sourceState": "LOCAL_VERIFIED_PROFESSIONAL_COMPANION_COMBAT_RECOVERY_PENDING_PUBLICATION",
+  "publicMainHead": "2209c8d22e8fde5b481ddfb0c86cb000467753d5",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.11-dev-mc26.2",
@@ -545,16 +545,31 @@
       "fixtureConstraint": "Controlled authored Zombie/equipment fixture; this is negative diagnosis only and is not a PVP, Hardcore, random-seed, or M3 result.",
       "formalGate": "NOT_RUN"
     },
+    "professionalCompanionLiveCombatRecovery": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "non-action response -> bounded combat_action_recovered_from_no_action -> START_SKILL engage_observed_entity",
+      "actions": "A real Chinese player task reached the server. MiMo first returned a valid non-action response while the local emergency lane guarded. Because the task explicitly named combat and the current fair first-person frame contained a legal visible Zombie, the bounded recovery copied only that observation handle into the normal engage_observed_entity skill. SkillSupervisor revalidated the retained observation and current target; the ServerPlayer moved, attacked, killed the Zombie, and triggered Monster Hunter through vanilla actions.",
+      "modelInputTokens": 7702,
+      "modelOutputTokens": 172,
+      "modelTokensRecorded": 7874,
+      "runtimeSeconds": 30.0,
+      "runRoot": "/tmp/minepilot-live-combat-recovery-1787415200",
+      "fixtureConstraint": "One controlled visible Zombie and owned equipment; not combat stop/resume, PVP, horde, Hardcore, random-seed, rendered-client, or formal M3 evidence.",
+      "supersededFailure": "The preceding baseline recorded repeated REPLAN responses and a stale_world rejection without a skill start; it remains negative diagnosis for the missing stop/resume lifecycle, while ordinary combat recovery now passes.",
+      "formalGate": "NOT_RUN"
+    },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, Forge compatibility validation, and a fresh-public-clone Forge 65.0.0 compile after the focused End safety changes. The changed production, GameTest, checkpoint, and goal-state files matched the published clone byte-for-byte. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "4aab889e6ca0b655fdd65c0746133bb7335eef1b7fc9477f107d73f4dc9f644d",
+      "sha256": "4b89e7027851e03832d8ef444723d78dc9efbec1b08c164199095e44d7e281e1",
       "formalGate": "NOT_RUN"
     }
   },
   "nextActions": [
-    "Fix the combat stale-world/no-action loop: preserve fair revision binding while re-observing and reissuing a bounded combat decision after emergency movement, then run a real-model combat stop/resume slice; retain M3 as NOT_RUN until the external Actor/Observer archive exists.",
+    "Extend the passing bounded combat recovery into a real-model combat stop/resume slice; preserve the strict retained-target and world-drift binding, and retain M3 as NOT_RUN until the external Actor/Observer archive exists.",
     "Preserve the passing navigation stop/resume contract and extend its server-owned lifecycle evidence to other long-running companion tasks.",
     "Preserve the controlled stronghold-room-to-return PASS without promoting it to random-seed, Hardcore, dynamic-dragon, or M2/M4 evidence.",
     "Run the formal rendered Actor/Observer gate only on an authorized Linux/Xvfb worker with the exact frozen artifact.",

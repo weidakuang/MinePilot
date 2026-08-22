@@ -3,7 +3,7 @@
   "schemaVersion": 2,
   "updatedAtUtc": "2026-08-23T01:40:00+09:00",
   "sourceState": "PUBLIC_MAIN_VERIFIED_PROFESSIONAL_COMPANION_COMBAT_STOP_RESUME",
-  "publicMainHead": "37384413e99415b4e50749536dec59b1d7a6df5a",
+  "publicMainHead": "0897b301130ff672ad5daf66b680ee66b6fd5c8c",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.11-dev-mc26.2",
@@ -587,7 +587,7 @@
     }
   },
   "nextActions": [
-    "Extend the passing bounded combat recovery into a real-model combat stop/resume slice; preserve the strict retained-target and world-drift binding, and retain M3 as NOT_RUN until the external Actor/Observer archive exists.",
+    "Extend the strict combat stop/resume contract to multi-target defense, iron-golem duels, and human-PVP safety cases; preserve retained-target and world-drift binding while keeping M3 NOT_RUN until the external Actor/Observer archive exists.",
     "Preserve the passing navigation stop/resume contract and extend its server-owned lifecycle evidence to other long-running companion tasks.",
     "Preserve the controlled stronghold-room-to-return PASS without promoting it to random-seed, Hardcore, dynamic-dragon, or M2/M4 evidence.",
     "Run the formal rendered Actor/Observer gate only on an authorized Linux/Xvfb worker with the exact frozen artifact.",

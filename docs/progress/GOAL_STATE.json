@@ -1,9 +1,9 @@
 /Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-22T16:10:00Z",
-  "sourceState": "PUBLIC_MAIN_VERIFIED_PROFESSIONAL_COMPANION_COMBAT_RECOVERY",
-  "publicMainHead": "2209c8d22e8fde5b481ddfb0c86cb000467753d5",
+  "updatedAtUtc": "2026-08-23T01:40:00+09:00",
+  "sourceState": "PUBLIC_MAIN_VERIFIED_PROFESSIONAL_COMPANION_COMBAT_STOP_RESUME",
+  "publicMainHead": "37384413e99415b4e50749536dec59b1d7a6df5a",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.11-dev-mc26.2",

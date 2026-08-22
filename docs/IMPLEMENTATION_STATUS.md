@@ -16,8 +16,8 @@ bounded crop run is not a complete machine/farm or formal companion result.
 - Development version: `0.1.11-dev-mc26.2`.
 - Public repository: `https://github.com/weidakuang/MinePilot`; the latest
   verified source snapshot is public `main` commit
-  `28857095b51ae4716ebdbc40717b275c3098af23` with tree
-  `e01d8d19acc3d29330db959924c428b698ab7c64`. The changed source, test, and
+  `600f37051765a578eb2b2bc595bd71b7188ed56f` with tree
+  `4ce45565ae2996f063b3e205a25cd96d23f42c62`. The changed source, test, and
   evidence files match local Git blob hashes; the public tree remains English-
   only for documentation.
 - Local development branch: `main`.

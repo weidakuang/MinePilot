@@ -80,8 +80,8 @@ This section supersedes older chronological notes below when they conflict.
   evidence for the portal/lifecycle gate and is not promoted or hidden.
 
 - Public GitHub `main` now points to commit
-  `28857095b51ae4716ebdbc40717b275c3098af23` and tree
-  `e01d8d19acc3d29330db959924c428b698ab7c64`. All ten changed file blobs were
+  `600f37051765a578eb2b2bc595bd71b7188ed56f` and tree
+  `4ce45565ae2996f063b3e205a25cd96d23f42c62`. All changed file blobs were
   re-read with a non-login shell and matched their local Git blob hashes before
   the ref update; the public tree is English-only for documentation.
 

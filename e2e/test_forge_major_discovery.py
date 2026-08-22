@@ -1,3 +1,4 @@
+/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 from __future__ import annotations
 
 import json
@@ -90,6 +91,7 @@ class ForgeMajorDiscoveryTest(unittest.TestCase):
                 "65.0.9",
                 "65.1.0",
                 "65.1.1",
+                "65.1.2",
             ]
         )
         code, payload = self.run_discovery(

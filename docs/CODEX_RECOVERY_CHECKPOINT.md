@@ -1,7 +1,7 @@
 /Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-23T01:37:00+09:00
+Last updated: 2026-08-23T01:43:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -115,7 +115,7 @@ This section supersedes older chronological notes below when they conflict.
 - The current local `build` passed after these combat and ingress changes. The
   resulting development artifact is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `4b89e7027851e03832d8ef444723d78dc9efbec1b08c164199095e44d7e281e1`.
+  `bb9882244384e0df9ea20e80254970168e858c8c9914c5330fc9cf873e6b5f6c`.
 - A diagnostic-only rerun with the obsidian-frontier re-entry completion
   target tightened to 30 blocks was reverted: it moved the body to about
   `(47.5,51.0,-0.3)` but the fair ingress child timed out after 6,000 ticks

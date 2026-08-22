@@ -582,7 +582,7 @@
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, Forge compatibility validation, and a fresh-public-clone Forge 65.0.0 compile after the focused End safety changes. The changed production, GameTest, checkpoint, and goal-state files matched the published clone byte-for-byte. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "4b89e7027851e03832d8ef444723d78dc9efbec1b08c164199095e44d7e281e1",
+      "sha256": "bb9882244384e0df9ea20e80254970168e858c8c9914c5330fc9cf873e6b5f6c",
       "formalGate": "NOT_RUN"
     }
   },

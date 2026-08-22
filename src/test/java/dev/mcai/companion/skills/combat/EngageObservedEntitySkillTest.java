@@ -1,778 +1,1 @@
-package dev.mcai.companion.skills.combat;
-
-import static dev.mcai.companion.skills.combat.CombatSkillTestFixtures.PLAYER_ID;
-import static dev.mcai.companion.skills.combat.CombatSkillTestFixtures.SEQUENCE;
-import static dev.mcai.companion.skills.combat.CombatSkillTestFixtures.TARGET_ID;
-import static dev.mcai.companion.skills.combat.CombatSkillTestFixtures.coreFrame;
-import static dev.mcai.companion.skills.combat.CombatSkillTestFixtures.hostile;
-import static dev.mcai.companion.skills.combat.CombatSkillTestFixtures.interactionFrame;
-import static dev.mcai.companion.skills.combat.CombatSkillTestFixtures.lookToward;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import dev.mcai.companion.action.ActionHand;
-import dev.mcai.companion.action.ActionMath;
-import dev.mcai.companion.navigation.GridPos;
-import dev.mcai.companion.navigation.LocalNavSnapshot;
-import dev.mcai.companion.navigation.ObservedVoxel;
-import dev.mcai.companion.navigation.VoxelKind;
-import dev.mcai.companion.perception.PerceptionVec3;
-import dev.mcai.companion.perception.VisibleEntity;
-import dev.mcai.companion.skill.SkillContext;
-import dev.mcai.companion.skill.SkillTickResult;
-import dev.mcai.companion.skills.core.CoreSkillFrame;
-import java.util.List;
-import org.junit.jupiter.api.Test;
-
-final class EngageObservedEntitySkillTest {
-    private static final PerceptionVec3 EAST =
-            new PerceptionVec3(1.0, 0.0, 0.0);
-
-    @Test
-    void respectsCooldownThenAttacksOnlyBoundObservedTarget() {
-        VisibleEntity target = hostile(
-                TARGET_ID,
-                "minecraft:zombie",
-                2.5
-        );
-        var coreFrames =
-                new CombatSkillTestFixtures.MutableCoreFrames(
-                        coreFrame(
-                                SEQUENCE,
-                                20.0F,
-                                lookToward(target),
-                                List.of(target),
-                                true
-                        )
-                );
-        var interactionFrames =
-                new CombatSkillTestFixtures.MutableInteractionFrames(
-                        interactionFrame(
-                                SEQUENCE,
-                                List.of(target),
-                                true
-                        )
-                );
-        var core =
-                new CombatSkillTestFixtures.RecordingCoreActuator();
-        var interaction =
-                new CombatSkillTestFixtures
-                        .RecordingInteractionActuator();
-        interaction.attackStrength = 0.5;
-        EngageObservedEntitySkill skill = skill(
-                core,
-                coreFrames,
-                interaction,
-                interactionFrames,
-                CombatSkillPolicy.defaults()
-        );
-        var parameters = parameters();
-
-        assertTrue(skill.preconditions(
-                context(1, false),
-                parameters
-        ).isEmpty());
-        skill.start(context(1, false), parameters);
-        SkillTickResult cooling = skill.tick(
-                context(2, false),
-                parameters
-        );
-
-        assertEquals(
-                SkillTickResult.Status.RUNNING,
-                cooling.status()
-        );
-        assertTrue(interaction.attacks.isEmpty());
-        assertEquals(List.of(ActionHand.OFF_HAND), core.uses);
-
-        interaction.attackStrength = 1.0;
-        SkillTickResult attacked = skill.tick(
-                context(3, false),
-                parameters
-        );
-
-        assertEquals(
-                SkillTickResult.Status.RUNNING,
-                attacked.status()
-        );
-        assertEquals(List.of(TARGET_ID), interaction.attacks);
-        assertFalse(
-                skill.checkpoint(context(3, false), parameters)
-                        .payload()
-                        .contains(TARGET_ID.toString())
-        );
-    }
-
-    @Test
-    void closeHostileIsGuardedDuringCooldownThenAttacked() {
-        VisibleEntity target = hostile(
-                TARGET_ID,
-                "minecraft:zombie",
-                1.2
-        );
-        var coreFrames =
-                new CombatSkillTestFixtures.MutableCoreFrames(
-                        coreFrame(
-                                SEQUENCE,
-                                20.0F,
-                                lookToward(target),
-                                List.of(target),
-                                true
-                        )
-                );
-        var interactionFrames =
-                new CombatSkillTestFixtures.MutableInteractionFrames(
-                        interactionFrame(
-                                SEQUENCE,
-                                List.of(target),
-                                true
-                        )
-                );
-        var core =
-                new CombatSkillTestFixtures.RecordingCoreActuator();
-        var interaction =
-                new CombatSkillTestFixtures
-                        .RecordingInteractionActuator();
-        interaction.attackStrength = 0.5;
-        EngageObservedEntitySkill skill = skill(
-                core,
-                coreFrames,
-                interaction,
-                interactionFrames,
-                CombatSkillPolicy.defaults()
-        );
-        var parameters = parameters();
-        skill.start(context(1, false), parameters);
-
-        SkillTickResult cooling = skill.tick(
-                context(2, false),
-                parameters
-        );
-        assertEquals(
-                SkillTickResult.Status.RUNNING,
-                cooling.status()
-        );
-        assertTrue(interaction.attacks.isEmpty());
-        assertEquals(List.of(ActionHand.OFF_HAND), core.uses);
-
-        interaction.attackStrength = 1.0;
-        SkillTickResult attacked = skill.tick(
-                context(3, false),
-                parameters
-        );
-        assertEquals(
-                SkillTickResult.Status.RUNNING,
-                attacked.status()
-        );
-        assertEquals(List.of(TARGET_ID), interaction.attacks);
-    }
-
-    @Test
-    void unshieldedMeleeUsesSafeFootworkDuringCooldownAndAfterAttack() {
-        VisibleEntity target = hostile(
-                TARGET_ID,
-                "minecraft:zombie",
-                2.2
-        );
-        var coreFrames =
-                new CombatSkillTestFixtures.MutableCoreFrames(
-                        coreFrame(
-                                SEQUENCE,
-                                20.0F,
-                                lookToward(target),
-                                List.of(target),
-                                false
-                        )
-                );
-        var interactionFrames =
-                new CombatSkillTestFixtures.MutableInteractionFrames(
-                        interactionFrame(
-                                SEQUENCE,
-                                List.of(target),
-                                false
-                        )
-                );
-        var core =
-                new CombatSkillTestFixtures.RecordingCoreActuator();
-        var interaction =
-                new CombatSkillTestFixtures
-                        .RecordingInteractionActuator();
-        interaction.attackStrength = 0.5;
-        EngageObservedEntitySkill skill = skill(
-                core,
-                coreFrames,
-                interaction,
-                interactionFrames,
-                CombatSkillPolicy.defaults()
-        );
-        var parameters = parameters();
-        skill.start(context(1, false), parameters);
-
-        SkillTickResult cooling = skill.tick(
-                context(2, false),
-                parameters
-        );
-        assertEquals(
-                SkillTickResult.Status.RUNNING,
-                cooling.status()
-        );
-        assertFalse(core.movements.isEmpty());
-        assertTrue(core.uses.isEmpty());
-
-        final int movementCount = core.movements.size();
-        interaction.attackStrength = 1.0;
-        SkillTickResult attacked = skill.tick(
-                context(13, false),
-                parameters
-        );
-        assertEquals(
-                SkillTickResult.Status.RUNNING,
-                attacked.status()
-        );
-        assertEquals(List.of(TARGET_ID), interaction.attacks);
-        assertTrue(core.movements.size() > movementCount);
-    }
-
-    @Test
-    void internalBindingSurvivesVisibleListReordering() {
-        VisibleEntity target = hostile(
-                TARGET_ID,
-                "minecraft:zombie",
-                2.5
-        );
-        VisibleEntity decoy = hostile(
-                CombatSkillTestFixtures.DECOY_ID,
-                "minecraft:skeleton",
-                2.0
-        );
-        var coreFrames =
-                new CombatSkillTestFixtures.MutableCoreFrames(
-                        coreFrame(
-                                SEQUENCE,
-                                20.0F,
-                                lookToward(target),
-                                List.of(target, decoy),
-                                false
-                        )
-                );
-        var interactionFrames =
-                new CombatSkillTestFixtures.MutableInteractionFrames(
-                        interactionFrame(
-                                SEQUENCE,
-                                List.of(target, decoy),
-                                false
-                        )
-                );
-        var interaction =
-                new CombatSkillTestFixtures
-                        .RecordingInteractionActuator();
-        EngageObservedEntitySkill skill = skill(
-                new CombatSkillTestFixtures.RecordingCoreActuator(),
-                coreFrames,
-                interaction,
-                interactionFrames,
-                CombatSkillPolicy.defaults()
-        );
-        var parameters = parameters();
-        skill.start(context(1, false), parameters);
-
-        coreFrames.frame = coreFrame(
-                SEQUENCE + 1,
-                20.0F,
-                lookToward(target),
-                List.of(decoy, target),
-                false
-        );
-        interactionFrames.frame = interactionFrame(
-                SEQUENCE + 1,
-                List.of(decoy, target),
-                false
-        );
-        skill.tick(context(2, false), parameters);
-
-        assertEquals(List.of(TARGET_ID), interaction.attacks);
-    }
-
-    @Test
-    void lossOfSightUsesBoundedSearchAndCompletesAfterAnAttack() {
-        VisibleEntity target = hostile(
-                TARGET_ID,
-                "minecraft:zombie",
-                2.5
-        );
-        var coreFrames =
-                new CombatSkillTestFixtures.MutableCoreFrames(
-                        coreFrame(
-                                SEQUENCE,
-                                20.0F,
-                                lookToward(target),
-                                List.of(target),
-                                false
-                        )
-                );
-        var interactionFrames =
-                new CombatSkillTestFixtures.MutableInteractionFrames(
-                        interactionFrame(
-                                SEQUENCE,
-                                List.of(target),
-                                false
-                        )
-                );
-        var core =
-                new CombatSkillTestFixtures.RecordingCoreActuator();
-        var interaction =
-                new CombatSkillTestFixtures
-                        .RecordingInteractionActuator();
-        EngageObservedEntitySkill skill = skill(
-                core,
-                coreFrames,
-                interaction,
-                interactionFrames,
-                shortSearchPolicy()
-        );
-        var parameters = parameters();
-        skill.start(context(1, false), parameters);
-        skill.tick(context(2, false), parameters);
-        assertEquals(List.of(TARGET_ID), interaction.attacks);
-
-        coreFrames.frame = coreFrame(
-                SEQUENCE + 1,
-                20.0F,
-                EAST,
-                List.of(),
-                false
-        );
-        interactionFrames.frame = interactionFrame(
-                SEQUENCE + 1,
-                List.of(),
-                false
-        );
-        SkillTickResult reacquiring = skill.tick(
-                context(3, false),
-                parameters
-        );
-        assertEquals(
-                SkillTickResult.Status.RUNNING,
-                reacquiring.status()
-        );
-        assertFalse(core.looks.isEmpty());
-
-        final int looksBeforeSearch = core.looks.size();
-        skill.tick(context(16, false), parameters);
-        skill.tick(context(17, false), parameters);
-        assertEquals(looksBeforeSearch + 2, core.looks.size());
-        assertTrue(
-                Math.abs(ActionMath.wrapDegrees(
-                    core.looks.getLast().yawDegrees()
-                            - core.looks.get(
-                                core.looks.size() - 2
-                            ).yawDegrees()
-                )) >= 50.0F,
-                "Alternating search turns must fan to opposite sides "
-                    + "instead of cancelling back to the current yaw"
-        );
-
-        SkillTickResult completed = skill.tick(
-                context(20, false),
-                parameters
-        );
-        assertEquals(
-                SkillTickResult.Status.COMPLETED,
-                completed.status()
-        );
-        assertEquals(1, interaction.attacks.size());
-    }
-
-    @Test
-    void lowHealthRetreatsThroughObservedSafeCellAndGuards() {
-        VisibleEntity target = hostile(
-                TARGET_ID,
-                "minecraft:zombie",
-                2.2
-        );
-        var coreFrames =
-                new CombatSkillTestFixtures.MutableCoreFrames(
-                        coreFrame(
-                                SEQUENCE,
-                                20.0F,
-                                lookToward(target),
-                                List.of(target),
-                                true
-                        )
-                );
-        var interactionFrames =
-                new CombatSkillTestFixtures.MutableInteractionFrames(
-                        interactionFrame(
-                                SEQUENCE,
-                                List.of(target),
-                                true
-                        )
-                );
-        var core =
-                new CombatSkillTestFixtures.RecordingCoreActuator();
-        var interaction =
-                new CombatSkillTestFixtures
-                        .RecordingInteractionActuator();
-        EngageObservedEntitySkill skill = skill(
-                core,
-                coreFrames,
-                interaction,
-                interactionFrames,
-                CombatSkillPolicy.defaults()
-        );
-        var parameters = parameters();
-        skill.start(context(1, false), parameters);
-        coreFrames.frame = coreFrame(
-                SEQUENCE + 1,
-                5.0F,
-                lookToward(target),
-                List.of(target),
-                true
-        );
-        interactionFrames.frame = interactionFrame(
-                SEQUENCE + 1,
-                List.of(target),
-                true
-        );
-
-        SkillTickResult result = skill.tick(
-                context(2, false),
-                parameters
-        );
-
-        assertEquals(
-                SkillTickResult.Status.RUNNING,
-                result.status()
-        );
-        assertTrue(interaction.attacks.isEmpty());
-        assertFalse(core.movements.isEmpty());
-        assertEquals(List.of(ActionHand.OFF_HAND), core.uses);
-    }
-
-    @Test
-    void distantTargetWithUnknownFootingTriggersDownwardFairScan() {
-        VisibleEntity target = hostile(
-                TARGET_ID,
-                "minecraft:blaze",
-                6.5
-        );
-        CoreSkillFrame initial = coreFrame(
-                SEQUENCE,
-                20.0F,
-                lookToward(target),
-                List.of(target),
-                true
-        );
-        var coreFrames =
-                new CombatSkillTestFixtures.MutableCoreFrames(
-                        withCurrentCellOnly(initial)
-                );
-        var interactionFrames =
-                new CombatSkillTestFixtures.MutableInteractionFrames(
-                        interactionFrame(
-                                SEQUENCE,
-                                List.of(target),
-                                true
-                        )
-                );
-        var core =
-                new CombatSkillTestFixtures.RecordingCoreActuator();
-        EngageObservedEntitySkill skill = skill(
-                core,
-                coreFrames,
-                new CombatSkillTestFixtures
-                        .RecordingInteractionActuator(),
-                interactionFrames,
-                CombatSkillPolicy.defaults()
-        );
-        var parameters = parameters();
-        skill.start(context(1, false), parameters);
-
-        SkillTickResult result = skill.tick(
-                context(2, false),
-                parameters
-        );
-
-        assertEquals(
-                SkillTickResult.Status.RUNNING,
-                result.status()
-        );
-        assertTrue(result.madeProgress());
-        assertTrue(core.movements.isEmpty());
-        assertTrue(core.looks.getLast().pitchDegrees() >= 25.0F);
-    }
-
-    @Test
-    void hardcoreRetreatThresholdIsMoreConservative() {
-        VisibleEntity target = hostile(
-                TARGET_ID,
-                "minecraft:zombie",
-                2.5
-        );
-        var coreFrames =
-                new CombatSkillTestFixtures.MutableCoreFrames(
-                        coreFrame(
-                                SEQUENCE,
-                                20.0F,
-                                lookToward(target),
-                                List.of(target),
-                                false
-                        )
-                );
-        var interactionFrames =
-                new CombatSkillTestFixtures.MutableInteractionFrames(
-                        interactionFrame(
-                                SEQUENCE,
-                                List.of(target),
-                                false
-                        )
-                );
-        var core =
-                new CombatSkillTestFixtures.RecordingCoreActuator();
-        var interaction =
-                new CombatSkillTestFixtures
-                        .RecordingInteractionActuator();
-        EngageObservedEntitySkill skill = skill(
-                core,
-                coreFrames,
-                interaction,
-                interactionFrames,
-                CombatSkillPolicy.defaults()
-        );
-        var parameters = parameters();
-        skill.start(context(1, true), parameters);
-        coreFrames.frame = coreFrame(
-                SEQUENCE + 1,
-                8.0F,
-                lookToward(target),
-                List.of(target),
-                false
-        );
-        interactionFrames.frame = interactionFrame(
-                SEQUENCE + 1,
-                List.of(target),
-                false
-        );
-
-        skill.tick(context(2, true), parameters);
-
-        assertTrue(interaction.attacks.isEmpty());
-        assertFalse(core.movements.isEmpty());
-    }
-
-    @Test
-    void rejectsPassiveProjectileStaleAndForgedTargets() {
-        VisibleEntity cow = CombatSkillTestFixtures.entity(
-                TARGET_ID,
-                "minecraft:cow",
-                2.5,
-                false,
-                false
-        );
-        var coreFrames =
-                new CombatSkillTestFixtures.MutableCoreFrames(
-                        coreFrame(
-                                SEQUENCE,
-                                20.0F,
-                                lookToward(cow),
-                                List.of(cow),
-                                false
-                        )
-                );
-        var interactionFrames =
-                new CombatSkillTestFixtures.MutableInteractionFrames(
-                        interactionFrame(
-                                SEQUENCE,
-                                List.of(cow),
-                                false
-                        )
-                );
-        EngageObservedEntitySkill skill = skill(
-                new CombatSkillTestFixtures.RecordingCoreActuator(),
-                coreFrames,
-                new CombatSkillTestFixtures
-                        .RecordingInteractionActuator(),
-                interactionFrames,
-                CombatSkillPolicy.defaults()
-        );
-
-        assertEquals(
-                "engage_observed_entity.unsafe_target",
-                skill.preconditions(
-                        context(1, false),
-                        parameters()
-                ).orElseThrow().code()
-        );
-        assertEquals(
-                "engage_observed_entity.stale_observation_id",
-                skill.preconditions(
-                        context(1, false),
-                        new EngageObservedEntityParameters(
-                                SEQUENCE - 1,
-                                "visible-0"
-                        )
-                ).orElseThrow().code()
-        );
-        assertEquals(
-                "engage_observed_entity.invalid_observation_id",
-                skill.preconditions(
-                        context(1, false),
-                        new EngageObservedEntityParameters(
-                                SEQUENCE,
-                                "visible-9"
-                        )
-                ).orElseThrow().code()
-        );
-
-        VisibleEntity canonicalZombie = CombatSkillTestFixtures.entity(
-                TARGET_ID,
-                "minecraft:zombie",
-                2.5,
-                false,
-                false
-        );
-        var zombieCoreFrames =
-                new CombatSkillTestFixtures.MutableCoreFrames(
-                        coreFrame(
-                                SEQUENCE,
-                                20.0F,
-                                lookToward(canonicalZombie),
-                                List.of(canonicalZombie),
-                                false
-                        )
-                );
-        var zombieInteractionFrames =
-                new CombatSkillTestFixtures.MutableInteractionFrames(
-                        interactionFrame(
-                                SEQUENCE,
-                                List.of(canonicalZombie),
-                                false
-                        )
-                );
-        EngageObservedEntitySkill canonicalZombieSkill = skill(
-                new CombatSkillTestFixtures.RecordingCoreActuator(),
-                zombieCoreFrames,
-                new CombatSkillTestFixtures.RecordingInteractionActuator(),
-                zombieInteractionFrames,
-                CombatSkillPolicy.defaults()
-        );
-        assertTrue(canonicalZombieSkill.preconditions(
-                context(1, false),
-                parameters()
-        ).isEmpty());
-    }
-
-    private static EngageObservedEntitySkill skill(
-            CombatSkillTestFixtures.RecordingCoreActuator core,
-            CombatSkillTestFixtures.MutableCoreFrames coreFrames,
-            CombatSkillTestFixtures.RecordingInteractionActuator interaction,
-            CombatSkillTestFixtures.MutableInteractionFrames interactionFrames,
-            CombatSkillPolicy policy
-    ) {
-        return new EngageObservedEntitySkill(
-                PLAYER_ID,
-                core,
-                coreFrames,
-                interaction,
-                interactionFrames,
-                policy
-        );
-    }
-
-    private static EngageObservedEntityParameters parameters() {
-        return new EngageObservedEntityParameters(
-                SEQUENCE,
-                "visible-0"
-        );
-    }
-
-    private static SkillContext context(
-            long tick,
-            boolean hardcore
-    ) {
-        return new SkillContext(
-                1,
-                SEQUENCE,
-                tick,
-                hardcore,
-                true,
-                0.0
-        );
-    }
-
-    private static CombatSkillPolicy shortSearchPolicy() {
-        CombatSkillPolicy defaults = CombatSkillPolicy.defaults();
-        return new CombatSkillPolicy(
-                defaults.maximumObservationAgeTicks(),
-                defaults.maximumEngagementTicks(),
-                16,
-                16,
-                1,
-                2,
-                defaults.scanYawDegrees(),
-                defaults.attackCooldownThreshold(),
-                defaults.attackReach(),
-                defaults.preferredMaximumDistance(),
-                defaults.tooCloseDistance(),
-                defaults.guardDistance(),
-                defaults.normalRetreatHealthFraction(),
-                defaults.hardcoreRetreatHealthFraction(),
-                defaults.normalMaximumStepDanger(),
-                defaults.hardcoreMaximumStepDanger(),
-                defaults.attackAlignmentDegrees(),
-                defaults.movementAlignmentDegrees()
-        );
-    }
-
-    private static CoreSkillFrame withCurrentCellOnly(
-            CoreSkillFrame source
-    ) {
-        LocalNavSnapshot navigation = new LocalNavSnapshot(
-                source.dimension(),
-                source.observationRevision(),
-                List.of(
-                        new ObservedVoxel(
-                                new GridPos(0, 0, 0),
-                                VoxelKind.SOLID,
-                                0.0,
-                                source.observationRevision()
-                        ),
-                        new ObservedVoxel(
-                                new GridPos(0, 1, 0),
-                                VoxelKind.AIR,
-                                0.0,
-                                source.observationRevision()
-                        ),
-                        new ObservedVoxel(
-                                new GridPos(0, 2, 0),
-                                VoxelKind.AIR,
-                                0.0,
-                                source.observationRevision()
-                        )
-                )
-        );
-        return new CoreSkillFrame(
-                source.playerId(),
-                source.dimension(),
-                source.gameTime(),
-                source.observationRevision(),
-                source.position(),
-                source.eyePosition(),
-                source.lookDirection(),
-                source.onGround(),
-                source.inWater(),
-                source.danger(),
-                navigation,
-                source.visibleBlockFaces(),
-                source.health(),
-                source.maxHealth(),
-                source.foodLevel(),
-                source.inventory(),
-                source.mainHand(),
-                source.offHand(),
-                source.visibleEntities(),
-                source.dangerSignals()
-        );
-    }
-}
+ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½µ‰…Ðì()¥µÁ½ÉÐÍÑ…Ñ¥Œ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½µ‰…Ð¹½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹A1eI}%ì)¥µÁ½ÉÐÍÑ…Ñ¥Œ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½µ‰…Ð¹½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹MEU9ì)¥µÁ½ÉÐÍÑ…Ñ¥Œ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½µ‰…Ð¹½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹QIQ}%ì)¥µÁ½ÉÐÍÑ…Ñ¥Œ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½µ‰…Ð¹½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹½É•É…µ”ì)¥µÁ½ÉÐÍÑ…Ñ¥Œ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½µ‰…Ð¹½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹¡½ÍÑ¥±”ì)¥µÁ½ÉÐÍÑ…Ñ¥Œ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½µ‰…Ð¹½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹¥¹Ñ•É…Ñ¥½¹É…µ”ì)¥µÁ½ÉÐÍÑ…Ñ¥Œ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½µ‰…Ð¹½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹±½½­Q½Ý…Éì)¥µÁ½ÉÐÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑÅÕ…±Ìì)¥µÁ½ÉÐÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑ…±Í”ì)¥µÁ½ÉÐÍÑ…Ñ¥Œ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹ÍÍ•ÉÑ¥½¹Ì¹…ÍÍ•ÉÑQÉÕ”ì()¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹Ñ¥½¹!…¹ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹Ñ¥½¹5…Ñ ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹É¥‘A½Ìì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹1½…±9…ÙM¹…ÁÍ¡½Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹=‰Í•ÉÙ•‘Y½á•°ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹Y½á•±-¥¹ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹A•É•ÁÑ¥½¹Y•ŒÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹Y¥Í¥‰±•¹Ñ¥Ñäì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±½¹Ñ•áÐì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±°¹M­¥±±Q¥­I•ÍÕ±Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”¹½É•M­¥±±É…µ”ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹1¥ÍÐì)¥µÁ½ÉÐ½Éœ¹©Õ¹¥Ð¹©ÕÁ¥Ñ•È¹…Á¤¹Q•ÍÐì()™¥¹…°±…ÍÌ¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±±Q•ÍÐì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌMP€ô(€€€€€€€€€€€¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ Ä¸À°€À¸À°€À¸À¤ì((€€€Q•ÍÐ(€€€Ù½¥É•ÍÁ•ÑÍ½½±‘½Ý¹Q¡•¹ÑÑ…­Í=¹±å	½Õ¹‘=‰Í•ÉÙ•‘Q…É•Ð ¤ì(€€€€€€€Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð€ô¡½ÍÑ¥±” (€€€€€€€€€€€€€€€QIQ}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðéé½µ‰¥”ˆ°(€€€€€€€€€€€€€€€€È¸Ô(€€€€€€€€¤ì(€€€€€€€Ù…È½É•É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¹É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È½É”€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È ¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¸€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì(€€€€€€€€€€€€€€€€€€€€€€€€¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È ¤ì(€€€€€€€¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­MÑÉ•¹Ñ €ô€À¸Ôì(€€€€€€€¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í­¥±°€ôÍ­¥±° (€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¸°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì(€€€€€€€Ù…ÈÁ…É…µ•Ñ•ÉÌ€ôÁ…É…µ•Ñ•ÉÌ ¤ì((€€€€€€€…ÍÍ•ÉÑQÉÕ”¡Í­¥±°¹ÁÉ•½¹‘¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€½¹Ñ•áÐ Ä°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ(€€€€€€€€¤¹¥ÍµÁÑä ¤¤ì(€€€€€€€Í­¥±°¹ÍÑ…ÉÐ¡½¹Ñ•áÐ Ä°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤ì(€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð½½±¥¹œ€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ È°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì((€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€½½±¥¹œ¹ÍÑ…ÑÕÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­Ì¹¥ÍµÁÑä ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì¡1¥ÍÐ¹½˜¡Ñ¥½¹!…¹¹=}!9¤°½É”¹ÕÍ•Ì¤ì((€€€€€€€¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­MÑÉ•¹Ñ €ô€Ä¸Àì(€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð…ÑÑ…­•€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ Ì°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì((€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€…ÑÑ…­•¹ÍÑ…ÑÕÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì¡1¥ÍÐ¹½˜¡QIQ}%¤°¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­Ì¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í” (€€€€€€€€€€€€€€€Í­¥±°¹¡•­Á½¥¹Ð¡½¹Ñ•áÐ Ì°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹Á…å±½… ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹½¹Ñ…¥¹Ì¡QIQ}%¹Ñ½MÑÉ¥¹œ ¤¤(€€€€€€€€¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥±½Í•!½ÍÑ¥±•%ÍÕ…É‘•‘ÕÉ¥¹½½±‘½Ý¹Q¡•¹ÑÑ…­• ¤ì(€€€€€€€Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð€ô¡½ÍÑ¥±” (€€€€€€€€€€€€€€€QIQ}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðéé½µ‰¥”ˆ°(€€€€€€€€€€€€€€€€Ä¸È(€€€€€€€€¤ì(€€€€€€€Ù…È½É•É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¹É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È½É”€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È ¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¸€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì(€€€€€€€€€€€€€€€€€€€€€€€€¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È ¤ì(€€€€€€€¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­MÑÉ•¹Ñ €ô€À¸Ôì(€€€€€€€¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í­¥±°€ôÍ­¥±° (€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¸°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì(€€€€€€€Ù…ÈÁ…É…µ•Ñ•ÉÌ€ôÁ…É…µ•Ñ•ÉÌ ¤ì(€€€€€€€Í­¥±°¹ÍÑ…ÉÐ¡½¹Ñ•áÐ Ä°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤ì((€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð½½±¥¹œ€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ È°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€½½±¥¹œ¹ÍÑ…ÑÕÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­Ì¹¥ÍµÁÑä ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì¡1¥ÍÐ¹½˜¡Ñ¥½¹!…¹¹=}!9¤°½É”¹ÕÍ•Ì¤ì((€€€€€€€¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­MÑÉ•¹Ñ €ô€Ä¸Àì(€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð…ÑÑ…­•€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ Ì°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€…ÑÑ…­•¹ÍÑ…ÑÕÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì¡1¥ÍÐ¹½˜¡QIQ}%¤°¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­Ì¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥Õ¹Í¡¥•±‘•‘5•±••UÍ•ÍM…™•½½ÑÝ½É­ÕÉ¥¹½½±‘½Ý¹¹‘™Ñ•ÉÑÑ…¬ ¤ì(€€€€€€€Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð€ô¡½ÍÑ¥±” (€€€€€€€€€€€€€€€QIQ}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðéé½µ‰¥”ˆ°(€€€€€€€€€€€€€€€€È¸È(€€€€€€€€¤ì(€€€€€€€Ù…È½É•É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¹É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È½É”€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È ¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¸€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì(€€€€€€€€€€€€€€€€€€€€€€€€¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È ¤ì(€€€€€€€¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­MÑÉ•¹Ñ €ô€À¸Ôì(€€€€€€€¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í­¥±°€ôÍ­¥±° (€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¸°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì(€€€€€€€Ù…ÈÁ…É…µ•Ñ•ÉÌ€ôÁ…É…µ•Ñ•ÉÌ ¤ì(€€€€€€€Í­¥±°¹ÍÑ…ÉÐ¡½¹Ñ•áÐ Ä°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤ì((€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð½½±¥¹œ€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ È°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€½½±¥¹œ¹ÍÑ…ÑÕÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡½É”¹µ½Ù•µ•¹ÑÌ¹¥ÍµÁÑä ¤¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡½É”¹ÕÍ•Ì¹¥ÍµÁÑä ¤¤ì((€€€€€€€™¥¹…°¥¹Ðµ½Ù•µ•¹Ñ½Õ¹Ð€ô½É”¹µ½Ù•µ•¹ÑÌ¹Í¥é” ¤ì(€€€€€€€¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­MÑÉ•¹Ñ €ô€Ä¸Àì(€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð…ÑÑ…­•€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ ÄÌ°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€…ÑÑ…­•¹ÍÑ…ÑÕÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì¡1¥ÍÐ¹½˜¡QIQ}%¤°¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­Ì¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡½É”¹µ½Ù•µ•¹ÑÌ¹Í¥é” ¤€øµ½Ù•µ•¹Ñ½Õ¹Ð¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥¥¹Ñ•É¹…±	¥¹‘¥¹MÕÉÙ¥Ù•ÍY¥Í¥‰±•1¥ÍÑI•½É‘•É¥¹œ ¤ì(€€€€€€€Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð€ô¡½ÍÑ¥±” (€€€€€€€€€€€€€€€QIQ}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðéé½µ‰¥”ˆ°(€€€€€€€€€€€€€€€€È¸Ô(€€€€€€€€¤ì(€€€€€€€Y¥Í¥‰±•¹Ñ¥Ñä‘•½ä€ô¡½ÍÑ¥±” (€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹=e}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™ÐéÍ­•±•Ñ½¸ˆ°(€€€€€€€€€€€€€€€€È¸À(€€€€€€€€¤ì(€€€€€€€Ù…È½É•É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð°‘•½ä¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¹É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð°‘•½ä¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¸€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì(€€€€€€€€€€€€€€€€€€€€€€€€¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È ¤ì(€€€€€€€¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í­¥±°€ôÍ­¥±° (€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È ¤°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¸°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì(€€€€€€€Ù…ÈÁ…É…µ•Ñ•ÉÌ€ôÁ…É…µ•Ñ•ÉÌ ¤ì(€€€€€€€Í­¥±°¹ÍÑ…ÉÐ¡½¹Ñ•áÐ Ä°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤ì((€€€€€€€½É•É…µ•Ì¹™É…µ”€ô½É•É…µ” (€€€€€€€€€€€€€€€MEU9€¬€Ä°(€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡‘•½ä°Ñ…É•Ð¤°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì¹™É…µ”€ô¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€MEU9€¬€Ä°(€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡‘•½ä°Ñ…É•Ð¤°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€€€€€Í­¥±°¹Ñ¥¬¡½¹Ñ•áÐ È°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤ì((€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì¡1¥ÍÐ¹½˜¡QIQ}%¤°¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­Ì¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥±½ÍÍ=™M¥¡ÑUÍ•Í	½Õ¹‘•‘M•…É¡¹‘½µÁ±•Ñ•Í™Ñ•É¹ÑÑ…¬ ¤ì(€€€€€€€Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð€ô¡½ÍÑ¥±” (€€€€€€€€€€€€€€€QIQ}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðéé½µ‰¥”ˆ°(€€€€€€€€€€€€€€€€È¸Ô(€€€€€€€€¤ì(€€€€€€€Ù…È½É•É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¹É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È½É”€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È ¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¸€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì(€€€€€€€€€€€€€€€€€€€€€€€€¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È ¤ì(€€€€€€€¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í­¥±°€ôÍ­¥±° (€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¸°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€Í¡½ÉÑM•…É¡A½±¥ä ¤(€€€€€€€€¤ì(€€€€€€€Ù…ÈÁ…É…µ•Ñ•ÉÌ€ôÁ…É…µ•Ñ•ÉÌ ¤ì(€€€€€€€Í­¥±°¹ÍÑ…ÉÐ¡½¹Ñ•áÐ Ä°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤ì(€€€€€€€Í­¥±°¹Ñ¥¬¡½¹Ñ•áÐ È°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì¡1¥ÍÐ¹½˜¡QIQ}%¤°¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­Ì¤ì((€€€€€€€½É•É…µ•Ì¹™É…µ”€ô½É•É…µ” (€€€€€€€€€€€€€€€MEU9€¬€Ä°(€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€MP°(€€€€€€€€€€€€€€€1¥ÍÐ¹½˜ ¤°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì¹™É…µ”€ô¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€MEU9€¬€Ä°(€€€€€€€€€€€€€€€1¥ÍÐ¹½˜ ¤°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€€€€€M­¥±±Q¥­I•ÍÕ±ÐÉ•…ÅÕ¥É¥¹œ€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ Ì°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€É•…ÅÕ¥É¥¹œ¹ÍÑ…ÑÕÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡½É”¹±½½­Ì¹¥ÍµÁÑä ¤¤ì((€€€€€€€™¥¹…°¥¹Ð±½½­Í	•™½É•M•…É €ô½É”¹±½½­Ì¹Í¥é” ¤ì(€€€€€€€Í­¥±°¹Ñ¥¬¡½¹Ñ•áÐ ÄØ°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤ì(€€€€€€€Í­¥±°¹Ñ¥¬¡½¹Ñ•áÐ ÄÜ°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì¡±½½­Í	•™½É•M•…É €¬€È°½É”¹±½½­Ì¹Í¥é” ¤¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ” (€€€€€€€€€€€€€€€5…Ñ ¹…‰Ì¡Ñ¥½¹5…Ñ ¹ÝÉ…Á•É••Ì (€€€€€€€€€€€€€€€€€€€½É”¹±½½­Ì¹•Ñ1…ÍÐ ¤¹å…Ý•É••Ì ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€´½É”¹±½½­Ì¹•Ð (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½É”¹±½½­Ì¹Í¥é” ¤€´€È(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤¹å…Ý•É••Ì ¤(€€€€€€€€€€€€€€€€¤¤€øô€ÔÀ¸Á°(€€€€€€€€€€€€€€€€‰±Ñ•É¹…Ñ¥¹œÍ•…É ÑÕÉ¹ÌµÕÍÐ™…¸Ñ¼½ÁÁ½Í¥Ñ”Í¥‘•Ì€ˆ(€€€€€€€€€€€€€€€€€€€€¬€‰¥¹ÍÑ•…½˜…¹•±±¥¹œ‰…¬Ñ¼Ñ¡”ÕÉÉ•¹Ðå…Üˆ(€€€€€€€€¤ì((€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð½µÁ±•Ñ•€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ ÈÀ°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹=5A1Q°(€€€€€€€€€€€€€€€½µÁ±•Ñ•¹ÍÑ…ÑÕÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì Ä°¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­Ì¹Í¥é” ¤¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥±½Ý!•…±Ñ¡I•ÑÉ•…ÑÍQ¡É½Õ¡=‰Í•ÉÙ•‘M…™••±±¹‘Õ…É‘Ì ¤ì(€€€€€€€Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð€ô¡½ÍÑ¥±” (€€€€€€€€€€€€€€€QIQ}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðéé½µ‰¥”ˆ°(€€€€€€€€€€€€€€€€È¸È(€€€€€€€€¤ì(€€€€€€€Ù…È½É•É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¹É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È½É”€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È ¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¸€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì(€€€€€€€€€€€€€€€€€€€€€€€€¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È ¤ì(€€€€€€€¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í­¥±°€ôÍ­¥±° (€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¸°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì(€€€€€€€Ù…ÈÁ…É…µ•Ñ•ÉÌ€ôÁ…É…µ•Ñ•ÉÌ ¤ì(€€€€€€€Í­¥±°¹ÍÑ…ÉÐ¡½¹Ñ•áÐ Ä°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤ì(€€€€€€€½É•É…µ•Ì¹™É…µ”€ô½É•É…µ” (€€€€€€€€€€€€€€€MEU9€¬€Ä°(€€€€€€€€€€€€€€€€Ô¸Á°(€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€¤ì(€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì¹™É…µ”€ô¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€MEU9€¬€Ä°(€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€¤ì((€€€€€€€M­¥±±Q¥­I•ÍÕ±ÐÉ•ÍÕ±Ð€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ È°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì((€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­Ì¹¥ÍµÁÑä ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡½É”¹µ½Ù•µ•¹ÑÌ¹¥ÍµÁÑä ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì¡1¥ÍÐ¹½˜¡Ñ¥½¹!…¹¹=}!9¤°½É”¹ÕÍ•Ì¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥‘¥ÍÑ…¹ÑQ…É•Ñ]¥Ñ¡U¹­¹½Ý¹½½Ñ¥¹QÉ¥•ÉÍ½Ý¹Ý…É‘…¥ÉM…¸ ¤ì(€€€€€€€Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð€ô¡½ÍÑ¥±” (€€€€€€€€€€€€€€€QIQ}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé‰±…é”ˆ°(€€€€€€€€€€€€€€€€Ø¸Ô(€€€€€€€€¤ì(€€€€€€€½É•M­¥±±É…µ”¥¹¥Ñ¥…°€ô½É•É…µ” (€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€¤ì(€€€€€€€Ù…È½É•É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€Ý¥Ñ¡ÕÉÉ•¹Ñ•±±=¹±ä¡¥¹¥Ñ¥…°¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¹É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È½É”€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È ¤ì(€€€€€€€¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í­¥±°€ôÍ­¥±° (€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì(€€€€€€€€€€€€€€€€€€€€€€€€¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È ¤°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì(€€€€€€€Ù…ÈÁ…É…µ•Ñ•ÉÌ€ôÁ…É…µ•Ñ•ÉÌ ¤ì(€€€€€€€Í­¥±°¹ÍÑ…ÉÐ¡½¹Ñ•áÐ Ä°™…±Í”¤°Á…É…µ•Ñ•ÉÌ¤ì((€€€€€€€M­¥±±Q¥­I•ÍÕ±ÐÉ•ÍÕ±Ð€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ È°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ(€€€€€€€€¤ì((€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡É•ÍÕ±Ð¹µ…‘•AÉ½É•ÍÌ ¤¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡½É”¹µ½Ù•µ•¹ÑÌ¹¥ÍµÁÑä ¤¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡½É”¹±½½­Ì¹•Ñ1…ÍÐ ¤¹Á¥Ñ¡•É••Ì ¤€øô€ÈÔ¸Á¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥¡¥¡%µÁ…ÑQ…É•ÑI…¥Í•ÍM¡¥•±‘	•™½É•±½Í¥¹%¹Ñ½I•…  ¤ì(€€€€€€€Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð€ô½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹•¹Ñ¥Ñä (€€€€€€€€€€€€€€€QIQ}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé¥É½¹}½±•´ˆ°(€€€€€€€€€€€€€€€€È¸Ô°(€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€€€€€Ù…È½É•É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¹É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È½É”€ô¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È ¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¸€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È ¤ì(€€€€€€€¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í­¥±°€ôÍ­¥±° (€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¸°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì((€€€€€€€Í­¥±°¹ÍÑ…ÉÐ¡½¹Ñ•áÐ Ä°™…±Í”¤°Á…É…µ•Ñ•ÉÌ ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í” (€€€€€€€€€€€€€€€Í­¥±°¹µ…¹…•ÍA¡åÍ¥…±½¹Ñ…ÑQ¡É•…ÑÌ ¤°(€€€€€€€€€€€€€€€€‰!¥ µ¥µÁ…Ð•¹½Õ¹Ñ•ÉÌµÕÍÐ±•…Ù”½¹Ñ…ÐÁÉ••µÁÑ¥½¸Ñ¼ÍÕÉÙ¥Ù…°ˆ(€€€€€€€€¤ì(€€€€€€€M­¥±±Q¥­I•ÍÕ±ÐÉ•ÍÕ±Ð€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ È°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ ¤(€€€€€€€€¤ì((€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì¡M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9°É•ÍÕ±Ð¹ÍÑ…ÑÕÌ ¤¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì¡1¥ÍÐ¹½˜¡Ñ¥½¹!…¹¹=}!9¤°½É”¹ÕÍ•Ì¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­Ì¹¥ÍµÁÑä ¤¤ì((€€€€€€€¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­MÑÉ•¹Ñ €ô€À¸Ôì(€€€€€€€M­¥±±Q¥­I•ÍÕ±ÐÕ…É‘•‘½½ÑÝ½É¬€ôÍ­¥±°¹Ñ¥¬ (€€€€€€€€€€€€€€€½¹Ñ•áÐ Ø°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€M­¥±±Q¥­I•ÍÕ±Ð¹MÑ…ÑÕÌ¹IU99%9°(€€€€€€€€€€€€€€€Õ…É‘•‘½½ÑÝ½É¬¹ÍÑ…ÑÕÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ” (€€€€€€€€€€€€€€€€…½É”¹µ½Ù•µ•¹ÑÌ¹¥ÍµÁÑä ¤°(€€€€€€€€€€€€€€€€‰¡¥ µ¥µÁ…Ð½½±‘½Ý¸µÕÍÐÍ•Á…É…Ñ”Õ¹‘•ÈÍ¡¥•±ˆ(€€€€€€€€¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥¡…É‘½É•I•ÑÉ•…ÑQ¡É•Í¡½±‘%Í5½É•½¹Í•ÉÙ…Ñ¥Ù” ¤ì(€€€€€€€Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð€ô¡½ÍÑ¥±” (€€€€€€€€€€€€€€€QIQ}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðéé½µ‰¥”ˆ°(€€€€€€€€€€€€€€€€È¸Ô(€€€€€€€€¤ì(€€€€€€€Ù…È½É•É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¹É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È½É”€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È ¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¸€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì(€€€€€€€€€€€€€€€€€€€€€€€€¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È ¤ì(€€€€€€€¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í­¥±°€ôÍ­¥±° (€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¸°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì(€€€€€€€Ù…ÈÁ…É…µ•Ñ•ÉÌ€ôÁ…É…µ•Ñ•ÉÌ ¤ì(€€€€€€€Í­¥±°¹ÍÑ…ÉÐ¡½¹Ñ•áÐ Ä°ÑÉÕ”¤°Á…É…µ•Ñ•ÉÌ¤ì(€€€€€€€½É•É…µ•Ì¹™É…µ”€ô½É•É…µ” (€€€€€€€€€€€€€€€MEU9€¬€Ä°(€€€€€€€€€€€€€€€€à¸Á°(€€€€€€€€€€€€€€€±½½­Q½Ý…É¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì¹™É…µ”€ô¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€MEU9€¬€Ä°(€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡Ñ…É•Ð¤°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì((€€€€€€€Í­¥±°¹Ñ¥¬¡½¹Ñ•áÐ È°ÑÉÕ”¤°Á…É…µ•Ñ•ÉÌ¤ì((€€€€€€€…ÍÍ•ÉÑQÉÕ”¡¥¹Ñ•É…Ñ¥½¸¹…ÑÑ…­Ì¹¥ÍµÁÑä ¤¤ì(€€€€€€€…ÍÍ•ÉÑ…±Í”¡½É”¹µ½Ù•µ•¹ÑÌ¹¥ÍµÁÑä ¤¤ì(€€€ô((€€€Q•ÍÐ(€€€Ù½¥É•©•ÑÍA…ÍÍ¥Ù•AÉ½©•Ñ¥±•MÑ…±•¹‘½É•‘Q…É•ÑÌ ¤ì(€€€€€€€Y¥Í¥‰±•¹Ñ¥Ñä½Ü€ô½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹•¹Ñ¥Ñä (€€€€€€€€€€€€€€€QIQ}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé½Üˆ°(€€€€€€€€€€€€€€€€È¸Ô°(€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€€€€€Ù…È½É•É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±½½­Q½Ý…É¡½Ü¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡½Ü¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…È¥¹Ñ•É…Ñ¥½¹É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡½Ü¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í­¥±°€ôÍ­¥±° (€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È ¤°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì(€€€€€€€€€€€€€€€€€€€€€€€€¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È ¤°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì((€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€€‰•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñä¹Õ¹Í…™•}Ñ…É•Ðˆ°(€€€€€€€€€€€€€€€Í­¥±°¹ÁÉ•½¹‘¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ Ä°™…±Í”¤°(€€€€€€€€€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ ¤(€€€€€€€€€€€€€€€€¤¹½É±Í•Q¡É½Ü ¤¹½‘” ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€€‰•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñä¹ÍÑ…±•}½‰Í•ÉÙ…Ñ¥½¹}¥ˆ°(€€€€€€€€€€€€€€€Í­¥±°¹ÁÉ•½¹‘¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ Ä°™…±Í”¤°(€€€€€€€€€€€€€€€€€€€€€€€¹•Ü¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåA…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9€´€Ä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰Ù¥Í¥‰±”´Àˆ(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤¹½É±Í•Q¡É½Ü ¤¹½‘” ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑÅÕ…±Ì (€€€€€€€€€€€€€€€€‰•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñä¹¥¹Ù…±¥‘}½‰Í•ÉÙ…Ñ¥½¹}¥ˆ°(€€€€€€€€€€€€€€€Í­¥±°¹ÁÉ•½¹‘¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•áÐ Ä°™…±Í”¤°(€€€€€€€€€€€€€€€€€€€€€€€¹•Ü¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåA…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰Ù¥Í¥‰±”´äˆ(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤¹½É±Í•Q¡É½Ü ¤¹½‘” ¤(€€€€€€€€¤ì((€€€€€€€Y¥Í¥‰±•¹Ñ¥Ñä…¹½¹¥…±i½µ‰¥”€ô½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹•¹Ñ¥Ñä (€€€€€€€€€€€€€€€QIQ}%°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðéé½µ‰¥”ˆ°(€€€€€€€€€€€€€€€€È¸Ô°(€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€€€€€Ù…Èé½µ‰¥•½É•É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€½É•É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ÈÀ¸Á°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±½½­Q½Ý…É¡…¹½¹¥…±i½µ‰¥”¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡…¹½¹¥…±i½µ‰¥”¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€Ù…Èé½µ‰¥•%¹Ñ•É…Ñ¥½¹É…µ•Ì€ô(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì (€€€€€€€€€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€1¥ÍÐ¹½˜¡…¹½¹¥…±i½µ‰¥”¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°…¹½¹¥…±i½µ‰¥•M­¥±°€ôÍ­¥±° (€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È ¤°(€€€€€€€€€€€€€€€é½µ‰¥•½É•É…µ•Ì°(€€€€€€€€€€€€€€€¹•Ü½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È ¤°(€€€€€€€€€€€€€€€é½µ‰¥•%¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤(€€€€€€€€¤ì(€€€€€€€…ÍÍ•ÉÑQÉÕ”¡…¹½¹¥…±i½µ‰¥•M­¥±°¹ÁÉ•½¹‘¥Ñ¥½¹Ì (€€€€€€€€€€€€€€€½¹Ñ•áÐ Ä°™…±Í”¤°(€€€€€€€€€€€€€€€Á…É…µ•Ñ•ÉÌ ¤(€€€€€€€€¤¹¥ÍµÁÑä ¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±°Í­¥±° (€€€€€€€€€€€½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹½É•ÑÕ…Ñ½È½É”°(€€€€€€€€€€€½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•½É•É…µ•Ì½É•É…µ•Ì°(€€€€€€€€€€€½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹I•½É‘¥¹%¹Ñ•É…Ñ¥½¹ÑÕ…Ñ½È¥¹Ñ•É…Ñ¥½¸°(€€€€€€€€€€€½µ‰…ÑM­¥±±Q•ÍÑ¥áÑÕÉ•Ì¹5ÕÑ…‰±•%¹Ñ•É…Ñ¥½¹É…µ•Ì¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€½µ‰…ÑM­¥±±A½±¥äÁ½±¥ä(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¹•Ü¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåM­¥±° (€€€€€€€€€€€€€€€A1eI}%°(€€€€€€€€€€€€€€€½É”°(€€€€€€€€€€€€€€€½É•É…µ•Ì°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¸°(€€€€€€€€€€€€€€€¥¹Ñ•É…Ñ¥½¹É…µ•Ì°(€€€€€€€€€€€€€€€Á½±¥ä(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåA…É…µ•Ñ•ÉÌÁ…É…µ•Ñ•ÉÌ ¤ì(€€€€€€€É•ÑÕÉ¸¹•Ü¹…•=‰Í•ÉÙ•‘¹Ñ¥ÑåA…É…µ•Ñ•ÉÌ (€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€€‰Ù¥Í¥‰±”´Àˆ(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒM­¥±±½¹Ñ•áÐ½¹Ñ•áÐ (€€€€€€€€€€€±½¹œÑ¥¬°(€€€€€€€€€€€‰½½±•…¸¡…É‘½É”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¹•ÜM­¥±±½¹Ñ•áÐ (€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€MEU9°(€€€€€€€€€€€€€€€Ñ¥¬°(€€€€€€€€€€€€€€€¡…É‘½É”°(€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€€À¸À(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ½µ‰…ÑM­¥±±A½±¥äÍ¡½ÉÑM•…É¡A½±¥ä ¤ì(€€€€€€€½µ‰…ÑM­¥±±A½±¥ä‘•™…Õ±ÑÌ€ô½µ‰…ÑM­¥±±A½±¥ä¹‘•™…Õ±ÑÌ ¤ì(€€€€€€€É•ÑÕÉ¸¹•Ü½µ‰…ÑM­¥±±A½±¥ä (€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹µ…á¥µÕµ=‰Í•ÉÙ…Ñ¥½¹•Q¥­Ì ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹µ…á¥µÕµ¹…•µ•¹ÑQ¥­Ì ¤°(€€€€€€€€€€€€€€€€ÄØ°(€€€€€€€€€€€€€€€€ÄØ°(€€€€€€€€€€€€€€€€Ä°(€€€€€€€€€€€€€€€€È°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹Í…¹e…Ý•É••Ì ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹…ÑÑ…­½½±‘½Ý¹Q¡É•Í¡½± ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹…ÑÑ…­I•…  ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹ÁÉ•™•ÉÉ•‘5…á¥µÕµ¥ÍÑ…¹” ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹Ñ½½±½Í•¥ÍÑ…¹” ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹Õ…É‘¥ÍÑ…¹” ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹¹½Éµ…±I•ÑÉ•…Ñ!•…±Ñ¡É…Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹¡…É‘½É•I•ÑÉ•…Ñ!•…±Ñ¡É…Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹¹½Éµ…±5…á¥µÕµMÑ•Á…¹•È ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹¡…É‘½É•5…á¥µÕµMÑ•Á…¹•È ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹…ÑÑ…­±¥¹µ•¹Ñ•É••Ì ¤°(€€€€€€€€€€€€€€€‘•™…Õ±ÑÌ¹µ½Ù•µ•¹Ñ±¥¹µ•¹Ñ•É••Ì ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ½É•M­¥±±É…µ”Ý¥Ñ¡ÕÉÉ•¹Ñ•±±=¹±ä (€€€€€€€€€€€½É•M­¥±±É…µ”Í½ÕÉ”(€€€€¤ì(€€€€€€€1½…±9…ÙM¹…ÁÍ¡½Ð¹…Ù¥…Ñ¥½¸€ô¹•Ü1½…±9…ÙM¹…ÁÍ¡½Ð (€€€€€€€€€€€€€€€Í½ÕÉ”¹‘¥µ•¹Í¥½¸ ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€€€€€1¥ÍÐ¹½˜ (€€€€€€€€€€€€€€€€€€€€€€€¹•Ü=‰Í•ÉÙ•‘Y½á•° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•ÜÉ¥‘A½Ì À°€À°€À¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Y½á•±-¥¹¹M=1%°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Í½ÕÉ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€¹•Ü=‰Í•ÉÙ•‘Y½á•° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•ÜÉ¥‘A½Ì À°€Ä°€À¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Y½á•±-¥¹¹%H°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Í½ÕÉ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€¹•Ü=‰Í•ÉÙ•‘Y½á•° (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹•ÜÉ¥‘A½Ì À°€È°€À¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Y½á•±-¥¹¹%H°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Í½ÕÉ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸¹•Ü½É•M­¥±±É…µ” (€€€€€€€€€€€€€€€Í½ÕÉ”¹Á±…å•É% ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹‘¥µ•¹Í¥½¸ ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹…µ•Q¥µ” ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹½‰Í•ÉÙ…Ñ¥½¹I•Ù¥Í¥½¸ ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹Á½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹½¹É½Õ¹ ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹¥¹]…Ñ•È ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹‘…¹•È ¤°(€€€€€€€€€€€€€€€¹…Ù¥…Ñ¥½¸°(€€€€€€€€€€€€€€€Í½ÕÉ”¹Ù¥Í¥‰±•	±½­…•Ì ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹¡•…±Ñ  ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹µ…á!•…±Ñ  ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹™½½‘1•Ù•° ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹¥¹Ù•¹Ñ½Éä ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹µ…¥¹!…¹ ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹½™™!…¹ ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤°(€€€€€€€€€€€€€€€Í½ÕÉ”¹‘…¹•ÉM¥¹…±Ì ¤(€€€€€€€€¤ì(€€€ô)ô(

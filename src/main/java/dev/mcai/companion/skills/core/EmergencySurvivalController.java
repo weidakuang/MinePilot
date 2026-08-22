@@ -1,2268 +1,2 @@
-package dev.mcai.companion.skills.core;
-
-import dev.mcai.companion.action.ActionHand;
-import dev.mcai.companion.action.ActionMath;
-import dev.mcai.companion.action.ActionOutcome;
-import dev.mcai.companion.action.ActionVec3;
-import dev.mcai.companion.action.BlockFace;
-import dev.mcai.companion.action.BlockInteractionTarget;
-import dev.mcai.companion.action.LookIntent;
-import dev.mcai.companion.action.MovementIntent;
-import dev.mcai.companion.navigation.GridPos;
-import dev.mcai.companion.navigation.LocalNavSnapshot;
-import dev.mcai.companion.navigation.NavigationEvidence;
-import dev.mcai.companion.navigation.ObservedVoxel;
-import dev.mcai.companion.navigation.VoxelKind;
-import dev.mcai.companion.perception.DangerKind;
-import dev.mcai.companion.perception.DangerSignal;
-import dev.mcai.companion.perception.HeldItemSummary;
-import dev.mcai.companion.perception.InventoryItemSummary;
-import dev.mcai.companion.perception.PerceptionVec3;
-import dev.mcai.companion.perception.PerceptionProvenance;
-import dev.mcai.companion.perception.VisibleBlockFace;
-import dev.mcai.companion.perception.VisibleEntity;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Locale;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.OptionalDouble;
-import java.util.UUID;
-
-/**
- * Small fail-safe state machine that runs after the selected skill and before
- * the one-tick actuator lease is executed. It may override movement only from
- * player-owned state and the last fair semantic observation.
- *
- * <p>The controller never edits inventory, health/food, or the world
- * directly, queries a level, or follows an occluded threat. It may request an
- * atomic vanilla menu swap through {@link EmergencyEquipmentActuator}, then
- * eat, guard, deploy a water bucket or owned vanilla fall-arrest block, swim
- * upward, or retreat into an adjacent fully observed standable cell.</p>
- */
-public final class EmergencySurvivalController {
-    private static final double IMMEDIATE_DANGER = 0.50;
-    private static final double SAFE_VOXEL_DANGER = 0.10;
-    private static final int MAX_EATING_TICKS = 60;
-    private static final int MAX_RETREAT_TICKS = 60;
-    private static final double MAXIMUM_WATER_REACH = 4.75;
-    private static final double MAXIMUM_CLUTCH_COLUMN_OFFSET = 1.45;
-    private static final double WATER_ALIGNMENT_DEGREES = 5.0;
-    private static final double MINIMUM_CLUTCH_DROP = 2.0;
-    private static final double IMMINENT_FALL_SEVERITY = 0.15;
-    private static final double EMERGENCY_MELEE_REACH = 3.25;
-    private static final double HOSTILE_REACQUIRE_OBSERVATION_RADIUS = 12.0;
-    private static final double EMERGENCY_ATTACK_COOLDOWN = 0.85;
-    private static final double EMERGENCY_ATTACK_ALIGNMENT_DEGREES = 7.5;
-    private static final int MAX_WARNING_REACTION_TICKS = 12;
-    /**
-     * A directionless physical hit is not enough evidence to choose a
-     * particular adjacent voxel, but standing still forever is also not a
-     * fair survival policy.  After one complete first-person cardinal scan,
-     * issue a short sneaking backstep using only the current look direction.
-     * Vanilla collision, gravity and support remain authoritative; this is a
-     * bounded separation probe, not a teleport or an unseen-world query.
-     */
-    private static final int DIRECTIONLESS_DAMAGE_SCAN_TICKS = 4;
-    private static final double DIRECTIONLESS_DAMAGE_PROBE_SPEED = 0.45;
-    private static final int MAX_HOSTILE_REACQUIRE_TICKS = 120;
-    private static final int MAX_ATTACK_FOOTWORK_TICKS = 40;
-    private static final double WARNING_SCAN_ALIGNMENT_DEGREES = 20.0;
-    /**
-     * A recent vanilla damage event carries only the attacker's direction,
-     * never its identity or hidden position.  Start the first-person scan at
-     * that direction, then use a small bounded fan so a moving hostile can be
-     * reacquired without turning the reflex lane into an omniscient radar.
-     */
-    private static final float[] DAMAGE_DIRECTION_SCAN_OFFSETS = {
-        0.0F, -35.0F, 35.0F, -70.0F, 70.0F, 180.0F
-    };
-    /**
-     * If vanilla did not expose a source direction (for example a generic
-     * environmental contact), cover the four cardinal sectors relative to
-     * the current first-person heading instead of oscillating in one 80Â°
-     * window forever.
-     */
-    private static final float[] DAMAGE_UNKNOWN_SCAN_OFFSETS = {
-        0.0F, 90.0F, 180.0F, -90.0F
-    };
-    private static final List<String> FALL_CLUTCH_ITEMS = List.of(
-            "minecraft:slime_block",
-            "minecraft:cobweb",
-            "minecraft:hay_block"
-    );
-    private static final List<String> EMERGENCY_MELEE_WEAPONS =
-            List.of(
-                    "minecraft:netherite_sword",
-                    "minecraft:diamond_sword",
-                    "minecraft:iron_sword",
-                    "minecraft:stone_sword",
-                    "minecraft:golden_sword",
-                    "minecraft:wooden_sword",
-                    "minecraft:netherite_axe",
-                    "minecraft:diamond_axe",
-                    "minecraft:iron_axe",
-                    "minecraft:stone_axe",
-                    "minecraft:golden_axe",
-                    "minecraft:wooden_axe"
-            );
-    private static final int[][] CARDINALS = {
-            {-1, 0},
-            {0, -1},
-            {0, 1},
-            {1, 0}
-    };
-
-    private final UUID expectedPlayerId;
-    private final CoreSkillActuator actuator;
-    private final CoreSkillFrameSource frames;
-    private final EmergencyEquipmentActuator equipment;
-    private final EmergencyMeleeActuator melee;
-    private final Runnable preemptTaskControls;
-
-    private State state = State.CLEAR;
-    private long stateStartedTick;
-    private int eatingBaseline;
-    private String eatingItemId;
-    private int eatingItemCount;
-    private ActionHand activeUseHand;
-    private PerceptionVec3 retreatTarget;
-    private long retreatRevision = -1;
-    private long lastVisibleHostileTick = -1;
-    /**
-     * Local attack timestamp used as a conservative vanilla cooldown guard.
-     * The server-side attack-strength sample is authoritative for dispatch,
-     * but retaining this timestamp prevents a clientless packet loop from
-     * issuing another attack before the previous attack has had a chance to
-     * recharge.  This is also what gives a real shield a continuous warm-up
-     * window instead of repeatedly staring at a hostile.
-     */
-    private long lastEmergencyAttackTick = -1;
-    /**
-     * Bounded direction of the last fair close hostile observation. It is not
-     * an entity id or position; it only permits one short separation step
-     * after an Enderman teleports outside the current semantic sample.
-     */
-    private PerceptionVec3 lastEmergencyAway;
-
-    public EmergencySurvivalController(
-            UUID expectedPlayerId,
-            CoreSkillActuator actuator,
-            CoreSkillFrameSource frames
-    ) {
-        this(
-                expectedPlayerId,
-                actuator,
-                frames,
-                EmergencyEquipmentActuator.unavailable(),
-                EmergencyMeleeActuator.unavailable(),
-                () -> {
-                }
-        );
-    }
-
-    public EmergencySurvivalController(
-            UUID expectedPlayerId,
-            CoreSkillActuator actuator,
-            CoreSkillFrameSource frames,
-            EmergencyEquipmentActuator equipment
-    ) {
-        this(
-                expectedPlayerId,
-                actuator,
-                frames,
-                equipment,
-                EmergencyMeleeActuator.unavailable(),
-                () -> {
-                }
-        );
-    }
-
-    public EmergencySurvivalController(
-            UUID expectedPlayerId,
-            CoreSkillActuator actuator,
-            CoreSkillFrameSource frames,
-            EmergencyEquipmentActuator equipment,
-            EmergencyMeleeActuator melee
-    ) {
-        this(
-                expectedPlayerId,
-                actuator,
-                frames,
-                equipment,
-                melee,
-                () -> {
-                }
-        );
-    }
-
-    /**
-     * Creates the production controller with a bounded callback that releases
-     * task-owned mining, item-use and vehicle inputs before a new emergency
-     * state writes its first body action.
-     */
-    public EmergencySurvivalController(
-            UUID expectedPlayerId,
-            CoreSkillActuator actuator,
-            CoreSkillFrameSource frames,
-            EmergencyEquipmentActuator equipment,
-            EmergencyMeleeActuator melee,
-            Runnable preemptTaskControls
-    ) {
-        this.expectedPlayerId = Objects.requireNonNull(
-                expectedPlayerId,
-                "expectedPlayerId"
-        );
-        this.actuator = Objects.requireNonNull(actuator, "actuator");
-        this.frames = Objects.requireNonNull(frames, "frames");
-        this.equipment = Objects.requireNonNull(
-                equipment,
-                "equipment"
-        );
-        this.melee = Objects.requireNonNull(melee, "melee");
-        this.preemptTaskControls = Objects.requireNonNull(
-                preemptTaskControls,
-                "preemptTaskControls"
-        );
-    }
-
-    /**
-     * Executes at most one bounded intervention for the current server tick.
-     */
-    public TickReport tick() {
-        return tick(false);
-    }
-
-    /**
-     * Executes one bounded intervention while respecting an active combat
-     * skill's ownership of ordinary visible-hostile proximity. Physical
-     * contact and projectile threats are never delegated.
-     */
-    public TickReport tick(
-            final boolean visibleHostileProximityManaged
-    ) {
-        return tick(visibleHostileProximityManaged, false);
-    }
-
-    /**
-     * Executes one bounded intervention while allowing an active, locally
-     * supervised melee skill to retain contact control for its target.
-     * Projectile, fire, fall, air, food and health emergencies remain local.
-     */
-    public TickReport tick(
-            final boolean visibleHostileProximityManaged,
-            final boolean physicalContactManaged
-    ) {
-        return tick(
-                visibleHostileProximityManaged,
-                physicalContactManaged,
-                false
-        );
-    }
-
-    /**
-     * Executes one bounded intervention while allowing a specialized active
-     * skill to own visible projectile proximity.  Contact, fire, fall, air,
-     * food, health and any projectile that is not covered by that explicit
-     * declaration remain emergency-owned.
-     */
-    public TickReport tick(
-            final boolean visibleHostileProximityManaged,
-            final boolean physicalContactManaged,
-            final boolean visibleProjectileThreatManaged
-    ) {
-        Optional<CoreSkillFrame> current = frames.current();
-        if (current.isEmpty()
-                || !expectedPlayerId.equals(
-                        current.orElseThrow().playerId()
-                )) {
-            return TickReport.none(state);
-        }
-        CoreSkillFrame frame = current.orElseThrow();
-
-        /*
-         * Retain only the time of a recently visible nearby hostile. This is
-         * not an entity handle or a hidden position; it permits a bounded
-         * first-person sweep after an Enderman/hostile teleports or slips
-         * outside one semantic sample. The twelve-block observation radius
-         * keeps the timestamp fresh while the hostile remains in the fair
-         * view, even though ordinary melee still requires 3.25 blocks.
-         */
-        if (frame.visibleEntities().stream().anyMatch(entity ->
-                (entity.hostile()
-                    || "minecraft:iron_golem".equals(entity.entityTypeId())
-                        && neutralCombatLeaseActive(frame))
-                    && !entity.projectile()
-                    && entity.distance()
-                        <= HOSTILE_REACQUIRE_OBSERVATION_RADIUS
-        )) {
-            lastVisibleHostileTick = frame.gameTime();
-        }
-
-        if (danger(frame, DangerKind.LOW_AIR).isPresent()
-                && frame.inWater()) {
-            return surface(frame);
-        }
-        if (danger(frame, DangerKind.FALLING).isPresent()) {
-            return respondToFall(frame);
-        }
-
-        Optional<DangerSignal> threat = mostSevereThreat(
-                frame,
-                visibleHostileProximityManaged,
-                physicalContactManaged,
-                visibleProjectileThreatManaged
-        );
-        boolean burning = danger(frame, DangerKind.ON_FIRE).isPresent();
-        final double healthRatio = frame.health() / frame.maxHealth();
-        final boolean criticalHealth = healthRatio <= 0.40;
-        final boolean physicalContact =
-                danger(frame, DangerKind.THREAT_CONTACT).isPresent();
-        final boolean localAttackCooldown = lastEmergencyAttackTick >= 0L
-                && frame.gameTime() - lastEmergencyAttackTick
-                    < emergencyAttackIntervalTicks(frame);
-        if (!burning
-                && localAttackCooldown
-                && !visibleHostileProximityManaged
-                && !physicalContactManaged) {
-            final Optional<ActionHand> cooldownShield = shieldHand(frame);
-            if (cooldownShield.isPresent()) {
-                /*
-                 * Keep the shield up even when an Enderman teleports out of
-                 * the current entity sample immediately after a legal hit.
-                 * The bounded local attack timestamp and last fair direction
-                 * are the only memory used here; neither carries entity
-                 * identity or a hidden position.
-                 */
-                final TickReport guarded = guard(
-                        frame,
-                        cooldownShield.orElseThrow(),
-                        threatDirection(frame, threat),
-                        shouldScanForHostile(
-                                frame,
-                                visibleHostileProximityManaged
-                        ),
-                        true
-                );
-                nearestEmergencyMeleeTarget(frame).ifPresentOrElse(
-                        target -> emergencyFootwork(frame, target),
-                        () -> {
-                            if (lastEmergencyAway != null) {
-                                emergencyFootwork(frame, lastEmergencyAway);
-                            }
-                        }
-                );
-                return guarded;
-            }
-        }
-        /*
-         * A golden apple is an emergency health item, not ordinary hunger
-         * food. At critical health a merely nearby hostile must not starve
-         * this action forever: eat once physical contact has been broken.
-         * Fire, falling, drowning and actual contact still take precedence.
-         */
-        if (criticalHealth && !burning && !physicalContact) {
-            final Optional<ActionHand> heldGolden =
-                    emergencyGoldenAppleHand(frame);
-            if (state == State.EATING && heldGolden.isPresent()) {
-                return continueEating(frame);
-            }
-            if (heldGolden.isPresent()) {
-                return startEating(
-                        frame,
-                        heldGolden.orElseThrow()
-                );
-            }
-            final Optional<String> ownedGolden =
-                    preferredOwnedEmergencyGoldenApple(frame);
-            if (ownedGolden.isPresent()) {
-                return equipEmergencyItem(
-                        frame,
-                        ActionHand.MAIN_HAND,
-                        ownedGolden.orElseThrow(),
-                        State.EQUIPPING_FOOD,
-                        "equipping_critical_golden_apple"
-                );
-            }
-        }
-        if (burning
-                || threat.isPresent()
-                || shouldScanForHostile(
-                    frame,
-                    visibleHostileProximityManaged
-                )) {
-            return avoidDanger(
-                    frame,
-                    threat,
-                    burning,
-                    visibleHostileProximityManaged
-            );
-        }
-
-        if (state == State.EATING) {
-            return continueEating(frame);
-        }
-        final boolean nutritionNeeded = frame.foodLevel() <= 8
-                || healthRatio <= 0.60 && frame.foodLevel() < 20;
-        final Optional<ActionHand> food = foodHand(frame);
-        final boolean heldCriticalFood = food
-                .map(hand -> isAlwaysEdibleEmergency(
-                        held(frame, hand).itemId()
-                ))
-                .orElse(false);
-        final boolean inventoryCriticalFood = frame.inventory().stream()
-                .anyMatch(item ->
-                        isAlwaysEdibleEmergency(item.itemId())
-                );
-        if (nutritionNeeded
-                || criticalHealth
-                && (heldCriticalFood || inventoryCriticalFood)) {
-            if (food.isPresent()
-                    && (frame.foodLevel() < 20
-                    || heldCriticalFood)) {
-                return startEating(frame, food.orElseThrow());
-            }
-            final Optional<String> selected =
-                    VanillaFoodItems.preferredAvailable(
-                            frame.inventory(),
-                            criticalHealth
-                    );
-            if (selected.isPresent()
-                    && (frame.foodLevel() < 20
-                    || isAlwaysEdibleEmergency(
-                            selected.orElseThrow()
-                    ))) {
-                return equipEmergencyItem(
-                        frame,
-                        ActionHand.MAIN_HAND,
-                        selected.orElseThrow(),
-                        State.EQUIPPING_FOOD,
-                        "equipping_food"
-                );
-            }
-        }
-
-        clearActiveUse();
-        state = State.CLEAR;
-        retreatTarget = null;
-        retreatRevision = -1;
-        if (lastVisibleHostileTick >= 0L
-                && frame.gameTime() - lastVisibleHostileTick
-                    > MAX_HOSTILE_REACQUIRE_TICKS) {
-            lastVisibleHostileTick = -1;
-        }
-        if (!recentAttackFootwork(frame.gameTime())) {
-            lastEmergencyAway = null;
-        }
-        return TickReport.none(state);
-    }
-
-    /**
-     * Releases any locally held use action after a body-session transition.
-     */
-    public void reset() {
-        clearActiveUse();
-        clearEatingSnapshot();
-        actuator.stop();
-        state = State.CLEAR;
-        retreatTarget = null;
-        retreatRevision = -1;
-        lastVisibleHostileTick = -1;
-        lastEmergencyAttackTick = -1;
-        lastEmergencyAway = null;
-    }
-
-    public State state() {
-        return state;
-    }
-
-    /**
-     * Hands the body back from an atomic skill to the next skill without
-     * carrying the previous skill's hostile reacquisition lease into an
-     * unrelated action.  The timestamp is only a bounded first-person cue;
-     * clearing it at a verified skill boundary cannot hide a fresh threat:
-     * the next frame refreshes a visible hostile, recent damage, physical
-     * contact, fire, fall, air, and food signals before any skill is allowed
-     * to write movement.  Without this handoff a completed melee skill could
-     * leave the emergency lane in GUARDING for 120 ticks and legitimately
-     * stop a later travel/portal skill even though the arena was empty.
-     */
-    public void onActiveSkillEnded() {
-        lastVisibleHostileTick = -1L;
-    }
-
-    private TickReport surface(CoreSkillFrame frame) {
-        transition(State.SURFACING, frame.gameTime());
-        /* A low-air reflex can run concurrently with a fair atomic farming
-         * step.  Jumping out of a one-block irrigation cell is the vanilla
-         * action that tramples farmland, and the headless player cannot use
-         * the same jump input to rise while it is actually swimming.  Keep
-         * this lane to ordinary look/forward input; a dedicated water-clutch
-         * skill owns verified escape placement when a jump is truly needed. */
-        if (!actuator.look(new LookIntent(
-                CoreSkillGeometry.holdLook(frame.lookDirection()).yawDegrees(),
-                -75.0F
-        )).accepted()
-                || !actuator.move(new MovementIntent(
-                0.35,
-                0.0,
-                false,
-                false
-        )).accepted()) {
-            return stopFailure("low_air_action_rejected");
-        }
-        return TickReport.intervened(state, "low_air");
-    }
-
-    private TickReport braceForFall(CoreSkillFrame frame) {
-        transition(State.BRACING_FALL, frame.gameTime());
-        ActionOutcome outcome = actuator.move(
-                new MovementIntent(0.0, 0.0, false, true)
-        );
-        return outcome.accepted()
-                ? TickReport.intervened(state, "falling")
-                : stopFailure("fall_action_rejected");
-    }
-
-    private TickReport respondToFall(final CoreSkillFrame frame) {
-        final Optional<VisibleBlockFace> reachableFallSurface =
-                fallClutchSurface(frame);
-        final boolean imminent = danger(frame, DangerKind.FALLING)
-                .map(DangerSignal::severity)
-                .orElse(0.0) >= IMMINENT_FALL_SEVERITY;
-        if (waterAllowed(frame)) {
-            if ("minecraft:water_bucket".equals(
-                    frame.mainHand().itemId()
-            )) {
-                if (reachableFallSurface.isPresent()) {
-                    return deployWater(
-                            frame,
-                            "fall",
-                            reachableFallSurface
-                    );
-                }
-                if (imminent) {
-                    return deployWater(frame, "fall");
-                }
-                return TickReport.none(state);
-            }
-            if (inventoryContains(frame, "minecraft:water_bucket")) {
-                if (reachableFallSurface.isPresent() || imminent) {
-                    return equipEmergencyItem(
-                            frame,
-                            ActionHand.MAIN_HAND,
-                            "minecraft:water_bucket",
-                            State.EQUIPPING_WATER,
-                            "equipping_water_for_fall"
-                    );
-                }
-                return TickReport.none(state);
-            }
-        }
-        final Optional<String> heldClutch =
-                preferredHeldFallClutch(frame);
-        if (heldClutch.isPresent()) {
-            if (reachableFallSurface.isPresent() || imminent) {
-                return deployFallClutch(
-                        frame,
-                        heldClutch.orElseThrow()
-                );
-            }
-            return TickReport.none(state);
-        }
-        final Optional<String> ownedClutch =
-                preferredOwnedFallClutch(frame);
-        if (ownedClutch.isPresent()) {
-            if (reachableFallSurface.isPresent() || imminent) {
-                return equipEmergencyItem(
-                        frame,
-                        ActionHand.MAIN_HAND,
-                        ownedClutch.orElseThrow(),
-                        State.EQUIPPING_FALL_CLUTCH,
-                        "equipping_fall_clutch"
-                );
-            }
-            return TickReport.none(state);
-        }
-        return imminent
-                ? braceForFall(frame)
-                : TickReport.none(state);
-    }
-
-    private TickReport avoidDanger(
-            CoreSkillFrame frame,
-            Optional<DangerSignal> threat,
-            boolean burning,
-            boolean visibleHostileProximityManaged
-    ) {
-        /*
-         * Do not release an already raised shield merely because the same
-         * danger is still present. Vanilla needs several continuous use
-         * ticks before a shield can block; releasing and reissuing use every
-         * tick looks like guarding in telemetry but never becomes an actual
-         * block. transition(...) and every equipment/item branch below
-         * already release the old use action when ownership really changes.
-         */
-        Optional<PerceptionVec3> away = threatDirection(frame, threat);
-        final Optional<VisibleEntity> contactTarget =
-                nearestEmergencyMeleeTarget(frame);
-        final boolean localAttackCooldown = lastEmergencyAttackTick >= 0L
-                && frame.gameTime() - lastEmergencyAttackTick
-                    < emergencyAttackIntervalTicks(frame);
-        /*
-         * Keep the shield lease even if the target's next movement puts it
-         * just outside the 3.25-block attack radius. A real player does not
-         * drop a shield during that short recharge window merely because a
-         * jumping mob crossed one voxel; the recent fair hostile observation
-         * still authorizes this bounded defensive action.
-         */
-        if (!burning && localAttackCooldown) {
-            final Optional<ActionHand> cooldownShield = shieldHand(frame);
-            if (cooldownShield.isPresent()) {
-                final TickReport guarded = guard(
-                        frame,
-                        cooldownShield.orElseThrow(),
-                        away,
-                        shouldScanForHostile(
-                                frame,
-                                visibleHostileProximityManaged
-                        ),
-                        true
-                );
-                /*
-                 * Guarding and short combat footwork are simultaneous vanilla
-                 * inputs.  guard() deliberately stops stale movement for
-                 * ordinary hazards, but stopping here made a shielded body
-                 * stand on the attacker's cell during every recharge window.
-                 * Re-issue one bounded, first-person-certified backstep after
-                 * the shield lease so the normal player input path advances
-                 * with vanilla's shield slowdown instead of freezing.
-                 */
-                contactTarget.ifPresent(target ->
-                        emergencyFootwork(frame, target)
-                );
-                return guarded;
-            }
-            if (contactTarget.isPresent()) {
-                emergencyFootwork(frame, contactTarget.orElseThrow());
-                return TickReport.intervened(
-                        state,
-                        "counterattack_local_cooldown"
-                );
-            }
-        }
-        if (!burning && contactTarget.isPresent()) {
-            /*
-             * A shield is a cooldown bridge, not a terminal combat policy.
-             * The previous ordering always selected guard before melee, so a
-             * companion holding a shield could stare at one Enderman or
-             * Zombie until it died. Equip an already-owned ordinary weapon,
-             * then spend each ready vanilla attack.  During the vanilla
-             * attack recharge window, keep an already-held shield up when
-             * possible; that is the ordinary player response to a hostile
-             * closing distance and prevents a stationary damage trade.
-             */
-            final Optional<String> weapon =
-                    preferredEmergencyMeleeWeapon(frame);
-            if (weapon.isPresent()) {
-                return equipEmergencyItem(
-                        frame,
-                        ActionHand.MAIN_HAND,
-                        weapon.orElseThrow(),
-                        State.EQUIPPING_WEAPON,
-                        "equipping_emergency_weapon"
-                );
-            }
-            final OptionalDouble attackScale = melee.attackStrengthScale();
-            if (attackScale.isPresent()
-                    && attackScale.orElseThrow()
-                        < EMERGENCY_ATTACK_COOLDOWN) {
-                final Optional<ActionHand> cooldownShield = shieldHand(frame);
-                if (cooldownShield.isPresent()) {
-                    return guard(
-                            frame,
-                            cooldownShield.orElseThrow(),
-                            away,
-                            shouldScanForHostile(
-                                    frame,
-                                    visibleHostileProximityManaged
-                            )
-                    );
-                }
-            }
-            if (attackScale.isPresent()
-                    && attackScale.orElseThrow()
-                        >= EMERGENCY_ATTACK_COOLDOWN) {
-                return counterattack(
-                        frame,
-                        contactTarget.orElseThrow()
-                );
-            }
-        }
-        /*
-         * Retreat is an immediate separation maneuver, not an unbounded
-         * navigation policy. Once its short window is exhausted, hold or
-         * guard until the threat clears (or an authorized combat skill takes
-         * control). A fresh, directional vanilla damage cue is the narrow
-         * exception: it may reopen one observed-cell escape so a body that
-         * was already guarding does not stand in the attacker's reach.
-         * Recomputing an adjacent cell on every fresh navigation revision
-         * previously made a slow model response send the companion dozens of
-         * blocks away from the task.
-         */
-        final boolean retreatWindowExhausted =
-                state == State.RETREATING
-                    && frame.gameTime() - stateStartedTick
-                        >= MAX_RETREAT_TICKS
-                || (state == State.GUARDING
-                    || state == State.HOLDING)
-                    && !directionalRecentDamage(frame);
-        Optional<PerceptionVec3> safeTarget =
-                retreatWindowExhausted
-                    ? Optional.empty()
-                    : safeRetreatTarget(
-                            frame,
-                            away,
-                            burning,
-                            directionlessRecentDamage(frame)
-                    );
-        if (safeTarget.isPresent()) {
-            if (state != State.RETREATING
-                    || retreatRevision != frame.navigation().revision()
-                    || frame.gameTime() - stateStartedTick
-                    >= MAX_RETREAT_TICKS) {
-                transition(State.RETREATING, frame.gameTime());
-                retreatTarget = safeTarget.orElseThrow();
-                retreatRevision = frame.navigation().revision();
-            }
-            return retreat(frame);
-        }
-
-        if (burning && waterAllowed(frame)) {
-            if ("minecraft:water_bucket".equals(
-                    frame.mainHand().itemId()
-            )) {
-                return deployWater(frame, "fire");
-            }
-            if (inventoryContains(frame, "minecraft:water_bucket")) {
-                return equipEmergencyItem(
-                        frame,
-                        ActionHand.MAIN_HAND,
-                        "minecraft:water_bucket",
-                        State.EQUIPPING_WATER,
-                        "equipping_water_for_fire"
-                );
-            }
-        }
-
-        Optional<ActionHand> shield = shieldHand(frame);
-        if (shield.isPresent()) {
-            final boolean preserveCombatFootwork =
-                    recentAttackFootwork(frame.gameTime())
-                        || directionalRecentDamage(frame)
-                            && away.isPresent()
-                        || directionlessRecentDamage(frame);
-            final TickReport guarded = guard(
-                frame,
-                shield.orElseThrow(),
-                    away,
-                    shouldScanForHostile(
-                            frame,
-                            visibleHostileProximityManaged
-                    ),
-                    preserveCombatFootwork
-            );
-            if (preserveCombatFootwork && lastEmergencyAway != null) {
-                emergencyFootwork(frame, lastEmergencyAway);
-            } else if (preserveCombatFootwork) {
-                if (away.isPresent()) {
-                    emergencyFootwork(frame, away.orElseThrow());
-                } else {
-                    /*
-                     * Some vanilla magic damage sources intentionally carry
-                     * no source position. A shield-only response can then
-                     * leave the body on the same cell while repeated breath
-                     * damage lands. Use one bounded side-step in the current
-                     * first-person frame. This is a normal player input, not
-                     * a guessed target position; collision, gravity, and
-                     * loaded-world rules remain authoritative.
-                     */
-                    directionlessDamageFootwork(frame);
-                }
-            }
-            return guarded;
-        }
-        if (inventoryContains(frame, "minecraft:shield")) {
-            return equipEmergencyItem(
-                    frame,
-                    ActionHand.OFF_HAND,
-                    "minecraft:shield",
-                    State.EQUIPPING_SHIELD,
-                    "equipping_shield"
-            );
-        }
-
-        if (!burning && contactTarget.isPresent()) {
-            return counterattack(
-                    frame,
-                    contactTarget.orElseThrow()
-            );
-        }
-        if (!burning && shouldScanForHostile(
-                frame,
-                visibleHostileProximityManaged
-        )) {
-            return scanRecentDamage(frame);
-        }
-        if (!burning
-                && state != State.HOLDING
-                && authorizedDirectionalWarning(threat)) {
-            return reactToDirectionalWarning(
-                    frame,
-                    away.orElseThrow()
-            );
-        }
-
-        transition(State.HOLDING, frame.gameTime());
-        actuator.stop();
-        away.flatMap(vector -> lookTowardThreat(frame, vector))
-                .ifPresent(actuator::look);
-        return TickReport.intervened(
-                state,
-                burning ? "on_fire_no_safe_cell" : "threat_not_visible"
-        );
-    }
-
-    /**
-     * Treats a trusted teammate's broad "behind/left/right" warning like the
-     * directional awareness a player receives over voice chat: turn to
-     * verify it and take a short sneak-protected separation step. The cue
-     * still supplies no entity identity or exact coordinates, and the
-     * maneuver expires after twelve ticks instead of becoming navigation.
-     */
-    private TickReport reactToDirectionalWarning(
-            final CoreSkillFrame frame,
-            final PerceptionVec3 away
-    ) {
-        transition(State.WARNING_REACTING, frame.gameTime());
-        if (frame.gameTime() - stateStartedTick
-                >= MAX_WARNING_REACTION_TICKS) {
-            transition(State.HOLDING, frame.gameTime());
-            actuator.stop();
-            return TickReport.intervened(
-                    state,
-                    "warning_scan_exhausted"
-            );
-        }
-        final PerceptionVec3 toward = away.scale(-1.0);
-        final LookIntent look = CoreSkillGeometry.lookAt(
-                frame.eyePosition(),
-                frame.eyePosition().add(toward)
-        );
-        if (!actuator.look(look).accepted()) {
-            return stopFailure("warning_scan_look_rejected");
-        }
-        if (CoreSkillGeometry.angularErrorDegrees(
-                frame.lookDirection(),
-                toward
-        ) > WARNING_SCAN_ALIGNMENT_DEGREES) {
-            actuator.stop();
-            return TickReport.intervened(
-                    state,
-                    "warning_scanning"
-            );
-        }
-        if (!frame.onGround()) {
-            actuator.stop();
-            return TickReport.intervened(
-                    state,
-                    "warning_scan_airborne"
-            );
-        }
-        final MovementIntent relative = relativeMovement(
-                frame.lookDirection(),
-                away
-        );
-        final double side = ((frame.gameTime() / 6L) & 1L) == 0L
-                ? 0.20
-                : -0.20;
-        final ActionOutcome movement = actuator.move(
-                new MovementIntent(
-                        relative.forward(),
-                        Math.max(
-                                -1.0,
-                                Math.min(
-                                        1.0,
-                                        relative.strafeLeft() + side
-                                )
-                        ),
-                        false,
-                        true
-                )
-        );
-        return movement.accepted()
-                ? TickReport.intervened(
-                        state,
-                        "warning_separating"
-                )
-                : stopFailure("warning_scan_move_rejected");
-    }
-
-    private static boolean authorizedDirectionalWarning(
-            final Optional<DangerSignal> threat
-    ) {
-        return threat
-                .filter(signal -> signal.provenance()
-                        == PerceptionProvenance
-                            .AUTHORIZED_PLAYER_WARNING)
-                .flatMap(DangerSignal::contactDirection)
-                .isPresent();
-    }
-
-    private TickReport counterattack(
-            final CoreSkillFrame frame,
-            final VisibleEntity target
-    ) {
-        transition(State.COUNTERATTACKING, frame.gameTime());
-        if (!actuator.stop().accepted()) {
-            return stopFailure("counterattack_stop_rejected");
-        }
-
-        final PerceptionVec3 aim = interactionAim(target);
-        final PerceptionVec3 targetDirection =
-                aim.subtract(frame.eyePosition());
-        final LookIntent look = CoreSkillGeometry.lookAt(
-                frame.eyePosition(),
-                aim
-        );
-        if (!actuator.look(look).accepted()) {
-            return stopFailure("counterattack_look_rejected");
-        }
-        if (CoreSkillGeometry.angularErrorDegrees(
-                frame.lookDirection(),
-                targetDirection
-        ) > EMERGENCY_ATTACK_ALIGNMENT_DEGREES) {
-            return TickReport.intervened(
-                    state,
-                    "counterattack_aiming"
-            );
-        }
-
-        final OptionalDouble cooldown = melee.attackStrengthScale();
-        if (cooldown.isEmpty()) {
-            return TickReport.intervened(
-                    state,
-                    "counterattack_cooldown_unavailable"
-            );
-        }
-        if (cooldown.orElseThrow() < EMERGENCY_ATTACK_COOLDOWN) {
-            emergencyFootwork(frame, target);
-            return TickReport.intervened(
-                    state,
-                    "counterattack_cooling_down"
-            );
-        }
-
-        final ActionOutcome outcome = melee.attack(target.entityId());
-        if (outcome.accepted()) {
-            final PerceptionVec3 away = frame.position()
-                    .subtract(target.position());
-            lastEmergencyAway = away.lengthSquared() <= 1.0E-12
-                    ? null
-                    : away.normalized();
-            lastEmergencyAttackTick = frame.gameTime();
-            emergencyFootwork(frame, target);
-        }
-        return outcome.accepted()
-                ? TickReport.intervened(state, "counterattack_dispatched")
-                : TickReport.intervened(
-                        state,
-                        "counterattack_rejected_"
-                                + outcome.name().toLowerCase(Locale.ROOT)
-                );
-    }
-
-    /**
-     * Keeps an unshielded emergency response from becoming a stationary
-     * damage trade. Movement is allowed only into an adjacent cell whose
-     * support and two-block clearance were freshly established by the
-     * companion's own first-person rays.
-     */
-    private void emergencyFootwork(
-            final CoreSkillFrame frame,
-            final VisibleEntity target
-    ) {
-        final PerceptionVec3 away = frame.position()
-                .subtract(target.position());
-        emergencyFootwork(frame, away);
-    }
-
-    private void emergencyFootwork(
-            final CoreSkillFrame frame,
-            final PerceptionVec3 away
-    ) {
-        final Optional<PerceptionVec3> safe = safeRetreatTarget(
-                frame,
-                away.lengthSquared() <= 1.0E-12
-                        ? Optional.empty()
-                        : Optional.of(away.normalized()),
-                false
-        );
-        if (safe.isEmpty()) {
-            /*
-             * A close body can occlude the floor rays needed to certify an
-             * adjacent cell. Fall back to a bounded vanilla backstep when
-             * the body is grounded or is not in a fall hazard. Collision,
-             * gravity and the server's own movement rules remain
-             * authoritative; the controller never assigns a position.
-             */
-            if (away.lengthSquared() > 1.0E-12
-                    && (frame.onGround()
-                    || danger(frame, DangerKind.FALLING).isEmpty())) {
-                final MovementIntent cautious =
-                        relativeMovement(
-                                frame.lookDirection(),
-                                away
-                        );
-                final double side = ((frame.gameTime() / 12L) & 1L)
-                        == 0L ? 0.30 : -0.30;
-                actuator.move(new MovementIntent(
-                        cautious.forward() * 0.75,
-                        Math.max(
-                                -1.0,
-                                Math.min(
-                                        1.0,
-                                        cautious.strafeLeft() * 0.75
-                                                + side
-                                )
-                        ),
-                        false,
-                        true
-                ));
-            }
-            return;
-        }
-        final PerceptionVec3 desired = safe.orElseThrow()
-                .subtract(frame.position());
-        final MovementIntent movement = relativeMovement(
-                frame.lookDirection(),
-                desired
-        );
-        if (Math.abs(movement.forward()) <= 1.0E-6
-                && Math.abs(movement.strafeLeft()) <= 1.0E-6) {
-            return;
-        }
-        actuator.move(movement);
-    }
-
-    /**
-     * Separates from a recent damage cue when vanilla did not expose a fair
-     * source direction (for example an indirect magic effect). The alternating
-     * strafe is deliberately short and sneak-protected; it is only called
-     * during the bounded recent-damage window and never creates an entity
-     * target or an exact world route.
-     */
-    private void directionlessDamageFootwork(
-            final CoreSkillFrame frame
-    ) {
-        if (frame.inWater()
-                || danger(frame, DangerKind.FALLING).isPresent()) {
-            return;
-        }
-        final double side = ((frame.gameTime() / 6L) & 1L) == 0L
-                ? 0.70
-                : -0.70;
-        actuator.move(new MovementIntent(
-                0.0,
-                side,
-                false,
-                true
-        ));
-    }
-
-    private Optional<VisibleEntity> nearestEmergencyMeleeTarget(
-            final CoreSkillFrame frame
-    ) {
-        return frame.visibleEntities().stream()
-                .filter(entity -> emergencyMeleeTarget(frame, entity))
-                .filter(entity -> !entity.projectile())
-                .filter(entity -> entity.distance()
-                        <= EMERGENCY_MELEE_REACH)
-                .min(Comparator
-                        .comparingDouble(VisibleEntity::distance)
-                        .thenComparing(entity ->
-                        entity.entityId().toString()
-                ));
-    }
-
-    /**
-     * A neutral iron golem is not an ambient hostile. It becomes an
-     * emergency self-defence target only after the body has received a
-     * recent vanilla damage/contact cue and the golem is currently visible
-     * inside ordinary melee reach. This keeps villages safe by default,
-     * while avoiding the old failure mode where a golem could hit the body
-     * and the companion would only raise a shield and stare. Player targets
-     * remain explicit {@code engage_observed_entity} decisions rather than an
-     * automatic retaliation policy.
-     */
-    private boolean emergencyMeleeTarget(
-            final CoreSkillFrame frame,
-            final VisibleEntity entity
-    ) {
-        if (entity.hostile()) {
-            return true;
-        }
-        if (!"minecraft:iron_golem".equals(entity.entityTypeId())) {
-            return false;
-        }
-        return neutralCombatLeaseActive(frame);
-    }
-
-    private boolean neutralCombatLeaseActive(
-            final CoreSkillFrame frame
-    ) {
-        final boolean damageCue = frame.dangerSignals().stream().anyMatch(
-                signal -> signal.kind() == DangerKind.THREAT_CONTACT
-                        && (signal.provenance()
-                                == PerceptionProvenance.RECENT_DAMAGE_EVENT
-                            || signal.provenance()
-                                == PerceptionProvenance.PHYSICAL_CONTACT)
-        );
-        if (damageCue) {
-            return true;
-        }
-        return lastVisibleHostileTick >= 0L
-                && frame.gameTime() - lastVisibleHostileTick
-                    <= MAX_HOSTILE_REACQUIRE_TICKS;
-    }
-
-    private static PerceptionVec3 interactionAim(
-            final VisibleEntity target
-    ) {
-        final var properties = target.visibleProperties();
-        try {
-            final double x = Double.parseDouble(
-                    properties.getOrDefault("interactionAimX", "NaN")
-            );
-            final double y = Double.parseDouble(
-                    properties.getOrDefault("interactionAimY", "NaN")
-            );
-            final double z = Double.parseDouble(
-                    properties.getOrDefault("interactionAimZ", "NaN")
-            );
-            if (Double.isFinite(x)
-                    && Double.isFinite(y)
-                    && Double.isFinite(z)) {
-                return new PerceptionVec3(x, y, z);
-            }
-        } catch (NumberFormatException ignored) {
-            // Use only the already-visible public entity position below.
-        }
-        return new PerceptionVec3(
-                target.position().x(),
-                target.position().y() + 1.0,
-                target.position().z()
-        );
-    }
-
-    private TickReport equipEmergencyItem(
-            final CoreSkillFrame frame,
-            final ActionHand hand,
-            final String itemId,
-            final State preparingState,
-            final String reason
-    ) {
-        clearActiveUse();
-        transition(preparingState, frame.gameTime());
-        actuator.stop();
-        final ActionOutcome outcome = equipment.equip(hand, itemId);
-        if (!outcome.accepted()) {
-            return stopFailure(reason + "_rejected");
-        }
-        return TickReport.intervened(state, reason);
-    }
-
-    private TickReport deployWater(
-            final CoreSkillFrame frame,
-            final String purpose
-    ) {
-        return deployWater(frame, purpose, waterSurface(frame));
-    }
-
-    private TickReport deployWater(
-            final CoreSkillFrame frame,
-            final String purpose,
-            final Optional<VisibleBlockFace> selectedSurface
-    ) {
-        transition(State.PREPARING_WATER, frame.gameTime());
-        actuator.stop();
-        final Optional<VisibleBlockFace> surface = Objects.requireNonNull(
-                selectedSurface,
-                "selectedSurface"
-        );
-        if (surface.isEmpty()) {
-            final LookIntent downward = new LookIntent(
-                    CoreSkillGeometry.holdLook(
-                            frame.lookDirection()
-                    ).yawDegrees(),
-                    85.0F
-            );
-            if (!actuator.look(downward).accepted()) {
-                return stopFailure(
-                        purpose + "_water_scan_rejected"
-                );
-            }
-            actuator.move(new MovementIntent(
-                    0.0,
-                    0.0,
-                    false,
-                    true
-            ));
-            return TickReport.intervened(
-                    state,
-                    purpose + "_water_scanning"
-            );
-        }
-        final VisibleBlockFace face = surface.orElseThrow();
-        final LookIntent targetLook = CoreSkillGeometry.lookAt(
-                frame.eyePosition(),
-                face.hitPosition()
-        );
-        final double lookError = angularError(
-                frame.lookDirection(),
-                face.hitPosition().subtract(frame.eyePosition())
-        );
-        if (!actuator.look(targetLook).accepted()) {
-            return stopFailure(
-                    purpose + "_water_look_rejected"
-            );
-        }
-        if (lookError > WATER_ALIGNMENT_DEGREES) {
-            return TickReport.intervened(
-                    state,
-                    purpose + "_water_aligning"
-            );
-        }
-        /*
-         * Vanilla BucketItem implements Item#use and performs its own
-         * first-person block ray trace.  A ServerboundUseItemOnPacket only
-         * invokes the block/item use-on path and therefore leaves a water
-         * bucket unchanged even when its crosshair target is valid.  Send the
-         * same ordinary use-item action as a real client after alignment.
-         */
-        final ActionOutcome use =
-                actuator.useItem(ActionHand.MAIN_HAND);
-        if (!use.accepted()) {
-            return stopFailure(
-                    purpose + "_water_use_rejected"
-            );
-        }
-        transition(State.DEPLOYING_WATER, frame.gameTime());
-        return TickReport.intervened(
-                state,
-                purpose + "_water_deployed"
-        );
-    }
-
-    /**
-     * Places an owned vanilla fall-arrest item onto a currently visible,
-     * reachable landing surface. Unlike water this remains legal in the
-     * Nether. The controller only issues an ordinary use-on-block action; the
-     * game decides whether the item can be placed and applies normal
-     * consumption, collision, bounce, slowdown, and fall damage.
-     */
-    private TickReport deployFallClutch(
-            final CoreSkillFrame frame,
-            final String itemId
-    ) {
-        transition(State.PREPARING_FALL_CLUTCH, frame.gameTime());
-        actuator.stop();
-        final Optional<VisibleBlockFace> surface =
-                waterSurface(frame);
-        if (surface.isEmpty()) {
-            final LookIntent downward = new LookIntent(
-                    CoreSkillGeometry.holdLook(
-                            frame.lookDirection()
-                    ).yawDegrees(),
-                    85.0F
-            );
-            if (!actuator.look(downward).accepted()) {
-                return stopFailure(
-                        "fall_clutch_scan_rejected"
-                );
-            }
-            actuator.move(MovementIntent.STOPPED);
-            return TickReport.intervened(
-                    state,
-                    "fall_clutch_scanning"
-            );
-        }
-        final VisibleBlockFace face = surface.orElseThrow();
-        final LookIntent targetLook = CoreSkillGeometry.lookAt(
-                frame.eyePosition(),
-                face.hitPosition()
-        );
-        if (!actuator.look(targetLook).accepted()) {
-            return stopFailure("fall_clutch_look_rejected");
-        }
-        if (angularError(
-                frame.lookDirection(),
-                face.hitPosition().subtract(frame.eyePosition())
-        ) > WATER_ALIGNMENT_DEGREES) {
-            return TickReport.intervened(
-                    state,
-                    "fall_clutch_aligning"
-            );
-        }
-        final Optional<BlockInteractionTarget> target =
-                blockTarget(face);
-        if (target.isEmpty()) {
-            return stopFailure("fall_clutch_surface_invalid");
-        }
-        final ActionOutcome use = actuator.useMainHandOn(
-                target.orElseThrow()
-        );
-        if (!use.accepted()) {
-            return stopFailure("fall_clutch_use_rejected");
-        }
-        transition(State.DEPLOYING_FALL_CLUTCH, frame.gameTime());
-        return TickReport.intervened(
-                state,
-                "fall_clutch_deployed_" + itemId.substring(
-                        itemId.indexOf(':') + 1
-                )
-        );
-    }
-
-    private TickReport retreat(CoreSkillFrame frame) {
-        if (retreatTarget == null) {
-            actuator.stop();
-            return TickReport.intervened(state, "retreat_target_unavailable");
-        }
-        PerceptionVec3 delta = retreatTarget.subtract(frame.eyePosition());
-        if (Math.hypot(delta.x(), delta.z()) <= 0.20) {
-            actuator.stop();
-            retreatTarget = null;
-            return TickReport.intervened(state, "retreat_cell_reached");
-        }
-        LookIntent look = CoreSkillGeometry.lookAt(
-                frame.eyePosition(),
-                retreatTarget
-        );
-        if (!actuator.look(look).accepted()) {
-            return stopFailure("retreat_look_rejected");
-        }
-        double error = CoreSkillGeometry.horizontalAngularErrorDegrees(
-                frame.lookDirection(),
-                delta
-        );
-        if (error > 15.0) {
-            actuator.stop();
-            return TickReport.intervened(state, "retreat_aligning");
-        }
-        if (!actuator.move(new MovementIntent(
-                1.0,
-                0.0,
-                true,
-                false
-        )).accepted()) {
-            return stopFailure("retreat_move_rejected");
-        }
-        return TickReport.intervened(state, "retreating");
-    }
-
-    private TickReport guard(
-            CoreSkillFrame frame,
-            ActionHand shield,
-            Optional<PerceptionVec3> away,
-            boolean scanRecentDamage
-    ) {
-        return guard(frame, shield, away, scanRecentDamage, false);
-    }
-
-    private TickReport guard(
-            CoreSkillFrame frame,
-            ActionHand shield,
-            Optional<PerceptionVec3> away,
-            boolean scanRecentDamage,
-            boolean preserveMovement
-    ) {
-        boolean entering = state != State.GUARDING
-                || activeUseHand != shield;
-        transition(State.GUARDING, frame.gameTime());
-        if (!preserveMovement) {
-            actuator.stop();
-        }
-        if (scanRecentDamage && away.isPresent()) {
-            /*
-             * A recent vanilla damage event carries a bounded direction from
-             * the companion to the hit source.  Face that direction first so
-             * the shield can actually intercept the next melee hit; a blind
-             * fixed yaw sweep can leave the body side-on to an Enderman that
-             * just teleported.  Keep the sweep only as the honest fallback
-             * when the event did not provide a direction.
-             */
-            lookTowardThreat(frame, away.orElseThrow())
-                    .ifPresent(actuator::look);
-        } else if (scanRecentDamage) {
-            actuator.look(recentDamageScanLook(frame));
-        } else {
-            away.flatMap(vector -> lookTowardThreat(frame, vector))
-                    .ifPresent(actuator::look);
-        }
-        if (entering) {
-            ActionOutcome use = actuator.useItem(shield);
-            if (!use.accepted()) {
-                activeUseHand = null;
-                return stopFailure("shield_use_rejected");
-            }
-            activeUseHand = shield;
-        }
-        return TickReport.intervened(state, "guarding");
-    }
-
-    /**
-     * A damage cue identifies only a direction, not an attacker.  If the
-     * hostile leaves the current semantic sample (Endermen commonly teleport
-     * after a hit), keep the shield up and sweep a small first-person arc for
-     * the bounded cue lifetime.  This can reacquire a newly visible target
-     * without tracking, querying or attacking an occluded entity.
-     */
-    private TickReport scanRecentDamage(final CoreSkillFrame frame) {
-        transition(State.WARNING_REACTING, frame.gameTime());
-        final long elapsed = frame.gameTime() - stateStartedTick;
-        if (elapsed >= MAX_WARNING_REACTION_TICKS) {
-            transition(State.HOLDING, frame.gameTime());
-            actuator.stop();
-            return TickReport.intervened(
-                    state,
-                    "recent_damage_scan_exhausted"
-            );
-        }
-        if (!actuator.look(recentDamageScanLook(frame)).accepted()) {
-            return stopFailure("recent_damage_scan_look_rejected");
-        }
-        /*
-         * A melee hit with a fair source direction is already enough
-         * information for one bounded separation step.  Waiting for the
-         * whole look sweep before moving made a rear Zombie land several
-         * vanilla hits while the body only turned its head; that is the
-         * reported "staring until death" failure.  The source vector is
-         * still the only direction used, and the movement below accepts
-         * only a freshly observed adjacent cell (or the same cautious
-         * grounded fallback used by ordinary emergency footwork).
-         */
-        final Optional<PerceptionVec3> directedAway = frame.dangerSignals()
-                .stream()
-                .filter(signal -> signal.kind() == DangerKind.THREAT_CONTACT)
-                .filter(signal -> signal.provenance()
-                        == PerceptionProvenance.RECENT_DAMAGE_EVENT
-                    || signal.provenance()
-                        == PerceptionProvenance.PHYSICAL_CONTACT)
-                .flatMap(signal -> signal.contactDirection().stream())
-                .filter(direction -> direction.lengthSquared() > 1.0E-12)
-                .map(direction -> direction.normalized().scale(-1.0))
-                .findFirst();
-        if (directedAway.isPresent()
-                && elapsed >= 1L
-                && !frame.inWater()
-                && danger(frame, DangerKind.FALLING).isEmpty()
-                && directedDamageFootwork(
-                        frame,
-                        directedAway.orElseThrow()
-                )) {
-            return TickReport.intervened(
-                    state,
-                    "recent_damage_separating"
-            );
-        }
-        /*
-         * When the hit carried no direction and no adjacent cell was fully
-         * observed, a pure look-only response can leave the body under a
-         * repeating attack indefinitely (the failure seen in the real
-         * End-portal lifecycle gate).  Once the four cardinal sectors have
-         * been sampled, take one small sneak-protected probe in the current
-         * first-person heading.  It is deliberately restricted
-         * to recent physical damage, a grounded body, and this bounded
-         * warning window.  It therefore cannot turn an ordinary unknown
-         * projectile/proximity warning into blind movement.
-         */
-        /*
-         * A melee hit or crystal blast can leave a vanilla player briefly
-         * airborne without entering the separate FALLING hazard lane.  A
-         * strict onGround gate made that body keep looking while repeated
-         * directionless damage landed.  Horizontal air control is still an
-         * ordinary player input and remains bounded to the recent-damage
-         * window; water, fire and actual falling are handled by the higher
-         * priority emergency branches before this method.
-         */
-        if (directionlessRecentDamage(frame)
-                && !frame.inWater()
-                && elapsed >= DIRECTIONLESS_DAMAGE_SCAN_TICKS) {
-            final ActionOutcome movement = actuator.move(
-                    new MovementIntent(
-                            DIRECTIONLESS_DAMAGE_PROBE_SPEED,
-                            0.0,
-                            false,
-                            true
-                    )
-            );
-            return movement.accepted()
-                    ? TickReport.intervened(
-                            state,
-                            "recent_damage_separating"
-                    )
-                    : stopFailure("recent_damage_separation_rejected");
-        }
-        actuator.stop();
-        return TickReport.intervened(state, "recent_damage_scanning");
-    }
-
-    /**
-     * Takes one small, server-authoritative step away from a recently
-     * reported attacker.  This method deliberately has no entity identity
-     * or hidden coordinate access: it uses only the fair damage direction
-     * and the same observed-cell validation as the normal emergency
-     * footwork path.
-     */
-    private boolean directedDamageFootwork(
-            final CoreSkillFrame frame,
-            final PerceptionVec3 away
-    ) {
-        final Optional<PerceptionVec3> safe = safeRetreatTarget(
-                frame,
-                Optional.of(away),
-                false
-        );
-        if (safe.isPresent()) {
-            final PerceptionVec3 desired = safe.orElseThrow()
-                    .subtract(frame.position());
-            return actuator.move(relativeMovement(
-                    frame.lookDirection(),
-                    desired
-            )).accepted();
-        }
-        if (away.lengthSquared() <= 1.0E-12
-                || !frame.onGround()) {
-            return false;
-        }
-        final MovementIntent cautious = relativeMovement(
-                frame.lookDirection(),
-                away
-        );
-        return actuator.move(new MovementIntent(
-                cautious.forward() * 0.75,
-                cautious.strafeLeft() * 0.75,
-                false,
-                true
-        )).accepted();
-    }
-
-    private boolean shouldScanForHostile(final CoreSkillFrame frame) {
-        return shouldScanForHostile(frame, false);
-    }
-
-    private boolean shouldScanForHostile(
-            final CoreSkillFrame frame,
-            final boolean visibleHostileProximityManaged
-    ) {
-        /*
-         * An active combat skill owns ordinary hostile proximity, including
-         * its own target-loss/reacquisition policy. The emergency timestamp
-         * must never steal that lease after the target leaves the current
-         * view. A separately reported physical contact or projectile threat
-         * still reaches mostSevereThreat and remains non-delegable.
-         */
-        if (visibleHostileProximityManaged) {
-            return false;
-        }
-        final boolean visibleHostile = frame.visibleEntities().stream()
-                .anyMatch(entity -> entity.hostile()
-                        || entity.projectile()
-                        || "minecraft:iron_golem".equals(
-                                entity.entityTypeId()
-                        ) && neutralCombatLeaseActive(frame));
-        if (visibleHostile) {
-            /*
-             * A recently contacted hostile may still be visible after it
-             * moves or teleports outside the 3.25 block melee radius. Do not
-             * drop the emergency lease merely because the entity is now at
-             * eight blocks: retain the bounded first-person scan/guard window
-             * from the last fair close observation. Unrelated distant mobs
-             * never set lastVisibleHostileTick and therefore do not wake this
-             * lane.
-             */
-            return lastVisibleHostileTick >= 0L
-                    && frame.gameTime() - lastVisibleHostileTick
-                        <= MAX_HOSTILE_REACQUIRE_TICKS;
-        }
-        final boolean recentDamage = frame.dangerSignals().stream().anyMatch(
-                signal ->
-                        signal.kind() == DangerKind.THREAT_CONTACT
-                            && signal.provenance()
-                                == PerceptionProvenance.RECENT_DAMAGE_EVENT
-                );
-        if (recentDamage) {
-            return true;
-        }
-        return lastVisibleHostileTick >= 0L
-                && frame.gameTime() - lastVisibleHostileTick
-                    <= MAX_HOSTILE_REACQUIRE_TICKS;
-    }
-
-    private static LookIntent recentDamageScanLook(
-            final CoreSkillFrame frame
-    ) {
-        final Optional<PerceptionVec3> damageDirection = frame
-                .dangerSignals()
-                .stream()
-                .filter(signal -> signal.kind() == DangerKind.THREAT_CONTACT)
-                .filter(signal -> signal.provenance()
-                        == PerceptionProvenance.RECENT_DAMAGE_EVENT
-                    || signal.provenance()
-                        == PerceptionProvenance.PHYSICAL_CONTACT)
-                .flatMap(signal -> signal.contactDirection().stream())
-                .filter(direction -> direction.lengthSquared() > 1.0E-12)
-                .findFirst();
-        final boolean directed = damageDirection.isPresent();
-        final LookIntent base = directed
-                ? CoreSkillGeometry.holdLook(
-                        damageDirection.orElseThrow().normalized()
-                )
-                : CoreSkillGeometry.holdLook(frame.lookDirection());
-        final float[] offsets = directed
-                ? DAMAGE_DIRECTION_SCAN_OFFSETS
-                : DAMAGE_UNKNOWN_SCAN_OFFSETS;
-        final int phase = (int) ((frame.gameTime() / 4L) % offsets.length);
-        return new LookIntent(
-                ActionMath.wrapDegrees(
-                        base.yawDegrees() + offsets[phase]
-                ),
-                Math.max(
-                        -35.0F,
-                        Math.min(35.0F, base.pitchDegrees())
-                )
-        );
-    }
-
-    private TickReport startEating(
-            CoreSkillFrame frame,
-            ActionHand hand
-    ) {
-        transition(State.EATING, frame.gameTime());
-        eatingBaseline = frame.foodLevel();
-        final HeldItemSummary heldFood = held(frame, hand);
-        eatingItemId = heldFood.itemId();
-        eatingItemCount = heldFood.count();
-        actuator.stop();
-        ActionOutcome use = actuator.useItem(hand);
-        if (!use.accepted()) {
-            state = State.CLEAR;
-            activeUseHand = null;
-            clearEatingSnapshot();
-            return TickReport.none(state);
-        }
-        activeUseHand = hand;
-        return TickReport.intervened(state, "eating_started");
-    }
-
-    private TickReport continueEating(CoreSkillFrame frame) {
-        final HeldItemSummary current =
-                activeUseHand == null
-                        ? HeldItemSummary.empty()
-                        : held(frame, activeUseHand);
-        final boolean alwaysEdible =
-                isAlwaysEdibleEmergency(eatingItemId);
-        final boolean stackConsumed =
-                eatingItemId != null
-                        && (!eatingItemId.equals(current.itemId())
-                        || current.count() < eatingItemCount);
-        final boolean nutritionApplied =
-                !alwaysEdible && frame.foodLevel() > eatingBaseline;
-        final boolean timedOut =
-                frame.gameTime() - stateStartedTick
-                        >= MAX_EATING_TICKS;
-        if (stackConsumed || nutritionApplied || timedOut) {
-            clearActiveUse();
-            state = State.CLEAR;
-            clearEatingSnapshot();
-            return TickReport.intervened(
-                    state,
-                    timedOut
-                            ? "eating_timed_out"
-                            : "eating_finished"
-            );
-        }
-        if (activeUseHand == null
-                || !isFood(current)) {
-            clearActiveUse();
-            state = State.CLEAR;
-            clearEatingSnapshot();
-            return TickReport.intervened(state, "food_no_longer_held");
-        }
-        if (!actuator.stop().accepted()) {
-            return stopFailure("eating_stop_rejected");
-        }
-        return TickReport.intervened(state, "eating");
-    }
-
-    private void transition(State next, long gameTime) {
-        if (state == next) {
-            return;
-        }
-        if (next != State.CLEAR) {
-            /*
-             * This happens before the first action of a new emergency state.
-             * It prevents a bow draw, mining operation, boat paddle or
-             * minecart rider input from the previously active task surviving
-             * into the reflex that is taking ownership now.
-             */
-            preemptTaskControls.run();
-        }
-        if (state == State.EATING || state == State.GUARDING) {
-            clearActiveUse();
-        }
-        if (state == State.EATING && next != State.EATING) {
-            clearEatingSnapshot();
-        }
-        state = next;
-        stateStartedTick = gameTime;
-    }
-
-    private void clearActiveUse() {
-        if (activeUseHand != null) {
-            actuator.releaseUse();
-            activeUseHand = null;
-        }
-    }
-
-    private void clearEatingSnapshot() {
-        eatingItemId = null;
-        eatingItemCount = 0;
-    }
-
-    private TickReport stopFailure(String reason) {
-        actuator.stop();
-        state = State.HOLDING;
-        return TickReport.intervened(state, reason);
-    }
-
-    private static Optional<DangerSignal> danger(
-            CoreSkillFrame frame,
-            DangerKind kind
-    ) {
-        return frame.dangerSignals().stream()
-                .filter(signal -> signal.kind() == kind)
-                .max(Comparator.comparingDouble(DangerSignal::severity));
-    }
-
-    private static Optional<DangerSignal> mostSevereThreat(
-            CoreSkillFrame frame,
-            boolean visibleHostileProximityManaged,
-        boolean physicalContactManaged,
-            boolean visibleProjectileThreatManaged
-    ) {
-        return frame.dangerSignals().stream()
-                .filter(signal ->
-                        (!physicalContactManaged
-                                && signal.kind()
-                                    == DangerKind.THREAT_CONTACT)
-                        || (!visibleHostileProximityManaged
-                                && signal.kind()
-                                    == DangerKind.HOSTILE_PROXIMITY)
-                        || (!visibleProjectileThreatManaged
-                                && signal.kind()
-                                    == DangerKind.PROJECTILE_PROXIMITY))
-                .filter(signal -> signal.severity() >= IMMEDIATE_DANGER)
-                .max(Comparator.comparingDouble(DangerSignal::severity));
-    }
-
-    private static Optional<PerceptionVec3> threatDirection(
-            CoreSkillFrame frame,
-            Optional<DangerSignal> signal
-    ) {
-        Optional<PerceptionVec3> visibleDirection =
-                frame.visibleEntities().stream()
-                .filter(entity -> entity.hostile() || entity.projectile())
-                .min(Comparator.comparingDouble(VisibleEntity::distance))
-                .map(VisibleEntity::relativePosition);
-        Optional<PerceptionVec3> towardThreat = visibleDirection.isPresent()
-                ? visibleDirection
-                : signal.flatMap(DangerSignal::contactDirection);
-        return towardThreat
-                .filter(vector -> vector.lengthSquared() > 1.0E-12)
-                .map(vector -> vector.normalized().scale(-1.0));
-    }
-
-    private static Optional<PerceptionVec3> safeRetreatTarget(
-            CoreSkillFrame frame,
-            Optional<PerceptionVec3> preferredAway,
-            boolean preferWater
-    ) {
-        return safeRetreatTarget(
-                frame,
-                preferredAway,
-                preferWater,
-                false
-        );
-    }
-
-    private static Optional<PerceptionVec3> safeRetreatTarget(
-            CoreSkillFrame frame,
-            Optional<PerceptionVec3> preferredAway,
-            boolean preferWater,
-            boolean allowUndirectedDamageEscape
-    ) {
-        LocalNavSnapshot navigation = frame.navigation();
-        GridPos feet = frame.feet();
-        Candidate best = null;
-        for (int[] direction : CARDINALS) {
-            GridPos destination = feet.offset(direction[0], 0, direction[1]);
-            Optional<ObservedVoxel> body = navigation.voxelAt(destination);
-            Optional<ObservedVoxel> head = navigation.voxelAt(
-                    destination.above()
-            );
-            Optional<ObservedVoxel> support = navigation.voxelAt(
-                    destination.below()
-            );
-            if (body.isEmpty()
-                    || head.isEmpty()
-                    || support.isEmpty()
-                    || !NavigationEvidence.hasFreshTraversalClearance(
-                            body.orElseThrow(),
-                            navigation.revision()
-                    )
-                    || !NavigationEvidence.hasFreshTraversalClearance(
-                            head.orElseThrow(),
-                            navigation.revision()
-                    )
-                    || (!body.orElseThrow().kind().isLiquid()
-                    && !NavigationEvidence.isFreshStandingSupport(
-                            support.orElseThrow(),
-                            navigation.revision()
-                    ))
-                    || body.orElseThrow().effectiveDanger()
-                    > SAFE_VOXEL_DANGER
-                    || head.orElseThrow().effectiveDanger()
-                    > SAFE_VOXEL_DANGER
-                    || support.orElseThrow().effectiveDanger()
-                    > SAFE_VOXEL_DANGER) {
-                continue;
-            }
-            if (preferredAway.isEmpty()
-                    && (!allowUndirectedDamageEscape
-                    || preferWater
-                    && body.orElseThrow().kind() != VoxelKind.WATER)) {
-                /*
-                 * An environmental hit (for example an End-crystal blast)
-                 * can be fair but directionless.  A fully observed adjacent
-                 * standable cell is still a legal escape choice; refusing
-                 * every such cell made the body scan in place while health
-                 * continued to fall.  Water clutching retains its stricter
-                 * requirement and only selects a visible water cell.
-                 */
-                continue;
-            }
-            PerceptionVec3 directionVector = new PerceptionVec3(
-                    direction[0],
-                    0.0,
-                    direction[1]
-            );
-            double score = preferredAway
-                    .map(value -> value.dot(directionVector))
-                    .orElse(0.0);
-            if (preferWater
-                    && body.orElseThrow().kind() == VoxelKind.WATER) {
-                score += 4.0;
-            }
-            Candidate candidate = new Candidate(
-                    new PerceptionVec3(
-                            destination.x() + 0.5,
-                            frame.eyePosition().y(),
-                            destination.z() + 0.5
-                    ),
-                    score,
-                    destination
-            );
-            if (best == null
-                    || candidate.score() > best.score()
-                    || (candidate.score() == best.score()
-                    && candidate.position().compareTo(best.position()) < 0)) {
-                best = candidate;
-            }
-        }
-        return best == null
-                ? Optional.empty()
-                : Optional.of(best.target());
-    }
-
-    private static boolean directionlessRecentDamage(
-            final CoreSkillFrame frame
-    ) {
-        return frame.dangerSignals().stream()
-                .filter(signal -> signal.kind() == DangerKind.THREAT_CONTACT)
-                .filter(signal -> signal.provenance()
-                        == PerceptionProvenance.RECENT_DAMAGE_EVENT
-                    || signal.provenance()
-                        == PerceptionProvenance.PHYSICAL_CONTACT)
-                .anyMatch(signal -> signal.contactDirection().isEmpty());
-    }
-
-    /**
-     * A recent physical hit with a fair source direction authorizes one
-     * bounded defensive separation even when the previous tick was already
-     * guarding/holding.  This is deliberately narrower than a generic
-     * threat: it never invents a direction for an unknown projectile or
-     * environmental hazard, and the normal observed-cell checks plus the
-     * retreat window still cap movement.
-     */
-    private static boolean directionalRecentDamage(
-            final CoreSkillFrame frame
-    ) {
-        return frame.dangerSignals().stream()
-                .filter(signal -> signal.kind() == DangerKind.THREAT_CONTACT)
-                .filter(signal -> signal.provenance()
-                        == PerceptionProvenance.RECENT_DAMAGE_EVENT
-                    || signal.provenance()
-                        == PerceptionProvenance.PHYSICAL_CONTACT)
-                .anyMatch(signal -> signal.contactDirection()
-                        .map(direction -> direction.lengthSquared()
-                                > 1.0E-12)
-                        .orElse(false));
-    }
-
-    private static Optional<LookIntent> lookTowardThreat(
-            CoreSkillFrame frame,
-            PerceptionVec3 away
-    ) {
-        PerceptionVec3 toward = away.scale(-1.0);
-        if (toward.lengthSquared() <= 1.0E-12) {
-            return Optional.empty();
-        }
-        return Optional.of(CoreSkillGeometry.lookAt(
-                frame.eyePosition(),
-                frame.eyePosition().add(toward)
-        ));
-    }
-
-    private static MovementIntent relativeMovement(
-            final PerceptionVec3 look,
-            final PerceptionVec3 desired
-    ) {
-        final PerceptionVec3 horizontalLook =
-                new PerceptionVec3(look.x(), 0.0, look.z());
-        final PerceptionVec3 horizontalDesired =
-                new PerceptionVec3(desired.x(), 0.0, desired.z());
-        if (horizontalLook.lengthSquared() <= 1.0E-12
-                || horizontalDesired.lengthSquared() <= 1.0E-12) {
-            return MovementIntent.STOPPED;
-        }
-        final PerceptionVec3 forward = horizontalLook.normalized();
-        final PerceptionVec3 direction =
-                horizontalDesired.normalized();
-        final PerceptionVec3 left = new PerceptionVec3(
-                forward.z(),
-                0.0,
-                -forward.x()
-        );
-        return new MovementIntent(
-                direction.dot(forward),
-                direction.dot(left),
-                false,
-                false
-        );
-    }
-
-    private static Optional<ActionHand> foodHand(CoreSkillFrame frame) {
-        if (isFood(frame.offHand())) {
-            return Optional.of(ActionHand.OFF_HAND);
-        }
-        return isFood(frame.mainHand())
-                ? Optional.of(ActionHand.MAIN_HAND)
-                : Optional.empty();
-    }
-
-    private static Optional<ActionHand> shieldHand(CoreSkillFrame frame) {
-        if ("minecraft:shield".equals(frame.offHand().itemId())) {
-            return Optional.of(ActionHand.OFF_HAND);
-        }
-        return "minecraft:shield".equals(frame.mainHand().itemId())
-                ? Optional.of(ActionHand.MAIN_HAND)
-                : Optional.empty();
-    }
-
-    private static Optional<ActionHand> emergencyGoldenAppleHand(
-            final CoreSkillFrame frame
-    ) {
-        if (isAlwaysEdibleEmergency(frame.offHand().itemId())
-                && frame.offHand().count() > 0) {
-            return Optional.of(ActionHand.OFF_HAND);
-        }
-        return isAlwaysEdibleEmergency(frame.mainHand().itemId())
-                && frame.mainHand().count() > 0
-                ? Optional.of(ActionHand.MAIN_HAND)
-                : Optional.empty();
-    }
-
-    private static Optional<String> preferredOwnedEmergencyGoldenApple(
-            final CoreSkillFrame frame
-    ) {
-        if (inventoryContains(frame, "minecraft:golden_apple")) {
-            return Optional.of("minecraft:golden_apple");
-        }
-        return inventoryContains(
-                frame,
-                "minecraft:enchanted_golden_apple"
-        )
-                ? Optional.of("minecraft:enchanted_golden_apple")
-                : Optional.empty();
-    }
-
-    private static HeldItemSummary held(
-            CoreSkillFrame frame,
-            ActionHand hand
-    ) {
-        return hand == ActionHand.MAIN_HAND
-                ? frame.mainHand()
-                : frame.offHand();
-    }
-
-    private static boolean isFood(HeldItemSummary item) {
-        return item.count() > 0
-                && VanillaFoodItems.isSafeFood(item.itemId());
-    }
-
-    private static boolean isAlwaysEdibleEmergency(
-            final String itemId
-    ) {
-        return "minecraft:golden_apple".equals(itemId)
-                || "minecraft:enchanted_golden_apple".equals(itemId);
-    }
-
-    private static boolean inventoryContains(
-            final CoreSkillFrame frame,
-            final String itemId
-    ) {
-        return frame.inventory().stream()
-                .filter(item -> item.itemId().equals(itemId))
-                .mapToInt(InventoryItemSummary::count)
-                .sum() > 0;
-    }
-
-    private static Optional<String> preferredHeldFallClutch(
-            final CoreSkillFrame frame
-    ) {
-        final String mainHand = frame.mainHand().itemId();
-        return frame.mainHand().count() > 0
-                && FALL_CLUTCH_ITEMS.contains(mainHand)
-                ? Optional.of(mainHand)
-                : Optional.empty();
-    }
-
-    private static Optional<String> preferredOwnedFallClutch(
-            final CoreSkillFrame frame
-    ) {
-        return FALL_CLUTCH_ITEMS.stream()
-                .filter(itemId -> inventoryContains(frame, itemId))
-                .findFirst();
-    }
-
-    private static Optional<String> preferredEmergencyMeleeWeapon(
-            final CoreSkillFrame frame
-    ) {
-        if (EMERGENCY_MELEE_WEAPONS.contains(
-                frame.mainHand().itemId()
-        )) {
-            return Optional.empty();
-        }
-        return EMERGENCY_MELEE_WEAPONS.stream()
-                .filter(itemId -> inventoryContains(frame, itemId))
-                .findFirst();
-    }
-
-    /**
-     * Returns a conservative number of server ticks for a sword/axe attack
-     * to recharge.  The exact value is still checked by the vanilla player
-     * attack handler; this local floor only prevents repeated clientless
-     * dispatch from stealing the interval in which a shield should be held.
-     */
-    private static int emergencyAttackIntervalTicks(
-            final CoreSkillFrame frame
-    ) {
-        return 10;
-    }
-
-    private boolean recentAttackFootwork(final long gameTime) {
-        return lastEmergencyAttackTick >= 0L
-                && lastEmergencyAway != null
-                && gameTime - lastEmergencyAttackTick
-                    <= MAX_ATTACK_FOOTWORK_TICKS;
-    }
-
-    private static boolean waterAllowed(final CoreSkillFrame frame) {
-        /* Vanilla water evaporates in the Nether, but remains placeable in
-         * the End. The player-visible dimension is the only fact used; the
-         * existing observed-surface, reach, alignment and occupancy gates
-         * still decide whether a bucket action may be issued. */
-        return !frame.dimension().equals(
-                    dev.mcai.companion.waypoint.DimensionRef.NETHER
-                );
-    }
-
-    private static Optional<VisibleBlockFace> waterSurface(
-            final CoreSkillFrame frame
-    ) {
-        return frame.visibleBlockFaces().stream()
-                .filter(face -> face.face().equals("up"))
-                /*
-                 * VisibleBlockFace.distance belongs to semantic sample time.
-                 * During a fall the live eye can move several blocks before
-                 * the next sample, so reach must use the current self pose.
-                 */
-                .filter(face ->
-                        face.hitPosition()
-                            .subtract(frame.eyePosition())
-                            .length()
-                                <= MAXIMUM_WATER_REACH
-                )
-                .filter(face ->
-                        face.hitPosition().y()
-                                <= frame.position().y() + 0.25
-                )
-                .filter(face ->
-                        horizontalColumnDistance(frame, face)
-                            <= MAXIMUM_CLUTCH_COLUMN_OFFSET
-                )
-                .filter(face -> {
-                    final GridPos placement = new GridPos(
-                            face.block().x(),
-                            face.block().y() + 1,
-                            face.block().z()
-                    );
-                    return frame.navigation().voxelAt(placement)
-                            .map(ObservedVoxel::kind)
-                            .map(kind -> kind == VoxelKind.AIR)
-                            .orElse(false);
-                })
-                .min(Comparator
-                        .comparingDouble(
-                            (VisibleBlockFace face) ->
-                                horizontalColumnDistance(
-                                    frame,
-                                    face
-                                )
-                        )
-                        .thenComparingDouble(
-                            VisibleBlockFace::distance
-                        ));
-    }
-
-    private static Optional<VisibleBlockFace> fallClutchSurface(
-            final CoreSkillFrame frame
-    ) {
-        return waterSurface(frame).filter(face ->
-                frame.position().y()
-                    - (face.block().y() + 1.0)
-                        >= MINIMUM_CLUTCH_DROP
-        );
-    }
-
-    private static double horizontalColumnDistance(
-            final CoreSkillFrame frame,
-            final VisibleBlockFace face
-    ) {
-        return Math.hypot(
-                face.block().x() + 0.5
-                    - frame.position().x(),
-                face.block().z() + 0.5
-                    - frame.position().z()
-        );
-    }
-
-    private static Optional<BlockInteractionTarget> blockTarget(
-            final VisibleBlockFace face
-    ) {
-        try {
-            return Optional.of(new BlockInteractionTarget(
-                    face.block().x(),
-                    face.block().y(),
-                    face.block().z(),
-                    BlockFace.valueOf(
-                            face.face().toUpperCase(Locale.ROOT)
-                    ),
-                    new ActionVec3(
-                            face.hitPosition().x(),
-                            face.hitPosition().y(),
-                            face.hitPosition().z()
-                    )
-            ));
-        } catch (IllegalArgumentException exception) {
-            return Optional.empty();
-        }
-    }
-
-    private static double angularError(
-            final PerceptionVec3 current,
-            final PerceptionVec3 target
-    ) {
-        if (target.lengthSquared() <= 1.0E-12) {
-            return 180.0;
-        }
-        final double dot = current.normalized().dot(
-                target.normalized()
-        );
-        return Math.toDegrees(Math.acos(
-                Math.max(-1.0, Math.min(1.0, dot))
-        ));
-    }
-
-    public enum State {
-        CLEAR,
-        EATING,
-        RETREATING,
-        GUARDING,
-        SURFACING,
-        BRACING_FALL,
-        EQUIPPING_FOOD,
-        EQUIPPING_WEAPON,
-        EQUIPPING_SHIELD,
-        EQUIPPING_WATER,
-        PREPARING_WATER,
-        DEPLOYING_WATER,
-        EQUIPPING_FALL_CLUTCH,
-        PREPARING_FALL_CLUTCH,
-        DEPLOYING_FALL_CLUTCH,
-        COUNTERATTACKING,
-        WARNING_REACTING,
-        HOLDING
-    }
-
-    public record TickReport(
-            boolean intervened,
-            State state,
-            String reason
-    ) {
-        public TickReport {
-            Objects.requireNonNull(state, "state");
-            Objects.requireNonNull(reason, "reason");
-        }
-
-        private static TickReport none(State state) {
-            return new TickReport(false, state, "");
-        }
-
-        private static TickReport intervened(
-                State state,
-                String reason
-        ) {
-            return new TickReport(true, state, reason);
-        }
-    }
-
-    private record Candidate(
-            PerceptionVec3 target,
-            double score,
-            GridPos position
-    ) {
-    }
-}
+ýK®Ïðz'Zÿ:k¡ø¥{¹è²ç!~)^¢·b­ç-¢¼¿¢›†‰žn·°ý¸§ýºÞÁÁ…­…”‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Í­¥±±Ì¹½É”ì()¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹Ñ¥½¹!…¹ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹Ñ¥½¹5…Ñ ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹Ñ¥½¹=ÕÑ½µ”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹Ñ¥½¹Y•ŒÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹	±½­…”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹	±½­%¹Ñ•É…Ñ¥½¹Q…É•Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹1½½­%¹Ñ•¹Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹…Ñ¥½¸¹5½Ù•µ•¹Ñ%¹Ñ•¹Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹É¥‘A½Ìì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹1½…±9…ÙM¹…ÁÍ¡½Ðì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹9…Ù¥…Ñ¥½¹Ù¥‘•¹”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹=‰Í•ÉÙ•‘Y½á•°ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹¹…Ù¥…Ñ¥½¸¹Y½á•±-¥¹ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹…¹•É-¥¹ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹…¹•ÉM¥¹…°ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹!•±‘%Ñ•µMÕµµ…Éäì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹%¹Ù•¹Ñ½Éå%Ñ•µMÕµµ…Éäì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹A•É•ÁÑ¥½¹Y•ŒÌì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹A•É•ÁÑ¥½¹AÉ½Ù•¹…¹”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹Y¥Í¥‰±•	±½­…”ì)¥µÁ½ÉÐ‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Á•É•ÁÑ¥½¸¹Y¥Í¥‰±•¹Ñ¥Ñäì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹½µÁ…É…Ñ½Èì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹1¥ÍÐì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹1½…±”ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=‰©•ÑÌì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=ÁÑ¥½¹…°ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹=ÁÑ¥½¹…±½Õ‰±”ì)¥µÁ½ÉÐ©…Ù„¹ÕÑ¥°¹UU%ì((¼¨¨(€¨Mµ…±°™…¥°µÍ…™”ÍÑ…Ñ”µ…¡¥¹”Ñ¡…ÐÉÕ¹Ì…™Ñ•ÈÑ¡”Í•±•Ñ•Í­¥±°…¹‰•™½É”(€¨Ñ¡”½¹”µÑ¥¬…ÑÕ…Ñ½È±•…Í”¥Ì•á•ÕÑ•¸%Ðµ…ä½Ù•ÉÉ¥‘”µ½Ù•µ•¹Ð½¹±ä™É½´(€¨Á±…å•Èµ½Ý¹•ÍÑ…Ñ”…¹Ñ¡”±…ÍÐ™…¥ÈÍ•µ…¹Ñ¥Œ½‰Í•ÉÙ…Ñ¥½¸¸(€¨(€¨€ñÀùQ¡”½¹ÑÉ½±±•È¹•Ù•È•‘¥ÑÌ¥¹Ù•¹Ñ½Éä°¡•…±Ñ ½™½½°½ÈÑ¡”Ý½É±(€¨‘¥É•Ñ±ä°ÅÕ•É¥•Ì„±•Ù•°°½È™½±±½ÝÌ…¸½±Õ‘•Ñ¡É•…Ð¸%Ðµ…äÉ•ÅÕ•ÍÐ…¸(€¨…Ñ½µ¥ŒÙ…¹¥±±„µ•¹ÔÍÝ…ÀÑ¡É½Õ í±¥¹¬µ•É•¹åÅÕ¥Áµ•¹ÑÑÕ…Ñ½Éô°Ñ¡•¸(€¨•…Ð°Õ…É°‘•Á±½ä„Ý…Ñ•È‰Õ­•Ð½È½Ý¹•Ù…¹¥±±„™…±°µ…ÉÉ•ÍÐ‰±½¬°ÍÝ¥´(€¨ÕÁÝ…É°½ÈÉ•ÑÉ•…Ð¥¹Ñ¼…¸…‘©…•¹Ð™Õ±±ä½‰Í•ÉÙ•ÍÑ…¹‘…‰±”•±°¸ð½Àø(€¨¼)ÁÕ‰±¥Œ™¥¹…°±…ÍÌµ•É•¹åMÕÉÙ¥Ù…±½¹ÑÉ½±±•Èì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”%55%Q}9H€ô€À¸ÔÀì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”M}Y=a1}9H€ô€À¸ÄÀì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a}Q%9}Q%-L€ô€ØÀì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a}IQIQ}Q%-L€ô€ØÀì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”5a%5U5}]QI}I €ô€Ð¸ÜÔì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”5a%5U5}1UQ!}=1U59}=MP€ô€Ä¸ÐÔì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”]QI}1%959Q}IL€ô€Ô¸Àì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”5%9%5U5}1UQ!}I=@€ô€È¸Àì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”%55%99Q}11}MYI%Qd€ô€À¸ÄÔì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”5I9e}51}I €ô€Ì¸ÈÔì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”!=MQ%1}IEU%I}=	MIYQ%=9}I%UL€ô€ÄÈ¸Àì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”5I9e}QQ-}==1=]8€ô€À¸àÔì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”5I9e}QQ-}1%959Q}IL€ô€Ü¸Ôì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a}]I9%9}IQ%=9}Q%-L€ô€ÄÈì(€€€€¼¨¨(€€€€€¨‘¥É•Ñ¥½¹±•ÍÌÁ¡åÍ¥…°¡¥Ð¥Ì¹½Ð•¹½Õ •Ù¥‘•¹”Ñ¼¡½½Í”„(€€€€€¨Á…ÉÑ¥Õ±…È…‘©…•¹ÐÙ½á•°°‰ÕÐÍÑ…¹‘¥¹œÍÑ¥±°™½É•Ù•È¥Ì…±Í¼¹½Ð„(€€€€€¨™…¥ÈÍÕÉÙ¥Ù…°Á½±¥ä¸€™Ñ•È½¹”½µÁ±•Ñ”™¥ÉÍÐµÁ•ÉÍ½¸…É‘¥¹…°Í…¸°(€€€€€¨¥ÍÍÕ”„Í¡½ÉÐÍ¹•…­¥¹œ‰…­ÍÑ•ÀÕÍ¥¹œ½¹±äÑ¡”ÕÉÉ•¹Ð±½½¬‘¥É•Ñ¥½¸¸(€€€€€¨Y…¹¥±±„½±±¥Í¥½¸°É…Ù¥Ñä…¹ÍÕÁÁ½ÉÐÉ•µ…¥¸…ÕÑ¡½É¥Ñ…Ñ¥Ù”ìÑ¡¥Ì¥Ì„(€€€€€¨‰½Õ¹‘•Í•Á…É…Ñ¥½¸ÁÉ½‰”°¹½Ð„Ñ•±•Á½ÉÐ½È…¸Õ¹Í••¸µÝ½É±ÅÕ•Éä¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð%IQ%=91MM}5}M9}Q%-L€ô€Ðì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”%IQ%=91MM}5}AI=	}MA€ô€À¸ÐÔì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a}!=MQ%1}IEU%I}Q%-L€ô€ÄÈÀì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹Ð5a}QQ-}==Q]=I-}Q%-L€ô€ÐÀì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°‘½Õ‰±”]I9%9}M9}1%959Q}IL€ô€ÈÀ¸Àì(€€€€¼¨¨(€€€€€¨É••¹ÐÙ…¹¥±±„‘…µ…”•Ù•¹Ð…ÉÉ¥•Ì½¹±äÑ¡”…ÑÑ…­•ÈÌ‘¥É•Ñ¥½¸°(€€€€€¨¹•Ù•È¥ÑÌ¥‘•¹Ñ¥Ñä½È¡¥‘‘•¸Á½Í¥Ñ¥½¸¸€MÑ…ÉÐÑ¡”™¥ÉÍÐµÁ•ÉÍ½¸Í…¸…Ð(€€€€€¨Ñ¡…Ð‘¥É•Ñ¥½¸°Ñ¡•¸ÕÍ”„Íµ…±°‰½Õ¹‘•™…¸Í¼„µ½Ù¥¹œ¡½ÍÑ¥±”…¸‰”(€€€€€¨É•…ÅÕ¥É•Ý¥Ñ¡½ÕÐÑÕÉ¹¥¹œÑ¡”É•™±•à±…¹”¥¹Ñ¼…¸½µ¹¥Í¥•¹ÐÉ…‘…È¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°™±½…Ñmt5}%IQ%=9}M9}=MQL€ôì(€€€€€€€€À¸Á°€´ÌÔ¸Á°€ÌÔ¸Á°€´ÜÀ¸Á°€ÜÀ¸Á°€ÄàÀ¸Á(€€€ôì(€€€€¼¨¨(€€€€€¨%˜Ù…¹¥±±„‘¥¹½Ð•áÁ½Í”„Í½ÕÉ”‘¥É•Ñ¥½¸€¡™½È•á…µÁ±”„•¹•É¥Œ(€€€€€¨•¹Ù¥É½¹µ•¹Ñ…°½¹Ñ…Ð¤°½Ù•ÈÑ¡”™½ÕÈ…É‘¥¹…°Í•Ñ½ÉÌÉ•±…Ñ¥Ù”Ñ¼(€€€€€¨Ñ¡”ÕÉÉ•¹Ð™¥ÉÍÐµÁ•ÉÍ½¸¡•…‘¥¹œ¥¹ÍÑ•…½˜½Í¥±±…Ñ¥¹œ¥¸½¹”€àÃ
+À(€€€€€¨Ý¥¹‘½Ü™½É•Ù•È¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°™±½…Ñmt5}U9-9=]9}M9}=MQL€ôì(€€€€€€€€À¸Á°€äÀ¸Á°€ÄàÀ¸Á°€´äÀ¸Á(€€€ôì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°1¥ÍÐñMÑÉ¥¹œø11}1UQ!}%Q5L€ô1¥ÍÐ¹½˜ (€€€€€€€€€€€€‰µ¥¹•É…™ÐéÍ±¥µ•}‰±½¬ˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé½‰Ý•ˆˆ°(€€€€€€€€€€€€‰µ¥¹•É…™Ðé¡…å}‰±½¬ˆ(€€€€¤ì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°1¥ÍÐñMÑÉ¥¹œø5I9e}51}]A=9L€ô(€€€€€€€€€€€1¥ÍÐ¹½˜ (€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé¹•Ñ¡•É¥Ñ•}ÍÝ½Éˆ°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé‘¥…µ½¹‘}ÍÝ½Éˆ°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé¥É½¹}ÍÝ½Éˆ°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ÐéÍÑ½¹•}ÍÝ½Éˆ°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé½±‘•¹}ÍÝ½Éˆ°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ÐéÝ½½‘•¹}ÍÝ½Éˆ°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé¹•Ñ¡•É¥Ñ•}…á”ˆ°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé‘¥…µ½¹‘}…á”ˆ°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé¥É½¹}…á”ˆ°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ÐéÍÑ½¹•}…á”ˆ°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé½±‘•¹}…á”ˆ°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ÐéÝ½½‘•¹}…á”ˆ(€€€€€€€€€€€€¤ì(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™¥¹…°¥¹ÑmumtI%91L€ôì(€€€€€€€€€€€ì´Ä°€Áô°(€€€€€€€€€€€ìÀ°€´Åô°(€€€€€€€€€€€ìÀ°€Åô°(€€€€€€€€€€€ìÄ°€Áô(€€€ôì((€€€ÁÉ¥Ù…Ñ”™¥¹…°UU%•áÁ•Ñ•‘A±…å•É%ì(€€€ÁÉ¥Ù…Ñ”™¥¹…°½É•M­¥±±ÑÕ…Ñ½È…ÑÕ…Ñ½Èì(€€€ÁÉ¥Ù…Ñ”™¥¹…°½É•M­¥±±É…µ•M½ÕÉ”™É…µ•Ìì(€€€ÁÉ¥Ù…Ñ”™¥¹…°µ•É•¹åÅÕ¥Áµ•¹ÑÑÕ…Ñ½È•ÅÕ¥Áµ•¹Ðì(€€€ÁÉ¥Ù…Ñ”™¥¹…°µ•É•¹å5•±••ÑÕ…Ñ½Èµ•±•”ì(€€€ÁÉ¥Ù…Ñ”™¥¹…°IÕ¹¹…‰±”ÁÉ••µÁÑQ…Í­½¹ÑÉ½±Ìì((€€€ÁÉ¥Ù…Ñ”MÑ…Ñ”ÍÑ…Ñ”€ôMÑ…Ñ”¹1Hì(€€€ÁÉ¥Ù…Ñ”±½¹œÍÑ…Ñ•MÑ…ÉÑ•‘Q¥¬ì(€€€ÁÉ¥Ù…Ñ”¥¹Ð•…Ñ¥¹	…Í•±¥¹”ì(€€€ÁÉ¥Ù…Ñ”MÑÉ¥¹œ•…Ñ¥¹%Ñ•µ%ì(€€€ÁÉ¥Ù…Ñ”¥¹Ð•…Ñ¥¹%Ñ•µ½Õ¹Ðì(€€€ÁÉ¥Ù…Ñ”Ñ¥½¹!…¹…Ñ¥Ù•UÍ•!…¹ì(€€€ÁÉ¥Ù…Ñ”A•É•ÁÑ¥½¹Y•ŒÌÉ•ÑÉ•…ÑQ…É•Ðì(€€€ÁÉ¥Ù…Ñ”±½¹œÉ•ÑÉ•…ÑI•Ù¥Í¥½¸€ô€´Äì(€€€ÁÉ¥Ù…Ñ”±½¹œ±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬€ô€´Äì(€€€€¼¨¨(€€€€€¨1½…°…ÑÑ…¬Ñ¥µ•ÍÑ…µÀÕÍ•…Ì„½¹Í•ÉÙ…Ñ¥Ù”Ù…¹¥±±„½½±‘½Ý¸Õ…É¸(€€€€€¨Q¡”Í•ÉÙ•ÈµÍ¥‘”…ÑÑ…¬µÍÑÉ•¹Ñ Í…µÁ±”¥Ì…ÕÑ¡½É¥Ñ…Ñ¥Ù”™½È‘¥ÍÁ…Ñ °(€€€€€¨‰ÕÐÉ•Ñ…¥¹¥¹œÑ¡¥ÌÑ¥µ•ÍÑ…µÀÁÉ•Ù•¹ÑÌ„±¥•¹Ñ±•ÍÌÁ…­•Ð±½½À™É½´(€€€€€¨¥ÍÍÕ¥¹œ…¹½Ñ¡•È…ÑÑ…¬‰•™½É”Ñ¡”ÁÉ•Ù¥½ÕÌ…ÑÑ…¬¡…Ì¡…„¡…¹”Ñ¼(€€€€€¨É•¡…É”¸€Q¡¥Ì¥Ì…±Í¼Ý¡…Ð¥Ù•Ì„É•…°Í¡¥•±„½¹Ñ¥¹Õ½ÕÌÝ…É´µÕÀ(€€€€€¨Ý¥¹‘½Ü¥¹ÍÑ•…½˜É•Á•…Ñ•‘±äÍÑ…É¥¹œ…Ð„¡½ÍÑ¥±”¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”±½¹œ±…ÍÑµ•É•¹åÑÑ…­Q¥¬€ô€´Äì(€€€€¼¨¨(€€€€€¨	½Õ¹‘•‘¥É•Ñ¥½¸½˜Ñ¡”±…ÍÐ™…¥È±½Í”¡½ÍÑ¥±”½‰Í•ÉÙ…Ñ¥½¸¸%Ð¥Ì¹½Ð(€€€€€¨…¸•¹Ñ¥Ñä¥½ÈÁ½Í¥Ñ¥½¸ì¥Ð½¹±äÁ•Éµ¥ÑÌ½¹”Í¡½ÉÐÍ•Á…É…Ñ¥½¸ÍÑ•À(€€€€€¨…™Ñ•È…¸¹‘•Éµ…¸Ñ•±•Á½ÉÑÌ½ÕÑÍ¥‘”Ñ¡”ÕÉÉ•¹ÐÍ•µ…¹Ñ¥ŒÍ…µÁ±”¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”A•É•ÁÑ¥½¹Y•ŒÌ±…ÍÑµ•É•¹åÝ…äì((€€€ÁÕ‰±¥Œµ•É•¹åMÕÉÙ¥Ù…±½¹ÑÉ½±±•È (€€€€€€€€€€€UU%•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€½É•M­¥±±ÑÕ…Ñ½È…ÑÕ…Ñ½È°(€€€€€€€€€€€½É•M­¥±±É…µ•M½ÕÉ”™É…µ•Ì(€€€€¤ì(€€€€€€€Ñ¡¥Ì (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€…ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€™É…µ•Ì°(€€€€€€€€€€€€€€€µ•É•¹åÅÕ¥Áµ•¹ÑÑÕ…Ñ½È¹Õ¹…Ù…¥±…‰±” ¤°(€€€€€€€€€€€€€€€µ•É•¹å5•±••ÑÕ…Ñ½È¹Õ¹…Ù…¥±…‰±” ¤°(€€€€€€€€€€€€€€€€ ¤€´øì(€€€€€€€€€€€€€€€ô(€€€€€€€€¤ì(€€€ô((€€€ÁÕ‰±¥Œµ•É•¹åMÕÉÙ¥Ù…±½¹ÑÉ½±±•È (€€€€€€€€€€€UU%•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€½É•M­¥±±ÑÕ…Ñ½È…ÑÕ…Ñ½È°(€€€€€€€€€€€½É•M­¥±±É…µ•M½ÕÉ”™É…µ•Ì°(€€€€€€€€€€€µ•É•¹åÅÕ¥Áµ•¹ÑÑÕ…Ñ½È•ÅÕ¥Áµ•¹Ð(€€€€¤ì(€€€€€€€Ñ¡¥Ì (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€…ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€™É…µ•Ì°(€€€€€€€€€€€€€€€•ÅÕ¥Áµ•¹Ð°(€€€€€€€€€€€€€€€µ•É•¹å5•±••ÑÕ…Ñ½È¹Õ¹…Ù…¥±…‰±” ¤°(€€€€€€€€€€€€€€€€ ¤€´øì(€€€€€€€€€€€€€€€ô(€€€€€€€€¤ì(€€€ô((€€€ÁÕ‰±¥Œµ•É•¹åMÕÉÙ¥Ù…±½¹ÑÉ½±±•È (€€€€€€€€€€€UU%•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€½É•M­¥±±ÑÕ…Ñ½È…ÑÕ…Ñ½È°(€€€€€€€€€€€½É•M­¥±±É…µ•M½ÕÉ”™É…µ•Ì°(€€€€€€€€€€€µ•É•¹åÅÕ¥Áµ•¹ÑÑÕ…Ñ½È•ÅÕ¥Áµ•¹Ð°(€€€€€€€€€€€µ•É•¹å5•±••ÑÕ…Ñ½Èµ•±•”(€€€€¤ì(€€€€€€€Ñ¡¥Ì (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€…ÑÕ…Ñ½È°(€€€€€€€€€€€€€€€™É…µ•Ì°(€€€€€€€€€€€€€€€•ÅÕ¥Áµ•¹Ð°(€€€€€€€€€€€€€€€µ•±•”°(€€€€€€€€€€€€€€€€ ¤€´øì(€€€€€€€€€€€€€€€ô(€€€€€€€€¤ì(€€€ô((€€€€¼¨¨(€€€€€¨É•…Ñ•ÌÑ¡”ÁÉ½‘ÕÑ¥½¸½¹ÑÉ½±±•ÈÝ¥Ñ „‰½Õ¹‘•…±±‰…¬Ñ¡…ÐÉ•±•…Í•Ì(€€€€€¨Ñ…Í¬µ½Ý¹•µ¥¹¥¹œ°¥Ñ•´µÕÍ”…¹Ù•¡¥±”¥¹ÁÕÑÌ‰•™½É”„¹•Ü•µ•É•¹ä(€€€€€¨ÍÑ…Ñ”ÝÉ¥Ñ•Ì¥ÑÌ™¥ÉÍÐ‰½‘ä…Ñ¥½¸¸(€€€€€¨¼(€€€ÁÕ‰±¥Œµ•É•¹åMÕÉÙ¥Ù…±½¹ÑÉ½±±•È (€€€€€€€€€€€UU%•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€½É•M­¥±±ÑÕ…Ñ½È…ÑÕ…Ñ½È°(€€€€€€€€€€€½É•M­¥±±É…µ•M½ÕÉ”™É…µ•Ì°(€€€€€€€€€€€µ•É•¹åÅÕ¥Áµ•¹ÑÑÕ…Ñ½È•ÅÕ¥Áµ•¹Ð°(€€€€€€€€€€€µ•É•¹å5•±••ÑÕ…Ñ½Èµ•±•”°(€€€€€€€€€€€IÕ¹¹…‰±”ÁÉ••µÁÑQ…Í­½¹ÑÉ½±Ì(€€€€¤ì(€€€€€€€Ñ¡¥Ì¹•áÁ•Ñ•‘A±…å•É%€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€•áÁ•Ñ•‘A±…å•É%°(€€€€€€€€€€€€€€€€‰•áÁ•Ñ•‘A±…å•É%ˆ(€€€€€€€€¤ì(€€€€€€€Ñ¡¥Ì¹…ÑÕ…Ñ½È€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡…ÑÕ…Ñ½È°€‰…ÑÕ…Ñ½Èˆ¤ì(€€€€€€€Ñ¡¥Ì¹™É…µ•Ì€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡™É…µ•Ì°€‰™É…µ•Ìˆ¤ì(€€€€€€€Ñ¡¥Ì¹•ÅÕ¥Áµ•¹Ð€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€•ÅÕ¥Áµ•¹Ð°(€€€€€€€€€€€€€€€€‰•ÅÕ¥Áµ•¹Ðˆ(€€€€€€€€¤ì(€€€€€€€Ñ¡¥Ì¹µ•±•”€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡µ•±•”°€‰µ•±•”ˆ¤ì(€€€€€€€Ñ¡¥Ì¹ÁÉ••µÁÑQ…Í­½¹ÑÉ½±Ì€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€ÁÉ••µÁÑQ…Í­½¹ÑÉ½±Ì°(€€€€€€€€€€€€€€€€‰ÁÉ••µÁÑQ…Í­½¹ÑÉ½±Ìˆ(€€€€€€€€¤ì(€€€ô((€€€€¼¨¨(€€€€€¨á•ÕÑ•Ì…Ðµ½ÍÐ½¹”‰½Õ¹‘•¥¹Ñ•ÉÙ•¹Ñ¥½¸™½ÈÑ¡”ÕÉÉ•¹ÐÍ•ÉÙ•ÈÑ¥¬¸(€€€€€¨¼(€€€ÁÕ‰±¥ŒQ¥­I•Á½ÉÐÑ¥¬ ¤ì(€€€€€€€É•ÑÕÉ¸Ñ¥¬¡™…±Í”¤ì(€€€ô((€€€€¼¨¨(€€€€€¨á•ÕÑ•Ì½¹”‰½Õ¹‘•¥¹Ñ•ÉÙ•¹Ñ¥½¸Ý¡¥±”É•ÍÁ•Ñ¥¹œ…¸…Ñ¥Ù”½µ‰…Ð(€€€€€¨Í­¥±°Ì½Ý¹•ÉÍ¡¥À½˜½É‘¥¹…ÉäÙ¥Í¥‰±”µ¡½ÍÑ¥±”ÁÉ½á¥µ¥Ñä¸A¡åÍ¥…°(€€€€€¨½¹Ñ…Ð…¹ÁÉ½©•Ñ¥±”Ñ¡É•…ÑÌ…É”¹•Ù•È‘•±•…Ñ•¸(€€€€€¨¼(€€€ÁÕ‰±¥ŒQ¥­I•Á½ÉÐÑ¥¬ (€€€€€€€€€€€™¥¹…°‰½½±•…¸Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€¤ì(€€€€€€€É•ÑÕÉ¸Ñ¥¬¡Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•°™…±Í”¤ì(€€€ô((€€€€¼¨¨(€€€€€¨á•ÕÑ•Ì½¹”‰½Õ¹‘•¥¹Ñ•ÉÙ•¹Ñ¥½¸Ý¡¥±”…±±½Ý¥¹œ…¸…Ñ¥Ù”°±½…±±ä(€€€€€¨ÍÕÁ•ÉÙ¥Í•µ•±•”Í­¥±°Ñ¼É•Ñ…¥¸½¹Ñ…Ð½¹ÑÉ½°™½È¥ÑÌÑ…É•Ð¸(€€€€€¨AÉ½©•Ñ¥±”°™¥É”°™…±°°…¥È°™½½…¹¡•…±Ñ •µ•É•¹¥•ÌÉ•µ…¥¸±½…°¸(€€€€€¨¼(€€€ÁÕ‰±¥ŒQ¥­I•Á½ÉÐÑ¥¬ (€€€€€€€€€€€™¥¹…°‰½½±•…¸Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•°(€€€€€€€€€€€™¥¹…°‰½½±•…¸Á¡åÍ¥…±½¹Ñ…Ñ5…¹…•(€€€€¤ì(€€€€€€€É•ÑÕÉ¸Ñ¥¬ (€€€€€€€€€€€€€€€Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•°(€€€€€€€€€€€€€€€Á¡åÍ¥…±½¹Ñ…Ñ5…¹…•°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€ô((€€€€¼¨¨(€€€€€¨á•ÕÑ•Ì½¹”‰½Õ¹‘•¥¹Ñ•ÉÙ•¹Ñ¥½¸Ý¡¥±”…±±½Ý¥¹œ„ÍÁ•¥…±¥é•…Ñ¥Ù”(€€€€€¨Í­¥±°Ñ¼½Ý¸Ù¥Í¥‰±”ÁÉ½©•Ñ¥±”ÁÉ½á¥µ¥Ñä¸€½¹Ñ…Ð°™¥É”°™…±°°…¥È°(€€€€€¨™½½°¡•…±Ñ …¹…¹äÁÉ½©•Ñ¥±”Ñ¡…Ð¥Ì¹½Ð½Ù•É•‰äÑ¡…Ð•áÁ±¥¥Ð(€€€€€¨‘•±…É…Ñ¥½¸É•µ…¥¸•µ•É•¹äµ½Ý¹•¸(€€€€€¨¼(€€€ÁÕ‰±¥ŒQ¥­I•Á½ÉÐÑ¥¬ (€€€€€€€€€€€™¥¹…°‰½½±•…¸Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•°(€€€€€€€€€€€™¥¹…°‰½½±•…¸Á¡åÍ¥…±½¹Ñ…Ñ5…¹…•°(€€€€€€€€€€€™¥¹…°‰½½±•…¸Ù¥Í¥‰±•AÉ½©•Ñ¥±•Q¡É•…Ñ5…¹…•(€€€€¤ì(€€€€€€€=ÁÑ¥½¹…°ñ½É•M­¥±±É…µ”øÕÉÉ•¹Ð€ô™É…µ•Ì¹ÕÉÉ•¹Ð ¤ì(€€€€€€€¥˜€¡ÕÉÉ•¹Ð¹¥ÍµÁÑä ¤(€€€€€€€€€€€€€€€ñð€…•áÁ•Ñ•‘A±…å•É%¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€ÕÉÉ•¹Ð¹½É±Í•Q¡É½Ü ¤¹Á±…å•É% ¤(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¹½¹”¡ÍÑ…Ñ”¤ì(€€€€€€€ô(€€€€€€€½É•M­¥±±É…µ”™É…µ”€ôÕÉÉ•¹Ð¹½É±Í•Q¡É½Ü ¤ì((€€€€€€€€¼¨(€€€€€€€€€¨I•Ñ…¥¸½¹±äÑ¡”Ñ¥µ”½˜„É••¹Ñ±äÙ¥Í¥‰±”¹•…É‰ä¡½ÍÑ¥±”¸Q¡¥Ì¥Ì(€€€€€€€€€¨¹½Ð…¸•¹Ñ¥Ñä¡…¹‘±”½È„¡¥‘‘•¸Á½Í¥Ñ¥½¸ì¥ÐÁ•Éµ¥ÑÌ„‰½Õ¹‘•(€€€€€€€€€¨™¥ÉÍÐµÁ•ÉÍ½¸ÍÝ••À…™Ñ•È…¸¹‘•Éµ…¸½¡½ÍÑ¥±”Ñ•±•Á½ÉÑÌ½ÈÍ±¥ÁÌ(€€€€€€€€€¨½ÕÑÍ¥‘”½¹”Í•µ…¹Ñ¥ŒÍ…µÁ±”¸Q¡”ÑÝ•±Ù”µ‰±½¬½‰Í•ÉÙ…Ñ¥½¸É…‘¥ÕÌ(€€€€€€€€€¨­••ÁÌÑ¡”Ñ¥µ•ÍÑ…µÀ™É•Í Ý¡¥±”Ñ¡”¡½ÍÑ¥±”É•µ…¥¹Ì¥¸Ñ¡”™…¥È(€€€€€€€€€¨Ù¥•Ü°•Ù•¸Ñ¡½Õ ½É‘¥¹…Éäµ•±•”ÍÑ¥±°É•ÅÕ¥É•Ì€Ì¸ÈÔ‰±½­Ì¸(€€€€€€€€€¨¼(€€€€€€€¥˜€¡™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤¹…¹å5…Ñ ¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€¡•¹Ñ¥Ñä¹¡½ÍÑ¥±” ¤(€€€€€€€€€€€€€€€€€€€ñð€‰µ¥¹•É…™Ðé¥É½¹}½±•´ˆ¹•ÅÕ…±Ì¡•¹Ñ¥Ñä¹•¹Ñ¥ÑåQåÁ•% ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€˜˜¹•ÕÑÉ…±½µ‰…Ñ1•…Í•Ñ¥Ù”¡™É…µ”¤¤(€€€€€€€€€€€€€€€€€€€€˜˜€…•¹Ñ¥Ñä¹ÁÉ½©•Ñ¥±” ¤(€€€€€€€€€€€€€€€€€€€€˜˜•¹Ñ¥Ñä¹‘¥ÍÑ…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ðô!=MQ%1}IEU%I}=	MIYQ%=9}I%UL(€€€€€€€€¤¤ì(€€€€€€€€€€€±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬€ô™É…µ”¹…µ•Q¥µ” ¤ì(€€€€€€€ô((€€€€€€€¥˜€¡‘…¹•È¡™É…µ”°…¹•É-¥¹¹1=]}%H¤¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€˜˜™É…µ”¹¥¹]…Ñ•È ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÕÉ™…”¡™É…µ”¤ì(€€€€€€€ô(€€€€€€€¥˜€¡‘…¹•È¡™É…µ”°…¹•É-¥¹¹11%9¤¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€¨¡¥ µ¥µÁ…Ðµ•±•”¡¥Ð€¡µ½ÍÐÙ¥Í¥‰±ä…¸¥É½¸µ½±•´(€€€€€€€€€€€€€¨­¹½­‰…¬¤…¸ÁÕÐ„Á±…å•È¥¹Ñ¼Ñ¡”Ù…¹¥±±„™…±±¥¹œÍÑ…Ñ”™½È(€€€€€€€€€€€€€¨Í•Ù•É…°Ñ¥­Ì¸€…±±¥¹œÕÍ•Ñ¼Ý¥¸Ñ¡¥ÌÁÉ¥½É¥Ñä‰É…¹ …¹(€€€€€€€€€€€€€¨Ñ¡”½¹ÑÉ½±±•È½¹±ä¡•±Í¹•…¬Ý¡¥±”Ñ¡”…ÑÑ…­•È‘•±¥Ù•É•(€€€€€€€€€€€€€¨Ñ¡”¹•áÐ¡¥Ð¸€%˜„™…¥È½¹Ñ…ÐÑ…É•Ð¥ÌÍÑ¥±°Ù¥Í¥‰±”°­••À(€€€€€€€€€€€€€¨Ñ¡”½Ý¹•Í¡¥•±™…¥¹œÑ¡…ÐÑ…É•Ð‘ÕÉ¥¹œÑ¡”™…±°¸€Q¡¥Ì¥Ì(€€€€€€€€€€€€€¨½É‘¥¹…ÉäÁ±…å•È¥¹ÁÕÐ°¹½Ð™…±°¥µµÕ¹¥Ñä½È„Á½Í¥Ñ¥½¸ÝÉ¥Ñ”ì(€€€€€€€€€€€€€¨Ñ¡”¹½Éµ…°±ÕÑ ±…¹”É•µ…¥¹ÌÑ¡”™…±±‰…¬Ý¡•¸¹¼½¹Ñ…Ð(€€€€€€€€€€€€€¨Ñ…É•Ð¥Ì­¹½Ý¸¸(€€€€€€€€€€€€¨¼(€€€€€€€€€€€¥˜€ …Á¡åÍ¥…±½¹Ñ…Ñ5…¹…•¤ì(€€€€€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñY¥Í¥‰±•¹Ñ¥Ñäø™…±±¥¹½¹Ñ…Ð€ô(€€€€€€€€€€€€€€€€€€€€€€€¹•…É•ÍÑ½µ‰…Ñ…±±Q…É•Ð¡™É…µ”¤ì(€€€€€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñÑ¥½¹!…¹ø™…±±¥¹M¡¥•±€ô(€€€€€€€€€€€€€€€€€€€€€€€Í¡¥•±‘!…¹¡™É…µ”¤ì(€€€€€€€€€€€€€€€¥˜€¡™…±±¥¹½¹Ñ…Ð¹¥ÍAÉ•Í•¹Ð ¤€˜˜™…±±¥¹M¡¥•±¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ‘•±Ñ„€ô™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹ÍÕ‰ÑÉ…Ð (€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±±¥¹½¹Ñ…Ð¹½É±Í•Q¡É½Ü ¤¹Á½Í¥Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€‘•±Ñ„¹à ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€‘•±Ñ„¹è ¤(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€€€€€™¥¹…°Q¥­I•Á½ÉÐÕ…É‘•€ôÕ…É (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±±¥¹M¡¥•±¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ý…ä¹±•¹Ñ¡MÅÕ…É• ¤€ðô€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ü=ÁÑ¥½¹…°¹•µÁÑä ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€è=ÁÑ¥½¹…°¹½˜¡…Ý…ä¹¹½Éµ…±¥é• ¤¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸¹•ÜQ¥­I•Á½ÉÐ (€€€€€€€€€€€€€€€€€€€€€€€€€€€Õ…É‘•¹¥¹Ñ•ÉÙ•¹• ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€Õ…É‘•¹ÍÑ…Ñ” ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰½µ‰…Ñ}™…±±|ˆ€¬Õ…É‘•¹É•…Í½¸ ¤(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸É•ÍÁ½¹‘Q½…±°¡™É…µ”¤ì(€€€€€€€ô((€€€€€€€=ÁÑ¥½¹…°ñ…¹•ÉM¥¹…°øÑ¡É•…Ð€ôµ½ÍÑM•Ù•É•Q¡É•…Ð (€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•°(€€€€€€€€€€€€€€€Á¡åÍ¥…±½¹Ñ…Ñ5…¹…•°(€€€€€€€€€€€€€€€Ù¥Í¥‰±•AÉ½©•Ñ¥±•Q¡É•…Ñ5…¹…•(€€€€€€€€¤ì(€€€€€€€‰½½±•…¸‰ÕÉ¹¥¹œ€ô‘…¹•È¡™É…µ”°…¹•É-¥¹¹=9}%I¤¹¥ÍAÉ•Í•¹Ð ¤ì(€€€€€€€™¥¹…°‘½Õ‰±”¡•…±Ñ¡I…Ñ¥¼€ô™É…µ”¹¡•…±Ñ  ¤€¼™É…µ”¹µ…á!•…±Ñ  ¤ì(€€€€€€€™¥¹…°‰½½±•…¸É¥Ñ¥…±!•…±Ñ €ô¡•…±Ñ¡I…Ñ¥¼€ðô€À¸ÐÀì(€€€€€€€™¥¹…°‰½½±•…¸Á¡åÍ¥…±½¹Ñ…Ð€ô(€€€€€€€€€€€€€€€‘…¹•È¡™É…µ”°…¹•É-¥¹¹Q!IQ}=9QP¤¹¥ÍAÉ•Í•¹Ð ¤ì(€€€€€€€™¥¹…°‰½½±•…¸±½…±ÑÑ…­½½±‘½Ý¸€ô±…ÍÑµ•É•¹åÑÑ…­Q¥¬€øô€Á0(€€€€€€€€€€€€€€€€˜˜™É…µ”¹…µ•Q¥µ” ¤€´±…ÍÑµ•É•¹åÑÑ…­Q¥¬(€€€€€€€€€€€€€€€€€€€€ð•µ•É•¹åÑÑ…­%¹Ñ•ÉÙ…±Q¥­Ì¡™É…µ”¤ì(€€€€€€€¥˜€ …‰ÕÉ¹¥¹œ(€€€€€€€€€€€€€€€€˜˜±½…±ÑÑ…­½½±‘½Ý¸(€€€€€€€€€€€€€€€€˜˜€…Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€€€€€€€€€€€€€˜˜€…Á¡åÍ¥…±½¹Ñ…Ñ5…¹…•¤ì(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñÑ¥½¹!…¹ø½½±‘½Ý¹M¡¥•±€ôÍ¡¥•±‘!…¹¡™É…µ”¤ì(€€€€€€€€€€€¥˜€¡½½±‘½Ý¹M¡¥•±¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€€€€€¨-••ÀÑ¡”Í¡¥•±ÕÀ•Ù•¸Ý¡•¸…¸¹‘•Éµ…¸Ñ•±•Á½ÉÑÌ½ÕÐ½˜(€€€€€€€€€€€€€€€€€¨Ñ¡”ÕÉÉ•¹Ð•¹Ñ¥ÑäÍ…µÁ±”¥µµ•‘¥…Ñ•±ä…™Ñ•È„±•…°¡¥Ð¸(€€€€€€€€€€€€€€€€€¨Q¡”‰½Õ¹‘•±½…°…ÑÑ…¬Ñ¥µ•ÍÑ…µÀ…¹±…ÍÐ™…¥È‘¥É•Ñ¥½¸(€€€€€€€€€€€€€€€€€¨…É”Ñ¡”½¹±äµ•µ½ÉäÕÍ•¡•É”ì¹•¥Ñ¡•È…ÉÉ¥•Ì•¹Ñ¥Ñä(€€€€€€€€€€€€€€€€€¨¥‘•¹Ñ¥Ñä½È„¡¥‘‘•¸Á½Í¥Ñ¥½¸¸(€€€€€€€€€€€€€€€€€¨¼(€€€€€€€€€€€€€€€™¥¹…°Q¥­I•Á½ÉÐÕ…É‘•€ôÕ…É (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€½½±‘½Ý¹M¡¥•±¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€Ñ¡É•…Ñ¥É•Ñ¥½¸¡™É…µ”°Ñ¡É•…Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€Í¡½Õ±‘M…¹½É!½ÍÑ¥±” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€¹•…É•ÍÑµ•É•¹å5•±••Q…É•Ð¡™É…µ”¤¹¥™AÉ•Í•¹Ñ=É±Í” (€€€€€€€€€€€€€€€€€€€€€€€Ñ…É•Ð€´ø•µ•É•¹å½½ÑÝ½É¬¡™É…µ”°Ñ…É•Ð¤°(€€€€€€€€€€€€€€€€€€€€€€€€ ¤€´øì(€€€€€€€€€€€€€€€€€€€€€€€€€€€¥˜€¡±…ÍÑµ•É•¹åÝ…ä€„ô¹Õ±°¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•µ•É•¹å½½ÑÝ½É¬¡™É…µ”°±…ÍÑµ•É•¹åÝ…ä¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸Õ…É‘•ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€€¼¨(€€€€€€€€€¨½±‘•¸…ÁÁ±”¥Ì…¸•µ•É•¹ä¡•…±Ñ ¥Ñ•´°¹½Ð½É‘¥¹…Éä¡Õ¹•È(€€€€€€€€€¨™½½¸ÐÉ¥Ñ¥…°¡•…±Ñ „µ•É•±ä¹•…É‰ä¡½ÍÑ¥±”µÕÍÐ¹½ÐÍÑ…ÉÙ”(€€€€€€€€€¨Ñ¡¥Ì…Ñ¥½¸™½É•Ù•Èè•…Ð½¹”Á¡åÍ¥…°½¹Ñ…Ð¡…Ì‰••¸‰É½­•¸¸(€€€€€€€€€¨¥É”°™…±±¥¹œ°‘É½Ý¹¥¹œ…¹…ÑÕ…°½¹Ñ…ÐÍÑ¥±°Ñ…­”ÁÉ••‘•¹”¸(€€€€€€€€€¨¼(€€€€€€€¥˜€¡É¥Ñ¥…±!•…±Ñ €˜˜€…‰ÕÉ¹¥¹œ€˜˜€…Á¡åÍ¥…±½¹Ñ…Ð¤ì(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñÑ¥½¹!…¹ø¡•±‘½±‘•¸€ô(€€€€€€€€€€€€€€€€€€€•µ•É•¹å½±‘•¹ÁÁ±•!…¹¡™É…µ”¤ì(€€€€€€€€€€€¥˜€¡ÍÑ…Ñ”€ôôMÑ…Ñ”¹Q%9€˜˜¡•±‘½±‘•¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸½¹Ñ¥¹Õ•…Ñ¥¹œ¡™É…µ”¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡¡•±‘½±‘•¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑ…Ñ¥¹œ (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€¡•±‘½±‘•¸¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñMÑÉ¥¹œø½Ý¹•‘½±‘•¸€ô(€€€€€€€€€€€€€€€€€€€ÁÉ•™•ÉÉ•‘=Ý¹•‘µ•É•¹å½±‘•¹ÁÁ±”¡™É…µ”¤ì(€€€€€€€€€€€¥˜€¡½Ý¹•‘½±‘•¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸•ÅÕ¥Áµ•É•¹å%Ñ•´ (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€Ñ¥½¹!…¹¹5%9}!9°(€€€€€€€€€€€€€€€€€€€€€€€½Ý¹•‘½±‘•¸¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€MÑ…Ñ”¹EU%AA%9}==°(€€€€€€€€€€€€€€€€€€€€€€€€‰•ÅÕ¥ÁÁ¥¹}É¥Ñ¥…±}½±‘•¹}…ÁÁ±”ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€¥˜€¡‰ÕÉ¹¥¹œ(€€€€€€€€€€€€€€€ñðÑ¡É•…Ð¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€ñðÍ¡½Õ±‘M…¹½É!½ÍÑ¥±” (€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸…Ù½¥‘…¹•È (€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€Ñ¡É•…Ð°(€€€€€€€€€€€€€€€€€€€‰ÕÉ¹¥¹œ°(€€€€€€€€€€€€€€€€€€€Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€¥˜€¡ÍÑ…Ñ”€ôôMÑ…Ñ”¹Q%9¤ì(€€€€€€€€€€€É•ÑÕÉ¸½¹Ñ¥¹Õ•…Ñ¥¹œ¡™É…µ”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°‰½½±•…¸¹ÕÑÉ¥Ñ¥½¹9••‘•€ô™É…µ”¹™½½‘1•Ù•° ¤€ðô€à(€€€€€€€€€€€€€€€ñð¡•…±Ñ¡I…Ñ¥¼€ðô€À¸ØÀ€˜˜™É…µ”¹™½½‘1•Ù•° ¤€ð€ÈÀì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñÑ¥½¹!…¹ø™½½€ô™½½‘!…¹¡™É…µ”¤ì(€€€€€€€™¥¹…°‰½½±•…¸¡•±‘É¥Ñ¥…±½½€ô™½½(€€€€€€€€€€€€€€€€¹µ…À¡¡…¹€´ø¥Í±Ý…åÍ‘¥‰±•µ•É•¹ä (€€€€€€€€€€€€€€€€€€€€€€€¡•±¡™É…µ”°¡…¹¤¹¥Ñ•µ% ¤(€€€€€€€€€€€€€€€€¤¤(€€€€€€€€€€€€€€€€¹½É±Í”¡™…±Í”¤ì(€€€€€€€™¥¹…°‰½½±•…¸¥¹Ù•¹Ñ½ÉåÉ¥Ñ¥…±½½€ô™É…µ”¹¥¹Ù•¹Ñ½Éä ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹…¹å5…Ñ ¡¥Ñ•´€´ø(€€€€€€€€€€€€€€€€€€€€€€€¥Í±Ý…åÍ‘¥‰±•µ•É•¹ä¡¥Ñ•´¹¥Ñ•µ% ¤¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡¹ÕÑÉ¥Ñ¥½¹9••‘•(€€€€€€€€€€€€€€€ñðÉ¥Ñ¥…±!•…±Ñ (€€€€€€€€€€€€€€€€˜˜€¡¡•±‘É¥Ñ¥…±½½ñð¥¹Ù•¹Ñ½ÉåÉ¥Ñ¥…±½½¤¤ì(€€€€€€€€€€€¥˜€¡™½½¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€€€€€˜˜€¡™É…µ”¹™½½‘1•Ù•° ¤€ð€ÈÀ(€€€€€€€€€€€€€€€€€€€ñð¡•±‘É¥Ñ¥…±½½¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ…ÉÑ…Ñ¥¹œ¡™É…µ”°™½½¹½É±Í•Q¡É½Ü ¤¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñMÑÉ¥¹œøÍ•±•Ñ•€ô(€€€€€€€€€€€€€€€€€€€Y…¹¥±±…½½‘%Ñ•µÌ¹ÁÉ•™•ÉÉ•‘Ù…¥±…‰±” (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹¥¹Ù•¹Ñ½Éä ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€É¥Ñ¥…±!•…±Ñ (€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€¡Í•±•Ñ•¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€€€€€˜˜€¡™É…µ”¹™½½‘1•Ù•° ¤€ð€ÈÀ(€€€€€€€€€€€€€€€€€€€ñð¥Í±Ý…åÍ‘¥‰±•µ•É•¹ä (€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•±•Ñ•¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€€€€€¤¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸•ÅÕ¥Áµ•É•¹å%Ñ•´ (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€Ñ¥½¹!…¹¹5%9}!9°(€€€€€€€€€€€€€€€€€€€€€€€Í•±•Ñ•¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€MÑ…Ñ”¹EU%AA%9}==°(€€€€€€€€€€€€€€€€€€€€€€€€‰•ÅÕ¥ÁÁ¥¹}™½½ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô((€€€€€€€±•…ÉÑ¥Ù•UÍ” ¤ì(€€€€€€€ÍÑ…Ñ”€ôMÑ…Ñ”¹1Hì(€€€€€€€É•ÑÉ•…ÑQ…É•Ð€ô¹Õ±°ì(€€€€€€€É•ÑÉ•…ÑI•Ù¥Í¥½¸€ô€´Äì(€€€€€€€¥˜€¡±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬€øô€Á0(€€€€€€€€€€€€€€€€˜˜™É…µ”¹…µ•Q¥µ” ¤€´±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬(€€€€€€€€€€€€€€€€€€€€ø5a}!=MQ%1}IEU%I}Q%-L¤ì(€€€€€€€€€€€±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬€ô€´Äì(€€€€€€€ô(€€€€€€€¥˜€ …É••¹ÑÑÑ…­½½ÑÝ½É¬¡™É…µ”¹…µ•Q¥µ” ¤¤¤ì(€€€€€€€€€€€±…ÍÑµ•É•¹åÝ…ä€ô¹Õ±°ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¹½¹”¡ÍÑ…Ñ”¤ì(€€€ô((€€€€¼¨¨(€€€€€¨	½Õ¹‘•™¥ÉÍÐµÁ•ÉÍ½¸Ñ…É•ÐÕÍ•½¹±äÝ¡¥±”„™…±°¥Ì…±É•…‘ä…Ñ¥Ù”¸(€€€€€¨U¹±¥­”Ñ¡”½É‘¥¹…Éä•µ•É•¹äµ•±•”Í•±•Ñ½ÈÑ¡¥Ì…±Í¼…‘µ¥ÑÌ„(€€€€€¨Ù¥Í¥‰±”¥É½¸½±•´‰•™½É”Ñ¡”½¹Ñ…ÐÍ¥¹…°¡…ÌÍÕÉÙ¥Ù•½¹”½µÁ±•Ñ”(€€€€€¨½‰Í•ÉÙ…Ñ¥½¸™É…µ”ìÑ¡”¡¥ µ¥µÁ…Ð­¹½­‰…¬¥ÑÍ•±˜¥ÌÑ¡”É•…Í½¸Ñ¡”(€€€€€¨Í¡¥•±µÕÍÐ½µ”ÕÀÅÕ¥­±ä¸€%Ð¹•Ù•È•áÁ½Í•Ì½ÈÅÕ•É¥•Ì…¸•¹Ñ¥Ñä(€€€€€¨½ÕÑÍ¥‘”Ñ¡”ÕÉÉ•¹ÐÍ•µ…¹Ñ¥ŒÍ…µÁ±”¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”=ÁÑ¥½¹…°ñY¥Í¥‰±•¹Ñ¥Ñäø¹•…É•ÍÑ½µ‰…Ñ…±±Q…É•Ð (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø€…•¹Ñ¥Ñä¹ÁÉ½©•Ñ¥±” ¤¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø•¹Ñ¥Ñä¹¡½ÍÑ¥±” ¤(€€€€€€€€€€€€€€€€€€€€€€€ñð€‰µ¥¹•É…™Ðé¥É½¹}½±•´ˆ¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹Ñ¥Ñä¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø•¹Ñ¥Ñä¹‘¥ÍÑ…¹” ¤€ðô€à¸À¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È(€€€€€€€€€€€€€€€€€€€€€€€€¹½µÁ…É¥¹½Õ‰±”¡Y¥Í¥‰±•¹Ñ¥Ñäèé‘¥ÍÑ…¹”¤(€€€€€€€€€€€€€€€€€€€€€€€€¹Ñ¡•¹½µÁ…É¥¹œ¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹Ñ¥Ñä¹•¹Ñ¥Ñå% ¤¹Ñ½MÑÉ¥¹œ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤¤ì(€€€ô((€€€€¼¨¨(€€€€€¨I•±•…Í•Ì…¹ä±½…±±ä¡•±ÕÍ”…Ñ¥½¸…™Ñ•È„‰½‘äµÍ•ÍÍ¥½¸ÑÉ…¹Í¥Ñ¥½¸¸(€€€€€¨¼(€€€ÁÕ‰±¥ŒÙ½¥É•Í•Ð ¤ì(€€€€€€€±•…ÉÑ¥Ù•UÍ” ¤ì(€€€€€€€±•…É…Ñ¥¹M¹…ÁÍ¡½Ð ¤ì(€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€ÍÑ…Ñ”€ôMÑ…Ñ”¹1Hì(€€€€€€€É•ÑÉ•…ÑQ…É•Ð€ô¹Õ±°ì(€€€€€€€É•ÑÉ•…ÑI•Ù¥Í¥½¸€ô€´Äì(€€€€€€€±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬€ô€´Äì(€€€€€€€±…ÍÑµ•É•¹åÑÑ…­Q¥¬€ô€´Äì(€€€€€€€±…ÍÑµ•É•¹åÝ…ä€ô¹Õ±°ì(€€€ô((€€€ÁÕ‰±¥ŒMÑ…Ñ”ÍÑ…Ñ” ¤ì(€€€€€€€É•ÑÕÉ¸ÍÑ…Ñ”ì(€€€ô((€€€€¼¨¨(€€€€€¨!…¹‘ÌÑ¡”‰½‘ä‰…¬™É½´…¸…Ñ½µ¥ŒÍ­¥±°Ñ¼Ñ¡”¹•áÐÍ­¥±°Ý¥Ñ¡½ÕÐ(€€€€€¨…ÉÉå¥¹œÑ¡”ÁÉ•Ù¥½ÕÌÍ­¥±°Ì¡½ÍÑ¥±”É•…ÅÕ¥Í¥Ñ¥½¸±•…Í”¥¹Ñ¼…¸(€€€€€¨Õ¹É•±…Ñ•…Ñ¥½¸¸€Q¡”Ñ¥µ•ÍÑ…µÀ¥Ì½¹±ä„‰½Õ¹‘•™¥ÉÍÐµÁ•ÉÍ½¸Õ”ì(€€€€€¨±•…É¥¹œ¥Ð…Ð„Ù•É¥™¥•Í­¥±°‰½Õ¹‘…Éä…¹¹½Ð¡¥‘”„™É•Í Ñ¡É•…Ðè(€€€€€¨Ñ¡”¹•áÐ™É…µ”É•™É•Í¡•Ì„Ù¥Í¥‰±”¡½ÍÑ¥±”°É••¹Ð‘…µ…”°Á¡åÍ¥…°(€€€€€¨½¹Ñ…Ð°™¥É”°™…±°°…¥È°…¹™½½Í¥¹…±Ì‰•™½É”…¹äÍ­¥±°¥Ì…±±½Ý•(€€€€€¨Ñ¼ÝÉ¥Ñ”µ½Ù•µ•¹Ð¸€]¥Ñ¡½ÕÐÑ¡¥Ì¡…¹‘½™˜„½µÁ±•Ñ•µ•±•”Í­¥±°½Õ±(€€€€€¨±•…Ù”Ñ¡”•µ•É•¹ä±…¹”¥¸UI%9™½È€ÄÈÀÑ¥­Ì…¹±•¥Ñ¥µ…Ñ•±ä(€€€€€¨ÍÑ½À„±…Ñ•ÈÑÉ…Ù•°½Á½ÉÑ…°Í­¥±°•Ù•¸Ñ¡½Õ Ñ¡”…É•¹„Ý…Ì•µÁÑä¸(€€€€€¨¼(€€€ÁÕ‰±¥ŒÙ½¥½¹Ñ¥Ù•M­¥±±¹‘• ¤ì(€€€€€€€±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬€ô€´Å0ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐÍÕÉ™…”¡½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹MUI%9°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€€¼¨±½Üµ…¥ÈÉ•™±•à…¸ÉÕ¸½¹ÕÉÉ•¹Ñ±äÝ¥Ñ „™…¥È…Ñ½µ¥Œ™…Éµ¥¹œ(€€€€€€€€€¨ÍÑ•À¸€)ÕµÁ¥¹œ½ÕÐ½˜„½¹”µ‰±½¬¥ÉÉ¥…Ñ¥½¸•±°¥ÌÑ¡”Ù…¹¥±±„(€€€€€€€€€¨…Ñ¥½¸Ñ¡…ÐÑÉ…µÁ±•Ì™…Éµ±…¹°…¹Ñ¡”¡•…‘±•ÍÌÁ±…å•È…¹¹½ÐÕÍ”(€€€€€€€€€¨Ñ¡”Í…µ”©ÕµÀ¥¹ÁÕÐÑ¼É¥Í”Ý¡¥±”¥Ð¥Ì…ÑÕ…±±äÍÝ¥µµ¥¹œ¸€-••À(€€€€€€€€€¨Ñ¡¥Ì±…¹”Ñ¼½É‘¥¹…Éä±½½¬½™½ÉÝ…É¥¹ÁÕÐì„‘•‘¥…Ñ•Ý…Ñ•Èµ±ÕÑ (€€€€€€€€€¨Í­¥±°½Ý¹ÌÙ•É¥™¥••Í…Á”Á±…•µ•¹ÐÝ¡•¸„©ÕµÀ¥ÌÑÉÕ±ä¹••‘•¸€¨¼(€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹±½½¬¡¹•Ü1½½­%¹Ñ•¹Ð (€€€€€€€€€€€€€€€½É•M­¥±±•½µ•ÑÉä¹¡½±‘1½½¬¡™É…µ”¹±½½­¥É•Ñ¥½¸ ¤¤¹å…Ý•É••Ì ¤°(€€€€€€€€€€€€€€€€´ÜÔ¸Á(€€€€€€€€¤¤¹…•ÁÑ• ¤(€€€€€€€€€€€€€€€ñð€……ÑÕ…Ñ½È¹µ½Ù”¡¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€€À¸ÌÔ°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰±½Ý}…¥É}…Ñ¥½¹}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰±½Ý}…¥Èˆ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐ‰É…•½É…±°¡½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹	I%9}10°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€Ñ¥½¹=ÕÑ½µ”½ÕÑ½µ”€ô…ÑÕ…Ñ½È¹µ½Ù” (€€€€€€€€€€€€€€€¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð À¸À°€À¸À°™…±Í”°ÑÉÕ”¤(€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸½ÕÑ½µ”¹…•ÁÑ• ¤(€€€€€€€€€€€€€€€€üQ¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰™…±±¥¹œˆ¤(€€€€€€€€€€€€€€€€èÍÑ½Á…¥±ÕÉ” ‰™…±±}…Ñ¥½¹}É•©•Ñ•ˆ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐÉ•ÍÁ½¹‘Q½…±°¡™¥¹…°½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñY¥Í¥‰±•	±½­…”øÉ•…¡…‰±•…±±MÕÉ™…”€ô(€€€€€€€€€€€€€€€™…±±±ÕÑ¡MÕÉ™…”¡™É…µ”¤ì(€€€€€€€™¥¹…°‰½½±•…¸¥µµ¥¹•¹Ð€ô‘…¹•È¡™É…µ”°…¹•É-¥¹¹11%9¤(€€€€€€€€€€€€€€€€¹µ…À¡…¹•ÉM¥¹…°èéÍ•Ù•É¥Ñä¤(€€€€€€€€€€€€€€€€¹½É±Í” À¸À¤€øô%55%99Q}11}MYI%Qdì(€€€€€€€¥˜€¡Ý…Ñ•É±±½Ý•¡™É…µ”¤¤ì(€€€€€€€€€€€¥˜€ ‰µ¥¹•É…™ÐéÝ…Ñ•É}‰Õ­•Ðˆ¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€™É…µ”¹µ…¥¹!…¹ ¤¹¥Ñ•µ% ¤(€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€¥˜€¡É•…¡…‰±•…±±MÕÉ™…”¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸‘•Á±½å]…Ñ•È (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰™…±°ˆ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€É•…¡…‰±•…±±MÕÉ™…”(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€¥˜€¡¥µµ¥¹•¹Ð¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸‘•Á±½å]…Ñ•È¡™É…µ”°€‰™…±°ˆ¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¹½¹”¡ÍÑ…Ñ”¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡¥¹Ù•¹Ñ½Éå½¹Ñ…¥¹Ì¡™É…µ”°€‰µ¥¹•É…™ÐéÝ…Ñ•É}‰Õ­•Ðˆ¤¤ì(€€€€€€€€€€€€€€€¥˜€¡É•…¡…‰±•…±±MÕÉ™…”¹¥ÍAÉ•Í•¹Ð ¤ñð¥µµ¥¹•¹Ð¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸•ÅÕ¥Áµ•É•¹å%Ñ•´ (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€Ñ¥½¹!…¹¹5%9}!9°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ÐéÝ…Ñ•É}‰Õ­•Ðˆ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€MÑ…Ñ”¹EU%AA%9}]QH°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰•ÅÕ¥ÁÁ¥¹}Ý…Ñ•É}™½É}™…±°ˆ(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¹½¹”¡ÍÑ…Ñ”¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñMÑÉ¥¹œø¡•±‘±ÕÑ €ô(€€€€€€€€€€€€€€€ÁÉ•™•ÉÉ•‘!•±‘…±±±ÕÑ ¡™É…µ”¤ì(€€€€€€€¥˜€¡¡•±‘±ÕÑ ¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€¥˜€¡É•…¡…‰±•…±±MÕÉ™…”¹¥ÍAÉ•Í•¹Ð ¤ñð¥µµ¥¹•¹Ð¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸‘•Á±½å…±±±ÕÑ  (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€¡•±‘±ÕÑ ¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¹½¹”¡ÍÑ…Ñ”¤ì(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñMÑÉ¥¹œø½Ý¹•‘±ÕÑ €ô(€€€€€€€€€€€€€€€ÁÉ•™•ÉÉ•‘=Ý¹•‘…±±±ÕÑ ¡™É…µ”¤ì(€€€€€€€¥˜€¡½Ý¹•‘±ÕÑ ¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€¥˜€¡É•…¡…‰±•…±±MÕÉ™…”¹¥ÍAÉ•Í•¹Ð ¤ñð¥µµ¥¹•¹Ð¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸•ÅÕ¥Áµ•É•¹å%Ñ•´ (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€Ñ¥½¹!…¹¹5%9}!9°(€€€€€€€€€€€€€€€€€€€€€€€½Ý¹•‘±ÕÑ ¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€MÑ…Ñ”¹EU%AA%9}11}1UQ °(€€€€€€€€€€€€€€€€€€€€€€€€‰•ÅÕ¥ÁÁ¥¹}™…±±}±ÕÑ ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¹½¹”¡ÍÑ…Ñ”¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸¥µµ¥¹•¹Ð(€€€€€€€€€€€€€€€€ü‰É…•½É…±°¡™É…µ”¤(€€€€€€€€€€€€€€€€èQ¥­I•Á½ÉÐ¹¹½¹”¡ÍÑ…Ñ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐ…Ù½¥‘…¹•È (€€€€€€€€€€€½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€=ÁÑ¥½¹…°ñ…¹•ÉM¥¹…°øÑ¡É•…Ð°(€€€€€€€€€€€‰½½±•…¸‰ÕÉ¹¥¹œ°(€€€€€€€€€€€‰½½±•…¸Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€¤ì(€€€€€€€€¼¨(€€€€€€€€€¨¼¹½ÐÉ•±•…Í”…¸…±É•…‘äÉ…¥Í•Í¡¥•±µ•É•±ä‰•…ÕÍ”Ñ¡”Í…µ”(€€€€€€€€€¨‘…¹•È¥ÌÍÑ¥±°ÁÉ•Í•¹Ð¸Y…¹¥±±„¹••‘ÌÍ•Ù•É…°½¹Ñ¥¹Õ½ÕÌÕÍ”(€€€€€€€€€¨Ñ¥­Ì‰•™½É”„Í¡¥•±…¸‰±½¬ìÉ•±•…Í¥¹œ…¹É•¥ÍÍÕ¥¹œÕÍ”•Ù•Éä(€€€€€€€€€¨Ñ¥¬±½½­Ì±¥­”Õ…É‘¥¹œ¥¸Ñ•±•µ•ÑÉä‰ÕÐ¹•Ù•È‰•½µ•Ì…¸…ÑÕ…°(€€€€€€€€€¨‰±½¬¸ÑÉ…¹Í¥Ñ¥½¸ ¸¸¸¤…¹•Ù•Éä•ÅÕ¥Áµ•¹Ð½¥Ñ•´‰É…¹ ‰•±½Ü(€€€€€€€€€¨…±É•…‘äÉ•±•…Í”Ñ¡”½±ÕÍ”…Ñ¥½¸Ý¡•¸½Ý¹•ÉÍ¡¥ÀÉ•…±±ä¡…¹•Ì¸(€€€€€€€€€¨¼(€€€€€€€=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌø…Ý…ä€ôÑ¡É•…Ñ¥É•Ñ¥½¸¡™É…µ”°Ñ¡É•…Ð¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñY¥Í¥‰±•¹Ñ¥Ñäø½¹Ñ…ÑQ…É•Ð€ô(€€€€€€€€€€€€€€€¹•…É•ÍÑµ•É•¹å5•±••Q…É•Ð¡™É…µ”¤ì(€€€€€€€™¥¹…°‰½½±•…¸±½…±ÑÑ…­½½±‘½Ý¸€ô±…ÍÑµ•É•¹åÑÑ…­Q¥¬€øô€Á0(€€€€€€€€€€€€€€€€˜˜™É…µ”¹…µ•Q¥µ” ¤€´±…ÍÑµ•É•¹åÑÑ…­Q¥¬(€€€€€€€€€€€€€€€€€€€€ð•µ•É•¹åÑÑ…­%¹Ñ•ÉÙ…±Q¥­Ì¡™É…µ”¤ì(€€€€€€€€¼¨(€€€€€€€€€¨-••ÀÑ¡”Í¡¥•±±•…Í”•Ù•¸¥˜Ñ¡”Ñ…É•ÐÌ¹•áÐµ½Ù•µ•¹ÐÁÕÑÌ¥Ð(€€€€€€€€€¨©ÕÍÐ½ÕÑÍ¥‘”Ñ¡”€Ì¸ÈÔµ‰±½¬…ÑÑ…¬É…‘¥ÕÌ¸É•…°Á±…å•È‘½•Ì¹½Ð(€€€€€€€€€¨‘É½À„Í¡¥•±‘ÕÉ¥¹œÑ¡…ÐÍ¡½ÉÐÉ•¡…É”Ý¥¹‘½Üµ•É•±ä‰•…ÕÍ”„(€€€€€€€€€¨©ÕµÁ¥¹œµ½ˆÉ½ÍÍ•½¹”Ù½á•°ìÑ¡”É••¹Ð™…¥È¡½ÍÑ¥±”½‰Í•ÉÙ…Ñ¥½¸(€€€€€€€€€¨ÍÑ¥±°…ÕÑ¡½É¥é•ÌÑ¡¥Ì‰½Õ¹‘•‘•™•¹Í¥Ù”…Ñ¥½¸¸(€€€€€€€€€¨¼(€€€€€€€¥˜€ …‰ÕÉ¹¥¹œ€˜˜±½…±ÑÑ…­½½±‘½Ý¸¤ì(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñÑ¥½¹!…¹ø½½±‘½Ý¹M¡¥•±€ôÍ¡¥•±‘!…¹¡™É…µ”¤ì(€€€€€€€€€€€¥˜€¡½½±‘½Ý¹M¡¥•±¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€™¥¹…°Q¥­I•Á½ÉÐÕ…É‘•€ôÕ…É (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€½½±‘½Ý¹M¡¥•±¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€…Ý…ä°(€€€€€€€€€€€€€€€€€€€€€€€Í¡½Õ±‘M…¹½É!½ÍÑ¥±” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€€€€€¨Õ…É‘¥¹œ…¹Í¡½ÉÐ½µ‰…Ð™½½ÑÝ½É¬…É”Í¥µÕ±Ñ…¹•½ÕÌÙ…¹¥±±„(€€€€€€€€€€€€€€€€€¨¥¹ÁÕÑÌ¸€Õ…É ¤‘•±¥‰•É…Ñ•±äÍÑ½ÁÌÍÑ…±”µ½Ù•µ•¹Ð™½È(€€€€€€€€€€€€€€€€€¨½É‘¥¹…Éä¡…é…É‘Ì°‰ÕÐÍÑ½ÁÁ¥¹œ¡•É”µ…‘”„Í¡¥•±‘•‰½‘ä(€€€€€€€€€€€€€€€€€¨ÍÑ…¹½¸Ñ¡”…ÑÑ…­•ÈÌ•±°‘ÕÉ¥¹œ•Ù•ÉäÉ•¡…É”Ý¥¹‘½Ü¸(€€€€€€€€€€€€€€€€€¨I”µ¥ÍÍÕ”½¹”‰½Õ¹‘•°™¥ÉÍÐµÁ•ÉÍ½¸µ•ÉÑ¥™¥•‰…­ÍÑ•À…™Ñ•È(€€€€€€€€€€€€€€€€€¨Ñ¡”Í¡¥•±±•…Í”Í¼Ñ¡”¹½Éµ…°Á±…å•È¥¹ÁÕÐÁ…Ñ …‘Ù…¹•Ì(€€€€€€€€€€€€€€€€€¨Ý¥Ñ Ù…¹¥±±„ÌÍ¡¥•±Í±½Ý‘½Ý¸¥¹ÍÑ•…½˜™É••é¥¹œ¸(€€€€€€€€€€€€€€€€€¨¼(€€€€€€€€€€€€€€€½¹Ñ…ÑQ…É•Ð¹¥™AÉ•Í•¹Ð¡Ñ…É•Ð€´ø(€€€€€€€€€€€€€€€€€€€€€€€•µ•É•¹å½½ÑÝ½É¬¡™É…µ”°Ñ…É•Ð¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸Õ…É‘•ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡½¹Ñ…ÑQ…É•Ð¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€•µ•É•¹å½½ÑÝ½É¬¡™É…µ”°½¹Ñ…ÑQ…É•Ð¹½É±Í•Q¡É½Ü ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€€€€€‰½Õ¹Ñ•É…ÑÑ…­}±½…±}½½±‘½Ý¸ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€¥˜€ …‰ÕÉ¹¥¹œ€˜˜½¹Ñ…ÑQ…É•Ð¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€¨Í¡¥•±¥Ì„½½±‘½Ý¸‰É¥‘”°¹½Ð„Ñ•Éµ¥¹…°½µ‰…ÐÁ½±¥ä¸(€€€€€€€€€€€€€¨Q¡”ÁÉ•Ù¥½ÕÌ½É‘•É¥¹œ…±Ý…åÌÍ•±•Ñ•Õ…É‰•™½É”µ•±•”°Í¼„(€€€€€€€€€€€€€¨½µÁ…¹¥½¸¡½±‘¥¹œ„Í¡¥•±½Õ±ÍÑ…É”…Ð½¹”¹‘•Éµ…¸½È(€€€€€€€€€€€€€¨i½µ‰¥”Õ¹Ñ¥°¥Ð‘¥•¸ÅÕ¥À…¸…±É•…‘äµ½Ý¹•½É‘¥¹…ÉäÝ•…Á½¸°(€€€€€€€€€€€€€¨Ñ¡•¸ÍÁ•¹•… É•…‘äÙ…¹¥±±„…ÑÑ…¬¸€ÕÉ¥¹œÑ¡”Ù…¹¥±±„(€€€€€€€€€€€€€¨…ÑÑ…¬É•¡…É”Ý¥¹‘½Ü°­••À…¸…±É•…‘äµ¡•±Í¡¥•±ÕÀÝ¡•¸(€€€€€€€€€€€€€¨Á½ÍÍ¥‰±”ìÑ¡…Ð¥ÌÑ¡”½É‘¥¹…ÉäÁ±…å•ÈÉ•ÍÁ½¹Í”Ñ¼„¡½ÍÑ¥±”(€€€€€€€€€€€€€¨±½Í¥¹œ‘¥ÍÑ…¹”…¹ÁÉ•Ù•¹ÑÌ„ÍÑ…Ñ¥½¹…Éä‘…µ…”ÑÉ…‘”¸(€€€€€€€€€€€€€¨¼(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñMÑÉ¥¹œøÝ•…Á½¸€ô(€€€€€€€€€€€€€€€€€€€ÁÉ•™•ÉÉ•‘µ•É•¹å5•±••]•…Á½¸¡™É…µ”¤ì(€€€€€€€€€€€¥˜€¡Ý•…Á½¸¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸•ÅÕ¥Áµ•É•¹å%Ñ•´ (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€Ñ¥½¹!…¹¹5%9}!9°(€€€€€€€€€€€€€€€€€€€€€€€Ý•…Á½¸¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€MÑ…Ñ”¹EU%AA%9}]A=8°(€€€€€€€€€€€€€€€€€€€€€€€€‰•ÅÕ¥ÁÁ¥¹}•µ•É•¹å}Ý•…Á½¸ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…±½Õ‰±”…ÑÑ…­M…±”€ôµ•±•”¹…ÑÑ…­MÑÉ•¹Ñ¡M…±” ¤ì(€€€€€€€€€€€¥˜€¡…ÑÑ…­M…±”¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€€€€€˜˜…ÑÑ…­M…±”¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€€€€€€€€€ð5I9e}QQ-}==1=]8¤ì(€€€€€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñÑ¥½¹!…¹ø½½±‘½Ý¹M¡¥•±€ôÍ¡¥•±‘!…¹¡™É…µ”¤ì(€€€€€€€€€€€€€€€¥˜€¡½½±‘½Ý¹M¡¥•±¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸Õ…É (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€½½±‘½Ý¹M¡¥•±¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ý…ä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í¡½Õ±‘M…¹½É!½ÍÑ¥±” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡…ÑÑ…­M…±”¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€€€€€˜˜…ÑÑ…­M…±”¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€€€€€€€€€øô5I9e}QQ-}==1=]8¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸½Õ¹Ñ•É…ÑÑ…¬ (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ…ÑQ…É•Ð¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€€¼¨(€€€€€€€€€¨I•ÑÉ•…Ð¥Ì…¸¥µµ•‘¥…Ñ”Í•Á…É…Ñ¥½¸µ…¹•ÕÙ•È°¹½Ð…¸Õ¹‰½Õ¹‘•(€€€€€€€€€¨¹…Ù¥…Ñ¥½¸Á½±¥ä¸=¹”¥ÑÌÍ¡½ÉÐÝ¥¹‘½Ü¥Ì•á¡…ÕÍÑ•°¡½±½È(€€€€€€€€€¨Õ…ÉÕ¹Ñ¥°Ñ¡”Ñ¡É•…Ð±•…ÉÌ€¡½È…¸…ÕÑ¡½É¥é•½µ‰…ÐÍ­¥±°Ñ…­•Ì(€€€€€€€€€¨½¹ÑÉ½°¤¸™É•Í °‘¥É•Ñ¥½¹…°Ù…¹¥±±„‘…µ…”Õ”¥ÌÑ¡”¹…ÉÉ½Ü(€€€€€€€€€¨•á•ÁÑ¥½¸è¥Ðµ…äÉ•½Á•¸½¹”½‰Í•ÉÙ•µ•±°•Í…Á”Í¼„‰½‘äÑ¡…Ð(€€€€€€€€€¨Ý…Ì…±É•…‘äÕ…É‘¥¹œ‘½•Ì¹½ÐÍÑ…¹¥¸Ñ¡”…ÑÑ…­•ÈÌÉ•… ¸(€€€€€€€€€¨I•½µÁÕÑ¥¹œ…¸…‘©…•¹Ð•±°½¸•Ù•Éä™É•Í ¹…Ù¥…Ñ¥½¸É•Ù¥Í¥½¸(€€€€€€€€€¨ÁÉ•Ù¥½ÕÍ±äµ…‘”„Í±½Üµ½‘•°É•ÍÁ½¹Í”Í•¹Ñ¡”½µÁ…¹¥½¸‘½é•¹Ì½˜(€€€€€€€€€¨‰±½­Ì…Ý…ä™É½´Ñ¡”Ñ…Í¬¸(€€€€€€€€€¨¼(€€€€€€€™¥¹…°‰½½±•…¸É•ÑÉ•…Ñ]¥¹‘½Ýá¡…ÕÍÑ•€ô(€€€€€€€€€€€€€€€ÍÑ…Ñ”€ôôMÑ…Ñ”¹IQIQ%9(€€€€€€€€€€€€€€€€€€€€˜˜™É…µ”¹…µ•Q¥µ” ¤€´ÍÑ…Ñ•MÑ…ÉÑ•‘Q¥¬(€€€€€€€€€€€€€€€€€€€€€€€€øô5a}IQIQ}Q%-L(€€€€€€€€€€€€€€€ñð€¡ÍÑ…Ñ”€ôôMÑ…Ñ”¹UI%9(€€€€€€€€€€€€€€€€€€€ñðÍÑ…Ñ”€ôôMÑ…Ñ”¹!=1%9¤(€€€€€€€€€€€€€€€€€€€€˜˜€…‘¥É•Ñ¥½¹…±I••¹Ñ…µ…”¡™É…µ”¤ì(€€€€€€€=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌøÍ…™•Q…É•Ð€ô(€€€€€€€€€€€€€€€É•ÑÉ•…Ñ]¥¹‘½Ýá¡…ÕÍÑ•(€€€€€€€€€€€€€€€€€€€€ü=ÁÑ¥½¹…°¹•µÁÑä ¤(€€€€€€€€€€€€€€€€€€€€èÍ…™•I•ÑÉ•…ÑQ…É•Ð (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ý…ä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€‰ÕÉ¹¥¹œ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€‘¥É•Ñ¥½¹±•ÍÍI••¹Ñ…µ…”¡™É…µ”¤(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡Í…™•Q…É•Ð¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€¥˜€¡ÍÑ…Ñ”€„ôMÑ…Ñ”¹IQIQ%9(€€€€€€€€€€€€€€€€€€€ñðÉ•ÑÉ•…ÑI•Ù¥Í¥½¸€„ô™É…µ”¹¹…Ù¥…Ñ¥½¸ ¤¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€€€€ñð™É…µ”¹…µ•Q¥µ” ¤€´ÍÑ…Ñ•MÑ…ÉÑ•‘Q¥¬(€€€€€€€€€€€€€€€€€€€€øô5a}IQIQ}Q%-L¤ì(€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹IQIQ%9°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€€€€€€€€€É•ÑÉ•…ÑQ…É•Ð€ôÍ…™•Q…É•Ð¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€€€€€€€€€É•ÑÉ•…ÑI•Ù¥Í¥½¸€ô™É…µ”¹¹…Ù¥…Ñ¥½¸ ¤¹É•Ù¥Í¥½¸ ¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸É•ÑÉ•…Ð¡™É…µ”¤ì(€€€€€€€ô((€€€€€€€¥˜€¡‰ÕÉ¹¥¹œ€˜˜Ý…Ñ•É±±½Ý•¡™É…µ”¤¤ì(€€€€€€€€€€€¥˜€ ‰µ¥¹•É…™ÐéÝ…Ñ•É}‰Õ­•Ðˆ¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€™É…µ”¹µ…¥¹!…¹ ¤¹¥Ñ•µ% ¤(€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸‘•Á±½å]…Ñ•È¡™É…µ”°€‰™¥É”ˆ¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡¥¹Ù•¹Ñ½Éå½¹Ñ…¥¹Ì¡™É…µ”°€‰µ¥¹•É…™ÐéÝ…Ñ•É}‰Õ­•Ðˆ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸•ÅÕ¥Áµ•É•¹å%Ñ•´ (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€Ñ¥½¹!…¹¹5%9}!9°(€€€€€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ÐéÝ…Ñ•É}‰Õ­•Ðˆ°(€€€€€€€€€€€€€€€€€€€€€€€MÑ…Ñ”¹EU%AA%9}]QH°(€€€€€€€€€€€€€€€€€€€€€€€€‰•ÅÕ¥ÁÁ¥¹}Ý…Ñ•É}™½É}™¥É”ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€ô((€€€€€€€=ÁÑ¥½¹…°ñÑ¥½¹!…¹øÍ¡¥•±€ôÍ¡¥•±‘!…¹¡™É…µ”¤ì(€€€€€€€¥˜€¡Í¡¥•±¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€™¥¹…°‰½½±•…¸ÁÉ•Í•ÉÙ•½µ‰…Ñ½½ÑÝ½É¬€ô(€€€€€€€€€€€€€€€€€€€É••¹ÑÑÑ…­½½ÑÝ½É¬¡™É…µ”¹…µ•Q¥µ” ¤¤(€€€€€€€€€€€€€€€€€€€€€€€ñð‘¥É•Ñ¥½¹…±I••¹Ñ…µ…”¡™É…µ”¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€˜˜…Ý…ä¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€€€€€€€€ñð‘¥É•Ñ¥½¹±•ÍÍI••¹Ñ…µ…”¡™É…µ”¤ì(€€€€€€€€€€€™¥¹…°Q¥­I•Á½ÉÐÕ…É‘•€ôÕ…É (€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€Í¡¥•±¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€…Ý…ä°(€€€€€€€€€€€€€€€€€€€Í¡½Õ±‘M…¹½É!½ÍÑ¥±” (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€ÁÉ•Í•ÉÙ•½µ‰…Ñ½½ÑÝ½É¬(€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€¡ÁÉ•Í•ÉÙ•½µ‰…Ñ½½ÑÝ½É¬€˜˜±…ÍÑµ•É•¹åÝ…ä€„ô¹Õ±°¤ì(€€€€€€€€€€€€€€€•µ•É•¹å½½ÑÝ½É¬¡™É…µ”°±…ÍÑµ•É•¹åÝ…ä¤ì(€€€€€€€€€€€ô•±Í”¥˜€¡ÁÉ•Í•ÉÙ•½µ‰…Ñ½½ÑÝ½É¬¤ì(€€€€€€€€€€€€€€€¥˜€¡…Ý…ä¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€€€€€€€€•µ•É•¹å½½ÑÝ½É¬¡™É…µ”°…Ý…ä¹½É±Í•Q¡É½Ü ¤¤ì(€€€€€€€€€€€€€€€ô•±Í”ì(€€€€€€€€€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€€€€€€€€€¨M½µ”Ù…¹¥±±„µ…¥Œ‘…µ…”Í½ÕÉ•Ì¥¹Ñ•¹Ñ¥½¹…±±ä…ÉÉä(€€€€€€€€€€€€€€€€€€€€€¨¹¼Í½ÕÉ”Á½Í¥Ñ¥½¸¸Í¡¥•±µ½¹±äÉ•ÍÁ½¹Í”…¸Ñ¡•¸(€€€€€€€€€€€€€€€€€€€€€¨±•…Ù”Ñ¡”‰½‘ä½¸Ñ¡”Í…µ”•±°Ý¡¥±”É•Á•…Ñ•‰É•…Ñ (€€€€€€€€€€€€€€€€€€€€€¨‘…µ…”±…¹‘Ì¸UÍ”½¹”‰½Õ¹‘•Í¥‘”µÍÑ•À¥¸Ñ¡”ÕÉÉ•¹Ð(€€€€€€€€€€€€€€€€€€€€€¨™¥ÉÍÐµÁ•ÉÍ½¸™É…µ”¸Q¡¥Ì¥Ì„¹½Éµ…°Á±…å•È¥¹ÁÕÐ°¹½Ð(€€€€€€€€€€€€€€€€€€€€€¨„Õ•ÍÍ•Ñ…É•ÐÁ½Í¥Ñ¥½¸ì½±±¥Í¥½¸°É…Ù¥Ñä°…¹(€€€€€€€€€€€€€€€€€€€€€¨±½…‘•µÝ½É±ÉÕ±•ÌÉ•µ…¥¸…ÕÑ¡½É¥Ñ…Ñ¥Ù”¸(€€€€€€€€€€€€€€€€€€€€€¨¼(€€€€€€€€€€€€€€€€€€€‘¥É•Ñ¥½¹±•ÍÍ…µ…•½½ÑÝ½É¬¡™É…µ”¤ì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸Õ…É‘•ì(€€€€€€€ô(€€€€€€€¥˜€¡¥¹Ù•¹Ñ½Éå½¹Ñ…¥¹Ì¡™É…µ”°€‰µ¥¹•É…™ÐéÍ¡¥•±ˆ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸•ÅÕ¥Áµ•É•¹å%Ñ•´ (€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€Ñ¥½¹!…¹¹=}!9°(€€€€€€€€€€€€€€€€€€€€‰µ¥¹•É…™ÐéÍ¡¥•±ˆ°(€€€€€€€€€€€€€€€€€€€MÑ…Ñ”¹EU%AA%9}M!%1°(€€€€€€€€€€€€€€€€€€€€‰•ÅÕ¥ÁÁ¥¹}Í¡¥•±ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€¥˜€ …‰ÕÉ¹¥¹œ€˜˜½¹Ñ…ÑQ…É•Ð¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸½Õ¹Ñ•É…ÑÑ…¬ (€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€½¹Ñ…ÑQ…É•Ð¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€ …‰ÕÉ¹¥¹œ€˜˜Í¡½Õ±‘M…¹½É!½ÍÑ¥±” (€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸Í…¹I••¹Ñ…µ…”¡™É…µ”¤ì(€€€€€€€ô(€€€€€€€¥˜€ …‰ÕÉ¹¥¹œ(€€€€€€€€€€€€€€€€˜˜ÍÑ…Ñ”€„ôMÑ…Ñ”¹!=1%9(€€€€€€€€€€€€€€€€˜˜…ÕÑ¡½É¥é•‘¥É•Ñ¥½¹…±]…É¹¥¹œ¡Ñ¡É•…Ð¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸É•…ÑQ½¥É•Ñ¥½¹…±]…É¹¥¹œ (€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€…Ý…ä¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹!=1%9°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€…Ý…ä¹™±…Ñ5…À¡Ù•Ñ½È€´ø±½½­Q½Ý…É‘Q¡É•…Ð¡™É…µ”°Ù•Ñ½È¤¤(€€€€€€€€€€€€€€€€¹¥™AÉ•Í•¹Ð¡…ÑÕ…Ñ½Èèé±½½¬¤ì(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€‰ÕÉ¹¥¹œ€ü€‰½¹}™¥É•}¹½}Í…™•}•±°ˆ€è€‰Ñ¡É•…Ñ}¹½Ñ}Ù¥Í¥‰±”ˆ(€€€€€€€€¤ì(€€€ô((€€€€¼¨¨(€€€€€¨QÉ•…ÑÌ„ÑÉÕÍÑ•Ñ•…µµ…Ñ”Ì‰É½…€‰‰•¡¥¹½±•™Ð½É¥¡ÐˆÝ…É¹¥¹œ±¥­”Ñ¡”(€€€€€¨‘¥É•Ñ¥½¹…°…Ý…É•¹•ÍÌ„Á±…å•ÈÉ••¥Ù•Ì½Ù•ÈÙ½¥”¡…ÐèÑÕÉ¸Ñ¼(€€€€€¨Ù•É¥™ä¥Ð…¹Ñ…­”„Í¡½ÉÐÍ¹•…¬µÁÉ½Ñ•Ñ•Í•Á…É…Ñ¥½¸ÍÑ•À¸Q¡”Õ”(€€€€€¨ÍÑ¥±°ÍÕÁÁ±¥•Ì¹¼•¹Ñ¥Ñä¥‘•¹Ñ¥Ñä½È•á…Ð½½É‘¥¹…Ñ•Ì°…¹Ñ¡”(€€€€€¨µ…¹•ÕÙ•È•áÁ¥É•Ì…™Ñ•ÈÑÝ•±Ù”Ñ¥­Ì¥¹ÍÑ•…½˜‰•½µ¥¹œ¹…Ù¥…Ñ¥½¸¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐÉ•…ÑQ½¥É•Ñ¥½¹…±]…É¹¥¹œ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä(€€€€¤ì(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹]I9%9}IQ%9°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€¥˜€¡™É…µ”¹…µ•Q¥µ” ¤€´ÍÑ…Ñ•MÑ…ÉÑ•‘Q¥¬(€€€€€€€€€€€€€€€€øô5a}]I9%9}IQ%=9}Q%-L¤ì(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹!=1%9°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€‰Ý…É¹¥¹}Í…¹}•á¡…ÕÍÑ•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÑ½Ý…É€ô…Ý…ä¹Í…±” ´Ä¸À¤ì(€€€€€€€™¥¹…°1½½­%¹Ñ•¹Ð±½½¬€ô½É•M­¥±±•½µ•ÑÉä¹±½½­Ð (€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¹…‘¡Ñ½Ý…É¤(€€€€€€€€¤ì(€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹±½½¬¡±½½¬¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰Ý…É¹¥¹}Í…¹}±½½­}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡½É•M­¥±±•½µ•ÑÉä¹…¹Õ±…ÉÉÉ½É•É••Ì (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€Ñ½Ý…É(€€€€€€€€¤€ø]I9%9}M9}1%959Q}IL¤ì(€€€€€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€‰Ý…É¹¥¹}Í…¹¹¥¹œˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€ …™É…µ”¹½¹É½Õ¹ ¤¤ì(€€€€€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€‰Ý…É¹¥¹}Í…¹}…¥É‰½É¹”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°5½Ù•µ•¹Ñ%¹Ñ•¹ÐÉ•±…Ñ¥Ù”€ôÉ•±…Ñ¥Ù•5½Ù•µ•¹Ð (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€…Ý…ä(€€€€€€€€¤ì(€€€€€€€™¥¹…°‘½Õ‰±”Í¥‘”€ô€ ¡™É…µ”¹…µ•Q¥µ” ¤€¼€Ù0¤€˜€Å0¤€ôô€Á0(€€€€€€€€€€€€€€€€ü€À¸ÈÀ(€€€€€€€€€€€€€€€€è€´À¸ÈÀì(€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”µ½Ù•µ•¹Ð€ô…ÑÕ…Ñ½È¹µ½Ù” (€€€€€€€€€€€€€€€¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€€€€€€€€€É•±…Ñ¥Ù”¹™½ÉÝ…É ¤°(€€€€€€€€€€€€€€€€€€€€€€€5…Ñ ¹µ…à (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€´Ä¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€5…Ñ ¹µ¥¸ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ä¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€É•±…Ñ¥Ù”¹ÍÑÉ…™•1•™Ð ¤€¬Í¥‘”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸µ½Ù•µ•¹Ð¹…•ÁÑ• ¤(€€€€€€€€€€€€€€€€üQ¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€€€€€‰Ý…É¹¥¹}Í•Á…É…Ñ¥¹œˆ(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€èÍÑ½Á…¥±ÕÉ” ‰Ý…É¹¥¹}Í…¹}µ½Ù•}É•©•Ñ•ˆ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸…ÕÑ¡½É¥é•‘¥É•Ñ¥½¹…±]…É¹¥¹œ (€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ…¹•ÉM¥¹…°øÑ¡É•…Ð(€€€€¤ì(€€€€€€€É•ÑÕÉ¸Ñ¡É•…Ð(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹UQ!=I%i}A1eI}]I9%9¤(€€€€€€€€€€€€€€€€¹™±…Ñ5…À¡…¹•ÉM¥¹…°èé½¹Ñ…Ñ¥É•Ñ¥½¸¤(€€€€€€€€€€€€€€€€¹¥ÍAÉ•Í•¹Ð ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐ½Õ¹Ñ•É…ÑÑ…¬ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð(€€€€¤ì(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹=U9QIQQ-%9°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹ÍÑ½À ¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰½Õ¹Ñ•É…ÑÑ…­}ÍÑ½Á}É•©•Ñ•ˆ¤ì(€€€€€€€ô((€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…¥´€ô¥¹Ñ•É…Ñ¥½¹¥´¡Ñ…É•Ð¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ñ¥É•Ñ¥½¸€ô(€€€€€€€€€€€€€€€…¥´¹ÍÕ‰ÑÉ…Ð¡™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¤ì(€€€€€€€™¥¹…°1½½­%¹Ñ•¹Ð±½½¬€ô½É•M­¥±±•½µ•ÑÉä¹±½½­Ð (€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€…¥´(€€€€€€€€¤ì(€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹±½½¬¡±½½¬¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰½Õ¹Ñ•É…ÑÑ…­}±½½­}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡½É•M­¥±±•½µ•ÑÉä¹…¹Õ±…ÉÉÉ½É•É••Ì (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€Ñ…É•Ñ¥É•Ñ¥½¸(€€€€€€€€¤€ø5I9e}QQ-}1%959Q}IL¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€‰½Õ¹Ñ•É…ÑÑ…­}…¥µ¥¹œˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€™¥¹…°=ÁÑ¥½¹…±½Õ‰±”½½±‘½Ý¸€ôµ•±•”¹…ÑÑ…­MÑÉ•¹Ñ¡M…±” ¤ì(€€€€€€€¥˜€¡½½±‘½Ý¸¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€‰½Õ¹Ñ•É…ÑÑ…­}½½±‘½Ý¹}Õ¹…Ù…¥±…‰±”ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡½½±‘½Ý¸¹½É±Í•Q¡É½Ü ¤€ð5I9e}QQ-}==1=]8¤ì(€€€€€€€€€€€•µ•É•¹å½½ÑÝ½É¬¡™É…µ”°Ñ…É•Ð¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€‰½Õ¹Ñ•É…ÑÑ…­}½½±¥¹}‘½Ý¸ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”½ÕÑ½µ”€ôµ•±•”¹…ÑÑ…¬¡Ñ…É•Ð¹•¹Ñ¥Ñå% ¤¤ì(€€€€€€€¥˜€¡½ÕÑ½µ”¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä€ô™É…µ”¹Á½Í¥Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€¹ÍÕ‰ÑÉ…Ð¡Ñ…É•Ð¹Á½Í¥Ñ¥½¸ ¤¤ì(€€€€€€€€€€€±…ÍÑµ•É•¹åÝ…ä€ô…Ý…ä¹±•¹Ñ¡MÅÕ…É• ¤€ðô€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€€€€€ü¹Õ±°(€€€€€€€€€€€€€€€€€€€€è…Ý…ä¹¹½Éµ…±¥é• ¤ì(€€€€€€€€€€€±…ÍÑµ•É•¹åÑÑ…­Q¥¬€ô™É…µ”¹…µ•Q¥µ” ¤ì(€€€€€€€€€€€•µ•É•¹å½½ÑÝ½É¬¡™É…µ”°Ñ…É•Ð¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸½ÕÑ½µ”¹…•ÁÑ• ¤(€€€€€€€€€€€€€€€€üQ¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰½Õ¹Ñ•É…ÑÑ…­}‘¥ÍÁ…Ñ¡•ˆ¤(€€€€€€€€€€€€€€€€èQ¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€€€€€‰½Õ¹Ñ•É…ÑÑ…­}É•©•Ñ•‘|ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬½ÕÑ½µ”¹¹…µ” ¤¹Ñ½1½Ý•É…Í”¡1½…±”¹I==P¤(€€€€€€€€€€€€€€€€¤ì(€€€ô((€€€€¼¨¨(€€€€€¨-••ÁÌ…¸Õ¹Í¡¥•±‘••µ•É•¹äÉ•ÍÁ½¹Í”™É½´‰•½µ¥¹œ„ÍÑ…Ñ¥½¹…Éä(€€€€€¨‘…µ…”ÑÉ…‘”¸5½Ù•µ•¹Ð¥Ì…±±½Ý•½¹±ä¥¹Ñ¼…¸…‘©…•¹Ð•±°Ý¡½Í”(€€€€€¨ÍÕÁÁ½ÉÐ…¹ÑÝ¼µ‰±½¬±•…É…¹”Ý•É”™É•Í¡±ä•ÍÑ…‰±¥Í¡•‰äÑ¡”(€€€€€¨½µÁ…¹¥½¸Ì½Ý¸™¥ÉÍÐµÁ•ÉÍ½¸É…åÌ¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”Ù½¥•µ•É•¹å½½ÑÝ½É¬ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð(€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä€ô™É…µ”¹Á½Í¥Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€¹ÍÕ‰ÑÉ…Ð¡Ñ…É•Ð¹Á½Í¥Ñ¥½¸ ¤¤ì(€€€€€€€•µ•É•¹å½½ÑÝ½É¬¡™É…µ”°…Ý…ä¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥•µ•É•¹å½½ÑÝ½É¬ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä(€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌøÍ…™”€ôÍ…™•I•ÑÉ•…ÑQ…É•Ð (€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€…Ý…ä¹±•¹Ñ¡MÅÕ…É• ¤€ðô€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€€€€€€€€€ü=ÁÑ¥½¹…°¹•µÁÑä ¤(€€€€€€€€€€€€€€€€€€€€€€€€è=ÁÑ¥½¹…°¹½˜¡…Ý…ä¹¹½Éµ…±¥é• ¤¤°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€€€€€¥˜€¡Í…™”¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€¨±½Í”‰½‘ä…¸½±Õ‘”Ñ¡”™±½½ÈÉ…åÌ¹••‘•Ñ¼•ÉÑ¥™ä…¸(€€€€€€€€€€€€€¨…‘©…•¹Ð•±°¸…±°‰…¬Ñ¼„‰½Õ¹‘•Ù…¹¥±±„‰…­ÍÑ•ÀÝ¡•¸(€€€€€€€€€€€€€¨Ñ¡”‰½‘ä¥ÌÉ½Õ¹‘•½È¥Ì¹½Ð¥¸„™…±°¡…é…É¸½±±¥Í¥½¸°(€€€€€€€€€€€€€¨É…Ù¥Ñä…¹Ñ¡”Í•ÉÙ•ÈÌ½Ý¸µ½Ù•µ•¹ÐÉÕ±•ÌÉ•µ…¥¸(€€€€€€€€€€€€€¨…ÕÑ¡½É¥Ñ…Ñ¥Ù”ìÑ¡”½¹ÑÉ½±±•È¹•Ù•È…ÍÍ¥¹Ì„Á½Í¥Ñ¥½¸¸(€€€€€€€€€€€€€¨¼(€€€€€€€€€€€¥˜€¡…Ý…ä¹±•¹Ñ¡MÅÕ…É• ¤€ø€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€€€€€€˜˜€¡™É…µ”¹½¹É½Õ¹ ¤(€€€€€€€€€€€€€€€€€€€ñð‘…¹•È¡™É…µ”°…¹•É-¥¹¹11%9¤¹¥ÍµÁÑä ¤¤¤ì(€€€€€€€€€€€€€€€™¥¹…°5½Ù•µ•¹Ñ%¹Ñ•¹Ð…ÕÑ¥½ÕÌ€ô(€€€€€€€€€€€€€€€€€€€€€€€É•±…Ñ¥Ù•5½Ù•µ•¹Ð (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ý…ä(€€€€€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€™¥¹…°‘½Õ‰±”Í¥‘”€ô€ ¡™É…µ”¹…µ•Q¥µ” ¤€¼€ÄÉ0¤€˜€Å0¤(€€€€€€€€€€€€€€€€€€€€€€€€ôô€Á0€ü€À¸ÌÀ€è€´À¸ÌÀì(€€€€€€€€€€€€€€€…ÑÕ…Ñ½È¹µ½Ù”¡¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€€€€€€€€€…ÕÑ¥½ÕÌ¹™½ÉÝ…É ¤€¨€À¸ÜÔ°(€€€€€€€€€€€€€€€€€€€€€€€5…Ñ ¹µ…à (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€´Ä¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€5…Ñ ¹µ¥¸ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ä¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…ÕÑ¥½ÕÌ¹ÍÑÉ…™•1•™Ð ¤€¨€À¸ÜÔ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¬Í¥‘”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ‘•Í¥É•€ôÍ…™”¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€¹ÍÕ‰ÑÉ…Ð¡™É…µ”¹Á½Í¥Ñ¥½¸ ¤¤ì(€€€€€€€™¥¹…°5½Ù•µ•¹Ñ%¹Ñ•¹Ðµ½Ù•µ•¹Ð€ôÉ•±…Ñ¥Ù•5½Ù•µ•¹Ð (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€‘•Í¥É•(€€€€€€€€¤ì(€€€€€€€¥˜€¡5…Ñ ¹…‰Ì¡µ½Ù•µ•¹Ð¹™½ÉÝ…É ¤¤€ðô€Ä¸Á´Ø(€€€€€€€€€€€€€€€€˜˜5…Ñ ¹…‰Ì¡µ½Ù•µ•¹Ð¹ÍÑÉ…™•1•™Ð ¤¤€ðô€Ä¸Á´Ø¤ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô(€€€€€€€…ÑÕ…Ñ½È¹µ½Ù”¡µ½Ù•µ•¹Ð¤ì(€€€ô((€€€€¼¨¨(€€€€€¨M•Á…É…Ñ•Ì™É½´„É••¹Ð‘…µ…”Õ”Ý¡•¸Ù…¹¥±±„‘¥¹½Ð•áÁ½Í”„™…¥È(€€€€€¨Í½ÕÉ”‘¥É•Ñ¥½¸€¡™½È•á…µÁ±”…¸¥¹‘¥É•Ðµ…¥Œ•™™•Ð¤¸Q¡”…±Ñ•É¹…Ñ¥¹œ(€€€€€¨ÍÑÉ…™”¥Ì‘•±¥‰•É…Ñ•±äÍ¡½ÉÐ…¹Í¹•…¬µÁÉ½Ñ•Ñ•ì¥Ð¥Ì½¹±ä…±±•(€€€€€¨‘ÕÉ¥¹œÑ¡”‰½Õ¹‘•É••¹Ðµ‘…µ…”Ý¥¹‘½Ü…¹¹•Ù•ÈÉ•…Ñ•Ì…¸•¹Ñ¥Ñä(€€€€€¨Ñ…É•Ð½È…¸•á…ÐÝ½É±É½ÕÑ”¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”Ù½¥‘¥É•Ñ¥½¹±•ÍÍ…µ…•½½ÑÝ½É¬ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€¥˜€¡™É…µ”¹¥¹]…Ñ•È ¤(€€€€€€€€€€€€€€€ñð‘…¹•È¡™É…µ”°…¹•É-¥¹¹11%9¤¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô(€€€€€€€™¥¹…°‘½Õ‰±”Í¥‘”€ô€ ¡™É…µ”¹…µ•Q¥µ” ¤€¼€Ù0¤€˜€Å0¤€ôô€Á0(€€€€€€€€€€€€€€€€ü€À¸ÜÀ(€€€€€€€€€€€€€€€€è€´À¸ÜÀì(€€€€€€€…ÑÕ…Ñ½È¹µ½Ù”¡¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€Í¥‘”°(€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”=ÁÑ¥½¹…°ñY¥Í¥‰±•¹Ñ¥Ñäø¹•…É•ÍÑµ•É•¹å5•±••Q…É•Ð (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø•µ•É•¹å5•±••Q…É•Ð¡™É…µ”°•¹Ñ¥Ñä¤¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø€…•¹Ñ¥Ñä¹ÁÉ½©•Ñ¥±” ¤¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø•¹Ñ¥Ñä¹‘¥ÍÑ…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ðô5I9e}51}I ¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È(€€€€€€€€€€€€€€€€€€€€€€€€¹½µÁ…É¥¹½Õ‰±”¡Y¥Í¥‰±•¹Ñ¥Ñäèé‘¥ÍÑ…¹”¤(€€€€€€€€€€€€€€€€€€€€€€€€¹Ñ¡•¹½µÁ…É¥¹œ¡•¹Ñ¥Ñä€´ø(€€€€€€€€€€€€€€€€€€€€€€€•¹Ñ¥Ñä¹•¹Ñ¥Ñå% ¤¹Ñ½MÑÉ¥¹œ ¤(€€€€€€€€€€€€€€€€¤¤ì(€€€ô((€€€€¼¨¨(€€€€€¨¹•ÕÑÉ…°¥É½¸½±•´¥Ì¹½Ð…¸…µ‰¥•¹Ð¡½ÍÑ¥±”¸%Ð‰•½µ•Ì…¸(€€€€€¨•µ•É•¹äÍ•±˜µ‘•™•¹”Ñ…É•Ð½¹±ä…™Ñ•ÈÑ¡”‰½‘ä¡…ÌÉ••¥Ù•„(€€€€€¨É••¹ÐÙ…¹¥±±„‘…µ…”½½¹Ñ…ÐÕ”…¹Ñ¡”½±•´¥ÌÕÉÉ•¹Ñ±äÙ¥Í¥‰±”(€€€€€¨¥¹Í¥‘”½É‘¥¹…Éäµ•±•”É•… ¸Q¡¥Ì­••ÁÌÙ¥±±…•ÌÍ…™”‰ä‘•™…Õ±Ð°(€€€€€¨Ý¡¥±”…Ù½¥‘¥¹œÑ¡”½±™…¥±ÕÉ”µ½‘”Ý¡•É”„½±•´½Õ±¡¥ÐÑ¡”‰½‘ä(€€€€€¨…¹Ñ¡”½µÁ…¹¥½¸Ý½Õ±½¹±äÉ…¥Í”„Í¡¥•±…¹ÍÑ…É”¸A±…å•ÈÑ…É•ÑÌ(€€€€€¨É•µ…¥¸•áÁ±¥¥Ðí½‘”•¹…•}½‰Í•ÉÙ•‘}•¹Ñ¥Ñåô‘•¥Í¥½¹ÌÉ…Ñ¡•ÈÑ¡…¸…¸(€€€€€¨…ÕÑ½µ…Ñ¥ŒÉ•Ñ…±¥…Ñ¥½¸Á½±¥ä¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”‰½½±•…¸•µ•É•¹å5•±••Q…É•Ð (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥Ñä•¹Ñ¥Ñä(€€€€¤ì(€€€€€€€¥˜€¡•¹Ñ¥Ñä¹¡½ÍÑ¥±” ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì(€€€€€€€ô(€€€€€€€¥˜€ „‰µ¥¹•É…™Ðé¥É½¹}½±•´ˆ¹•ÅÕ…±Ì¡•¹Ñ¥Ñä¹•¹Ñ¥ÑåQåÁ•% ¤¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸¹•ÕÑÉ…±½µ‰…Ñ1•…Í•Ñ¥Ù”¡™É…µ”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”‰½½±•…¸¹•ÕÑÉ…±½µ‰…Ñ1•…Í•Ñ¥Ù” (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€™¥¹…°‰½½±•…¸‘…µ…•Õ”€ô™É…µ”¹‘…¹•ÉM¥¹…±Ì ¤¹ÍÑÉ•…´ ¤¹…¹å5…Ñ  (€€€€€€€€€€€€€€€Í¥¹…°€´øÍ¥¹…°¹­¥¹ ¤€ôô…¹•É-¥¹¹Q!IQ}=9QP(€€€€€€€€€€€€€€€€€€€€€€€€˜˜€¡Í¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”¹I9Q}5}Y9P(€€€€€€€€€€€€€€€€€€€€€€€€€€€ñðÍ¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”¹A!eM%1}=9QP¤(€€€€€€€€¤ì(€€€€€€€¥˜€¡‘…µ…•Õ”¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬€øô€Á0(€€€€€€€€€€€€€€€€˜˜™É…µ”¹…µ•Q¥µ” ¤€´±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬(€€€€€€€€€€€€€€€€€€€€ðô5a}!=MQ%1}IEU%I}Q%-Lì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒA•É•ÁÑ¥½¹Y•ŒÌ¥¹Ñ•É…Ñ¥½¹¥´ (€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•¹Ñ¥ÑäÑ…É•Ð(€€€€¤ì(€€€€€€€™¥¹…°Ù…ÈÁÉ½Á•ÉÑ¥•Ì€ôÑ…É•Ð¹Ù¥Í¥‰±•AÉ½Á•ÉÑ¥•Ì ¤ì(€€€€€€€ÑÉäì(€€€€€€€€€€€™¥¹…°‘½Õ‰±”à€ô½Õ‰±”¹Á…ÉÍ•½Õ‰±” (€€€€€€€€€€€€€€€€€€€ÁÉ½Á•ÉÑ¥•Ì¹•Ñ=É•™…Õ±Ð ‰¥¹Ñ•É…Ñ¥½¹¥µ`ˆ°€‰9…8ˆ¤(€€€€€€€€€€€€¤ì(€€€€€€€€€€€™¥¹…°‘½Õ‰±”ä€ô½Õ‰±”¹Á…ÉÍ•½Õ‰±” (€€€€€€€€€€€€€€€€€€€ÁÉ½Á•ÉÑ¥•Ì¹•Ñ=É•™…Õ±Ð ‰¥¹Ñ•É…Ñ¥½¹¥µdˆ°€‰9…8ˆ¤(€€€€€€€€€€€€¤ì(€€€€€€€€€€€™¥¹…°‘½Õ‰±”è€ô½Õ‰±”¹Á…ÉÍ•½Õ‰±” (€€€€€€€€€€€€€€€€€€€ÁÉ½Á•ÉÑ¥•Ì¹•Ñ=É•™…Õ±Ð ‰¥¹Ñ•É…Ñ¥½¹¥µhˆ°€‰9…8ˆ¤(€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€¡½Õ‰±”¹¥Í¥¹¥Ñ”¡à¤(€€€€€€€€€€€€€€€€€€€€˜˜½Õ‰±”¹¥Í¥¹¥Ñ”¡ä¤(€€€€€€€€€€€€€€€€€€€€˜˜½Õ‰±”¹¥Í¥¹¥Ñ”¡è¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ¡à°ä°è¤ì(€€€€€€€€€€€ô(€€€€€€€ô…Ñ €¡9Õµ‰•É½Éµ…Ñá•ÁÑ¥½¸¥¹½É•¤ì(€€€€€€€€€€€€¼¼UÍ”½¹±äÑ¡”…±É•…‘äµÙ¥Í¥‰±”ÁÕ‰±¥Œ•¹Ñ¥ÑäÁ½Í¥Ñ¥½¸‰•±½Ü¸(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€Ñ…É•Ð¹Á½Í¥Ñ¥½¸ ¤¹à ¤°(€€€€€€€€€€€€€€€Ñ…É•Ð¹Á½Í¥Ñ¥½¸ ¤¹ä ¤€¬€Ä¸À°(€€€€€€€€€€€€€€€Ñ…É•Ð¹Á½Í¥Ñ¥½¸ ¤¹è ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐ•ÅÕ¥Áµ•É•¹å%Ñ•´ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°Ñ¥½¹!…¹¡…¹°(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ¥Ñ•µ%°(€€€€€€€€€€€™¥¹…°MÑ…Ñ”ÁÉ•Á…É¥¹MÑ…Ñ”°(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œÉ•…Í½¸(€€€€¤ì(€€€€€€€±•…ÉÑ¥Ù•UÍ” ¤ì(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡ÁÉ•Á…É¥¹MÑ…Ñ”°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”½ÕÑ½µ”€ô•ÅÕ¥Áµ•¹Ð¹•ÅÕ¥À¡¡…¹°¥Ñ•µ%¤ì(€€€€€€€¥˜€ …½ÕÑ½µ”¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ”¡É•…Í½¸€¬€‰}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°É•…Í½¸¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐ‘•Á±½å]…Ñ•È (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œÁÕÉÁ½Í”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸‘•Á±½å]…Ñ•È¡™É…µ”°ÁÕÉÁ½Í”°Ý…Ñ•ÉMÕÉ™…”¡™É…µ”¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐ‘•Á±½å]…Ñ•È (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œÁÕÉÁ½Í”°(€€€€€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñY¥Í¥‰±•	±½­…”øÍ•±•Ñ•‘MÕÉ™…”(€€€€¤ì(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹AIAI%9}]QH°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñY¥Í¥‰±•	±½­…”øÍÕÉ™…”€ô=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±° (€€€€€€€€€€€€€€€Í•±•Ñ•‘MÕÉ™…”°(€€€€€€€€€€€€€€€€‰Í•±•Ñ•‘MÕÉ™…”ˆ(€€€€€€€€¤ì(€€€€€€€¥˜€¡ÍÕÉ™…”¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€™¥¹…°1½½­%¹Ñ•¹Ð‘½Ý¹Ý…É€ô¹•Ü1½½­%¹Ñ•¹Ð (€€€€€€€€€€€€€€€€€€€½É•M­¥±±•½µ•ÑÉä¹¡½±‘1½½¬ (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€¤¹å…Ý•É••Ì ¤°(€€€€€€€€€€€€€€€€€€€€àÔ¸Á(€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹±½½¬¡‘½Ý¹Ý…É¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” (€€€€€€€€€€€€€€€€€€€€€€€ÁÕÉÁ½Í”€¬€‰}Ý…Ñ•É}Í…¹}É•©•Ñ•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€…ÑÕ…Ñ½È¹µ½Ù”¡¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€ÁÕÉÁ½Í”€¬€‰}Ý…Ñ•É}Í…¹¹¥¹œˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°Y¥Í¥‰±•	±½­…”™…”€ôÍÕÉ™…”¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€™¥¹…°1½½­%¹Ñ•¹ÐÑ…É•Ñ1½½¬€ô½É•M­¥±±•½µ•ÑÉä¹±½½­Ð (€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€™…”¹¡¥ÑA½Í¥Ñ¥½¸ ¤(€€€€€€€€¤ì(€€€€€€€™¥¹…°‘½Õ‰±”±½½­ÉÉ½È€ô…¹Õ±…ÉÉÉ½È (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€™…”¹¡¥ÑA½Í¥Ñ¥½¸ ¤¹ÍÕ‰ÑÉ…Ð¡™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¤(€€€€€€€€¤ì(€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹±½½¬¡Ñ…É•Ñ1½½¬¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” (€€€€€€€€€€€€€€€€€€€ÁÕÉÁ½Í”€¬€‰}Ý…Ñ•É}±½½­}É•©•Ñ•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡±½½­ÉÉ½È€ø]QI}1%959Q}IL¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€ÁÕÉÁ½Í”€¬€‰}Ý…Ñ•É}…±¥¹¥¹œˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€€¼¨(€€€€€€€€€¨Y…¹¥±±„	Õ­•Ñ%Ñ•´¥µÁ±•µ•¹ÑÌ%Ñ•´ÕÍ”…¹Á•É™½ÉµÌ¥ÑÌ½Ý¸(€€€€€€€€€¨™¥ÉÍÐµÁ•ÉÍ½¸‰±½¬É…äÑÉ…”¸€M•ÉÙ•É‰½Õ¹‘UÍ•%Ñ•µ=¹A…­•Ð½¹±ä(€€€€€€€€€¨¥¹Ù½­•ÌÑ¡”‰±½¬½¥Ñ•´ÕÍ”µ½¸Á…Ñ …¹Ñ¡•É•™½É”±•…Ù•Ì„Ý…Ñ•È(€€€€€€€€€¨‰Õ­•ÐÕ¹¡…¹••Ù•¸Ý¡•¸¥ÑÌÉ½ÍÍ¡…¥ÈÑ…É•Ð¥ÌÙ…±¥¸€M•¹Ñ¡”(€€€€€€€€€¨Í…µ”½É‘¥¹…ÉäÕÍ”µ¥Ñ•´…Ñ¥½¸…Ì„É•…°±¥•¹Ð…™Ñ•È…±¥¹µ•¹Ð¸(€€€€€€€€€¨¼(€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”ÕÍ”€ô(€€€€€€€€€€€€€€€…ÑÕ…Ñ½È¹ÕÍ•%Ñ•´¡Ñ¥½¹!…¹¹5%9}!9¤ì(€€€€€€€¥˜€ …ÕÍ”¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” (€€€€€€€€€€€€€€€€€€€ÁÕÉÁ½Í”€¬€‰}Ý…Ñ•É}ÕÍ•}É•©•Ñ•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹A1=e%9}]QH°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€ÁÕÉÁ½Í”€¬€‰}Ý…Ñ•É}‘•Á±½å•ˆ(€€€€€€€€¤ì(€€€ô((€€€€¼¨¨(€€€€€¨A±…•Ì…¸½Ý¹•Ù…¹¥±±„™…±°µ…ÉÉ•ÍÐ¥Ñ•´½¹Ñ¼„ÕÉÉ•¹Ñ±äÙ¥Í¥‰±”°(€€€€€¨É•…¡…‰±”±…¹‘¥¹œÍÕÉ™…”¸U¹±¥­”Ý…Ñ•ÈÑ¡¥ÌÉ•µ…¥¹Ì±•…°¥¸Ñ¡”(€€€€€¨9•Ñ¡•È¸Q¡”½¹ÑÉ½±±•È½¹±ä¥ÍÍÕ•Ì…¸½É‘¥¹…ÉäÕÍ”µ½¸µ‰±½¬…Ñ¥½¸ìÑ¡”(€€€€€¨…µ”‘•¥‘•ÌÝ¡•Ñ¡•ÈÑ¡”¥Ñ•´…¸‰”Á±…•…¹…ÁÁ±¥•Ì¹½Éµ…°(€€€€€¨½¹ÍÕµÁÑ¥½¸°½±±¥Í¥½¸°‰½Õ¹”°Í±½Ý‘½Ý¸°…¹™…±°‘…µ…”¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐ‘•Á±½å…±±±ÕÑ  (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ¥Ñ•µ%(€€€€¤ì(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹AIAI%9}11}1UQ °™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñY¥Í¥‰±•	±½­…”øÍÕÉ™…”€ô(€€€€€€€€€€€€€€€Ý…Ñ•ÉMÕÉ™…”¡™É…µ”¤ì(€€€€€€€¥˜€¡ÍÕÉ™…”¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€™¥¹…°1½½­%¹Ñ•¹Ð‘½Ý¹Ý…É€ô¹•Ü1½½­%¹Ñ•¹Ð (€€€€€€€€€€€€€€€€€€€½É•M­¥±±•½µ•ÑÉä¹¡½±‘1½½¬ (€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€¤¹å…Ý•É••Ì ¤°(€€€€€€€€€€€€€€€€€€€€àÔ¸Á(€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹±½½¬¡‘½Ý¹Ý…É¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” (€€€€€€€€€€€€€€€€€€€€€€€€‰™…±±}±ÕÑ¡}Í…¹}É•©•Ñ•ˆ(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€…ÑÕ…Ñ½È¹µ½Ù”¡5½Ù•µ•¹Ñ%¹Ñ•¹Ð¹MQ=AA¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€‰™…±±}±ÕÑ¡}Í…¹¹¥¹œˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°Y¥Í¥‰±•	±½­…”™…”€ôÍÕÉ™…”¹½É±Í•Q¡É½Ü ¤ì(€€€€€€€™¥¹…°1½½­%¹Ñ•¹ÐÑ…É•Ñ1½½¬€ô½É•M­¥±±•½µ•ÑÉä¹±½½­Ð (€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€™…”¹¡¥ÑA½Í¥Ñ¥½¸ ¤(€€€€€€€€¤ì(€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹±½½¬¡Ñ…É•Ñ1½½¬¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰™…±±}±ÕÑ¡}±½½­}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡…¹Õ±…ÉÉÉ½È (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€™…”¹¡¥ÑA½Í¥Ñ¥½¸ ¤¹ÍÕ‰ÑÉ…Ð¡™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¤(€€€€€€€€¤€ø]QI}1%959Q}IL¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€‰™…±±}±ÕÑ¡}…±¥¹¥¹œˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñ	±½­%¹Ñ•É…Ñ¥½¹Q…É•ÐøÑ…É•Ð€ô(€€€€€€€€€€€€€€€‰±½­Q…É•Ð¡™…”¤ì(€€€€€€€¥˜€¡Ñ…É•Ð¹¥ÍµÁÑä ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰™…±±}±ÕÑ¡}ÍÕÉ™…•}¥¹Ù…±¥ˆ¤ì(€€€€€€€ô(€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”ÕÍ”€ô…ÑÕ…Ñ½È¹ÕÍ•5…¥¹!…¹‘=¸ (€€€€€€€€€€€€€€€Ñ…É•Ð¹½É±Í•Q¡É½Ü ¤(€€€€€€€€¤ì(€€€€€€€¥˜€ …ÕÍ”¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰™…±±}±ÕÑ¡}ÕÍ•}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹A1=e%9}11}1UQ °™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€‰™…±±}±ÕÑ¡}‘•Á±½å•‘|ˆ€¬¥Ñ•µ%¹ÍÕ‰ÍÑÉ¥¹œ (€€€€€€€€€€€€€€€€€€€€€€€¥Ñ•µ%¹¥¹‘•á=˜ œèœ¤€¬€Ä(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐÉ•ÑÉ•…Ð¡½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€¥˜€¡É•ÑÉ•…ÑQ…É•Ð€ôô¹Õ±°¤ì(€€€€€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰É•ÑÉ•…Ñ}Ñ…É•Ñ}Õ¹…Ù…¥±…‰±”ˆ¤ì(€€€€€€€ô(€€€€€€€A•É•ÁÑ¥½¹Y•ŒÌ‘•±Ñ„€ôÉ•ÑÉ•…ÑQ…É•Ð¹ÍÕ‰ÑÉ…Ð¡™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¤ì(€€€€€€€¥˜€¡5…Ñ ¹¡åÁ½Ð¡‘•±Ñ„¹à ¤°‘•±Ñ„¹è ¤¤€ðô€À¸ÈÀ¤ì(€€€€€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€€€€€É•ÑÉ•…ÑQ…É•Ð€ô¹Õ±°ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰É•ÑÉ•…Ñ}•±±}É•…¡•ˆ¤ì(€€€€€€€ô(€€€€€€€1½½­%¹Ñ•¹Ð±½½¬€ô½É•M­¥±±•½µ•ÑÉä¹±½½­Ð (€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€É•ÑÉ•…ÑQ…É•Ð(€€€€€€€€¤ì(€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹±½½¬¡±½½¬¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰É•ÑÉ•…Ñ}±½½­}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€‘½Õ‰±”•ÉÉ½È€ô½É•M­¥±±•½µ•ÑÉä¹¡½É¥é½¹Ñ…±¹Õ±…ÉÉÉ½É•É••Ì (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€‘•±Ñ„(€€€€€€€€¤ì(€€€€€€€¥˜€¡•ÉÉ½È€ø€ÄÔ¸À¤ì(€€€€€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰É•ÑÉ•…Ñ}…±¥¹¥¹œˆ¤ì(€€€€€€€ô(€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹µ½Ù”¡¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€€Ä¸À°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€ÑÉÕ”°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰É•ÑÉ•…Ñ}µ½Ù•}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰É•ÑÉ•…Ñ¥¹œˆ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐÕ…É (€€€€€€€€€€€½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€Ñ¥½¹!…¹Í¡¥•±°(€€€€€€€€€€€=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌø…Ý…ä°(€€€€€€€€€€€‰½½±•…¸Í…¹I••¹Ñ…µ…”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸Õ…É¡™É…µ”°Í¡¥•±°…Ý…ä°Í…¹I••¹Ñ…µ…”°™…±Í”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐÕ…É (€€€€€€€€€€€½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€Ñ¥½¹!…¹Í¡¥•±°(€€€€€€€€€€€=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌø…Ý…ä°(€€€€€€€€€€€‰½½±•…¸Í…¹I••¹Ñ…µ…”°(€€€€€€€€€€€‰½½±•…¸ÁÉ•Í•ÉÙ•5½Ù•µ•¹Ð(€€€€¤ì(€€€€€€€‰½½±•…¸•¹Ñ•É¥¹œ€ôÍÑ…Ñ”€„ôMÑ…Ñ”¹UI%9(€€€€€€€€€€€€€€€ñð…Ñ¥Ù•UÍ•!…¹€„ôÍ¡¥•±ì(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹UI%9°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€¥˜€ …ÁÉ•Í•ÉÙ•5½Ù•µ•¹Ð¤ì(€€€€€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡Í…¹I••¹Ñ…µ…”€˜˜…Ý…ä¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€¨É••¹ÐÙ…¹¥±±„‘…µ…”•Ù•¹Ð…ÉÉ¥•Ì„‰½Õ¹‘•‘¥É•Ñ¥½¸™É½´(€€€€€€€€€€€€€¨Ñ¡”½µÁ…¹¥½¸Ñ¼Ñ¡”¡¥ÐÍ½ÕÉ”¸€…”Ñ¡…Ð‘¥É•Ñ¥½¸™¥ÉÍÐÍ¼(€€€€€€€€€€€€€¨Ñ¡”Í¡¥•±…¸…ÑÕ…±±ä¥¹Ñ•É•ÁÐÑ¡”¹•áÐµ•±•”¡¥Ðì„‰±¥¹(€€€€€€€€€€€€€¨™¥á•å…ÜÍÝ••À…¸±•…Ù”Ñ¡”‰½‘äÍ¥‘”µ½¸Ñ¼…¸¹‘•Éµ…¸Ñ¡…Ð(€€€€€€€€€€€€€¨©ÕÍÐÑ•±•Á½ÉÑ•¸€-••ÀÑ¡”ÍÝ••À½¹±ä…ÌÑ¡”¡½¹•ÍÐ™…±±‰…¬(€€€€€€€€€€€€€¨Ý¡•¸Ñ¡”•Ù•¹Ð‘¥¹½ÐÁÉ½Ù¥‘”„‘¥É•Ñ¥½¸¸(€€€€€€€€€€€€€¨¼(€€€€€€€€€€€±½½­Q½Ý…É‘Q¡É•…Ð¡™É…µ”°…Ý…ä¹½É±Í•Q¡É½Ü ¤¤(€€€€€€€€€€€€€€€€€€€€¹¥™AÉ•Í•¹Ð¡…ÑÕ…Ñ½Èèé±½½¬¤ì(€€€€€€€ô•±Í”¥˜€¡Í…¹I••¹Ñ…µ…”¤ì(€€€€€€€€€€€…ÑÕ…Ñ½È¹±½½¬¡É••¹Ñ…µ…•M…¹1½½¬¡™É…µ”¤¤ì(€€€€€€€ô•±Í”ì(€€€€€€€€€€€…Ý…ä¹™±…Ñ5…À¡Ù•Ñ½È€´ø±½½­Q½Ý…É‘Q¡É•…Ð¡™É…µ”°Ù•Ñ½È¤¤(€€€€€€€€€€€€€€€€€€€€¹¥™AÉ•Í•¹Ð¡…ÑÕ…Ñ½Èèé±½½¬¤ì(€€€€€€€ô(€€€€€€€¥˜€¡•¹Ñ•É¥¹œ¤ì(€€€€€€€€€€€Ñ¥½¹=ÕÑ½µ”ÕÍ”€ô…ÑÕ…Ñ½È¹ÕÍ•%Ñ•´¡Í¡¥•±¤ì(€€€€€€€€€€€¥˜€ …ÕÍ”¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€€€€€…Ñ¥Ù•UÍ•!…¹€ô¹Õ±°ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰Í¡¥•±‘}ÕÍ•}É•©•Ñ•ˆ¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€…Ñ¥Ù•UÍ•!…¹€ôÍ¡¥•±ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰Õ…É‘¥¹œˆ¤ì(€€€ô((€€€€¼¨¨(€€€€€¨‘…µ…”Õ”¥‘•¹Ñ¥™¥•Ì½¹±ä„‘¥É•Ñ¥½¸°¹½Ð…¸…ÑÑ…­•È¸€%˜Ñ¡”(€€€€€¨¡½ÍÑ¥±”±•…Ù•ÌÑ¡”ÕÉÉ•¹ÐÍ•µ…¹Ñ¥ŒÍ…µÁ±”€¡¹‘•Éµ•¸½µµ½¹±äÑ•±•Á½ÉÐ(€€€€€¨…™Ñ•È„¡¥Ð¤°­••ÀÑ¡”Í¡¥•±ÕÀ…¹ÍÝ••À„Íµ…±°™¥ÉÍÐµÁ•ÉÍ½¸…ÉŒ™½È(€€€€€¨Ñ¡”‰½Õ¹‘•Õ”±¥™•Ñ¥µ”¸€Q¡¥Ì…¸É•…ÅÕ¥É”„¹•Ý±äÙ¥Í¥‰±”Ñ…É•Ð(€€€€€¨Ý¥Ñ¡½ÕÐÑÉ…­¥¹œ°ÅÕ•Éå¥¹œ½È…ÑÑ…­¥¹œ…¸½±Õ‘••¹Ñ¥Ñä¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐÍ…¹I••¹Ñ…µ…”¡™¥¹…°½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹]I9%9}IQ%9°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€™¥¹…°±½¹œ•±…ÁÍ•€ô™É…µ”¹…µ•Q¥µ” ¤€´ÍÑ…Ñ•MÑ…ÉÑ•‘Q¥¬ì(€€€€€€€¥˜€¡•±…ÁÍ•€øô5a}]I9%9}IQ%=9}Q%-L¤ì(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹!=1%9°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€‰É••¹Ñ}‘…µ…•}Í…¹}•á¡…ÕÍÑ•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹±½½¬¡É••¹Ñ…µ…•M…¹1½½¬¡™É…µ”¤¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰É••¹Ñ}‘…µ…•}Í…¹}±½½­}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€€¼¨(€€€€€€€€€¨µ•±•”¡¥ÐÝ¥Ñ „™…¥ÈÍ½ÕÉ”‘¥É•Ñ¥½¸¥Ì…±É•…‘ä•¹½Õ (€€€€€€€€€¨¥¹™½Éµ…Ñ¥½¸™½È½¹”‰½Õ¹‘•Í•Á…É…Ñ¥½¸ÍÑ•À¸€]…¥Ñ¥¹œ™½ÈÑ¡”(€€€€€€€€€¨Ý¡½±”±½½¬ÍÝ••À‰•™½É”µ½Ù¥¹œµ…‘”„É•…Èi½µ‰¥”±…¹Í•Ù•É…°(€€€€€€€€€¨Ù…¹¥±±„¡¥ÑÌÝ¡¥±”Ñ¡”‰½‘ä½¹±äÑÕÉ¹•¥ÑÌ¡•…ìÑ¡…Ð¥ÌÑ¡”(€€€€€€€€€¨É•Á½ÉÑ•€‰ÍÑ…É¥¹œÕ¹Ñ¥°‘•…Ñ ˆ™…¥±ÕÉ”¸€Q¡”Í½ÕÉ”Ù•Ñ½È¥Ì(€€€€€€€€€¨ÍÑ¥±°Ñ¡”½¹±ä‘¥É•Ñ¥½¸ÕÍ•°…¹Ñ¡”µ½Ù•µ•¹Ð‰•±½Ü…•ÁÑÌ(€€€€€€€€€¨½¹±ä„™É•Í¡±ä½‰Í•ÉÙ•…‘©…•¹Ð•±°€¡½ÈÑ¡”Í…µ”…ÕÑ¥½ÕÌ(€€€€€€€€€¨É½Õ¹‘•™…±±‰…¬ÕÍ•‰ä½É‘¥¹…Éä•µ•É•¹ä™½½ÑÝ½É¬¤¸(€€€€€€€€€¨¼(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌø‘¥É•Ñ•‘Ý…ä€ô™É…µ”¹‘…¹•ÉM¥¹…±Ì ¤(€€€€€€€€€€€€€€€€¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹­¥¹ ¤€ôô…¹•É-¥¹¹Q!IQ}=9QP¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”¹I9Q}5}Y9P(€€€€€€€€€€€€€€€€€€€ñðÍ¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”¹A!eM%1}=9QP¤(€€€€€€€€€€€€€€€€¹™±…Ñ5…À¡Í¥¹…°€´øÍ¥¹…°¹½¹Ñ…Ñ¥É•Ñ¥½¸ ¤¹ÍÑÉ•…´ ¤¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡‘¥É•Ñ¥½¸€´ø‘¥É•Ñ¥½¸¹±•¹Ñ¡MÅÕ…É• ¤€ø€Ä¸Á´ÄÈ¤(€€€€€€€€€€€€€€€€¹µ…À¡‘¥É•Ñ¥½¸€´ø‘¥É•Ñ¥½¸¹¹½Éµ…±¥é• ¤¹Í…±” ´Ä¸À¤¤(€€€€€€€€€€€€€€€€¹™¥¹‘¥ÉÍÐ ¤ì(€€€€€€€¥˜€¡‘¥É•Ñ•‘Ý…ä¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€˜˜•±…ÁÍ•€øô€Å0(€€€€€€€€€€€€€€€€˜˜€…™É…µ”¹¥¹]…Ñ•È ¤(€€€€€€€€€€€€€€€€˜˜‘…¹•È¡™É…µ”°…¹•É-¥¹¹11%9¤¹¥ÍµÁÑä ¤(€€€€€€€€€€€€€€€€˜˜‘¥É•Ñ•‘…µ…•½½ÑÝ½É¬ (€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€‘¥É•Ñ•‘Ý…ä¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€‰É••¹Ñ}‘…µ…•}Í•Á…É…Ñ¥¹œˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€€¼¨(€€€€€€€€€¨]¡•¸Ñ¡”¡¥Ð…ÉÉ¥•¹¼‘¥É•Ñ¥½¸…¹¹¼…‘©…•¹Ð•±°Ý…Ì™Õ±±ä(€€€€€€€€€¨½‰Í•ÉÙ•°„ÁÕÉ”±½½¬µ½¹±äÉ•ÍÁ½¹Í”…¸±•…Ù”Ñ¡”‰½‘äÕ¹‘•È„(€€€€€€€€€¨É•Á•…Ñ¥¹œ…ÑÑ…¬¥¹‘•™¥¹¥Ñ•±ä€¡Ñ¡”™…¥±ÕÉ”Í••¸¥¸Ñ¡”É•…°(€€€€€€€€€¨¹µÁ½ÉÑ…°±¥™•å±”…Ñ”¤¸€=¹”Ñ¡”™½ÕÈ…É‘¥¹…°Í•Ñ½ÉÌ¡…Ù”(€€€€€€€€€¨‰••¸Í…µÁ±•°Ñ…­”½¹”Íµ…±°Í¹•…¬µÁÉ½Ñ•Ñ•ÁÉ½‰”¥¸Ñ¡”ÕÉÉ•¹Ð(€€€€€€€€€¨™¥ÉÍÐµÁ•ÉÍ½¸¡•…‘¥¹œ¸€%Ð¥Ì‘•±¥‰•É…Ñ•±äÉ•ÍÑÉ¥Ñ•(€€€€€€€€€¨Ñ¼É••¹ÐÁ¡åÍ¥…°‘…µ…”°„É½Õ¹‘•‰½‘ä°…¹Ñ¡¥Ì‰½Õ¹‘•(€€€€€€€€€¨Ý…É¹¥¹œÝ¥¹‘½Ü¸€%ÐÑ¡•É•™½É”…¹¹½ÐÑÕÉ¸…¸½É‘¥¹…ÉäÕ¹­¹½Ý¸(€€€€€€€€€¨ÁÉ½©•Ñ¥±”½ÁÉ½á¥µ¥ÑäÝ…É¹¥¹œ¥¹Ñ¼‰±¥¹µ½Ù•µ•¹Ð¸(€€€€€€€€€¨¼(€€€€€€€€¼¨(€€€€€€€€€¨µ•±•”¡¥Ð½ÈÉåÍÑ…°‰±…ÍÐ…¸±•…Ù”„Ù…¹¥±±„Á±…å•È‰É¥•™±ä(€€€€€€€€€¨…¥É‰½É¹”Ý¥Ñ¡½ÕÐ•¹Ñ•É¥¹œÑ¡”Í•Á…É…Ñ”11%9¡…é…É±…¹”¸€(€€€€€€€€€¨ÍÑÉ¥Ð½¹É½Õ¹…Ñ”µ…‘”Ñ¡…Ð‰½‘ä­••À±½½­¥¹œÝ¡¥±”É•Á•…Ñ•(€€€€€€€€€¨‘¥É•Ñ¥½¹±•ÍÌ‘…µ…”±…¹‘•¸€!½É¥é½¹Ñ…°…¥È½¹ÑÉ½°¥ÌÍÑ¥±°…¸(€€€€€€€€€¨½É‘¥¹…ÉäÁ±…å•È¥¹ÁÕÐ…¹É•µ…¥¹Ì‰½Õ¹‘•Ñ¼Ñ¡”É••¹Ðµ‘…µ…”(€€€€€€€€€¨Ý¥¹‘½ÜìÝ…Ñ•È°™¥É”…¹…ÑÕ…°™…±±¥¹œ…É”¡…¹‘±•‰äÑ¡”¡¥¡•È(€€€€€€€€€¨ÁÉ¥½É¥Ñä•µ•É•¹ä‰É…¹¡•Ì‰•™½É”Ñ¡¥Ìµ•Ñ¡½¸(€€€€€€€€€¨¼(€€€€€€€¥˜€¡‘¥É•Ñ¥½¹±•ÍÍI••¹Ñ…µ…”¡™É…µ”¤(€€€€€€€€€€€€€€€€˜˜€…™É…µ”¹¥¹]…Ñ•È ¤(€€€€€€€€€€€€€€€€˜˜•±…ÁÍ•€øô%IQ%=91MM}5}M9}Q%-L¤ì(€€€€€€€€€€€™¥¹…°Ñ¥½¹=ÕÑ½µ”µ½Ù•µ•¹Ð€ô…ÑÕ…Ñ½È¹µ½Ù” (€€€€€€€€€€€€€€€€€€€¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€€€€€€€€€€€€€%IQ%=91MM}5}AI=	}MA°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€¤ì(€€€€€€€€€€€É•ÑÕÉ¸µ½Ù•µ•¹Ð¹…•ÁÑ• ¤(€€€€€€€€€€€€€€€€€€€€üQ¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰É••¹Ñ}‘…µ…•}Í•Á…É…Ñ¥¹œˆ(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€èÍÑ½Á…¥±ÕÉ” ‰É••¹Ñ}‘…µ…•}Í•Á…É…Ñ¥½¹}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰É••¹Ñ}‘…µ…•}Í…¹¹¥¹œˆ¤ì(€€€ô((€€€€¼¨¨(€€€€€¨Q…­•Ì½¹”Íµ…±°°Í•ÉÙ•Èµ…ÕÑ¡½É¥Ñ…Ñ¥Ù”ÍÑ•À…Ý…ä™É½´„É••¹Ñ±ä(€€€€€¨É•Á½ÉÑ•…ÑÑ…­•È¸€Q¡¥Ìµ•Ñ¡½‘•±¥‰•É…Ñ•±ä¡…Ì¹¼•¹Ñ¥Ñä¥‘•¹Ñ¥Ñä(€€€€€¨½È¡¥‘‘•¸½½É‘¥¹…Ñ”…•ÍÌè¥ÐÕÍ•Ì½¹±äÑ¡”™…¥È‘…µ…”‘¥É•Ñ¥½¸(€€€€€¨…¹Ñ¡”Í…µ”½‰Í•ÉÙ•µ•±°Ù…±¥‘…Ñ¥½¸…ÌÑ¡”¹½Éµ…°•µ•É•¹ä(€€€€€¨™½½ÑÝ½É¬Á…Ñ ¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”‰½½±•…¸‘¥É•Ñ•‘…µ…•½½ÑÝ½É¬ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä(€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌøÍ…™”€ôÍ…™•I•ÑÉ•…ÑQ…É•Ð (€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€=ÁÑ¥½¹…°¹½˜¡…Ý…ä¤°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€€€€€¥˜€¡Í…™”¹¥ÍAÉ•Í•¹Ð ¤¤ì(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ‘•Í¥É•€ôÍ…™”¹½É±Í•Q¡É½Ü ¤(€€€€€€€€€€€€€€€€€€€€¹ÍÕ‰ÑÉ…Ð¡™É…µ”¹Á½Í¥Ñ¥½¸ ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸…ÑÕ…Ñ½È¹µ½Ù”¡É•±…Ñ¥Ù•5½Ù•µ•¹Ð (€€€€€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€€€€€‘•Í¥É•(€€€€€€€€€€€€¤¤¹…•ÁÑ• ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡…Ý…ä¹±•¹Ñ¡MÅÕ…É• ¤€ðô€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€ñð€…™É…µ”¹½¹É½Õ¹ ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì(€€€€€€€ô(€€€€€€€™¥¹…°5½Ù•µ•¹Ñ%¹Ñ•¹Ð…ÕÑ¥½ÕÌ€ôÉ•±…Ñ¥Ù•5½Ù•µ•¹Ð (€€€€€€€€€€€€€€€™É…µ”¹±½½­¥É•Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€…Ý…ä(€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸…ÑÕ…Ñ½È¹µ½Ù”¡¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€…ÕÑ¥½ÕÌ¹™½ÉÝ…É ¤€¨€À¸ÜÔ°(€€€€€€€€€€€€€€€…ÕÑ¥½ÕÌ¹ÍÑÉ…™•1•™Ð ¤€¨€À¸ÜÔ°(€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€¤¤¹…•ÁÑ• ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”‰½½±•…¸Í¡½Õ±‘M…¹½É!½ÍÑ¥±”¡™¥¹…°½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€É•ÑÕÉ¸Í¡½Õ±‘M…¹½É!½ÍÑ¥±”¡™É…µ”°™…±Í”¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”‰½½±•…¸Í¡½Õ±‘M…¹½É!½ÍÑ¥±” (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°‰½½±•…¸Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€¤ì(€€€€€€€€¼¨(€€€€€€€€€¨¸…Ñ¥Ù”½µ‰…ÐÍ­¥±°½Ý¹Ì½É‘¥¹…Éä¡½ÍÑ¥±”ÁÉ½á¥µ¥Ñä°¥¹±Õ‘¥¹œ(€€€€€€€€€¨¥ÑÌ½Ý¸Ñ…É•Ðµ±½ÍÌ½É•…ÅÕ¥Í¥Ñ¥½¸Á½±¥ä¸Q¡”•µ•É•¹äÑ¥µ•ÍÑ…µÀ(€€€€€€€€€¨µÕÍÐ¹•Ù•ÈÍÑ•…°Ñ¡…Ð±•…Í”…™Ñ•ÈÑ¡”Ñ…É•Ð±•…Ù•ÌÑ¡”ÕÉÉ•¹Ð(€€€€€€€€€¨Ù¥•Ü¸Í•Á…É…Ñ•±äÉ•Á½ÉÑ•Á¡åÍ¥…°½¹Ñ…Ð½ÈÁÉ½©•Ñ¥±”Ñ¡É•…Ð(€€€€€€€€€¨ÍÑ¥±°É•…¡•Ìµ½ÍÑM•Ù•É•Q¡É•…Ð…¹É•µ…¥¹Ì¹½¸µ‘•±•…‰±”¸(€€€€€€€€€¨¼(€€€€€€€¥˜€¡Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•¤ì(€€€€€€€€€€€É•ÑÕÉ¸™…±Í”ì(€€€€€€€ô(€€€€€€€™¥¹…°‰½½±•…¸Ù¥Í¥‰±•!½ÍÑ¥±”€ô™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹…¹å5…Ñ ¡•¹Ñ¥Ñä€´ø•¹Ñ¥Ñä¹¡½ÍÑ¥±” ¤(€€€€€€€€€€€€€€€€€€€€€€€ñð•¹Ñ¥Ñä¹ÁÉ½©•Ñ¥±” ¤(€€€€€€€€€€€€€€€€€€€€€€€ñð€‰µ¥¹•É…™Ðé¥É½¹}½±•´ˆ¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•¹Ñ¥Ñä¹•¹Ñ¥ÑåQåÁ•% ¤(€€€€€€€€€€€€€€€€€€€€€€€€¤€˜˜¹•ÕÑÉ…±½µ‰…Ñ1•…Í•Ñ¥Ù”¡™É…µ”¤¤ì(€€€€€€€¥˜€¡Ù¥Í¥‰±•!½ÍÑ¥±”¤ì(€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€¨É••¹Ñ±ä½¹Ñ…Ñ•¡½ÍÑ¥±”µ…äÍÑ¥±°‰”Ù¥Í¥‰±”…™Ñ•È¥Ð(€€€€€€€€€€€€€¨µ½Ù•Ì½ÈÑ•±•Á½ÉÑÌ½ÕÑÍ¥‘”Ñ¡”€Ì¸ÈÔ‰±½¬µ•±•”É…‘¥ÕÌ¸¼¹½Ð(€€€€€€€€€€€€€¨‘É½ÀÑ¡”•µ•É•¹ä±•…Í”µ•É•±ä‰•…ÕÍ”Ñ¡”•¹Ñ¥Ñä¥Ì¹½Ü…Ð(€€€€€€€€€€€€€¨•¥¡Ð‰±½­ÌèÉ•Ñ…¥¸Ñ¡”‰½Õ¹‘•™¥ÉÍÐµÁ•ÉÍ½¸Í…¸½Õ…ÉÝ¥¹‘½Ü(€€€€€€€€€€€€€¨™É½´Ñ¡”±…ÍÐ™…¥È±½Í”½‰Í•ÉÙ…Ñ¥½¸¸U¹É•±…Ñ•‘¥ÍÑ…¹Ðµ½‰Ì(€€€€€€€€€€€€€¨¹•Ù•ÈÍ•Ð±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬…¹Ñ¡•É•™½É”‘¼¹½ÐÝ…­”Ñ¡¥Ì(€€€€€€€€€€€€€¨±…¹”¸(€€€€€€€€€€€€€¨¼(€€€€€€€€€€€É•ÑÕÉ¸±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬€øô€Á0(€€€€€€€€€€€€€€€€€€€€˜˜™É…µ”¹…µ•Q¥µ” ¤€´±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬(€€€€€€€€€€€€€€€€€€€€€€€€ðô5a}!=MQ%1}IEU%I}Q%-Lì(€€€€€€€ô(€€€€€€€™¥¹…°‰½½±•…¸É••¹Ñ…µ…”€ô™É…µ”¹‘…¹•ÉM¥¹…±Ì ¤¹ÍÑÉ•…´ ¤¹…¹å5…Ñ  (€€€€€€€€€€€€€€€Í¥¹…°€´ø(€€€€€€€€€€€€€€€€€€€€€€€Í¥¹…°¹­¥¹ ¤€ôô…¹•É-¥¹¹Q!IQ}=9QP(€€€€€€€€€€€€€€€€€€€€€€€€€€€€˜˜Í¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”¹I9Q}5}Y9P(€€€€€€€€€€€€€€€€¤ì(€€€€€€€¥˜€¡É••¹Ñ…µ…”¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬€øô€Á0(€€€€€€€€€€€€€€€€˜˜™É…µ”¹…µ•Q¥µ” ¤€´±…ÍÑY¥Í¥‰±•!½ÍÑ¥±•Q¥¬(€€€€€€€€€€€€€€€€€€€€ðô5a}!=MQ%1}IEU%I}Q%-Lì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ1½½­%¹Ñ•¹ÐÉ••¹Ñ…µ…•M…¹1½½¬ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€™¥¹…°=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌø‘…µ…•¥É•Ñ¥½¸€ô™É…µ”(€€€€€€€€€€€€€€€€¹‘…¹•ÉM¥¹…±Ì ¤(€€€€€€€€€€€€€€€€¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹­¥¹ ¤€ôô…¹•É-¥¹¹Q!IQ}=9QP¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”¹I9Q}5}Y9P(€€€€€€€€€€€€€€€€€€€ñðÍ¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”¹A!eM%1}=9QP¤(€€€€€€€€€€€€€€€€¹™±…Ñ5…À¡Í¥¹…°€´øÍ¥¹…°¹½¹Ñ…Ñ¥É•Ñ¥½¸ ¤¹ÍÑÉ•…´ ¤¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡‘¥É•Ñ¥½¸€´ø‘¥É•Ñ¥½¸¹±•¹Ñ¡MÅÕ…É• ¤€ø€Ä¸Á´ÄÈ¤(€€€€€€€€€€€€€€€€¹™¥¹‘¥ÉÍÐ ¤ì(€€€€€€€™¥¹…°‰½½±•…¸‘¥É•Ñ•€ô‘…µ…•¥É•Ñ¥½¸¹¥ÍAÉ•Í•¹Ð ¤ì(€€€€€€€™¥¹…°1½½­%¹Ñ•¹Ð‰…Í”€ô‘¥É•Ñ•(€€€€€€€€€€€€€€€€ü½É•M­¥±±•½µ•ÑÉä¹¡½±‘1½½¬ (€€€€€€€€€€€€€€€€€€€€€€€‘…µ…•¥É•Ñ¥½¸¹½É±Í•Q¡É½Ü ¤¹¹½Éµ…±¥é• ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€è½É•M­¥±±•½µ•ÑÉä¹¡½±‘1½½¬¡™É…µ”¹±½½­¥É•Ñ¥½¸ ¤¤ì(€€€€€€€™¥¹…°™±½…Ñmt½™™Í•ÑÌ€ô‘¥É•Ñ•(€€€€€€€€€€€€€€€€ü5}%IQ%=9}M9}=MQL(€€€€€€€€€€€€€€€€è5}U9-9=]9}M9}=MQLì(€€€€€€€™¥¹…°¥¹ÐÁ¡…Í”€ô€¡¥¹Ð¤€ ¡™É…µ”¹…µ•Q¥µ” ¤€¼€Ñ0¤€”½™™Í•ÑÌ¹±•¹Ñ ¤ì(€€€€€€€É•ÑÕÉ¸¹•Ü1½½­%¹Ñ•¹Ð (€€€€€€€€€€€€€€€Ñ¥½¹5…Ñ ¹ÝÉ…Á•É••Ì (€€€€€€€€€€€€€€€€€€€€€€€‰…Í”¹å…Ý•É••Ì ¤€¬½™™Í•ÑÍmÁ¡…Í•t(€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€5…Ñ ¹µ…à (€€€€€€€€€€€€€€€€€€€€€€€€´ÌÔ¸Á°(€€€€€€€€€€€€€€€€€€€€€€€5…Ñ ¹µ¥¸ ÌÔ¸Á°‰…Í”¹Á¥Ñ¡•É••Ì ¤¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐÍÑ…ÉÑ…Ñ¥¹œ (€€€€€€€€€€€½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€Ñ¥½¹!…¹¡…¹(€€€€¤ì(€€€€€€€ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹Q%9°™É…µ”¹…µ•Q¥µ” ¤¤ì(€€€€€€€•…Ñ¥¹	…Í•±¥¹”€ô™É…µ”¹™½½‘1•Ù•° ¤ì(€€€€€€€™¥¹…°!•±‘%Ñ•µMÕµµ…Éä¡•±‘½½€ô¡•±¡™É…µ”°¡…¹¤ì(€€€€€€€•…Ñ¥¹%Ñ•µ%€ô¡•±‘½½¹¥Ñ•µ% ¤ì(€€€€€€€•…Ñ¥¹%Ñ•µ½Õ¹Ð€ô¡•±‘½½¹½Õ¹Ð ¤ì(€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€Ñ¥½¹=ÕÑ½µ”ÕÍ”€ô…ÑÕ…Ñ½È¹ÕÍ•%Ñ•´¡¡…¹¤ì(€€€€€€€¥˜€ …ÕÍ”¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€ÍÑ…Ñ”€ôMÑ…Ñ”¹1Hì(€€€€€€€€€€€…Ñ¥Ù•UÍ•!…¹€ô¹Õ±°ì(€€€€€€€€€€€±•…É…Ñ¥¹M¹…ÁÍ¡½Ð ¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¹½¹”¡ÍÑ…Ñ”¤ì(€€€€€€€ô(€€€€€€€…Ñ¥Ù•UÍ•!…¹€ô¡…¹ì(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰•…Ñ¥¹}ÍÑ…ÉÑ•ˆ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐ½¹Ñ¥¹Õ•…Ñ¥¹œ¡½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€™¥¹…°!•±‘%Ñ•µMÕµµ…ÉäÕÉÉ•¹Ð€ô(€€€€€€€€€€€€€€€…Ñ¥Ù•UÍ•!…¹€ôô¹Õ±°(€€€€€€€€€€€€€€€€€€€€€€€€ü!•±‘%Ñ•µMÕµµ…Éä¹•µÁÑä ¤(€€€€€€€€€€€€€€€€€€€€€€€€è¡•±¡™É…µ”°…Ñ¥Ù•UÍ•!…¹¤ì(€€€€€€€™¥¹…°‰½½±•…¸…±Ý…åÍ‘¥‰±”€ô(€€€€€€€€€€€€€€€¥Í±Ý…åÍ‘¥‰±•µ•É•¹ä¡•…Ñ¥¹%Ñ•µ%¤ì(€€€€€€€™¥¹…°‰½½±•…¸ÍÑ…­½¹ÍÕµ•€ô(€€€€€€€€€€€€€€€•…Ñ¥¹%Ñ•µ%€„ô¹Õ±°(€€€€€€€€€€€€€€€€€€€€€€€€˜˜€ …•…Ñ¥¹%Ñ•µ%¹•ÅÕ…±Ì¡ÕÉÉ•¹Ð¹¥Ñ•µ% ¤¤(€€€€€€€€€€€€€€€€€€€€€€€ñðÕÉÉ•¹Ð¹½Õ¹Ð ¤€ð•…Ñ¥¹%Ñ•µ½Õ¹Ð¤ì(€€€€€€€™¥¹…°‰½½±•…¸¹ÕÑÉ¥Ñ¥½¹ÁÁ±¥•€ô(€€€€€€€€€€€€€€€€……±Ý…åÍ‘¥‰±”€˜˜™É…µ”¹™½½‘1•Ù•° ¤€ø•…Ñ¥¹	…Í•±¥¹”ì(€€€€€€€™¥¹…°‰½½±•…¸Ñ¥µ•‘=ÕÐ€ô(€€€€€€€€€€€€€€€™É…µ”¹…µ•Q¥µ” ¤€´ÍÑ…Ñ•MÑ…ÉÑ•‘Q¥¬(€€€€€€€€€€€€€€€€€€€€€€€€øô5a}Q%9}Q%-Lì(€€€€€€€¥˜€¡ÍÑ…­½¹ÍÕµ•ñð¹ÕÑÉ¥Ñ¥½¹ÁÁ±¥•ñðÑ¥µ•‘=ÕÐ¤ì(€€€€€€€€€€€±•…ÉÑ¥Ù•UÍ” ¤ì(€€€€€€€€€€€ÍÑ…Ñ”€ôMÑ…Ñ”¹1Hì(€€€€€€€€€€€±•…É…Ñ¥¹M¹…ÁÍ¡½Ð ¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ”°(€€€€€€€€€€€€€€€€€€€Ñ¥µ•‘=ÕÐ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ü€‰•…Ñ¥¹}Ñ¥µ•‘}½ÕÐˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€è€‰•…Ñ¥¹}™¥¹¥Í¡•ˆ(€€€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡…Ñ¥Ù•UÍ•!…¹€ôô¹Õ±°(€€€€€€€€€€€€€€€ñð€…¥Í½½¡ÕÉÉ•¹Ð¤¤ì(€€€€€€€€€€€±•…ÉÑ¥Ù•UÍ” ¤ì(€€€€€€€€€€€ÍÑ…Ñ”€ôMÑ…Ñ”¹1Hì(€€€€€€€€€€€±•…É…Ñ¥¹M¹…ÁÍ¡½Ð ¤ì(€€€€€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰™½½‘}¹½}±½¹•É}¡•±ˆ¤ì(€€€€€€€ô(€€€€€€€¥˜€ ……ÑÕ…Ñ½È¹ÍÑ½À ¤¹…•ÁÑ• ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸ÍÑ½Á…¥±ÕÉ” ‰•…Ñ¥¹}ÍÑ½Á}É•©•Ñ•ˆ¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°€‰•…Ñ¥¹œˆ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥ÑÉ…¹Í¥Ñ¥½¸¡MÑ…Ñ”¹•áÐ°±½¹œ…µ•Q¥µ”¤ì(€€€€€€€¥˜€¡ÍÑ…Ñ”€ôô¹•áÐ¤ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô(€€€€€€€¥˜€¡¹•áÐ€„ôMÑ…Ñ”¹1H¤ì(€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€¨Q¡¥Ì¡…ÁÁ•¹Ì‰•™½É”Ñ¡”™¥ÉÍÐ…Ñ¥½¸½˜„¹•Ü•µ•É•¹äÍÑ…Ñ”¸(€€€€€€€€€€€€€¨%ÐÁÉ•Ù•¹ÑÌ„‰½Ü‘É…Ü°µ¥¹¥¹œ½Á•É…Ñ¥½¸°‰½…ÐÁ…‘‘±”½È(€€€€€€€€€€€€€¨µ¥¹•…ÉÐÉ¥‘•È¥¹ÁÕÐ™É½´Ñ¡”ÁÉ•Ù¥½ÕÍ±ä…Ñ¥Ù”Ñ…Í¬ÍÕÉÙ¥Ù¥¹œ(€€€€€€€€€€€€€¨¥¹Ñ¼Ñ¡”É•™±•àÑ¡…Ð¥ÌÑ…­¥¹œ½Ý¹•ÉÍ¡¥À¹½Ü¸(€€€€€€€€€€€€€¨¼(€€€€€€€€€€€ÁÉ••µÁÑQ…Í­½¹ÑÉ½±Ì¹ÉÕ¸ ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡ÍÑ…Ñ”€ôôMÑ…Ñ”¹Q%9ñðÍÑ…Ñ”€ôôMÑ…Ñ”¹UI%9¤ì(€€€€€€€€€€€±•…ÉÑ¥Ù•UÍ” ¤ì(€€€€€€€ô(€€€€€€€¥˜€¡ÍÑ…Ñ”€ôôMÑ…Ñ”¹Q%9€˜˜¹•áÐ€„ôMÑ…Ñ”¹Q%9¤ì(€€€€€€€€€€€±•…É…Ñ¥¹M¹…ÁÍ¡½Ð ¤ì(€€€€€€€ô(€€€€€€€ÍÑ…Ñ”€ô¹•áÐì(€€€€€€€ÍÑ…Ñ•MÑ…ÉÑ•‘Q¥¬€ô…µ•Q¥µ”ì(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥±•…ÉÑ¥Ù•UÍ” ¤ì(€€€€€€€¥˜€¡…Ñ¥Ù•UÍ•!…¹€„ô¹Õ±°¤ì(€€€€€€€€€€€…ÑÕ…Ñ½È¹É•±•…Í•UÍ” ¤ì(€€€€€€€€€€€…Ñ¥Ù•UÍ•!…¹€ô¹Õ±°ì(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù½¥±•…É…Ñ¥¹M¹…ÁÍ¡½Ð ¤ì(€€€€€€€•…Ñ¥¹%Ñ•µ%€ô¹Õ±°ì(€€€€€€€•…Ñ¥¹%Ñ•µ½Õ¹Ð€ô€Àì(€€€ô((€€€ÁÉ¥Ù…Ñ”Q¥­I•Á½ÉÐÍÑ½Á…¥±ÕÉ”¡MÑÉ¥¹œÉ•…Í½¸¤ì(€€€€€€€…ÑÕ…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€ÍÑ…Ñ”€ôMÑ…Ñ”¹!=1%9ì(€€€€€€€É•ÑÕÉ¸Q¥­I•Á½ÉÐ¹¥¹Ñ•ÉÙ•¹•¡ÍÑ…Ñ”°É•…Í½¸¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñ…¹•ÉM¥¹…°ø‘…¹•È (€€€€€€€€€€€½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€…¹•É-¥¹­¥¹(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹‘…¹•ÉM¥¹…±Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹­¥¹ ¤€ôô­¥¹¤(€€€€€€€€€€€€€€€€¹µ…à¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±”¡…¹•ÉM¥¹…°èéÍ•Ù•É¥Ñä¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñ…¹•ÉM¥¹…°øµ½ÍÑM•Ù•É•Q¡É•…Ð (€€€€€€€€€€€½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€‰½½±•…¸Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•°(€€€€€€€‰½½±•…¸Á¡åÍ¥…±½¹Ñ…Ñ5…¹…•°(€€€€€€€€€€€‰½½±•…¸Ù¥Í¥‰±•AÉ½©•Ñ¥±•Q¡É•…Ñ5…¹…•(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹‘…¹•ÉM¥¹…±Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´ø(€€€€€€€€€€€€€€€€€€€€€€€€ …Á¡åÍ¥…±½¹Ñ…Ñ5…¹…•(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€˜˜Í¥¹…°¹­¥¹ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ôô…¹•É-¥¹¹Q!IQ}=9QP¤(€€€€€€€€€€€€€€€€€€€€€€€ñð€ …Ù¥Í¥‰±•!½ÍÑ¥±•AÉ½á¥µ¥Ñå5…¹…•(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€˜˜Í¥¹…°¹­¥¹ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ôô…¹•É-¥¹¹!=MQ%1}AI=a%5%Qd¤(€€€€€€€€€€€€€€€€€€€€€€€ñð€ …Ù¥Í¥‰±•AÉ½©•Ñ¥±•Q¡É•…Ñ5…¹…•(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€˜˜Í¥¹…°¹­¥¹ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ôô…¹•É-¥¹¹AI=)Q%1}AI=a%5%Qd¤¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹Í•Ù•É¥Ñä ¤€øô%55%Q}9H¤(€€€€€€€€€€€€€€€€¹µ…à¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±”¡…¹•ÉM¥¹…°èéÍ•Ù•É¥Ñä¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌøÑ¡É•…Ñ¥É•Ñ¥½¸ (€€€€€€€€€€€½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€=ÁÑ¥½¹…°ñ…¹•ÉM¥¹…°øÍ¥¹…°(€€€€¤ì(€€€€€€€=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌøÙ¥Í¥‰±•¥É•Ñ¥½¸€ô(€€€€€€€€€€€€€€€™É…µ”¹Ù¥Í¥‰±•¹Ñ¥Ñ¥•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡•¹Ñ¥Ñä€´ø•¹Ñ¥Ñä¹¡½ÍÑ¥±” ¤ñð•¹Ñ¥Ñä¹ÁÉ½©•Ñ¥±” ¤¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È¹½µÁ…É¥¹½Õ‰±”¡Y¥Í¥‰±•¹Ñ¥Ñäèé‘¥ÍÑ…¹”¤¤(€€€€€€€€€€€€€€€€¹µ…À¡Y¥Í¥‰±•¹Ñ¥ÑäèéÉ•±…Ñ¥Ù•A½Í¥Ñ¥½¸¤ì(€€€€€€€=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌøÑ½Ý…É‘Q¡É•…Ð€ôÙ¥Í¥‰±•¥É•Ñ¥½¸¹¥ÍAÉ•Í•¹Ð ¤(€€€€€€€€€€€€€€€€üÙ¥Í¥‰±•¥É•Ñ¥½¸(€€€€€€€€€€€€€€€€èÍ¥¹…°¹™±…Ñ5…À¡…¹•ÉM¥¹…°èé½¹Ñ…Ñ¥É•Ñ¥½¸¤ì(€€€€€€€É•ÑÕÉ¸Ñ½Ý…É‘Q¡É•…Ð(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Ù•Ñ½È€´øÙ•Ñ½È¹±•¹Ñ¡MÅÕ…É• ¤€ø€Ä¸Á´ÄÈ¤(€€€€€€€€€€€€€€€€¹µ…À¡Ù•Ñ½È€´øÙ•Ñ½È¹¹½Éµ…±¥é• ¤¹Í…±” ´Ä¸À¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌøÍ…™•I•ÑÉ•…ÑQ…É•Ð (€€€€€€€€€€€½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌøÁÉ•™•ÉÉ•‘Ý…ä°(€€€€€€€€€€€‰½½±•…¸ÁÉ•™•É]…Ñ•È(€€€€¤ì(€€€€€€€É•ÑÕÉ¸Í…™•I•ÑÉ•…ÑQ…É•Ð (€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€ÁÉ•™•ÉÉ•‘Ý…ä°(€€€€€€€€€€€€€€€ÁÉ•™•É]…Ñ•È°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌøÍ…™•I•ÑÉ•…ÑQ…É•Ð (€€€€€€€€€€€½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€=ÁÑ¥½¹…°ñA•É•ÁÑ¥½¹Y•ŒÌøÁÉ•™•ÉÉ•‘Ý…ä°(€€€€€€€€€€€‰½½±•…¸ÁÉ•™•É]…Ñ•È°(€€€€€€€€€€€‰½½±•…¸…±±½ÝU¹‘¥É•Ñ•‘…µ…•Í…Á”(€€€€¤ì(€€€€€€€1½…±9…ÙM¹…ÁÍ¡½Ð¹…Ù¥…Ñ¥½¸€ô™É…µ”¹¹…Ù¥…Ñ¥½¸ ¤ì(€€€€€€€É¥‘A½Ì™••Ð€ô™É…µ”¹™••Ð ¤ì(€€€€€€€…¹‘¥‘…Ñ”‰•ÍÐ€ô¹Õ±°ì(€€€€€€€™½È€¡¥¹Ñmt‘¥É•Ñ¥½¸€èI%91L¤ì(€€€€€€€€€€€É¥‘A½Ì‘•ÍÑ¥¹…Ñ¥½¸€ô™••Ð¹½™™Í•Ð¡‘¥É•Ñ¥½¹lÁt°€À°‘¥É•Ñ¥½¹lÅt¤ì(€€€€€€€€€€€=ÁÑ¥½¹…°ñ=‰Í•ÉÙ•‘Y½á•°ø‰½‘ä€ô¹…Ù¥…Ñ¥½¸¹Ù½á•±Ð¡‘•ÍÑ¥¹…Ñ¥½¸¤ì(€€€€€€€€€€€=ÁÑ¥½¹…°ñ=‰Í•ÉÙ•‘Y½á•°ø¡•…€ô¹…Ù¥…Ñ¥½¸¹Ù½á•±Ð (€€€€€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸¹…‰½Ù” ¤(€€€€€€€€€€€€¤ì(€€€€€€€€€€€=ÁÑ¥½¹…°ñ=‰Í•ÉÙ•‘Y½á•°øÍÕÁÁ½ÉÐ€ô¹…Ù¥…Ñ¥½¸¹Ù½á•±Ð (€€€€€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸¹‰•±½Ü ¤(€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€¡‰½‘ä¹¥ÍµÁÑä ¤(€€€€€€€€€€€€€€€€€€€ñð¡•…¹¥ÍµÁÑä ¤(€€€€€€€€€€€€€€€€€€€ñðÍÕÁÁ½ÉÐ¹¥ÍµÁÑä ¤(€€€€€€€€€€€€€€€€€€€ñð€…9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¡…ÍÉ•Í¡QÉ…Ù•ÉÍ…±±•…É…¹” (€€€€€€€€€€€€€€€€€€€€€€€€€€€‰½‘ä¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€¹…Ù¥…Ñ¥½¸¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€ñð€…9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¡…ÍÉ•Í¡QÉ…Ù•ÉÍ…±±•…É…¹” (€€€€€€€€€€€€€€€€€€€€€€€€€€€¡•…¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€¹…Ù¥…Ñ¥½¸¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€ñð€ …‰½‘ä¹½É±Í•Q¡É½Ü ¤¹­¥¹ ¤¹¥Í1¥ÅÕ¥ ¤(€€€€€€€€€€€€€€€€€€€€˜˜€…9…Ù¥…Ñ¥½¹Ù¥‘•¹”¹¥ÍÉ•Í¡MÑ…¹‘¥¹MÕÁÁ½ÉÐ (€€€€€€€€€€€€€€€€€€€€€€€€€€€ÍÕÁÁ½ÉÐ¹½É±Í•Q¡É½Ü ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€¹…Ù¥…Ñ¥½¸¹É•Ù¥Í¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€¤¤(€€€€€€€€€€€€€€€€€€€ñð‰½‘ä¹½É±Í•Q¡É½Ü ¤¹•™™•Ñ¥Ù•…¹•È ¤(€€€€€€€€€€€€€€€€€€€€øM}Y=a1}9H(€€€€€€€€€€€€€€€€€€€ñð¡•…¹½É±Í•Q¡É½Ü ¤¹•™™•Ñ¥Ù•…¹•È ¤(€€€€€€€€€€€€€€€€€€€€øM}Y=a1}9H(€€€€€€€€€€€€€€€€€€€ñðÍÕÁÁ½ÉÐ¹½É±Í•Q¡É½Ü ¤¹•™™•Ñ¥Ù•…¹•È ¤(€€€€€€€€€€€€€€€€€€€€øM}Y=a1}9H¤ì(€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜€¡ÁÉ•™•ÉÉ•‘Ý…ä¹¥ÍµÁÑä ¤(€€€€€€€€€€€€€€€€€€€€˜˜€ ……±±½ÝU¹‘¥É•Ñ•‘…µ…•Í…Á”(€€€€€€€€€€€€€€€€€€€ñðÁÉ•™•É]…Ñ•È(€€€€€€€€€€€€€€€€€€€€˜˜‰½‘ä¹½É±Í•Q¡É½Ü ¤¹­¥¹ ¤€„ôY½á•±-¥¹¹]QH¤¤ì(€€€€€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€€€€€¨¸•¹Ù¥É½¹µ•¹Ñ…°¡¥Ð€¡™½È•á…µÁ±”…¸¹µÉåÍÑ…°‰±…ÍÐ¤(€€€€€€€€€€€€€€€€€¨…¸‰”™…¥È‰ÕÐ‘¥É•Ñ¥½¹±•ÍÌ¸€™Õ±±ä½‰Í•ÉÙ•…‘©…•¹Ð(€€€€€€€€€€€€€€€€€¨ÍÑ…¹‘…‰±”•±°¥ÌÍÑ¥±°„±•…°•Í…Á”¡½¥”ìÉ•™ÕÍ¥¹œ(€€€€€€€€€€€€€€€€€¨•Ù•ÉäÍÕ •±°µ…‘”Ñ¡”‰½‘äÍ…¸¥¸Á±…”Ý¡¥±”¡•…±Ñ (€€€€€€€€€€€€€€€€€¨½¹Ñ¥¹Õ•Ñ¼™…±°¸€]…Ñ•È±ÕÑ¡¥¹œÉ•Ñ…¥¹Ì¥ÑÌÍÑÉ¥Ñ•È(€€€€€€€€€€€€€€€€€¨É•ÅÕ¥É•µ•¹Ð…¹½¹±äÍ•±•ÑÌ„Ù¥Í¥‰±”Ý…Ñ•È•±°¸(€€€€€€€€€€€€€€€€€¨¼(€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì(€€€€€€€€€€€ô(€€€€€€€€€€€A•É•ÁÑ¥½¹Y•ŒÌ‘¥É•Ñ¥½¹Y•Ñ½È€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€‘¥É•Ñ¥½¹lÁt°(€€€€€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€€€€‘¥É•Ñ¥½¹lÅt(€€€€€€€€€€€€¤ì(€€€€€€€€€€€‘½Õ‰±”Í½É”€ôÁÉ•™•ÉÉ•‘Ý…ä(€€€€€€€€€€€€€€€€€€€€¹µ…À¡Ù…±Õ”€´øÙ…±Õ”¹‘½Ð¡‘¥É•Ñ¥½¹Y•Ñ½È¤¤(€€€€€€€€€€€€€€€€€€€€¹½É±Í” À¸À¤ì(€€€€€€€€€€€¥˜€¡ÁÉ•™•É]…Ñ•È(€€€€€€€€€€€€€€€€€€€€˜˜‰½‘ä¹½É±Í•Q¡É½Ü ¤¹­¥¹ ¤€ôôY½á•±-¥¹¹]QH¤ì(€€€€€€€€€€€€€€€Í½É”€¬ô€Ð¸Àì(€€€€€€€€€€€ô(€€€€€€€€€€€…¹‘¥‘…Ñ”…¹‘¥‘…Ñ”€ô¹•Ü…¹‘¥‘…Ñ” (€€€€€€€€€€€€€€€€€€€¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸¹à ¤€¬€À¸Ô°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¹ä ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸¹è ¤€¬€À¸Ô(€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€Í½É”°(€€€€€€€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¸(€€€€€€€€€€€€¤ì(€€€€€€€€€€€¥˜€¡‰•ÍÐ€ôô¹Õ±°(€€€€€€€€€€€€€€€€€€€ñð…¹‘¥‘…Ñ”¹Í½É” ¤€ø‰•ÍÐ¹Í½É” ¤(€€€€€€€€€€€€€€€€€€€ñð€¡…¹‘¥‘…Ñ”¹Í½É” ¤€ôô‰•ÍÐ¹Í½É” ¤(€€€€€€€€€€€€€€€€€€€€˜˜…¹‘¥‘…Ñ”¹Á½Í¥Ñ¥½¸ ¤¹½µÁ…É•Q¼¡‰•ÍÐ¹Á½Í¥Ñ¥½¸ ¤¤€ð€À¤¤ì(€€€€€€€€€€€€€€€‰•ÍÐ€ô…¹‘¥‘…Ñ”ì(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸‰•ÍÐ€ôô¹Õ±°(€€€€€€€€€€€€€€€€ü=ÁÑ¥½¹…°¹•µÁÑä ¤(€€€€€€€€€€€€€€€€è=ÁÑ¥½¹…°¹½˜¡‰•ÍÐ¹Ñ…É•Ð ¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸‘¥É•Ñ¥½¹±•ÍÍI••¹Ñ…µ…” (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹‘…¹•ÉM¥¹…±Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹­¥¹ ¤€ôô…¹•É-¥¹¹Q!IQ}=9QP¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”¹I9Q}5}Y9P(€€€€€€€€€€€€€€€€€€€ñðÍ¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”¹A!eM%1}=9QP¤(€€€€€€€€€€€€€€€€¹…¹å5…Ñ ¡Í¥¹…°€´øÍ¥¹…°¹½¹Ñ…Ñ¥É•Ñ¥½¸ ¤¹¥ÍµÁÑä ¤¤ì(€€€ô((€€€€¼¨¨(€€€€€¨É••¹ÐÁ¡åÍ¥…°¡¥ÐÝ¥Ñ „™…¥ÈÍ½ÕÉ”‘¥É•Ñ¥½¸…ÕÑ¡½É¥é•Ì½¹”(€€€€€¨‰½Õ¹‘•‘•™•¹Í¥Ù”Í•Á…É…Ñ¥½¸•Ù•¸Ý¡•¸Ñ¡”ÁÉ•Ù¥½ÕÌÑ¥¬Ý…Ì…±É•…‘ä(€€€€€¨Õ…É‘¥¹œ½¡½±‘¥¹œ¸€Q¡¥Ì¥Ì‘•±¥‰•É…Ñ•±ä¹…ÉÉ½Ý•ÈÑ¡…¸„•¹•É¥Œ(€€€€€¨Ñ¡É•…Ðè¥Ð¹•Ù•È¥¹Ù•¹ÑÌ„‘¥É•Ñ¥½¸™½È…¸Õ¹­¹½Ý¸ÁÉ½©•Ñ¥±”½È(€€€€€¨•¹Ù¥É½¹µ•¹Ñ…°¡…é…É°…¹Ñ¡”¹½Éµ…°½‰Í•ÉÙ•µ•±°¡•­ÌÁ±ÕÌÑ¡”(€€€€€¨É•ÑÉ•…ÐÝ¥¹‘½ÜÍÑ¥±°…Àµ½Ù•µ•¹Ð¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸‘¥É•Ñ¥½¹…±I••¹Ñ…µ…” (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹‘…¹•ÉM¥¹…±Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹­¥¹ ¤€ôô…¹•É-¥¹¹Q!IQ}=9QP¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡Í¥¹…°€´øÍ¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”¹I9Q}5}Y9P(€€€€€€€€€€€€€€€€€€€ñðÍ¥¹…°¹ÁÉ½Ù•¹…¹” ¤(€€€€€€€€€€€€€€€€€€€€€€€€ôôA•É•ÁÑ¥½¹AÉ½Ù•¹…¹”¹A!eM%1}=9QP¤(€€€€€€€€€€€€€€€€¹…¹å5…Ñ ¡Í¥¹…°€´øÍ¥¹…°¹½¹Ñ…Ñ¥É•Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹µ…À¡‘¥É•Ñ¥½¸€´ø‘¥É•Ñ¥½¸¹±•¹Ñ¡MÅÕ…É• ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ø€Ä¸Á´ÄÈ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹½É±Í”¡™…±Í”¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñ1½½­%¹Ñ•¹Ðø±½½­Q½Ý…É‘Q¡É•…Ð (€€€€€€€€€€€½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€A•É•ÁÑ¥½¹Y•ŒÌ…Ý…ä(€€€€¤ì(€€€€€€€A•É•ÁÑ¥½¹Y•ŒÌÑ½Ý…É€ô…Ý…ä¹Í…±” ´Ä¸À¤ì(€€€€€€€¥˜€¡Ñ½Ý…É¹±•¹Ñ¡MÅÕ…É• ¤€ðô€Ä¸Á´ÄÈ¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡½É•M­¥±±•½µ•ÑÉä¹±½½­Ð (€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤°(€€€€€€€€€€€€€€€™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¹…‘¡Ñ½Ý…É¤(€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ5½Ù•µ•¹Ñ%¹Ñ•¹ÐÉ•±…Ñ¥Ù•5½Ù•µ•¹Ð (€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ±½½¬°(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ‘•Í¥É•(€€€€¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¡½É¥é½¹Ñ…±1½½¬€ô(€€€€€€€€€€€€€€€¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ¡±½½¬¹à ¤°€À¸À°±½½¬¹è ¤¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ¡½É¥é½¹Ñ…±•Í¥É•€ô(€€€€€€€€€€€€€€€¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ¡‘•Í¥É•¹à ¤°€À¸À°‘•Í¥É•¹è ¤¤ì(€€€€€€€¥˜€¡¡½É¥é½¹Ñ…±1½½¬¹±•¹Ñ¡MÅÕ…É• ¤€ðô€Ä¸Á´ÄÈ(€€€€€€€€€€€€€€€ñð¡½É¥é½¹Ñ…±•Í¥É•¹±•¹Ñ¡MÅÕ…É• ¤€ðô€Ä¸Á´ÄÈ¤ì(€€€€€€€€€€€É•ÑÕÉ¸5½Ù•µ•¹Ñ%¹Ñ•¹Ð¹MQ=AAì(€€€€€€€ô(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ™½ÉÝ…É€ô¡½É¥é½¹Ñ…±1½½¬¹¹½Éµ…±¥é• ¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ‘¥É•Ñ¥½¸€ô(€€€€€€€€€€€€€€€¡½É¥é½¹Ñ…±•Í¥É•¹¹½Éµ…±¥é• ¤ì(€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌ±•™Ð€ô¹•ÜA•É•ÁÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€™½ÉÝ…É¹è ¤°(€€€€€€€€€€€€€€€€À¸À°(€€€€€€€€€€€€€€€€µ™½ÉÝ…É¹à ¤(€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸¹•Ü5½Ù•µ•¹Ñ%¹Ñ•¹Ð (€€€€€€€€€€€€€€€‘¥É•Ñ¥½¸¹‘½Ð¡™½ÉÝ…É¤°(€€€€€€€€€€€€€€€‘¥É•Ñ¥½¸¹‘½Ð¡±•™Ð¤°(€€€€€€€€€€€€€€€™…±Í”°(€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñÑ¥½¹!…¹ø™½½‘!…¹¡½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€¥˜€¡¥Í½½¡™É…µ”¹½™™!…¹ ¤¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡Ñ¥½¹!…¹¹=}!9¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸¥Í½½¡™É…µ”¹µ…¥¹!…¹ ¤¤(€€€€€€€€€€€€€€€€ü=ÁÑ¥½¹…°¹½˜¡Ñ¥½¹!…¹¹5%9}!9¤(€€€€€€€€€€€€€€€€è=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñÑ¥½¹!…¹øÍ¡¥•±‘!…¹¡½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€¥˜€ ‰µ¥¹•É…™ÐéÍ¡¥•±ˆ¹•ÅÕ…±Ì¡™É…µ”¹½™™!…¹ ¤¹¥Ñ•µ% ¤¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡Ñ¥½¹!…¹¹=}!9¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸€‰µ¥¹•É…™ÐéÍ¡¥•±ˆ¹•ÅÕ…±Ì¡™É…µ”¹µ…¥¹!…¹ ¤¹¥Ñ•µ% ¤¤(€€€€€€€€€€€€€€€€ü=ÁÑ¥½¹…°¹½˜¡Ñ¥½¹!…¹¹5%9}!9¤(€€€€€€€€€€€€€€€€è=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñÑ¥½¹!…¹ø•µ•É•¹å½±‘•¹ÁÁ±•!…¹ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€¥˜€¡¥Í±Ý…åÍ‘¥‰±•µ•É•¹ä¡™É…µ”¹½™™!…¹ ¤¹¥Ñ•µ% ¤¤(€€€€€€€€€€€€€€€€˜˜™É…µ”¹½™™!…¹ ¤¹½Õ¹Ð ¤€ø€À¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡Ñ¥½¹!…¹¹=}!9¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸¥Í±Ý…åÍ‘¥‰±•µ•É•¹ä¡™É…µ”¹µ…¥¹!…¹ ¤¹¥Ñ•µ% ¤¤(€€€€€€€€€€€€€€€€˜˜™É…µ”¹µ…¥¹!…¹ ¤¹½Õ¹Ð ¤€ø€À(€€€€€€€€€€€€€€€€ü=ÁÑ¥½¹…°¹½˜¡Ñ¥½¹!…¹¹5%9}!9¤(€€€€€€€€€€€€€€€€è=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñMÑÉ¥¹œøÁÉ•™•ÉÉ•‘=Ý¹•‘µ•É•¹å½±‘•¹ÁÁ±” (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€¥˜€¡¥¹Ù•¹Ñ½Éå½¹Ñ…¥¹Ì¡™É…µ”°€‰µ¥¹•É…™Ðé½±‘•¹}…ÁÁ±”ˆ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜ ‰µ¥¹•É…™Ðé½±‘•¹}…ÁÁ±”ˆ¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸¥¹Ù•¹Ñ½Éå½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€‰µ¥¹•É…™Ðé•¹¡…¹Ñ•‘}½±‘•¹}…ÁÁ±”ˆ(€€€€€€€€¤(€€€€€€€€€€€€€€€€ü=ÁÑ¥½¹…°¹½˜ ‰µ¥¹•É…™Ðé•¹¡…¹Ñ•‘}½±‘•¹}…ÁÁ±”ˆ¤(€€€€€€€€€€€€€€€€è=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ!•±‘%Ñ•µMÕµµ…Éä¡•± (€€€€€€€€€€€½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€Ñ¥½¹!…¹¡…¹(€€€€¤ì(€€€€€€€É•ÑÕÉ¸¡…¹€ôôÑ¥½¹!…¹¹5%9}!9(€€€€€€€€€€€€€€€€ü™É…µ”¹µ…¥¹!…¹ ¤(€€€€€€€€€€€€€€€€è™É…µ”¹½™™!…¹ ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¥Í½½¡!•±‘%Ñ•µMÕµµ…Éä¥Ñ•´¤ì(€€€€€€€É•ÑÕÉ¸¥Ñ•´¹½Õ¹Ð ¤€ø€À(€€€€€€€€€€€€€€€€˜˜Y…¹¥±±…½½‘%Ñ•µÌ¹¥ÍM…™•½½¡¥Ñ•´¹¥Ñ•µ% ¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¥Í±Ý…åÍ‘¥‰±•µ•É•¹ä (€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ¥Ñ•µ%(€€€€¤ì(€€€€€€€É•ÑÕÉ¸€‰µ¥¹•É…™Ðé½±‘•¹}…ÁÁ±”ˆ¹•ÅÕ…±Ì¡¥Ñ•µ%¤(€€€€€€€€€€€€€€€ñð€‰µ¥¹•É…™Ðé•¹¡…¹Ñ•‘}½±‘•¹}…ÁÁ±”ˆ¹•ÅÕ…±Ì¡¥Ñ•µ%¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸¥¹Ù•¹Ñ½Éå½¹Ñ…¥¹Ì (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°MÑÉ¥¹œ¥Ñ•µ%(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹¥¹Ù•¹Ñ½Éä ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥Ñ•´€´ø¥Ñ•´¹¥Ñ•µ% ¤¹•ÅÕ…±Ì¡¥Ñ•µ%¤¤(€€€€€€€€€€€€€€€€¹µ…ÁQ½%¹Ð¡%¹Ù•¹Ñ½Éå%Ñ•µMÕµµ…Éäèé½Õ¹Ð¤(€€€€€€€€€€€€€€€€¹ÍÕ´ ¤€ø€Àì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñMÑÉ¥¹œøÁÉ•™•ÉÉ•‘!•±‘…±±±ÕÑ  (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€™¥¹…°MÑÉ¥¹œµ…¥¹!…¹€ô™É…µ”¹µ…¥¹!…¹ ¤¹¥Ñ•µ% ¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹µ…¥¹!…¹ ¤¹½Õ¹Ð ¤€ø€À(€€€€€€€€€€€€€€€€˜˜11}1UQ!}%Q5L¹½¹Ñ…¥¹Ì¡µ…¥¹!…¹¤(€€€€€€€€€€€€€€€€ü=ÁÑ¥½¹…°¹½˜¡µ…¥¹!…¹¤(€€€€€€€€€€€€€€€€è=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñMÑÉ¥¹œøÁÉ•™•ÉÉ•‘=Ý¹•‘…±±±ÕÑ  (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸11}1UQ!}%Q5L¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥Ñ•µ%€´ø¥¹Ù•¹Ñ½Éå½¹Ñ…¥¹Ì¡™É…µ”°¥Ñ•µ%¤¤(€€€€€€€€€€€€€€€€¹™¥¹‘¥ÉÍÐ ¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñMÑÉ¥¹œøÁÉ•™•ÉÉ•‘µ•É•¹å5•±••]•…Á½¸ (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€¥˜€¡5I9e}51}]A=9L¹½¹Ñ…¥¹Ì (€€€€€€€€€€€€€€€™É…µ”¹µ…¥¹!…¹ ¤¹¥Ñ•µ% ¤(€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸5I9e}51}]A=9L¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡¥Ñ•µ%€´ø¥¹Ù•¹Ñ½Éå½¹Ñ…¥¹Ì¡™É…µ”°¥Ñ•µ%¤¤(€€€€€€€€€€€€€€€€¹™¥¹‘¥ÉÍÐ ¤ì(€€€ô((€€€€¼¨¨(€€€€€¨I•ÑÕÉ¹Ì„½¹Í•ÉÙ…Ñ¥Ù”¹Õµ‰•È½˜Í•ÉÙ•ÈÑ¥­Ì™½È„ÍÝ½É½…á”…ÑÑ…¬(€€€€€¨Ñ¼É•¡…É”¸€Q¡”•á…ÐÙ…±Õ”¥ÌÍÑ¥±°¡•­•‰äÑ¡”Ù…¹¥±±„Á±…å•È(€€€€€¨…ÑÑ…¬¡…¹‘±•ÈìÑ¡¥Ì±½…°™±½½È½¹±äÁÉ•Ù•¹ÑÌÉ•Á•…Ñ•±¥•¹Ñ±•ÍÌ(€€€€€¨‘¥ÍÁ…Ñ ™É½´ÍÑ•…±¥¹œÑ¡”¥¹Ñ•ÉÙ…°¥¸Ý¡¥ „Í¡¥•±Í¡½Õ±‰”¡•±¸(€€€€€¨¼(€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ¥¹Ð•µ•É•¹åÑÑ…­%¹Ñ•ÉÙ…±Q¥­Ì (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸€ÄÀì(€€€ô((€€€ÁÉ¥Ù…Ñ”‰½½±•…¸É••¹ÑÑÑ…­½½ÑÝ½É¬¡™¥¹…°±½¹œ…µ•Q¥µ”¤ì(€€€€€€€É•ÑÕÉ¸±…ÍÑµ•É•¹åÑÑ…­Q¥¬€øô€Á0(€€€€€€€€€€€€€€€€˜˜±…ÍÑµ•É•¹åÝ…ä€„ô¹Õ±°(€€€€€€€€€€€€€€€€˜˜…µ•Q¥µ”€´±…ÍÑµ•É•¹åÑÑ…­Q¥¬(€€€€€€€€€€€€€€€€€€€€ðô5a}QQ-}==Q]=I-}Q%-Lì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‰½½±•…¸Ý…Ñ•É±±½Ý•¡™¥¹…°½É•M­¥±±É…µ”™É…µ”¤ì(€€€€€€€€¼¨Y…¹¥±±„Ý…Ñ•È•Ù…Á½É…Ñ•Ì¥¸Ñ¡”9•Ñ¡•È°‰ÕÐÉ•µ…¥¹ÌÁ±…•…‰±”¥¸(€€€€€€€€€¨Ñ¡”¹¸Q¡”Á±…å•ÈµÙ¥Í¥‰±”‘¥µ•¹Í¥½¸¥ÌÑ¡”½¹±ä™…ÐÕÍ•ìÑ¡”(€€€€€€€€€¨•á¥ÍÑ¥¹œ½‰Í•ÉÙ•µÍÕÉ™…”°É•… °…±¥¹µ•¹Ð…¹½ÕÁ…¹ä…Ñ•Ì(€€€€€€€€€¨ÍÑ¥±°‘•¥‘”Ý¡•Ñ¡•È„‰Õ­•Ð…Ñ¥½¸µ…ä‰”¥ÍÍÕ•¸€¨¼(€€€€€€€É•ÑÕÉ¸€…™É…µ”¹‘¥µ•¹Í¥½¸ ¤¹•ÅÕ…±Ì (€€€€€€€€€€€€€€€€€€€‘•Ø¹µ…¤¹½µÁ…¹¥½¸¹Ý…åÁ½¥¹Ð¹¥µ•¹Í¥½¹I•˜¹9Q!H(€€€€€€€€€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñY¥Í¥‰±•	±½­…”øÝ…Ñ•ÉMÕÉ™…” (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸™É…µ”¹Ù¥Í¥‰±•	±½­…•Ì ¤¹ÍÑÉ•…´ ¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡™…”€´ø™…”¹™…” ¤¹•ÅÕ…±Ì ‰ÕÀˆ¤¤(€€€€€€€€€€€€€€€€¼¨(€€€€€€€€€€€€€€€€€¨Y¥Í¥‰±•	±½­…”¹‘¥ÍÑ…¹”‰•±½¹ÌÑ¼Í•µ…¹Ñ¥ŒÍ…µÁ±”Ñ¥µ”¸(€€€€€€€€€€€€€€€€€¨ÕÉ¥¹œ„™…±°Ñ¡”±¥Ù”•å”…¸µ½Ù”Í•Ù•É…°‰±½­Ì‰•™½É”(€€€€€€€€€€€€€€€€€¨Ñ¡”¹•áÐÍ…µÁ±”°Í¼É•… µÕÍÐÕÍ”Ñ¡”ÕÉÉ•¹ÐÍ•±˜Á½Í”¸(€€€€€€€€€€€€€€€€€¨¼(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡™…”€´ø(€€€€€€€€€€€€€€€€€€€€€€€™…”¹¡¥ÑA½Í¥Ñ¥½¸ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹ÍÕ‰ÑÉ…Ð¡™É…µ”¹•å•A½Í¥Ñ¥½¸ ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹±•¹Ñ  ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ðô5a%5U5}]QI}I (€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡™…”€´ø(€€€€€€€€€€€€€€€€€€€€€€€™…”¹¡¥ÑA½Í¥Ñ¥½¸ ¤¹ä ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ðô™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹ä ¤€¬€À¸ÈÔ(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡™…”€´ø(€€€€€€€€€€€€€€€€€€€€€€€¡½É¥é½¹Ñ…±½±Õµ¹¥ÍÑ…¹”¡™É…µ”°™…”¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ðô5a%5U5}1UQ!}=1U59}=MP(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡™…”€´øì(€€€€€€€€€€€€€€€€€€€™¥¹…°É¥‘A½ÌÁ±…•µ•¹Ð€ô¹•ÜÉ¥‘A½Ì (€€€€€€€€€€€€€€€€€€€€€€€€€€€™…”¹‰±½¬ ¤¹à ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™…”¹‰±½¬ ¤¹ä ¤€¬€Ä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™…”¹‰±½¬ ¤¹è ¤(€€€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸™É…µ”¹¹…Ù¥…Ñ¥½¸ ¤¹Ù½á•±Ð¡Á±…•µ•¹Ð¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹µ…À¡=‰Í•ÉÙ•‘Y½á•°èé­¥¹¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹µ…À¡­¥¹€´ø­¥¹€ôôY½á•±-¥¹¹%H¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹½É±Í”¡™…±Í”¤ì(€€€€€€€€€€€€€€€ô¤(€€€€€€€€€€€€€€€€¹µ¥¸¡½µÁ…É…Ñ½È(€€€€€€€€€€€€€€€€€€€€€€€€¹½µÁ…É¥¹½Õ‰±” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€¡Y¥Í¥‰±•	±½­…”™…”¤€´ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¡½É¥é½¹Ñ…±½±Õµ¹¥ÍÑ…¹” (€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™É…µ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™…”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€€€€€¹Ñ¡•¹½µÁ…É¥¹½Õ‰±” (€€€€€€€€€€€€€€€€€€€€€€€€€€€Y¥Í¥‰±•	±½­…”èé‘¥ÍÑ…¹”(€€€€€€€€€€€€€€€€€€€€€€€€¤¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñY¥Í¥‰±•	±½­…”ø™…±±±ÕÑ¡MÕÉ™…” (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸Ý…Ñ•ÉMÕÉ™…”¡™É…µ”¤¹™¥±Ñ•È¡™…”€´ø(€€€€€€€€€€€€€€€™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹ä ¤(€€€€€€€€€€€€€€€€€€€€´€¡™…”¹‰±½¬ ¤¹ä ¤€¬€Ä¸À¤(€€€€€€€€€€€€€€€€€€€€€€€€øô5%9%5U5}1UQ!}I=@(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‘½Õ‰±”¡½É¥é½¹Ñ…±½±Õµ¹¥ÍÑ…¹” (€€€€€€€€€€€™¥¹…°½É•M­¥±±É…µ”™É…µ”°(€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•	±½­…”™…”(€€€€¤ì(€€€€€€€É•ÑÕÉ¸5…Ñ ¹¡åÁ½Ð (€€€€€€€€€€€€€€€™…”¹‰±½¬ ¤¹à ¤€¬€À¸Ô(€€€€€€€€€€€€€€€€€€€€´™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹à ¤°(€€€€€€€€€€€€€€€™…”¹‰±½¬ ¤¹è ¤€¬€À¸Ô(€€€€€€€€€€€€€€€€€€€€´™É…µ”¹Á½Í¥Ñ¥½¸ ¤¹è ¤(€€€€€€€€¤ì(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ=ÁÑ¥½¹…°ñ	±½­%¹Ñ•É…Ñ¥½¹Q…É•Ðø‰±½­Q…É•Ð (€€€€€€€€€€€™¥¹…°Y¥Í¥‰±•	±½­…”™…”(€€€€¤ì(€€€€€€€ÑÉäì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹½˜¡¹•Ü	±½­%¹Ñ•É…Ñ¥½¹Q…É•Ð (€€€€€€€€€€€€€€€€€€€™…”¹‰±½¬ ¤¹à ¤°(€€€€€€€€€€€€€€€€€€€™…”¹‰±½¬ ¤¹ä ¤°(€€€€€€€€€€€€€€€€€€€™…”¹‰±½¬ ¤¹è ¤°(€€€€€€€€€€€€€€€€€€€	±½­…”¹Ù…±Õ•=˜ (€€€€€€€€€€€€€€€€€€€€€€€€€€€™…”¹™…” ¤¹Ñ½UÁÁ•É…Í”¡1½…±”¹I==P¤(€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€¹•ÜÑ¥½¹Y•ŒÌ (€€€€€€€€€€€€€€€€€€€€€€€€€€€™…”¹¡¥ÑA½Í¥Ñ¥½¸ ¤¹à ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™…”¹¡¥ÑA½Í¥Ñ¥½¸ ¤¹ä ¤°(€€€€€€€€€€€€€€€€€€€€€€€€€€€™…”¹¡¥ÑA½Í¥Ñ¥½¸ ¤¹è ¤(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€¤¤ì(€€€€€€€ô…Ñ €¡%±±•…±ÉÕµ•¹Ñá•ÁÑ¥½¸•á•ÁÑ¥½¸¤ì(€€€€€€€€€€€É•ÑÕÉ¸=ÁÑ¥½¹…°¹•µÁÑä ¤ì(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ‘½Õ‰±”…¹Õ±…ÉÉÉ½È (€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÕÉÉ•¹Ð°(€€€€€€€€€€€™¥¹…°A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ð(€€€€¤ì(€€€€€€€¥˜€¡Ñ…É•Ð¹±•¹Ñ¡MÅÕ…É• ¤€ðô€Ä¸Á´ÄÈ¤ì(€€€€€€€€€€€É•ÑÕÉ¸€ÄàÀ¸Àì(€€€€€€€ô(€€€€€€€™¥¹…°‘½Õ‰±”‘½Ð€ôÕÉÉ•¹Ð¹¹½Éµ…±¥é• ¤¹‘½Ð (€€€€€€€€€€€€€€€Ñ…É•Ð¹¹½Éµ…±¥é• ¤(€€€€€€€€¤ì(€€€€€€€É•ÑÕÉ¸5…Ñ ¹Ñ½•É••Ì¡5…Ñ ¹…½Ì (€€€€€€€€€€€€€€€5…Ñ ¹µ…à ´Ä¸À°5…Ñ ¹µ¥¸ Ä¸À°‘½Ð¤¤(€€€€€€€€¤¤ì(€€€ô((€€€ÁÕ‰±¥Œ•¹Õ´MÑ…Ñ”ì(€€€€€€€1H°(€€€€€€€Q%9°(€€€€€€€IQIQ%9°(€€€€€€€UI%9°(€€€€€€€MUI%9°(€€€€€€€	I%9}10°(€€€€€€€EU%AA%9}==°(€€€€€€€EU%AA%9}]A=8°(€€€€€€€EU%AA%9}M!%1°(€€€€€€€EU%AA%9}]QH°(€€€€€€€AIAI%9}]QH°(€€€€€€€A1=e%9}]QH°(€€€€€€€EU%AA%9}11}1UQ °(€€€€€€€AIAI%9}11}1UQ °(€€€€€€€A1=e%9}11}1UQ °(€€€€€€€=U9QIQQ-%9°(€€€€€€€]I9%9}IQ%9°(€€€€€€€!=1%9(€€€ô((€€€ÁÕ‰±¥ŒÉ•½ÉQ¥­I•Á½ÉÐ (€€€€€€€€€€€‰½½±•…¸¥¹Ñ•ÉÙ•¹•°(€€€€€€€€€€€MÑ…Ñ”ÍÑ…Ñ”°(€€€€€€€€€€€MÑÉ¥¹œÉ•…Í½¸(€€€€¤ì(€€€€€€€ÁÕ‰±¥ŒQ¥­I•Á½ÉÐì(€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡ÍÑ…Ñ”°€‰ÍÑ…Ñ”ˆ¤ì(€€€€€€€€€€€=‰©•ÑÌ¹É•ÅÕ¥É•9½¹9Õ±°¡É•…Í½¸°€‰É•…Í½¸ˆ¤ì(€€€€€€€ô((€€€€€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒQ¥­I•Á½ÉÐ¹½¹”¡MÑ…Ñ”ÍÑ…Ñ”¤ì(€€€€€€€€€€€É•ÑÕÉ¸¹•ÜQ¥­I•Á½ÉÐ¡™…±Í”°ÍÑ…Ñ”°€ˆˆ¤ì(€€€€€€€ô((€€€€€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥ŒQ¥­I•Á½ÉÐ¥¹Ñ•ÉÙ•¹• (€€€€€€€€€€€€€€€MÑ…Ñ”ÍÑ…Ñ”°(€€€€€€€€€€€€€€€MÑÉ¥¹œÉ•…Í½¸(€€€€€€€€¤ì(€€€€€€€€€€€É•ÑÕÉ¸¹•ÜQ¥­I•Á½ÉÐ¡ÑÉÕ”°ÍÑ…Ñ”°É•…Í½¸¤ì(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”É•½É…¹‘¥‘…Ñ” (€€€€€€€€€€€A•É•ÁÑ¥½¹Y•ŒÌÑ…É•Ð°(€€€€€€€€€€€‘½Õ‰±”Í½É”°(€€€€€€€€€€€É¥‘A½ÌÁ½Í¥Ñ¥½¸(€€€€¤ì(€€€ô)ô(

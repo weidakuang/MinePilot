@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-21T20:46:26Z",
-  "sourceState": "PUBLIC_MAIN_VERIFIED_FRESH_CLONE_BUILD_AND_NATURAL_DYNAMIC_NEGATIVE",
-  "publicMainHead": "664e99d1532657d10ee20308877c3cf33f30b35d",
+  "updatedAtUtc": "2026-08-22T16:15:00Z",
+  "sourceState": "PUBLIC_MAIN_PENDING_VERIFIED_NAVIGATION_STOP_RESUME",
+  "publicMainHead": "681decd2fb5651dae23621d5b7ee9dcc12e86b93",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
   "version": "0.1.11-dev-mc26.2",
@@ -519,6 +519,32 @@
       "fixtureConstraint": "Controlled Forge GameTest with one embedded player and a bounded follow course; not a rendered Actor/Observer client, random Hardcore, long-soak, or formal M3 result.",
       "formalGate": "NOT_RUN"
     },
+    "professionalCompanionLiveNavigationStopResume": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL travel_to -> local stop -> START_SKILL travel_to",
+      "actions": "A real embedded player submitted a coordinate navigation task. MiMo returned HTTP-200 START_SKILL travel_to; the player then sent the local Chinese stop command while travel_to was running. The server reached SAFE_IDLE/goal_cancelled at a bounded checkpoint, and a second coordinate request produced another HTTP-200 START_SKILL travel_to plus low_level_actions_issued(action=move).",
+      "modelInputTokens": 18591,
+      "modelOutputTokens": 504,
+      "modelTokensRecorded": 19095,
+      "providerLatencyMillis": 8556,
+      "runtimeSeconds": 21.56,
+      "runRoot": "/tmp/minepilot-live-movement-stop-resume-1787345589",
+      "fixtureConstraint": "Controlled Forge GameTest with one embedded player and a bounded straight course; not a rendered Actor/Observer client, random Hardcore, long-soak, or formal M3 result.",
+      "formalGate": "NOT_RUN"
+    },
+    "professionalCompanionLiveCombatStopResumeAttempt": {
+      "status": "FAIL_CONTROLLED_LIVE_MODEL_NO_ACTION",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "Repeated REPLAN; later START_SKILL engage_observed_entity rejected as stale_world",
+      "details": "A real combat task produced repeated model replans while the local emergency lane was guarding. A later valid combat skill response was rejected by the fair world-revision binding because the body changed during the long request. The stop/resume stage was not entered, so no combat success or lifecycle claim is made.",
+      "modelTokensRecorded": 32121,
+      "runRoot": "/tmp/minepilot-live-combat-baseline-1787413669",
+      "fixtureConstraint": "Controlled authored Zombie/equipment fixture; this is negative diagnosis only and is not a PVP, Hardcore, random-seed, or M3 result.",
+      "formalGate": "NOT_RUN"
+    },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle build, all JUnit tests, production JAR content verification, Forge compatibility validation, and a fresh-public-clone Forge 65.0.0 compile after the focused End safety changes. The changed production, GameTest, checkpoint, and goal-state files matched the published clone byte-for-byte. The preceding protocol snapshot passed all 65 Python E2E tests and all ten mutation variants. The build disables only the incomplete ForgeGradle merged-main JavaCompile cache entry after reproducing a clean FROM-CACHE restore with no production classes.",
@@ -528,7 +554,8 @@
     }
   },
   "nextActions": [
-    "Extend the professional-companion lane to interruption during navigation and combat, with the same server-owned stop/resume and player-visible lifecycle evidence; retain M3 as NOT_RUN until the external Actor/Observer archive exists.",
+    "Fix the combat stale-world/no-action loop: preserve fair revision binding while re-observing and reissuing a bounded combat decision after emergency movement, then run a real-model combat stop/resume slice; retain M3 as NOT_RUN until the external Actor/Observer archive exists.",
+    "Preserve the passing navigation stop/resume contract and extend its server-owned lifecycle evidence to other long-running companion tasks.",
     "Preserve the controlled stronghold-room-to-return PASS without promoting it to random-seed, Hardcore, dynamic-dragon, or M2/M4 evidence.",
     "Run the formal rendered Actor/Observer gate only on an authorized Linux/Xvfb worker with the exact frozen artifact.",
     "Use the recorded natural dynamic-dragon failure to continue the fair pillar-edge route: complete and rerun the observed attachment path, then add safe dynamic crystal/dragon damage and return gates before any hidden-seed statistical promotion.",

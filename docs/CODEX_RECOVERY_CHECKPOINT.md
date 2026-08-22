@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-22T05:45:00+09:00
+Last updated: 2026-08-23T01:10:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -29,6 +29,25 @@ This section supersedes older chronological notes below when they conflict.
   aggregate provider latency. This is controlled professional-companion
   evidence, not a rendered Actor/Observer, random Hardcore, long-soak, or
   formal M3 gate.
+
+- A fresh authorized Forge 65.1.1 MiMo navigation stop/resume slice passed in
+  `/tmp/minepilot-live-movement-stop-resume-1787345589`. A real embedded
+  player request produced HTTP-200 `START_SKILL travel_to`; the player then
+  sent `停下` while the skill was running. The body reached
+  `SAFE_IDLE/goal_cancelled`, remained within the bounded stop envelope, and a
+  second coordinate request produced another HTTP-200 `START_SKILL travel_to`
+  and `low_level_actions_issued(action=move)`. SQLite recorded two model
+  chains, 18,591 input and 504 output tokens (19,095 total), and 8,556 ms
+  aggregate provider latency. This is controlled navigation evidence, not a
+  rendered Actor/Observer, random Hardcore, long-soak, or formal M3 gate.
+
+- A combat stop/resume attempt was intentionally not promoted: the real MiMo
+  provider produced repeated `REPLAN` responses while the local emergency
+  lane was guarding, and one later `START_SKILL engage_observed_entity`
+  response was rejected by the fair `stale_world` binding after the body had
+  changed during the long request. No combat stop, resume, damage, or victory
+  claim was recorded. This is actionable negative evidence for the next
+  combat-lifecycle fix, not a passing test.
 
 - A fresh authorized Forge 65.1.1 MiMo live-model run of
   `real_player_task_to_live_model_stronghold_portal_room_to_victory` passed

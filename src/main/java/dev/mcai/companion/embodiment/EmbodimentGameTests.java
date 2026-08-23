@@ -1,7 +1,3 @@
-Warning: truncated output (original token count: 135598)
-Total output lines: 13052
-
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 package dev.mcai.companion.embodiment;
 
 import com.google.gson.JsonObject;
@@ -2497,7 +2493,7673 @@ public final class EmbodimentGameTests {
             if (now - phaseStartedAt.get() < 60L) {
                 return;
             }
-            final var stableBod…75598 tokens truncated…y; the production
+            final var stableBody = AiPlayerManager.onlinePlayer(server)
+                    .orElseThrow(() -> helper.assertionException(
+                            "Respawned zero-human body disconnected"
+                    ));
+            helper.assertTrue(
+                    stableBody.isAlive()
+                        && stableBody.getHealth() > 0.0F,
+                    "Respawned zero-human body did not remain stable"
+            );
+            helper.assertTrue(
+                    AiPlayerManager.status(server).state()
+                        == SessionState.ACTIVE,
+                    "Respawned zero-human session is not ACTIVE"
+            );
+            helper.succeed();
+        });
+    }
+
+    /**
+     * Regression for a clientless player crossing into a different level at
+     * exactly the same section coordinate. A real client follows a dimension
+     * transition with movement packets, but the server-driven companion has
+     * no packet stream to refresh the destination level's player ticket.
+     * Comparing only {@link SectionPos} therefore left the ticket behind.
+     *
+     * <p>The fixture neither prepares nor force-loads the Nether destination.
+     * Only after the companion's ordinary player ticket makes both the body
+     * chunk and an outlying chunk entity-ticking does the test add its
+     * scheduled-block and entity probes. This keeps the oracle focused on
+     * vanilla player tracking rather than a fixture-owned chunk load.</p>
+     */
+    @GameTest(
+        name = "zero_human_cross_dimension_chunk_tracking",
+        environment = "exclusive_zero_human_cross_dimension_tracking",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = CROSS_DIMENSION_TICKET_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void zeroHumanCrossDimensionChunkTracking(
+            final GameTestHelper helper
+    ) {
+        final var overworld = helper.getLevel();
+        final var server = overworld.getServer();
+        final var nether = server.getLevel(Level.NETHER);
+        helper.assertTrue(
+                nether != null,
+                "Cross-dimension ticket gate could not access the Nether"
+        );
+
+        final BlockPos fixtureAnchor = helper.absolutePos(
+                FOCUSED_TEST_ORIGIN
+        );
+        /*
+         * Stay well outside every test structure and the Nether's ordinary
+         * origin region. The first teleport establishes an Overworld player
+         * ticket; the second uses the identical XYZ section in the Nether so
+         * the former section-only session check cannot pass accidentally.
+         */
+        final BlockPos sharedFeet = new BlockPos(
+                fixtureAnchor.getX() + 3_072,
+                192,
+                fixtureAnchor.getZ() + 1_536
+        );
+        final ChunkPos bodyChunk = new ChunkPos(
+                SectionPos.blockToSectionCoord(sharedFeet.getX()),
+                SectionPos.blockToSectionCoord(sharedFeet.getZ())
+        );
+        final ChunkPos simulationProbeChunk = new ChunkPos(
+                bodyChunk.x() + 2,
+                bodyChunk.z() + 1
+        );
+        final BlockPos simulationProbeStand = new BlockPos(
+                SectionPos.sectionToBlockCoord(
+                        simulationProbeChunk.x(),
+                        8
+                ),
+                sharedFeet.getY(),
+                SectionPos.sectionToBlockCoord(
+                        simulationProbeChunk.z(),
+                        8
+                )
+        );
+        final BlockPos blockTickProbe =
+                simulationProbeStand.offset(3, 0, 0);
+        final AtomicInteger phase = new AtomicInteger();
+        final AtomicLong phaseStartedAt = new AtomicLong(helper.getTick());
+        final AtomicLong phaseStartedNanos = new AtomicLong(
+                System.nanoTime()
+        );
+        final AtomicLong probeStartAge = new AtomicLong(-1L);
+        final AtomicReference<SectionPos> sourceSection =
+                new AtomicReference<>();
+        final AtomicReference<ItemEntity> probe = new AtomicReference<>();
+
+        helper.addCleanup(ignored -> {
+            final ItemEntity currentProbe = probe.get();
+            if (currentProbe != null && !currentProbe.isRemoved()) {
+                currentProbe.discard();
+            }
+            if (AiPlayerManager.status(server).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(server);
+            }
+        });
+
+        assertNoHumanPlayers(helper);
+        final var spawn = GameTestCompanionSpawn.request(
+                helper,
+                FOCUSED_TEST_ORIGIN
+        );
+        helper.assertTrue(
+                spawn.accepted(),
+                "Cross-dimension companion spawn was rejected: "
+                    + spawn.code()
+        );
+
+        scheduleEveryTick(
+                helper,
+                CROSS_DIMENSION_TICKET_TEST_MAX_TICKS,
+                () -> {
+                    assertNoHumanPlayers(helper);
+                    final long now = helper.getTick();
+
+                    if (phase.get() == 0) {
+                        final var status = AiPlayerManager.status(server);
+                        helper.assertTrue(
+                                status.state() != SessionState.FAILED,
+                                "Cross-dimension body failed: " + status
+                        );
+                        if (status.state() != SessionState.ACTIVE
+                                || !status.online()) {
+                            helper.assertTrue(
+                                    now - phaseStartedAt.get()
+                                        <= FOCUSED_BODY_START_TIMEOUT_TICKS,
+                                    "Cross-dimension body did not become "
+                                        + "active"
+                            );
+                            return;
+                        }
+
+                        final var runtime = CompanionRuntime.active()
+                                .filter(candidate ->
+                                        candidate.server() == server
+                                )
+                                .orElseThrow(() ->
+                                        helper.assertionException(
+                                            "Cross-dimension runtime is "
+                                                + "unavailable"
+                                        ));
+                        runtime.brain().close();
+                        runtime.survival().reset();
+                        runtime.coreActions().quiesceNow();
+                        runtime.interactionActions().quiesceNow();
+                        runtime.skillSupervisor()
+                                .abandonForSessionEnd();
+
+                        final var player = AiPlayerManager
+                                .onlinePlayer(server)
+                                .orElseThrow();
+                        player.setInvulnerable(true);
+                        player.setNoGravity(true);
+                        player.noPhysics = true;
+                        player.setDeltaMovement(Vec3.ZERO);
+                        player.teleportTo(
+                                sharedFeet.getX() + 0.5D,
+                                sharedFeet.getY(),
+                                sharedFeet.getZ() + 0.5D
+                        );
+                        phase.set(1);
+                        phaseStartedAt.set(now);
+                        phaseStartedNanos.set(System.nanoTime());
+                        return;
+                    }
+
+                    if (phase.get() == 1) {
+                        final var player = AiPlayerManager
+                                .onlinePlayer(server)
+                                .orElseThrow(() ->
+                                        helper.assertionException(
+                                            "Cross-dimension body "
+                                                + "disconnected in the "
+                                                + "Overworld"
+                                        ));
+                        helper.assertTrue(
+                                player.level() == overworld,
+                                "Body changed dimension before the gate"
+                        );
+                        if (!overworld.isPositionEntityTicking(
+                                    player.blockPosition()
+                                )) {
+                            awaitVanillaPlayerTicket(
+                                    helper,
+                                    phaseStartedAt.get(),
+                                    phaseStartedNanos.get(),
+                                    "Overworld staging chunk"
+                            );
+                            return;
+                        }
+
+                        helper.assertTrue(
+                                !nether.getChunkSource()
+                                    .getForceLoadedChunks()
+                                    .contains(bodyChunk.pack())
+                                    && !nether.getChunkSource()
+                                        .getForceLoadedChunks()
+                                        .contains(
+                                            simulationProbeChunk.pack()
+                                        ),
+                                "Nether destination was force-loaded before "
+                                    + "the companion entered it"
+                        );
+                        helper.assertTrue(
+                                !nether.shouldTickBlocksAt(
+                                    bodyChunk.pack()
+                                )
+                                    && !nether
+                                        .areEntitiesActuallyLoadedAndTicking(
+                                            bodyChunk
+                                        ),
+                                "Nether destination already had an active "
+                                    + "simulation ticket before traversal"
+                        );
+
+                        sourceSection.set(SectionPos.of(player));
+                        final boolean teleported = player.teleportTo(
+                                nether,
+                                sharedFeet.getX() + 0.5D,
+                                sharedFeet.getY(),
+                                sharedFeet.getZ() + 0.5D,
+                                Set.of(),
+                                player.getYRot(),
+                                player.getXRot(),
+                                false
+                        );
+                        helper.assertTrue(
+                                teleported,
+                                "Vanilla cross-dimension teleport was rejected"
+                        );
+                        player.setInvulnerable(true);
+                        player.setNoGravity(true);
+                        player.noPhysics = true;
+                        player.setDeltaMovement(Vec3.ZERO);
+                        helper.assertTrue(
+                                player.level() == nether,
+                                "Body did not enter the Nether"
+                        );
+                        helper.assertTrue(
+                                SectionPos.of(player).equals(
+                                    sourceSection.get()
+                                ),
+                                "Fixture did not preserve the same section "
+                                    + "coordinate across dimensions"
+                        );
+                        phase.set(2);
+                        phaseStartedAt.set(now);
+                        phaseStartedNanos.set(System.nanoTime());
+                        return;
+                    }
+
+                    if (phase.get() == 2) {
+                        final var player = AiPlayerManager
+                                .onlinePlayer(server)
+                                .orElseThrow(() ->
+                                        helper.assertionException(
+                                            "Cross-dimension body "
+                                                + "disconnected in the "
+                                                + "Nether"
+                                        ));
+                        helper.assertTrue(
+                                player.level() == nether,
+                                "Body left the Nether before its ticket "
+                                    + "settled"
+                        );
+                        final boolean destinationSimulating =
+                                nether.shouldTickBlocksAt(bodyChunk.pack())
+                                    && nether
+                                        .areEntitiesActuallyLoadedAndTicking(
+                                            bodyChunk
+                                        )
+                                    && nether.shouldTickBlocksAt(
+                                        simulationProbeChunk.pack()
+                                    )
+                                    && nether
+                                        .areEntitiesActuallyLoadedAndTicking(
+                                            simulationProbeChunk
+                                        );
+                        if (!destinationSimulating) {
+                            awaitVanillaPlayerTicket(
+                                    helper,
+                                    phaseStartedAt.get(),
+                                    phaseStartedNanos.get(),
+                                    "same-section Nether destination window"
+                            );
+                            return;
+                        }
+
+                        helper.assertTrue(
+                                server.getPlayerList().getPlayers().size()
+                                    == 1,
+                                "Expected one AI and zero humans after "
+                                    + "dimension travel"
+                        );
+                        helper.assertTrue(
+                                !nether.getChunkSource()
+                                    .getForceLoadedChunks()
+                                    .contains(bodyChunk.pack())
+                                    && !nether.getChunkSource()
+                                        .getForceLoadedChunks()
+                                        .contains(
+                                            simulationProbeChunk.pack()
+                                        ),
+                                "Destination simulation used a force-loaded "
+                                    + "chunk instead of the AI player ticket"
+                        );
+
+                        nether.setBlockAndUpdate(
+                                blockTickProbe,
+                                Blocks.REDSTONE_LAMP
+                                    .defaultBlockState()
+                                    .setValue(
+                                        RedstoneLampBlock.LIT,
+                                        true
+                                    )
+                        );
+                        nether.scheduleTick(
+                                blockTickProbe,
+                                Blocks.REDSTONE_LAMP,
+                                4
+                        );
+                        final ItemEntity tickingProbe = new ItemEntity(
+                                nether,
+                                simulationProbeStand.getX() + 0.5D,
+                                simulationProbeStand.getY() + 0.25D,
+                                simulationProbeStand.getZ() + 0.5D,
+                                new ItemStack(Items.COBBLESTONE)
+                        );
+                        tickingProbe.setNoGravity(true);
+                        tickingProbe.setPickUpDelay(32_767);
+                        helper.assertTrue(
+                                nether.addFreshEntity(tickingProbe),
+                                "Could not add the Nether ticking probe"
+                        );
+                        probe.set(tickingProbe);
+                        phase.set(3);
+                        phaseStartedAt.set(now);
+                        return;
+                    }
+
+                    if (phase.get() == 3) {
+                        final ItemEntity currentProbe = probe.get();
+                        helper.assertTrue(
+                                currentProbe != null
+                                    && !currentProbe.isRemoved(),
+                                "Nether entity probe vanished after ticket "
+                                    + "settlement"
+                        );
+                        if (!nether.isPositionEntityTicking(
+                                    currentProbe.blockPosition()
+                                )) {
+                            helper.assertTrue(
+                                    now - phaseStartedAt.get() <= 100L,
+                                    "Nether probe never entered the "
+                                        + "entity-ticking state"
+                            );
+                            return;
+                        }
+                        probeStartAge.set(currentProbe.tickCount);
+                        phase.set(4);
+                        phaseStartedAt.set(now);
+                        return;
+                    }
+
+                    if (now - phaseStartedAt.get() < 120L) {
+                        return;
+                    }
+                    final ItemEntity currentProbe = probe.get();
+                    helper.assertTrue(
+                            currentProbe != null
+                                && !currentProbe.isRemoved(),
+                            "Nether entity probe disappeared during the "
+                                + "cross-dimension simulation window"
+                    );
+                    helper.assertTrue(
+                            currentProbe.tickCount
+                                - probeStartAge.get() >= 100L,
+                            "Nether entity probe received only "
+                                + (currentProbe.tickCount
+                                    - probeStartAge.get())
+                                + " ticks from the AI player window"
+                    );
+                    helper.assertTrue(
+                            !nether.getBlockState(blockTickProbe)
+                                .getValue(RedstoneLampBlock.LIT),
+                            "Scheduled Nether block tick did not run under "
+                                + "the AI player ticket"
+                    );
+                    helper.assertTrue(
+                            !overworld.shouldTickBlocksAt(bodyChunk.pack())
+                                && !overworld
+                                    .areEntitiesActuallyLoadedAndTicking(
+                                        bodyChunk
+                                    ),
+                            "The old Overworld simulation window remained "
+                                + "active after the sole player left"
+                    );
+                    helper.succeed();
+                }
+        );
+    }
+
+    private static void awaitVanillaPlayerTicket(
+            final GameTestHelper helper,
+            final long startedAtTick,
+            final long startedAtNanos,
+            final String windowDescription
+    ) {
+        final long elapsedTicks = helper.getTick() - startedAtTick;
+        final long elapsedNanos = System.nanoTime() - startedAtNanos;
+        /*
+         * Chunk promotion uses async workers while GameTest ticks are
+         * normally unthrottled. Yield one bounded millisecond without adding
+         * any ticket so the test observes the vanilla player's own window.
+         */
+        LockSupport.parkNanos(FOCUSED_ASYNC_CHUNK_YIELD_NANOS);
+        helper.assertTrue(
+                elapsedTicks <= FOCUSED_SIMULATION_TICKET_TIMEOUT_TICKS
+                    || elapsedNanos
+                        <= FOCUSED_SIMULATION_TICKET_TIMEOUT_NANOS,
+                "Headless player's vanilla ticket did not establish the "
+                    + windowDescription + ": ticks=" + elapsedTicks
+                    + ", wallMillis="
+                    + java.time.Duration.ofNanos(elapsedNanos)
+                        .toMillis()
+        );
+    }
+
+    private static void assertNoHumanPlayers(
+            final GameTestHelper helper
+    ) {
+        final var players = helper.getLevel()
+                .getServer()
+                .getPlayerList()
+                .getPlayers();
+        final long humanPlayers = players.stream()
+                .filter(player -> !AiProfileMarker.isMarked(
+                        player.getGameProfile()
+                ))
+                .count();
+        helper.assertTrue(
+                humanPlayers == 0L,
+                "Dedicated zero-human gate observed "
+                    + humanPlayers + " human player(s)"
+        );
+    }
+
+    @GameTest(
+        name = "real_water_clutch",
+        environment = "exclusive_real_water_clutch",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = WATER_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realWaterClutch(final GameTestHelper helper) {
+        runFocusedMovementScenario(
+            helper,
+            ScenarioScope.WATER_ONLY,
+            WATER_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "real_parkour_course",
+        environment = "exclusive_real_parkour",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = PARKOUR_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realParkourCourse(final GameTestHelper helper) {
+        runFocusedMovementScenario(
+            helper,
+            ScenarioScope.PARKOUR_ONLY,
+            PARKOUR_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "real_travel_diagonal_detour",
+        environment = "exclusive_real_travel_detour",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = TRAVEL_DETOUR_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realTravelDiagonalDetour(
+            final GameTestHelper helper
+    ) {
+        runFocusedMovementScenario(
+            helper,
+            ScenarioScope.TRAVEL_DETOUR_ONLY,
+            TRAVEL_DETOUR_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "real_verified_portal_return",
+        environment = "exclusive_real_verified_portal_return",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = PORTAL_RETURN_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realVerifiedPortalReturn(
+            final GameTestHelper helper
+    ) {
+        runFocusedMovementScenario(
+            helper,
+            ScenarioScope.PORTAL_RETURN_ONLY,
+            PORTAL_RETURN_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "real_nether_blaze_rod_acquisition",
+        environment = "exclusive_real_nether_blaze_rod",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = BLAZE_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realNetherBlazeRodAcquisition(
+            final GameTestHelper helper
+    ) {
+        runFocusedMovementScenario(
+            helper,
+            ScenarioScope.BLAZE_ONLY,
+            BLAZE_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "real_nether_blaze_material_reserve",
+        environment = "exclusive_real_nether_blaze_material_reserve",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = BLAZE_RESERVE_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realNetherBlazeMaterialReserve(
+            final GameTestHelper helper
+    ) {
+        runFocusedMovementScenario(
+            helper,
+            ScenarioScope.BLAZE_RESERVE_ONLY,
+            BLAZE_RESERVE_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "real_ender_pearl_reserve",
+        environment = "exclusive_real_ender_pearl_reserve",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = ENDER_RESERVE_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realEnderPearlReserve(
+            final GameTestHelper helper
+    ) {
+        runFocusedMovementScenario(
+            helper,
+            ScenarioScope.ENDER_RESERVE_ONLY,
+            ENDER_RESERVE_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "real_sheltered_ender_pearl_acquisition",
+        environment = "exclusive_real_sheltered_ender_pearl_acquisition",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = ENDER_SINGLE_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realShelteredEnderPearlAcquisition(
+            final GameTestHelper helper
+    ) {
+        runFocusedMovementScenario(
+            helper,
+            ScenarioScope.ENDER_SINGLE_ONLY,
+            ENDER_SINGLE_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "real_stronghold_triangulation",
+        environment = "exclusive_real_stronghold_triangulation",
+        structure = "forge:empty600x24x600",
+        maxTicks = STRONGHOLD_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realStrongholdTriangulation(
+            final GameTestHelper helper
+    ) {
+        runFocusedMovementScenario(
+            helper,
+            ScenarioScope.STRONGHOLD_ONLY,
+            STRONGHOLD_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "real_stronghold_reach",
+        environment = "exclusive_real_stronghold_reach",
+        structure = "forge:empty600x24x600",
+        maxTicks = STRONGHOLD_REACH_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realStrongholdReach(
+            final GameTestHelper helper
+    ) {
+        runFocusedMovementScenario(
+            helper,
+            ScenarioScope.STRONGHOLD_REACH_ONLY,
+            STRONGHOLD_REACH_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "real_end_portal_activation",
+        environment = "exclusive_real_end_portal_activation",
+        structure = TEST_STRUCTURE,
+        maxTicks = END_PORTAL_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realEndPortalActivation(
+            final GameTestHelper helper
+    ) {
+        runFocusedMovementScenario(
+            helper,
+            ScenarioScope.END_PORTAL_ONLY,
+            END_PORTAL_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "real_end_victory_and_return",
+        environment = "exclusive_real_end_victory",
+        structure = TEST_STRUCTURE,
+        maxTicks = END_VICTORY_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realEndVictoryAndReturn(
+            final GameTestHelper helper
+    ) {
+        runFocusedMovementScenario(
+                helper,
+                ScenarioScope.END_VICTORY_ONLY,
+                END_VICTORY_TEST_MAX_TICKS
+        );
+    }
+
+    /**
+     * Release-excluded physics/perception baseline for the dragon skill.
+     * This deliberately bypasses the model lane: it proves that a real
+     * ServerPlayer can perceive the multipart dragon and finish the bounded
+     * fight before the live-model scenario is allowed to claim a regression
+     * fix.  It has a distinct name so the live-model selector cannot mask it.
+     */
+    @GameTest(
+        name = "offline_end_victory_skill_baseline",
+        environment = "exclusive_offline_end_victory_baseline",
+        structure = TEST_STRUCTURE,
+        maxTicks = END_VICTORY_TEST_MAX_TICKS,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void offlineEndVictorySkillBaseline(
+            final GameTestHelper helper
+    ) {
+        runFocusedMovementScenario(
+                helper,
+                ScenarioScope.END_VICTORY_ONLY,
+                END_VICTORY_TEST_MAX_TICKS
+        );
+    }
+
+    @GameTest(
+        name = "verified_shelter_evidence",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 200,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void verifiedShelterEvidence(
+            final GameTestHelper helper
+    ) {
+        final var level = helper.getLevel();
+        final BlockPos origin = helper.absolutePos(
+                new BlockPos(12, 4, 12)
+        );
+        final int exterior = 5;
+        for (int x = 0; x < exterior; x++) {
+            for (int z = 0; z < exterior; z++) {
+                level.setBlock(
+                        origin.offset(x, -1, z),
+                        Blocks.COBBLESTONE.defaultBlockState(),
+                        2
+                );
+                level.setBlock(
+                        origin.offset(x, 2, z),
+                        Blocks.COBBLESTONE.defaultBlockState(),
+                        2
+                );
+                if (x != 0
+                        && x != exterior - 1
+                        && z != 0
+                        && z != exterior - 1) {
+                    continue;
+                }
+                for (int y = 0; y < 2; y++) {
+                    level.setBlock(
+                            origin.offset(x, y, z),
+                            Blocks.COBBLESTONE.defaultBlockState(),
+                            2
+                    );
+                }
+            }
+        }
+        final BlockPos doorLower = origin.offset(0, 0, 2);
+        level.setBlock(
+                doorLower,
+                Blocks.OAK_DOOR.defaultBlockState()
+                        .setValue(
+                                DoorBlock.HALF,
+                                DoubleBlockHalf.LOWER
+                        )
+                        .setValue(DoorBlock.FACING, Direction.WEST)
+                        .setValue(DoorBlock.OPEN, false),
+                2
+        );
+        level.setBlock(
+                doorLower.above(),
+                Blocks.OAK_DOOR.defaultBlockState()
+                        .setValue(
+                                DoorBlock.HALF,
+                                DoubleBlockHalf.UPPER
+                        )
+                        .setValue(DoorBlock.FACING, Direction.WEST)
+                        .setValue(DoorBlock.OPEN, false),
+                2
+        );
+        final BlockPos light = origin.offset(2, 0, 2);
+        level.setBlock(
+                light,
+                Blocks.TORCH.defaultBlockState(),
+                3
+        );
+        final VerifiedShelterEvidence evidence =
+                new VerifiedShelterEvidence(
+                        1L,
+                        level.dimension().identifier().toString(),
+                        origin.getX(),
+                        origin.getY(),
+                        origin.getZ(),
+                        3,
+                        3,
+                        2,
+                        doorLower.getX(),
+                        doorLower.getY(),
+                        doorLower.getZ(),
+                        light.getX(),
+                        light.getY(),
+                        light.getZ(),
+                        "minecraft:cobblestone",
+                        "minecraft:torch"
+                );
+
+        helper.runAtTickTime(20, () -> {
+            helper.assertTrue(
+                    ServerShelterEvidenceVerifier.verify(
+                            level.getServer(),
+                            evidence
+                    ),
+                    "Completed shelter evidence did not reverify"
+            );
+            final BlockPos breached = origin.offset(4, 1, 2);
+            level.setBlock(
+                    breached,
+                    Blocks.AIR.defaultBlockState(),
+                    3
+            );
+            helper.assertTrue(
+                    !ServerShelterEvidenceVerifier.verify(
+                            level.getServer(),
+                            evidence
+                    ),
+                    "A breached wall remained verified"
+            );
+            level.setBlock(
+                    breached,
+                    Blocks.COBBLESTONE.defaultBlockState(),
+                    3
+            );
+            level.setBlock(
+                    doorLower,
+                    level.getBlockState(doorLower)
+                            .setValue(DoorBlock.OPEN, true),
+                    3
+            );
+            helper.assertTrue(
+                    !ServerShelterEvidenceVerifier.verify(
+                            level.getServer(),
+                            evidence
+                    ),
+                    "An open entrance remained isolated"
+            );
+            helper.succeed();
+        });
+    }
+
+    @GameTest(
+        name = "verified_foundation_evidence",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 200,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void verifiedFoundationEvidence(
+            final GameTestHelper helper
+    ) {
+        final var level = helper.getLevel();
+        final BlockPos crafting = helper.absolutePos(
+                new BlockPos(8, 4, 8)
+        );
+        final BlockPos furnace = crafting.east();
+        final BlockPos chest = furnace.east();
+        level.setBlock(
+                crafting,
+                Blocks.CRAFTING_TABLE.defaultBlockState(),
+                3
+        );
+        level.setBlock(
+                furnace,
+                Blocks.FURNACE.defaultBlockState(),
+                3
+        );
+        level.setBlock(
+                chest,
+                Blocks.CHEST.defaultBlockState(),
+                3
+        );
+        final Container storage = (Container) level.getBlockEntity(chest);
+        storage.setItem(0, new ItemStack(Items.COBBLESTONE, 16));
+        storage.setChanged();
+        final String dimension =
+                level.dimension().identifier().toString();
+        final VerifiedFoundationEvidence evidence =
+                new VerifiedFoundationEvidence(
+                        1L,
+                        java.util.Optional.of(location(
+                                dimension,
+                                crafting
+                        )),
+                        java.util.Optional.of(location(
+                                dimension,
+                                furnace
+                        )),
+                        java.util.Optional.of(location(
+                                dimension,
+                                chest
+                        )),
+                        "minecraft:cobblestone",
+                        16
+                );
+
+        helper.runAtTickTime(20, () -> {
+            final var valid =
+                    ServerFoundationEvidenceVerifier.verify(
+                            level.getServer(),
+                            evidence
+                    );
+            helper.assertTrue(
+                    valid.workstationsEstablished()
+                            && valid.suppliesStored(),
+                    "Completed foundation evidence did not reverify"
+            );
+            storage.clearContent();
+            storage.setItem(0, new ItemStack(Items.DIRT, 16));
+            final var emptied =
+                    ServerFoundationEvidenceVerifier.verify(
+                            level.getServer(),
+                            evidence
+                    );
+            helper.assertTrue(
+                    emptied.workstationsEstablished()
+                            && !emptied.suppliesStored(),
+                    "Unrelated chest contents replaced deposited evidence"
+            );
+            level.setBlock(
+                    furnace,
+                    Blocks.AIR.defaultBlockState(),
+                    3
+            );
+            final var damaged =
+                    ServerFoundationEvidenceVerifier.verify(
+                            level.getServer(),
+                            evidence
+                    );
+            helper.assertTrue(
+                    !damaged.workstationsEstablished()
+                            && !damaged.suppliesStored(),
+                    "A missing furnace remained verified"
+            );
+            helper.succeed();
+        });
+    }
+
+    @GameTest(
+        name = "visible_entity_placement_occupancy",
+        environment = "exclusive_visible_entity_placement_occupancy",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 4_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void visibleEntityPlacementOccupancy(
+            final GameTestHelper helper
+    ) {
+        BuildingGameTests.visibleEntityPlacementOccupancy(helper);
+    }
+
+    @GameTest(
+        name = "placement_obstruction_recovery",
+        environment = "exclusive_placement_obstruction_recovery",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 4_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void placementObstructionRecovery(
+            final GameTestHelper helper
+    ) {
+        BuildingGameTests.placementObstructionRecovery(helper);
+    }
+
+    @GameTest(
+        name = "partial_shelter_obstruction_recovery",
+        environment = "exclusive_partial_shelter_obstruction_recovery",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 6_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void partialShelterObstructionRecovery(
+            final GameTestHelper helper
+    ) {
+        BuildingGameTests.partialShelterObstructionRecovery(helper);
+    }
+
+    @GameTest(
+        name = "roof_jump_placement",
+        environment = "exclusive_roof_jump_placement",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 10_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void roofJumpPlacement(
+            final GameTestHelper helper
+    ) {
+        BuildingGameTests.roofJumpPlacement(helper);
+    }
+
+    @GameTest(
+        name = "current_support_mining_guard",
+        environment = "exclusive_current_support_mining_guard",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 2_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void currentSupportMiningGuard(
+            final GameTestHelper helper
+    ) {
+        BuildingGameTests.currentSupportMiningGuard(helper);
+    }
+
+    @GameTest(
+        name = "reachable_basic_crafting",
+        environment = "exclusive_reachable_basic_crafting",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 4_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void reachableBasicCrafting(
+            final GameTestHelper helper
+    ) {
+        FoundationGameTests.reachableBasicCrafting(helper);
+    }
+
+    @GameTest(
+        name = "occluded_iron_toolkit_table",
+        environment = "exclusive_occluded_iron_toolkit_table",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 4_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void occludedIronToolkitTable(
+            final GameTestHelper helper
+    ) {
+        FoundationGameTests.occludedIronToolkitTable(helper);
+    }
+
+    @GameTest(
+        name = "shelter_material_wood_exploration",
+        environment = "exclusive_shelter_material_wood_exploration",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 8_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void shelterMaterialWoodExploration(
+            final GameTestHelper helper
+    ) {
+        ShelterMaterialExplorationGameTests
+                .shelterMaterialWoodExploration(helper);
+    }
+
+    @GameTest(
+        name = "workstation_wood_prerequisite_composition",
+        environment =
+            "exclusive_workstation_wood_prerequisite_composition",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 12_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void workstationWoodPrerequisiteComposition(
+            final GameTestHelper helper
+    ) {
+        WorkstationPrerequisiteGameTests
+                .workstationWoodPrerequisiteComposition(helper);
+    }
+
+    @GameTest(
+        name = "real_furnace_batch",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 800,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realFurnaceBatch(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.naturalSmeltingBatch(helper);
+    }
+
+    @GameTest(
+        name = "real_charcoal_furnace_batch",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 800,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realCharcoalFurnaceBatch(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.naturalCharcoalBatch(helper);
+    }
+
+    @GameTest(
+        name = "real_blast_furnace_batch",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 800,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realBlastFurnaceBatch(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.naturalBlastFurnaceBatch(helper);
+    }
+
+    @GameTest(
+        name = "real_smoker_batch",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 800,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realSmokerBatch(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.naturalSmokerBatch(helper);
+    }
+
+    @GameTest(
+        name = "real_cartography_table_transaction",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 100,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realCartographyTableTransaction(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.cartographyTableTransaction(helper);
+    }
+
+    @GameTest(
+        name = "real_stonecutter_transaction",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 100,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realStonecutterTransaction(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.stonecutterTransaction(helper);
+    }
+
+    @GameTest(
+        name = "real_barrel_transaction",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 100,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realBarrelTransaction(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.barrelTransaction(helper);
+    }
+
+    @GameTest(
+        name = "real_shulker_box_transaction",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 100,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realShulkerBoxTransaction(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.shulkerBoxTransaction(helper);
+    }
+
+    @GameTest(
+        name = "real_hopper_transaction",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 100,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realHopperTransaction(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.hopperTransaction(helper);
+    }
+
+    @GameTest(
+        name = "real_dispenser_transaction",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 100,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realDispenserTransaction(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.dispenserTransaction(helper);
+    }
+
+    @GameTest(
+        name = "real_dispenser_button_activation",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 100,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realDispenserButtonActivation(
+            final GameTestHelper helper
+    ) {
+        RedstoneGameTests.dispenserButtonActivation(helper);
+    }
+
+    @GameTest(
+        name = "real_door_open_close",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 100,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realDoorOpenClose(
+            final GameTestHelper helper
+    ) {
+        RedstoneGameTests.doorOpenClose(helper);
+    }
+
+    @GameTest(
+        name = "real_ender_chest_transaction",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 100,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realEnderChestTransaction(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.enderChestTransaction(helper);
+    }
+
+    @GameTest(
+        name = "real_brewing_stand_batch",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 1_200,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realBrewingStandBatch(
+            final GameTestHelper helper
+    ) {
+        MenuGameTests.naturalBrewingStandBatch(helper);
+    }
+
+    @GameTest(
+        name = "real_food_animal_hunt",
+        environment = "exclusive_real_food_animal_hunt",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 4_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realFoodAnimalHunt(
+            final GameTestHelper helper
+    ) {
+        LootGameTests.realFoodAnimalHunt(helper);
+    }
+
+    @GameTest(
+        name = "real_prepare_and_plant_plot",
+        environment = "exclusive_real_prepare_and_plant_plot",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 4_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realPrepareAndPlantPlot(
+            final GameTestHelper helper
+    ) {
+        FarmingGameTests.realPrepareAndPlantPlot(helper);
+    }
+
+    @GameTest(
+        name = "real_prepare_water_source",
+        environment = "exclusive_real_prepare_water_source",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 4_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realPrepareWaterSource(
+            final GameTestHelper helper
+    ) {
+        FarmingGameTests.realPrepareWaterSource(helper);
+    }
+
+    @GameTest(
+        name = "real_plant_observed_sugarcane",
+        environment = "exclusive_real_plant_observed_sugarcane",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 4_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realPlantObservedSugarcane(
+            final GameTestHelper helper
+    ) {
+        FarmingGameTests.realPlantObservedSugarcane(helper);
+    }
+
+    @GameTest(
+        name = "real_build_hydrated_crop_field",
+        environment = "exclusive_real_build_hydrated_crop_field",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 12_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realBuildHydratedCropField(
+            final GameTestHelper helper
+    ) {
+        FarmingGameTests.realBuildHydratedCropField(helper);
+    }
+
+    @GameTest(
+        name = "real_maintain_observed_crop_field",
+        environment = "exclusive_real_maintain_observed_crop_field",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 12_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realMaintainObservedCropField(
+            final GameTestHelper helper
+    ) {
+        FarmingGameTests.realMaintainObservedCropField(helper);
+    }
+
+    @GameTest(
+        name = "real_maintain_observed_carrot_field",
+        environment = "exclusive_real_maintain_observed_crop_field",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 12_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realMaintainObservedCarrotField(
+            final GameTestHelper helper
+    ) {
+        FarmingGameTests.realMaintainObservedCarrotField(helper);
+    }
+
+    @GameTest(
+        name = "real_maintain_observed_potato_field",
+        environment = "exclusive_real_maintain_observed_crop_field",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 12_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realMaintainObservedPotatoField(
+            final GameTestHelper helper
+    ) {
+        FarmingGameTests.realMaintainObservedPotatoField(helper);
+    }
+
+    @GameTest(
+        name = "real_maintain_observed_beetroot_field",
+        environment = "exclusive_real_maintain_observed_crop_field",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 12_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realMaintainObservedBeetrootField(
+            final GameTestHelper helper
+    ) {
+        FarmingGameTests.realMaintainObservedBeetrootField(helper);
+    }
+
+    @GameTest(
+        name = "real_maintain_observed_expanded_field",
+        environment = "exclusive_real_maintain_observed_crop_field",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 24_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realMaintainObservedExpandedField(
+            final GameTestHelper helper
+    ) {
+        FarmingGameTests.realMaintainObservedExpandedField(helper);
+    }
+
+    @GameTest(
+        name = "auto_presence_on_human_login",
+        environment = "exclusive_auto_presence",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 800,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void autoPresenceOnHumanLogin(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests.autoPresenceOnHumanLogin(helper);
+    }
+
+    @GameTest(
+        name = "delayed_human_login_after_zero_human_active",
+        environment = "exclusive_auto_presence",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 1_600,
+        skyAccess = true,
+        padding = 16
+    )
+    public static void delayedHumanLoginAfterZeroHumanActive(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests.delayedHumanLoginAfterZeroHumanActive(helper);
+    }
+
+    @GameTest(
+        name = "delayed_human_login_while_emergency_active",
+        environment = "exclusive_auto_presence",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 1_600,
+        skyAccess = true,
+        padding = 16
+    )
+    public static void delayedHumanLoginWhileEmergencyActive(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests.delayedHumanLoginWhileEmergencyActive(helper);
+    }
+
+    @GameTest(
+        name = "real_player_chat_to_live_model",
+        environment = "exclusive_live_model_chat",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realPlayerChatToLiveModel(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests.realPlayerChatToLiveModel(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_movement",
+        environment = "exclusive_live_model_task",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realPlayerTaskToLiveModelMovement(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelMovement(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_movement_stop_resume",
+        environment = "exclusive_live_model_movement_stop_resume",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 900_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void realPlayerTaskToLiveModelMovementStopResume(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelMovementStopResume(helper);
+    }
+
+    @GameTest(
+        name = "real_player_chat_to_immediate_bound_follow",
+        environment = "exclusive_immediate_bound_follow",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 5_000,
+        skyAccess = true,
+        padding = 16
+    )
+    public static void realPlayerChatToImmediateBoundFollow(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerChatToImmediateBoundFollow(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_follow",
+        environment = "exclusive_live_model_follow",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 16
+    )
+    public static void realPlayerTaskToLiveModelFollow(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelFollow(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_follow_stop_resume",
+        environment = "exclusive_live_model_follow_stop_resume",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 900_000,
+        skyAccess = true,
+        padding = 16
+    )
+    public static void realPlayerTaskToLiveModelFollowStopResume(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelFollowStopResume(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_item_collection",
+        environment = "exclusive_live_model_item_collection",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerTaskToLiveModelItemCollection(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelItemCollection(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_player_gift_round_trip",
+        environment = "exclusive_live_model_item_gift_round_trip",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerTaskToLiveModelPlayerGiftRoundTrip(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelPlayerGiftRoundTrip(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_container_withdrawal",
+        environment = "exclusive_live_model_container_withdrawal",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerTaskToLiveModelContainerWithdrawal(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelContainerWithdrawal(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_zombie_defense",
+        environment = "exclusive_live_model_combat",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerTaskToLiveModelZombieDefense(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelZombieDefense(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_zombie_defense_stop_resume",
+        environment = "exclusive_live_model_combat",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerTaskToLiveModelZombieDefenseStopResume(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelZombieDefenseStopResume(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_horde_defense",
+        environment = "exclusive_live_model_horde_combat",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 16
+    )
+    public static void realPlayerTaskToLiveModelHordeDefense(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelHordeDefense(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_ten_plus_ten_horde",
+        environment = "exclusive_live_model_ten_plus_ten_horde",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 900_000,
+        skyAccess = true,
+        padding = 20
+    )
+    public static void realPlayerTaskToLiveModelTenPlusTenHorde(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelTenPlusTenHorde(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_iron_golem_duel",
+        environment = "exclusive_live_model_iron_golem_duel",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 16
+    )
+    public static void realPlayerTaskToLiveModelIronGolemDuel(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelIronGolemDuel(helper);
+    }
+
+    @GameTest(
+        name = "real_player_chat_to_surprise_zombie_defense",
+        environment = "exclusive_live_model_surprise_combat",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerChatToSurpriseZombieDefense(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerChatToSurpriseZombieDefense(helper);
+    }
+
+    @GameTest(
+        name = "real_player_chat_to_critical_golden_apple",
+        environment = "exclusive_live_model_golden_apple",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerChatToCriticalGoldenApple(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerChatToCriticalGoldenApple(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_parkour",
+        environment = "exclusive_live_model_parkour",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerTaskToLiveModelParkour(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelParkour(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_water_clutch",
+        environment = "exclusive_live_model_water_clutch",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerTaskToLiveModelWaterClutch(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelWaterClutch(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_farm_work",
+        environment = "exclusive_live_model_farm_work",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerTaskToLiveModelFarmWork(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelFarmWork(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_foundation_bootstrap",
+        environment = "exclusive_live_model_foundation_bootstrap",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerTaskToLiveModelFoundationBootstrap(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelFoundationBootstrap(helper);
+    }
+
+    @GameTest(
+        name =
+            "real_player_task_to_live_model_nether_portal_build_and_entry",
+        environment =
+            "exclusive_live_model_nether_portal_build_and_entry",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void
+            realPlayerTaskToLiveModelNetherPortalBuildAndEntry(
+                    final GameTestHelper helper
+            ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelNetherPortalBuildAndEntry(
+                        helper
+                );
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_nether_blaze_material",
+        environment = "exclusive_live_model_nether_blaze_material",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void
+            realPlayerTaskToLiveModelNetherBlazeMaterial(
+                    final GameTestHelper helper
+            ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelNetherBlazeMaterial(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_ender_pearl_reserve",
+        environment = "exclusive_live_model_ender_pearl_reserve",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void
+            realPlayerTaskToLiveModelEnderPearlReserve(
+                    final GameTestHelper helper
+            ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelEnderPearlReserve(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_end_portal_activation",
+        environment = "exclusive_live_model_end_portal_activation",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerTaskToLiveModelEndPortalActivation(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelEndPortalActivation(helper);
+    }
+
+    @GameTest(
+        name =
+            "real_player_task_to_live_model_end_portal_activation_and_entry",
+        environment =
+            "exclusive_live_model_end_portal_activation_and_entry",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void
+            realPlayerTaskToLiveModelEndPortalActivationAndEntry(
+                    final GameTestHelper helper
+            ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelEndPortalActivationAndEntry(
+                        helper
+                );
+    }
+
+    @GameTest(
+        name =
+            "real_player_task_to_live_model_eye_craft_return_and_stronghold",
+        environment =
+            "exclusive_live_model_eye_craft_return_and_stronghold",
+        structure = "forge:empty600x24x600",
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void
+            realPlayerTaskToLiveModelEyeCraftReturnAndStronghold(
+                    final GameTestHelper helper
+            ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelEyeCraftReturnAndStronghold(
+                        helper
+                );
+    }
+
+    @GameTest(
+        name =
+            "real_player_task_to_live_model_nether_materials_to_victory",
+        environment =
+            "exclusive_live_model_nether_materials_to_victory",
+        structure = "forge:empty600x24x600",
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void
+            realPlayerTaskToLiveModelNetherMaterialsToVictory(
+                    final GameTestHelper helper
+            ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelNetherMaterialsToVictory(
+                        helper
+                );
+    }
+
+    @GameTest(
+        name =
+            "real_player_task_to_live_model_stronghold_portal_room_and_entry",
+        environment =
+            "exclusive_live_model_stronghold_portal_room_and_entry",
+        structure = "forge:empty96x24x96",
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void
+            realPlayerTaskToLiveModelStrongholdPortalRoomAndEntry(
+                    final GameTestHelper helper
+            ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelStrongholdPortalRoomAndEntry(
+                        helper
+                );
+    }
+
+    @GameTest(
+        name =
+            "real_player_task_to_live_model_stronghold_portal_room_to_victory",
+        environment =
+            "exclusive_live_model_stronghold_portal_room_to_victory",
+        structure = "forge:empty96x24x96",
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void
+            realPlayerTaskToLiveModelStrongholdPortalRoomToVictory(
+                    final GameTestHelper helper
+            ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelStrongholdPortalRoomToVictory(
+                        helper
+                );
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_late_end_completion_chain",
+        environment = "exclusive_live_model_late_end_completion_chain",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void
+            realPlayerTaskToLiveModelLateEndCompletionChain(
+                    final GameTestHelper helper
+            ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelLateEndCompletionChain(
+                        helper
+                );
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_end_victory_and_return",
+        environment = "exclusive_live_model_end_victory",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerTaskToLiveModelEndVictoryAndReturn(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelEndVictoryAndReturn(helper);
+    }
+
+    @GameTest(
+        name = "real_player_task_to_live_model_shelter_relocation",
+        environment = "exclusive_live_model_shelter_relocation",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 16
+    )
+    public static void realPlayerTaskToLiveModelShelterRelocation(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerTaskToLiveModelShelterRelocation(helper);
+    }
+
+    @GameTest(
+        name = "real_zero_human_dedicated_server_foundation",
+        environment = "exclusive_zero_human_live_foundation",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realZeroHumanDedicatedServerFoundation(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .zeroHumanDedicatedServerToLiveModelFoundation(helper);
+    }
+
+    private static VerifiedFixtureLocation location(
+            final String dimension,
+            final BlockPos position
+    ) {
+        return new VerifiedFixtureLocation(
+                dimension,
+                position.getX(),
+                position.getY(),
+                position.getZ()
+        );
+    }
+
+    private static void runFocusedMovementScenario(
+            final GameTestHelper helper,
+            final ScenarioScope scope,
+            final int maximumTicks
+    ) {
+        MinecraftAiCompanion.LOGGER.info(
+            "Starting focused real {} GameTest",
+            scope.logName()
+        );
+        final var server = helper.getLevel().getServer();
+        final AtomicReference<IntegratedSkillScenario> scenario =
+            new AtomicReference<>();
+        helper.addCleanup(ignored -> {
+            final IntegratedSkillScenario current = scenario.get();
+            if (current != null) {
+                current.cleanup();
+            }
+            CompanionRuntime.active()
+                .filter(runtime -> runtime.server() == server)
+                .ifPresent(runtime -> {
+                    final GoalStatus goalStatus =
+                        runtime.goals().snapshot().status();
+                    if (goalStatus == GoalStatus.RUNNING
+                            || goalStatus
+                                == GoalStatus.CANCEL_PENDING) {
+                        runtime.goals().markTerminal(
+                            GoalStatus.SAFE_IDLE,
+                            "focused_test_cleanup"
+                        );
+                    }
+                    runtime.survival().reset();
+                    runtime.coreActions().quiesceNow();
+                    runtime.interactionActions().quiesceNow();
+                    runtime.boatActions().quiesceNow();
+                    runtime.minecartActions().quiesceNow();
+                    runtime.skillSupervisor().abandonForSessionEnd();
+                });
+            if (AiPlayerManager.status(server).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(server);
+            }
+        });
+
+        final var spawn = GameTestCompanionSpawn.request(
+            helper,
+            FOCUSED_TEST_ORIGIN
+        );
+        helper.assertTrue(
+            spawn.accepted(),
+            "Focused movement body spawn was rejected: " + spawn.code()
+        );
+        scheduleEveryTick(helper, maximumTicks, () -> {
+            final IntegratedSkillScenario current = scenario.get();
+            if (current != null) {
+                current.tick();
+                return;
+            }
+
+            final var status = AiPlayerManager.status(server);
+            helper.assertTrue(
+                status.state() != SessionState.FAILED,
+                "Focused movement body failed to spawn: " + status
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                    helper.getTick() <= FOCUSED_BODY_START_TIMEOUT_TICKS,
+                    "Focused movement body did not become active"
+                );
+                return;
+            }
+
+            final var runtime = CompanionRuntime.active()
+                .filter(candidate -> candidate.server() == server)
+                .orElseThrow(() -> helper.assertionException(
+                    "Focused movement test has no production runtime"
+                ));
+            runtime.survival().reset();
+            runtime.coreActions().quiesceNow();
+            runtime.interactionActions().quiesceNow();
+            runtime.boatActions().quiesceNow();
+            runtime.minecartActions().quiesceNow();
+            runtime.skillSupervisor().abandonForSessionEnd();
+            /*
+             * The integrated fixture drives production skills directly and
+             * deliberately performs no provider I/O. A RUNNING goal with an
+             * unconfigured gateway correctly makes CompanionRuntime quiesce
+             * every persistent actuator at ServerTickEvent.END. That safety
+             * path would clear a boat input after the GameTest callback but
+             * before the next vanilla entity tick, making this test measure
+             * callback order rather than boat physics. Install an inert,
+             * ready delegate in this release-excluded GameTest class so the
+             * runtime follows the same gateway-ready path as live play.
+             * Stop the brain first so the manually supervised fixture remains
+             * the only caller of SkillSupervisor.tick; otherwise both the
+             * server runtime and this fixture would advance every skill once
+             * per tick. The holding delegate never emits a decision.
+             */
+            runtime.brain().close();
+            runtime.model().gateway().install(
+                new HoldingGameTestGateway()
+            );
+            final var goalStart = runtime.goals().setGoal(
+                    "Run the focused " + scope.logName()
+                        + " verification",
+                    GoalSource.RECOVERY
+            );
+            helper.assertTrue(
+                    goalStart.accepted(),
+                    "Focused movement test could not install its "
+                        + "production goal: " + goalStart.code()
+            );
+
+            final var player = AiPlayerManager.onlinePlayer(server)
+                .orElseThrow();
+            player.stopRiding();
+            if (player.isSleeping()) {
+                player.stopSleepInBed(true, false);
+            }
+            player.setGameMode(GameType.SURVIVAL);
+            player.getInventory().clearContent();
+            player.getEnderChestInventory().clearContent();
+            player.removeAllEffects();
+            player.clearFire();
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.getFoodData().setSaturation(5.0F);
+            player.setDeltaMovement(Vec3.ZERO);
+            player.fallDistance = 0.0F;
+
+            scenario.set(new IntegratedSkillScenario(
+                helper,
+                runtime,
+                helper.absolutePos(FOCUSED_TEST_ORIGIN),
+                scope
+            ));
+        });
+    }
+
+    @GameTest(
+        name = "headless_player_lifecycle_state_and_fair_action",
+        environment = "exclusive_headless_lifecycle",
+        structure = TEST_STRUCTURE,
+        maxTicks = (int) TEST_MAX_TICKS
+    )
+    public static void headlessPlayerLoginReloginAndState(final GameTestHelper helper) {
+        MinecraftAiCompanion.LOGGER.info(
+            "Starting real headless_player_lifecycle_state_and_fair_action GameTest"
+        );
+        InventoryGameTests.vanillaInventoryTransactions(helper);
+        MenuGameTests.vanillaMenuTransactions(helper);
+        final var server = helper.getLevel().getServer();
+        final var expectedIdentity = CompanionWorldData.get(server).companionUuid();
+        final AtomicReference<FairPlayerActuator> actuator =
+            new AtomicReference<>();
+        final AtomicReference<Vec3> actionStart = new AtomicReference<>();
+        final AtomicReference<Vec3> actionStopped = new AtomicReference<>();
+        final AtomicReference<BlockPos> miningBlock = new AtomicReference<>();
+        final AtomicReference<Vec3> leasedActionStart =
+            new AtomicReference<>();
+        final AtomicReference<Long> leasedActionTick =
+            new AtomicReference<>();
+        final AtomicReference<IntegratedSkillScenario> integratedScenario =
+            new AtomicReference<>();
+        final AtomicReference<LifecycleGateStage> lifecycleGate =
+            new AtomicReference<>(
+                LifecycleGateStage.WAITING_FIRST_LOGIN
+            );
+        helper.addCleanup(ignored -> {
+            final IntegratedSkillScenario scenario =
+                integratedScenario.get();
+            if (scenario != null) {
+                scenario.cleanup();
+            }
+            CompanionRuntime.active()
+                .filter(runtime -> runtime.server() == server)
+                .ifPresent(runtime -> {
+                    final GoalStatus goalStatus =
+                        runtime.goals().snapshot().status();
+                    if (goalStatus == GoalStatus.RUNNING
+                            || goalStatus
+                                == GoalStatus.CANCEL_PENDING) {
+                        runtime.goals().markTerminal(
+                            GoalStatus.SAFE_IDLE,
+                            "integrated_test_cleanup"
+                        );
+                    }
+                    runtime.survival().reset();
+                    runtime.coreActions().quiesceNow();
+                    runtime.interactionActions().quiesceNow();
+                    runtime.boatActions().quiesceNow();
+                    runtime.minecartActions().quiesceNow();
+                    runtime.skillSupervisor().abandonForSessionEnd();
+                });
+            if (AiPlayerManager.status(server).state() != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(server);
+            }
+        });
+        final var spawn = GameTestCompanionSpawn.request(
+            helper,
+            TEST_ORIGIN
+        );
+        helper.assertTrue(spawn.accepted(), "Headless spawn request was rejected: " + spawn.code());
+
+        helper.runAtTickTime(220, () -> {
+            final var runtime = CompanionRuntime.active()
+                .orElseThrow(() -> helper.assertionException(
+                    "ServerStartedEvent did not create the companion runtime"
+                ));
+            helper.assertTrue(
+                runtime.server() == server,
+                "Active companion runtime belongs to a different server"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(CoreSkills.MOVE_TO),
+                "Production runtime did not register move_to"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(CoreSkills.LOOK_AT),
+                "Production runtime did not register look_at"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(CoreSkills.SAFE_IDLE),
+                "Production runtime did not register safe_idle"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(CoreSkills.FOLLOW_ENTITY),
+                "Production runtime did not register follow_entity"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(TravelSkills.TRAVEL_TO),
+                "Production runtime did not register travel_to"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    ExplorationSkills.EXPLORE_FOR_OBSERVED_TARGET
+                ),
+                "Production runtime did not register fair target exploration"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(FairInteractionSkills.BREAK_BLOCK)
+                    && runtime.skills().contains(
+                        FairInteractionSkills.ATTACK_ENTITY
+                    )
+                    && runtime.skills().contains(
+                        FairInteractionSkills.INTERACT_ENTITY
+                    )
+                    && runtime.skills().contains(
+                        FairInteractionSkills.USE_BLOCK
+                    ),
+                "Production runtime did not register fair interaction skills"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    CombatSkills.ENGAGE_OBSERVED_ENTITY
+                )
+                    && runtime.skills().contains(
+                        "shoot_observed_entity"
+                    )
+                    && runtime.skills().contains(
+                        CombatSkills.FIGHT_ENDER_DRAGON
+                    ),
+                "Production runtime did not register local combat skills"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(InventorySkills.CRAFT_RECIPE)
+                    && runtime.skills().contains(
+                        InventorySkills.EQUIP_ITEM
+                    )
+                    && runtime.skills().contains(
+                        InventorySkills.DROP_ITEM
+                    ),
+                "Production runtime did not register inventory skills"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    LootSkills.COLLECT_OBSERVED_ITEM
+                )
+                    && runtime.skills().contains(
+                        LootSkills
+                            .ENGAGE_AND_COLLECT_OBSERVED_DROP
+                    ),
+                "Production runtime did not register fair drop collection"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(MenuSkills.TRANSFER_MENU_ITEM)
+                    && runtime.skills().contains(
+                        MenuSkills.TAKE_MENU_OUTPUT
+                    )
+                    && runtime.skills().contains(
+                        MenuSkills.SELECT_MENU_OPTION
+                    )
+                    && runtime.skills().contains(MenuSkills.CLOSE_MENU),
+                "Production runtime did not register menu skills"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    DynamicShelterSkills.BUILD_SHELTER_STEP
+                ),
+                "Production runtime did not register dynamic shelter building"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(BridgeSkills.BRIDGE_TO)
+                    && runtime.skills().contains(
+                        BridgeSkills.TOWER_UP
+                    )
+                    && runtime.skills().contains(
+                        BridgeSkills.WATER_CLUTCH_DESCEND
+                    ),
+                "Production runtime did not register fair building movement"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(ParkourSkills.PARKOUR_TO),
+                "Production runtime did not register fair parkour movement"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    FarmingSkills.HARVEST_AND_REPLANT_STEP
+                ) && runtime.skills().contains(
+                    FarmingSkills.PREPARE_AND_PLANT_PLOT
+                ) && runtime.skills().contains(
+                    FarmingSkills.PREPARE_WATER_SOURCE
+                ),
+                "Production runtime did not register fair crop work"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    ResourceGatheringSkills.GATHER_VISIBLE_BLOCK_CLUSTER
+                ),
+                "Production runtime did not register fair resource gathering"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    SurveySkills.SURVEY_SURROUNDINGS
+                ),
+                "Production runtime did not register fair environment survey"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    StrongholdSkills.TRACE_STRONGHOLD_EYE
+                )
+                    && runtime.skills().contains(
+                        StrongholdSkills
+                            .TRIANGULATE_STRONGHOLD_SEARCH_AREA
+                    )
+                    && runtime.skills().contains(
+                        StrongholdSkills.REACH_OBSERVED_STRONGHOLD
+                    )
+                    && runtime.skills().contains(
+                        StrongholdSkills
+                            .SEARCH_OBSERVED_STRONGHOLD_PORTAL_ROOM
+                    ),
+                "Production runtime did not register fair Eye tracing "
+                    + "triangulation, physical reach, and portal-room search"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    PortalSkills.ENTER_OBSERVED_PORTAL
+                )
+                    && runtime.skills().contains(
+                        PortalSkills.RETURN_VIA_VERIFIED_PORTAL
+                    ),
+                "Production runtime did not register fair portal "
+                    + "traversal and durable return"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    PortalBuildSkills.BUILD_AND_LIGHT_NETHER_PORTAL
+                )
+                    && runtime.skills().contains(
+                        PortalBuildSkills.ACTIVATE_OBSERVED_END_PORTAL
+                    ),
+                "Production runtime did not register fair portal construction"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    BoatTransportSkills.ENTER_OBSERVED_BOAT
+                )
+                    && runtime.skills().contains(
+                        BoatTransportSkills.BOAT_TRAVEL_TO
+                    ),
+                "Production runtime did not register fair boat transport"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    MinecartTransportSkills.ENTER_OBSERVED_MINECART
+                )
+                    && runtime.skills().contains(
+                        MinecartTransportSkills.MINECART_TRAVEL_TO
+                    ),
+                "Production runtime did not register fair minecart transport"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(
+                    SleepSkills.SLEEP_IN_OBSERVED_BED
+                ),
+                "Production runtime did not register fair bed sleeping"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(ProgressSkills.RECORD_PROGRESS),
+                "Production runtime did not register progress journaling"
+            );
+            helper.assertTrue(
+                runtime.skills().contains(MemorySkills.RECALL_WAYPOINT)
+                    && runtime.skills().contains(
+                        MemorySkills.REMEMBER_WAYPOINT
+                    ),
+                "Production runtime did not register waypoint memory skills"
+            );
+            helper.assertTrue(
+                runtime.tickMetrics().snapshot().lifetimeSamples() > 0,
+                "Production runtime did not record tick-cost telemetry"
+            );
+
+            final var status = AiPlayerManager.status(server);
+            helper.assertTrue(
+                lifecycleGate.get()
+                    == LifecycleGateStage.RESTORED,
+                "Companion login/relogin gate did not complete: "
+                    + lifecycleGate.get()
+                    + ", status="
+                    + status
+            );
+            helper.assertTrue(status.state() == SessionState.ACTIVE, "Companion session did not become active");
+            helper.assertTrue(status.online(), "Companion was not online after relogin");
+
+            final var player = AiPlayerManager.onlinePlayer(server)
+                .orElseThrow(() -> helper.assertionException("Companion ServerPlayer was missing"));
+            helper.assertTrue(
+                expectedIdentity.equals(player.getUUID()),
+                "Companion did not use the persistent world UUID"
+            );
+            helper.assertTrue(player.connection != null, "Vanilla play listener was missing");
+            helper.assertTrue(
+                server.getPlayerList().getPlayer(expectedIdentity) == player,
+                "PlayerList did not own the authoritative companion body"
+            );
+            helper.assertTrue(
+                player.getInventory().getItem(0).is(Items.IRON_PICKAXE),
+                "Inventory was not restored through vanilla player data"
+            );
+            helper.assertTrue(
+                player.getEnderChestInventory().getItem(0).is(Items.EMERALD)
+                    && player.getEnderChestInventory().getItem(0).getCount() == 17,
+                "Ender chest was not restored through vanilla player data"
+            );
+            helper.assertTrue(player.getHealth() == 13.0F, "Health was not restored");
+            helper.assertTrue(player.getFoodData().getFoodLevel() == 11, "Food level was not restored");
+            helper.assertTrue(player.experienceLevel == 6, "Experience level was not restored");
+            player.setGameMode(GameType.SURVIVAL);
+            helper.assertTrue(
+                player.gameMode.getGameModeForPlayer() == GameType.SURVIVAL
+                    && !player.getAbilities().instabuild,
+                "Fair-action fixture could not enter survival mode"
+            );
+
+            final BlockPos origin = helper.absolutePos(TEST_ORIGIN);
+            for (int x = -2; x <= 2; x++) {
+                for (int z = -2; z <= 18; z++) {
+                    helper.getLevel().setBlockAndUpdate(
+                        origin.offset(x, -1, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                }
+            }
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            player.setYRot(0.0F);
+            player.setYHeadRot(0.0F);
+            player.setXRot(0.0F);
+
+            leasedActionStart.set(player.position());
+            leasedActionTick.set(Integer.toUnsignedLong(server.getTickCount()));
+            helper.assertTrue(
+                runtime.coreActions().move(
+                    new MovementIntent(1.0, 0.0, false, false)
+                ) == ActionOutcome.QUEUED,
+                "Production core action lease rejected movement"
+            );
+
+            final FairPlayerActuator controller =
+                new FairPlayerActuator(player);
+            helper.assertTrue(
+                controller.setMovement(
+                    new MovementIntent(1.0, 0.0, false, false)
+                ) == ActionOutcome.QUEUED,
+                "Forward movement was not accepted"
+            );
+            actuator.set(controller);
+            actionStart.set(player.position());
+        });
+
+        helper.runAtTickTime(224, () -> {
+            final var runtime = CompanionRuntime.active()
+                .orElseThrow(() -> helper.assertionException(
+                    "Companion runtime disappeared during the test"
+                ));
+            final var player = AiPlayerManager.onlinePlayer(server)
+                .orElseThrow();
+            final Vec3 start = leasedActionStart.get();
+            final Long issuedAt = leasedActionTick.get();
+            final var lease = runtime.coreActions().snapshot();
+            helper.assertTrue(
+                start != null && issuedAt != null,
+                "Production lease fixture did not run"
+            );
+            helper.assertTrue(
+                lease.bound() && lease.lastExecutedTick() >= issuedAt,
+                "Runtime did not close the production core-action tick loop"
+            );
+            helper.assertTrue(
+                player.position().distanceToSqr(start) < 0.01,
+                "Idle runtime left a movement intent latched across ticks"
+            );
+        });
+
+        scheduleEveryTick(helper, TEST_MAX_TICKS, () -> {
+            final long tick = helper.getTick();
+            if (tick <= 200) {
+                switch (lifecycleGate.get()) {
+                    case WAITING_FIRST_LOGIN -> {
+                        final var status =
+                            AiPlayerManager.status(server);
+                        if (status.state()
+                                == SessionState.FAILED) {
+                            throw helper.assertionException(
+                                "Initial companion spawn failed: "
+                                    + status
+                            );
+                        }
+                        final var online =
+                            AiPlayerManager.onlinePlayer(server);
+                        if (online.isPresent()) {
+                            final var player =
+                                online.orElseThrow();
+                            player.getInventory().setItem(
+                                0,
+                                new ItemStack(
+                                    Items.IRON_PICKAXE
+                                )
+                            );
+                            player.getEnderChestInventory()
+                                .setItem(
+                                    0,
+                                    new ItemStack(
+                                        Items.EMERALD,
+                                        17
+                                    )
+                                );
+                            player.setHealth(13.0F);
+                            player.getFoodData()
+                                .setFoodLevel(11);
+                            player.experienceLevel = 6;
+                            final var removed =
+                                AiPlayerManager.requestRemove(
+                                    server
+                                );
+                            helper.assertTrue(
+                                removed.accepted(),
+                                "Initial companion removal "
+                                    + "was rejected"
+                            );
+                            lifecycleGate.set(
+                                LifecycleGateStage
+                                    .WAITING_RELOGIN
+                            );
+                        }
+                    }
+                    case WAITING_RELOGIN -> {
+                        final var status =
+                            AiPlayerManager.status(server);
+                        if (status.state()
+                                == SessionState.ABSENT) {
+                            final var respawn =
+                                GameTestCompanionSpawn.request(
+                                    helper,
+                                    TEST_ORIGIN
+                                );
+                            helper.assertTrue(
+                                respawn.accepted(),
+                                "Companion relogin was "
+                                    + "rejected: "
+                                    + respawn.code()
+                            );
+                            lifecycleGate.set(
+                                LifecycleGateStage
+                                    .WAITING_RESTORE
+                            );
+                        }
+                    }
+                    case WAITING_RESTORE -> {
+                        final var status =
+                            AiPlayerManager.status(server);
+                        if (status.state()
+                                == SessionState.FAILED) {
+                            throw helper.assertionException(
+                                "Companion relogin failed: "
+                                    + status
+                            );
+                        }
+                        if (status.state()
+                                == SessionState.ACTIVE
+                                && status.online()) {
+                            lifecycleGate.set(
+                                LifecycleGateStage.RESTORED
+                            );
+                        }
+                    }
+                    case RESTORED -> {
+                    }
+                }
+            }
+            final FairPlayerActuator controller = actuator.get();
+            if (controller != null && tick >= 225 && tick < 250) {
+                final ActionOutcome outcome = controller.tick();
+                helper.assertTrue(
+                    outcome == ActionOutcome.DISPATCHED,
+                    "Movement tick failed: " + outcome
+                );
+            }
+            if (controller != null && tick >= 271 && tick < 310) {
+                final ActionOutcome outcome = controller.tick();
+                helper.assertTrue(
+                    outcome == ActionOutcome.DISPATCHED
+                        || outcome == ActionOutcome.IN_PROGRESS
+                        || outcome == ActionOutcome.COMPLETED,
+                    "Mining tick failed: " + outcome
+                );
+            }
+            final IntegratedSkillScenario scenario =
+                integratedScenario.get();
+            if (scenario != null && tick > 310) {
+                scenario.tick();
+            }
+        });
+
+        helper.runAtTickTime(250, () -> {
+            final FairPlayerActuator controller = actuator.get();
+            helper.assertTrue(controller != null, "Actuator was not created");
+            helper.assertTrue(
+                controller.stop() == ActionOutcome.DISPATCHED,
+                "Stop input was not dispatched"
+            );
+            actionStopped.set(
+                AiPlayerManager.onlinePlayer(server)
+                    .orElseThrow()
+                    .position()
+            );
+        });
+
+        helper.runAtTickTime(260, () -> {
+            final var player = AiPlayerManager.onlinePlayer(server)
+                .orElseThrow(() -> helper.assertionException(
+                    "Companion disappeared during movement"
+                ));
+            final Vec3 initial = actionStart.get();
+            final Vec3 stopped = actionStopped.get();
+            helper.assertTrue(
+                initial != null && stopped != null,
+                "Action test state was incomplete"
+            );
+            final double travelled = stopped.z() - initial.z();
+            helper.assertTrue(
+                travelled > 0.5 && travelled < 15.0,
+                "Forward travel was outside a plausible vanilla range: "
+                    + travelled
+            );
+            helper.assertTrue(
+                Math.abs(stopped.x() - initial.x()) < 0.5,
+                "Forward input drifted sideways"
+            );
+            helper.assertTrue(
+                player.position().distanceToSqr(stopped) < 0.25,
+                "Released movement input continued driving the player"
+            );
+
+            final BlockPos origin = helper.absolutePos(TEST_ORIGIN);
+            final BlockPos target = origin.offset(0, 1, 2);
+            helper.getLevel().setBlockAndUpdate(
+                target,
+                Blocks.STONE.defaultBlockState()
+            );
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            player.setItemInHand(
+                InteractionHand.MAIN_HAND,
+                new ItemStack(Items.DIAMOND_PICKAXE)
+            );
+            player.lookAt(
+                EntityAnchorArgument.Anchor.EYES,
+                Vec3.atCenterOf(target)
+            );
+            miningBlock.set(target);
+        });
+
+        helper.runAtTickTime(270, () -> {
+            final var player = AiPlayerManager.onlinePlayer(server)
+                .orElseThrow();
+            final Vec3 eye = player.getEyePosition();
+            final BlockHitResult hit = helper.getLevel().clip(new ClipContext(
+                eye,
+                eye.add(
+                    player.getViewVector(1.0F)
+                        .scale(player.blockInteractionRange())
+                ),
+                ClipContext.Block.OUTLINE,
+                ClipContext.Fluid.NONE,
+                player
+            ));
+            helper.assertTrue(
+                hit.getType() == HitResult.Type.BLOCK
+                    && hit.getBlockPos().equals(miningBlock.get()),
+                "Fixture did not put the stone under the companion crosshair"
+            );
+            final Vec3 location = hit.getLocation();
+            final BlockPos target = hit.getBlockPos();
+            final BlockInteractionTarget actionTarget =
+                new BlockInteractionTarget(
+                    target.getX(),
+                    target.getY(),
+                    target.getZ(),
+                    BlockFace.valueOf(hit.getDirection().name()),
+                    new ActionVec3(
+                        location.x(),
+                        location.y(),
+                        location.z()
+                    )
+                );
+            final ActionOutcome miningStart =
+                actuator.get().beginMining(actionTarget);
+            helper.assertTrue(
+                miningStart == ActionOutcome.IN_PROGRESS
+                    || miningStart == ActionOutcome.COMPLETED,
+                "Vanilla START_DESTROY_BLOCK was not accepted: "
+                    + miningStart
+            );
+        });
+
+        helper.runAtTickTime(310, () -> {
+            final var player = AiPlayerManager.onlinePlayer(server)
+                .orElseThrow();
+            helper.assertTrue(
+                helper.getLevel().getBlockState(miningBlock.get()).isAir(),
+                "Fair mining did not remove the observed stone"
+            );
+            helper.assertTrue(
+                player.getMainHandItem().is(Items.DIAMOND_PICKAXE)
+                    && player.getMainHandItem().getDamageValue() == 1,
+                "Vanilla mining did not apply normal tool durability"
+            );
+            final var runtime = CompanionRuntime.active()
+                .orElseThrow(() -> helper.assertionException(
+                    "Companion runtime disappeared before integrated skill tests"
+                ));
+            runtime.survival().reset();
+            runtime.coreActions().quiesceNow();
+            runtime.interactionActions().quiesceNow();
+            runtime.boatActions().quiesceNow();
+            runtime.minecartActions().quiesceNow();
+            runtime.skillSupervisor().abandonForSessionEnd();
+            runtime.brain().close();
+            runtime.model().gateway().install(
+                new HoldingGameTestGateway()
+            );
+            final var goalStart = runtime.goals().setGoal(
+                "Run the full integrated embodiment verification",
+                GoalSource.RECOVERY
+            );
+            helper.assertTrue(
+                goalStart.accepted(),
+                "Integrated embodiment test could not install its "
+                    + "production goal: " + goalStart.code()
+            );
+            helper.assertTrue(
+                runtime.goals().snapshot().status()
+                    == GoalStatus.RUNNING,
+                "Integrated embodiment goal was not running before "
+                    + "the production skill chain started"
+            );
+            integratedScenario.set(new IntegratedSkillScenario(
+                helper,
+                runtime,
+                helper.absolutePos(TEST_ORIGIN)
+            ));
+        });
+    }
+
+    private enum LifecycleGateStage {
+        WAITING_FIRST_LOGIN,
+        WAITING_RELOGIN,
+        WAITING_RESTORE,
+        RESTORED
+    }
+
+    private static final class HoldingGameTestGateway
+            implements ModelGateway {
+        private final CompletableFuture<ModelOutcome> pending =
+            new CompletableFuture<>();
+        private boolean requesting;
+        private boolean closed;
+
+        @Override
+        public CompletionStage<ModelOutcome> decide(
+                final PlannerInput input
+        ) {
+            if (closed) {
+                throw new IllegalStateException(
+                    "GameTest gateway is closed"
+                );
+            }
+            requesting = true;
+            return pending;
+        }
+
+        @Override
+        public void cancelForGoalRevision(
+                final long currentGoalRevision
+        ) {
+            // A direct GameTest skill owns the active goal until cleanup.
+        }
+
+        @Override
+        public GatewayStatus status() {
+            if (closed) {
+                return GatewayStatus.CLOSED;
+            }
+            return requesting
+                ? GatewayStatus.REQUESTING
+                : GatewayStatus.IDLE;
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+            pending.cancel(false);
+        }
+    }
+
+    private enum ScenarioScope {
+        FULL(false, "full embodiment chain"),
+        WATER_ONLY(true, "water-clutch physics"),
+        PARKOUR_ONLY(true, "parkour physics"),
+        TRAVEL_DETOUR_ONLY(
+                true,
+                "diagonal travel detour and course recovery"
+        ),
+        PORTAL_RETURN_ONLY(
+                true,
+                "verified portal arrival return"
+        ),
+        BLAZE_ONLY(true, "Nether Blaze-rod acquisition"),
+        BLAZE_RESERVE_ONLY(
+                true,
+                "Nether Blaze material reserve acquisition"
+        ),
+        ENDER_SINGLE_ONLY(
+                true,
+                "single sheltered Ender pearl acquisition"
+        ),
+        ENDER_RESERVE_ONLY(
+                true,
+                "Ender pearl reserve acquisition"
+        ),
+        STRONGHOLD_ONLY(
+                true,
+                "stronghold triangulation"
+        ),
+        STRONGHOLD_REACH_ONLY(
+                true,
+                "stronghold physical approach and excavation"
+        ),
+        END_PORTAL_ONLY(false, "End portal activation"),
+        END_VICTORY_ONLY(
+                true,
+                "End entry, dragon victory, and return"
+        );
+
+        private final boolean forceHardcorePolicy;
+        private final String logName;
+
+        ScenarioScope(
+                final boolean forceHardcorePolicy,
+                final String logName
+        ) {
+            this.forceHardcorePolicy = forceHardcorePolicy;
+            this.logName = logName;
+        }
+
+        private boolean forceHardcorePolicy() {
+            return forceHardcorePolicy;
+        }
+
+        private String logName() {
+            return logName;
+        }
+    }
+
+    /**
+     * Minecraft 26.2's {@link GameTestHelper#onEachTick(Runnable)} stores
+     * method references as map keys; the JVM may reuse that method-reference
+     * object and collapse the schedule to one entry. Capturing the distinct
+     * target tick makes every callback independently observable.
+     */
+    private static void scheduleEveryTick(
+            final GameTestHelper helper,
+            final long finalTickInclusive,
+            final Runnable action
+    ) {
+        for (long tick = helper.getTick();
+                tick <= finalTickInclusive;
+                tick++) {
+            final long scheduledTick = tick;
+            helper.runAtTickTime(scheduledTick, () -> {
+                if (helper.getTick() < scheduledTick) {
+                    throw helper.assertionException(
+                        "GameTest callback ran before its scheduled tick"
+                    );
+                }
+                action.run();
+            });
+        }
+    }
+
+    /**
+     * Sequentially exercises production-registered skills against one body.
+     * Fixture setup may place blocks/entities and establish night, but every
+     * asserted gameplay transition is caused by the ordinary skill actuator.
+     */
+    private static final class IntegratedSkillScenario {
+        private static final int TARGET_DISCOVERY_TIMEOUT_TICKS = 40;
+        private static final int FOCUSED_WATER_STABLE_TICKS = 3;
+        private static final int FOCUSED_WATER_SETTLE_TIMEOUT_TICKS = 40;
+        private static final int PARKOUR_STABLE_TICKS = 3;
+        private static final int PARKOUR_SETTLE_TIMEOUT_TICKS = 40;
+        private static final double CONTROLLED_ENDERMAN_OFFSET = 2.5;
+        private static final double MAXIMUM_FIXTURE_MELEE_DISTANCE = 2.81;
+        private static final String OVERWORLD = "minecraft:overworld";
+
+        private final GameTestHelper helper;
+        private final ServerRuntime runtime;
+        private final BlockPos origin;
+        private final int originalSleepPercentage;
+        private final boolean originalSpawnMobs;
+        private final boolean originalSpawnMonsters;
+        private final boolean originalMobDrops;
+        private final boolean originalGenerateStructures;
+        private final ScenarioScope scope;
+        private final RuntimeTickMetrics.Cursor performanceStart;
+        private Stage stage;
+        private long stageStartedAt;
+        private long stageStartedNanos;
+        private Boat boat;
+        private Vec3 boatTravelStart;
+        private Vec3 boatDestination;
+        private AbstractMinecart minecart;
+        private Vec3 minecartTravelStart;
+        private Vec3 minecartDestination;
+        private boolean minecartTravelVerified;
+        private Mob rangedTarget;
+        private AbstractMinecart rangedMinecart;
+        private float rangedTargetInitialHealth;
+        private Vec3 rangedTargetStart;
+        private EndCrystal endCrystal;
+        private EndCrystal fightCrystal;
+        private EnderDragon fightDragon;
+        private double maximumFightCrystalDistance;
+        private UUID dragonFightPlayerId;
+        private BlockPos fightCageBar;
+        private ItemEntity lootDrop;
+        private Mob occludedThreat;
+        private Mob shelteredEnderman;
+        private Mob resourceTarget;
+        private Vec3 lootCollectionStart;
+        private BlockPos endermanShelterCenter;
+        private int endermanShelterScanIndex;
+        private BlockPos endArena;
+        private BlockPos endRouteStart;
+        private Vec3 endRouteTravelStart;
+        private BlockPos returnPortal;
+        private BlockPos bedHead;
+        private List<BlockPos> crystalCageBars = List.of();
+        private int crystalCageBarIndex;
+        private BlockPos crystalTowerBase;
+        private BlockPos crystalLanding;
+        private BlockPos crystalShotPosition;
+        private BlockPos builtPortalAnchor;
+        private int portalSiteScanIndex;
+        private int portalBuildStableTicks;
+        private BlockPos endPortalCenter;
+        private BlockPos explorationTarget;
+        private BlockPos netherExplorationTarget;
+        private BlockPos netherPortalBlock;
+        private BlockPos netherClutchLanding;
+        private BlockPos netherBlazeArenaOrigin;
+        private BlockPos strongholdTraceTarget;
+        private BlockPos strongholdReachSearchFeet;
+        private BlockPos strongholdReachEvidence;
+        private BlockPos endPortalMazeDeadEnd;
+        private BlockPos endPortalMazeSecondTurn;
+        private Vec3 strongholdReachStart;
+        private int strongholdReachPickaxeDamage;
+        private int strongholdReachTorchCount;
+        private Vec3 endPortalSearchStart;
+        private Vec3 explorationStart;
+        private Vec3 netherExplorationStart;
+        private Vec3 netherPortalReturnTarget;
+        private Vec3 firstEyeThrowPosition;
+        private Vec3 secondEyeThrowTarget;
+        private Vec3 travelDetourStart;
+        private Vec3 travelDetourTarget;
+        private double travelDetourMaximumX;
+        private int parkourInitialJumpStat;
+        private int parkourStableTicks;
+        private int waterBucketUseStart;
+        private int focusedWaterStableTicks;
+        private double maximumWaterFallDistance;
+        private boolean observedWaterDescent;
+        private boolean heldSleepOpen;
+        private boolean observedRealSleep;
+        private boolean endPortalMazeDeadEndVisited;
+        private boolean endPortalMazeSecondTurnVisited;
+        private int blazeTargetsSpawned;
+        private int blazeWeaponDamageBefore;
+        private int enderTargetsSpawned;
+        private int enderWeaponDamageBefore;
+        private int enderStableTicks;
+        private long enderRoofStableSince = -1L;
+        private long lastEnderTargetRemovedAt = -1L;
+        private boolean cleaned;
+
+        private IntegratedSkillScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime,
+                final BlockPos origin
+        ) {
+            this(helper, runtime, origin, ScenarioScope.FULL);
+        }
+
+        private IntegratedSkillScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime,
+                final BlockPos origin,
+                final ScenarioScope scope
+        ) {
+            this.helper = helper;
+            this.runtime = runtime;
+            this.origin = origin;
+            this.scope = scope;
+            performanceStart = runtime.tickMetrics().cursor();
+            helper.assertTrue(
+                runtime.goals().snapshot().status()
+                    == GoalStatus.RUNNING,
+                "Integrated production skill scenario requires a "
+                    + "running goal"
+            );
+            originalSleepPercentage = helper.getLevel()
+                .getGameRules()
+                .get(GameRules.PLAYERS_SLEEPING_PERCENTAGE);
+            originalSpawnMobs = helper.getLevel()
+                .getGameRules()
+                .get(GameRules.SPAWN_MOBS);
+            originalSpawnMonsters = helper.getLevel()
+                .getGameRules()
+                .get(GameRules.SPAWN_MONSTERS);
+            originalMobDrops = helper.getLevel()
+                .getGameRules()
+                .get(GameRules.MOB_DROPS);
+            originalGenerateStructures = runtime.server()
+                .getWorldGenSettings()
+                .options()
+                .generateStructures();
+            if (scope == ScenarioScope.FULL
+                    || scope == ScenarioScope.BLAZE_ONLY
+                    || scope == ScenarioScope.BLAZE_RESERVE_ONLY
+                    || scope == ScenarioScope.PORTAL_RETURN_ONLY
+                    || scope == ScenarioScope.ENDER_SINGLE_ONLY
+                    || scope == ScenarioScope.ENDER_RESERVE_ONLY
+                    || scope == ScenarioScope.TRAVEL_DETOUR_ONLY
+                    || scope == ScenarioScope.STRONGHOLD_ONLY
+                    || scope == ScenarioScope.STRONGHOLD_REACH_ONLY
+                    || scope == ScenarioScope.END_PORTAL_ONLY
+                    || scope == ScenarioScope.END_VICTORY_ONLY) {
+                /*
+                 * Keep this release-excluded capability chain deterministic.
+                 * Explicit fixture mobs still spawn through addFreshEntity;
+                 * only unrelated natural spawns are suppressed. Production
+                 * worlds and natural Hardcore evaluation never use this.
+                 */
+                setNaturalSpawning(false, false);
+                setMobDrops(true);
+            }
+            switch (scope) {
+                case FULL -> prepareBoat();
+                case WATER_ONLY -> prepareFocusedWaterStart();
+                case PARKOUR_ONLY -> prepareParkour();
+                case TRAVEL_DETOUR_ONLY ->
+                    prepareTravelDiagonalDetour();
+                case PORTAL_RETURN_ONLY ->
+                    prepareNetherPortalBuild();
+                case BLAZE_ONLY ->
+                    prepareFocusedNetherBlazeCombat();
+                case BLAZE_RESERVE_ONLY ->
+                    prepareFocusedNetherBlazeCombat();
+                case ENDER_SINGLE_ONLY ->
+                    prepareShelteredEndermanCombat();
+                case ENDER_RESERVE_ONLY ->
+                    prepareFocusedEnderPearlReserve();
+                case STRONGHOLD_ONLY ->
+                    prepareFocusedStrongholdTriangulation();
+                case STRONGHOLD_REACH_ONLY ->
+                    prepareFocusedStrongholdReach();
+                case END_PORTAL_ONLY -> prepareEndPortalActivation();
+                case END_VICTORY_ONLY ->
+                    prepareFocusedEndVictory();
+            }
+        }
+
+        private void tick() {
+            if (scope.forceHardcorePolicy()
+                    && stage != Stage.FINISHED) {
+                final var livingBody = player();
+                helper.assertTrue(
+                        livingBody.isAlive()
+                            && !livingBody.isDeadOrDying()
+                            && livingBody.getHealth() > 0.0F,
+                        "Forced-Hardcore physical gate body died; "
+                            + "death is terminal and must not respawn"
+                );
+            }
+            switch (stage) {
+                case FINDING_BOAT -> tryStartBoatEntry();
+                case ENTERING_BOAT -> tickBoatEntry();
+                case TRAVELLING_BY_BOAT -> tickBoatTravel();
+                case FINDING_MINECART -> tryStartMinecartEntry();
+                case ENTERING_MINECART -> tickMinecartEntry();
+                case TRAVELLING_BY_MINECART -> tickMinecartTravel();
+                case SETTLING_FOR_BRIDGE -> tickBridgePreparation();
+                case BRIDGING_GAP -> tickBridge();
+                case TOWERING_UP -> tickTower();
+                case SETTLING_FOR_FOCUSED_WATER ->
+                    tickFocusedWaterLedgeSettlement();
+                case WATER_CLUTCH_DESCENDING ->
+                    tickDeliberateWaterClutchDescent();
+                case WATER_CLUTCHING -> tickWaterClutch();
+                case SETTLING_FOR_PARKOUR ->
+                    tickParkourSettlement();
+                case PARKOUR_RUNNING -> tickParkour();
+                case SETTLING_FOR_PARKOUR_LONG_GAP ->
+                    tickLongGapParkourSettlement();
+                case PARKOUR_LONG_GAP -> tickLongGapParkour();
+                case SETTLING_FOR_PARKOUR_TURNING_UP ->
+                    tickTurningElevatedParkourSettlement();
+                case PARKOUR_TURNING_UP ->
+                    tickTurningElevatedParkour();
+                case TRAVELLING_DIAGONAL_DETOUR ->
+                    tickTravelDiagonalDetour();
+                case SCANNING_NETHER_PORTAL_SITE ->
+                    tickScanNetherPortalSite();
+                case SETTLING_FOR_NETHER_PORTAL_BUILD ->
+                    tickNetherPortalBuildSettlement();
+                case BUILDING_NETHER_PORTAL -> tickBuildNetherPortal();
+                case FINDING_BUILT_NETHER_PORTAL ->
+                    tryStartBuiltNetherPortalEntry();
+                case ENTERING_BUILT_NETHER_PORTAL ->
+                    tickBuiltNetherPortalEntry();
+                case EXPLORING_NETHER_FOR_TARGET ->
+                    tickNetherExploration();
+                case NETHER_FALL_CLUTCHING ->
+                    tickNetherFallClutch();
+                case WAITING_FOR_FOCUSED_NETHER_SIMULATION ->
+                    tickFocusedNetherSimulationReadiness();
+                case FINDING_NETHER_BLAZE ->
+                    tryStartNetherBlazeCombat();
+                case ACQUIRING_NETHER_BLAZE_ROD ->
+                    tickNetherBlazeCombat();
+                case RETURNING_TO_NETHER_PORTAL ->
+                    tickReturnToNetherPortal();
+                case FINDING_NETHER_RETURN_PORTAL ->
+                    tryStartNetherReturnPortalEntry();
+                case ENTERING_NETHER_RETURN_PORTAL ->
+                    tickNetherReturnPortalEntry();
+                case EXPLORING_FOR_TARGET ->
+                    tickExploreForObservedTarget();
+                case COLLECTING_DROP -> tickDropCollection();
+                case VERIFYING_OCCLUDED_THREAT ->
+                    tickOccludedThreatAudit();
+                case SETTLING_FOR_ENDER_RESERVE ->
+                    tickEnderReserveSettlement();
+                case FINDING_SHELTERED_ENDERMAN ->
+                    tryStartShelteredEndermanCombat();
+                case ACQUIRING_ENDER_PEARL ->
+                    tickShelteredEndermanCombat();
+                case FINDING_RESOURCE_TARGET ->
+                    tryStartResourceCombat();
+                case ENGAGING_AND_COLLECTING ->
+                    tickResourceCombat();
+                case FINDING_RANGED_TARGET -> tryStartRangedAttack();
+                case SHOOTING_RANGED_TARGET -> tickRangedAttack();
+                case VERIFYING_RANGED_HIT -> verifyRangedHit();
+                case TOWERING_TO_CRYSTAL_CAGE ->
+                    tickCrystalCageTower();
+                case EQUIPPING_CRYSTAL_PICKAXE ->
+                    tickEquipCrystalPickaxe();
+                case FINDING_CRYSTAL_CAGE_BAR ->
+                    tryStartCrystalCageBreak();
+                case BREAKING_CRYSTAL_CAGE_BAR ->
+                    tickCrystalCageBreak();
+                case DESCENDING_FROM_CRYSTAL_CAGE ->
+                    tickCrystalCageDescent();
+                case MOVING_TO_CRYSTAL_SHOT ->
+                    tickMoveToCrystalShot();
+                case EQUIPPING_CRYSTAL_BOW ->
+                    tickEquipCrystalBow();
+                case FINDING_END_CRYSTAL -> tryStartEndCrystalAttack();
+                case SHOOTING_END_CRYSTAL -> tickEndCrystalAttack();
+                case VERIFYING_END_CRYSTAL -> verifyEndCrystalDestroyed();
+                case WAITING_FOR_STRONGHOLD_TRACE_SAFETY ->
+                    tryStartStrongholdEyeTrace();
+                case TRACING_STRONGHOLD_EYE ->
+                    tickStrongholdEyeTrace();
+                case TRAVELLING_FOR_SECOND_EYE ->
+                    tickTravelForSecondEye();
+                case TRACING_SECOND_STRONGHOLD_EYE ->
+                    tickSecondStrongholdEyeTrace();
+                case WAITING_FOR_STRONGHOLD_COMPOUND ->
+                    tryStartStrongholdTriangulation();
+                case TRIANGULATING_STRONGHOLD ->
+                    tickStrongholdTriangulation();
+                case WAITING_FOR_STRONGHOLD_REACH ->
+                    tryStartStrongholdReach();
+                case REACHING_STRONGHOLD ->
+                    tickStrongholdReach();
+                case SETTLING_FOR_END_PORTAL_SEARCH ->
+                    tickEndPortalSearchSettlement();
+                case EXPLORING_FOR_END_PORTAL ->
+                    tickExploreForEndPortal();
+                case ACTIVATING_END_PORTAL -> tickEndPortalActivation();
+                case FINDING_BED -> tryStartSleeping();
+                case SLEEPING -> tickSleeping();
+                case FINDING_PORTAL -> tryStartPortalEntry();
+                case ENTERING_PORTAL -> tickPortalEntry();
+                case TRAVELLING_TO_END_GAP ->
+                    tickTravelToEndGap();
+                case BRIDGING_END_GAP -> tickBridgeEndGap();
+                case TRAVELLING_TO_END_ARENA ->
+                    tickTravelToEndArena();
+                case FIGHTING_DRAGON -> tickDragonFight();
+                case WAITING_FOR_DRAGON_DEATH ->
+                    tickDragonDeathAnimation();
+                case FINDING_RETURN_PORTAL ->
+                    tryStartReturnPortalEntry();
+                case ENTERING_RETURN_PORTAL ->
+                    tickReturnPortalEntry();
+                case FINISHED -> {
+                }
+            }
+        }
+
+        private void prepareBoat() {
+            final var level = helper.getLevel();
+            for (int x = -1; x <= 1; x++) {
+                for (int z = 2; z <= 12; z++) {
+                    level.setBlockAndUpdate(
+                        origin.offset(x, -1, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    level.setBlockAndUpdate(
+                        origin.offset(x, 0, z),
+                        Blocks.WATER.defaultBlockState()
+                    );
+                }
+            }
+            final var player = player();
+            player.stopRiding();
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            boat = helper.spawn(
+                EntityTypes.OAK_BOAT,
+                fixtureRelative(0.5, 1.0, 2.5)
+            );
+            boat.setYRot(0.0F);
+            boatTravelStart = boat.position();
+            face(player, boat.getBoundingBox().getCenter());
+            enter(Stage.FINDING_BOAT);
+        }
+
+        private void tryStartBoatEntry() {
+            face(player(), boat.getBoundingBox().getCenter());
+            final BrainObservation observation = freshObservation();
+            final JsonObject entity = findEntity(
+                observation,
+                "minecraft:oak_boat"
+            );
+            if (entity == null) {
+                awaitTarget("oak boat");
+                return;
+            }
+            final long sample = sampleSequence(observation);
+            startSkill(
+                BoatTransportSkills.ENTER_OBSERVED_BOAT,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument("sampleSequence", Long.toString(sample)),
+                    argument(
+                        "observationId",
+                        entity.get("observationId").getAsString()
+                    )
+                ),
+                observation
+            );
+            enter(Stage.ENTERING_BOAT);
+        }
+
+        private void tickBoatEntry() {
+            face(player(), boat.getBoundingBox().getCenter());
+            freshObservation();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(false);
+            if (!completed(snapshot)) {
+                return;
+            }
+            final var player = player();
+            helper.assertTrue(
+                player.getControlledVehicle() == boat
+                    && boat.getControllingPassenger() == player,
+                "enter_observed_boat completed without a real vanilla mount"
+            );
+            boatTravelStart = boat.position();
+            boatDestination = boatTravelStart.add(0.0, 0.0, 4.0);
+            final BrainObservation observation = freshObservation();
+            startSkill(
+                BoatTransportSkills.BOAT_TRAVEL_TO,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument("x", decimal(boatDestination.x())),
+                    argument("y", decimal(boatDestination.y())),
+                    argument("z", decimal(boatDestination.z())),
+                    argument("arrivalRadius", "0.9"),
+                    argument("timeoutTicks", "240"),
+                    argument("dismountAtArrival", "false")
+                ),
+                observation
+            );
+            enter(Stage.TRAVELLING_BY_BOAT);
+        }
+
+        private void tickBoatTravel() {
+            final SkillSupervisor.Snapshot snapshot = tickSkill(false);
+            if (!completed(snapshot)) {
+                return;
+            }
+            final double travelled = horizontalDistance(
+                boatTravelStart,
+                boat.position()
+            );
+            final double remaining = horizontalDistance(
+                boatDestination,
+                boat.position()
+            );
+            helper.assertTrue(
+                travelled >= 2.0,
+                "boat_travel_to did not produce material vanilla travel: "
+                    + travelled
+            );
+            helper.assertTrue(
+                remaining <= 1.5,
+                "boat_travel_to completed outside its destination: "
+                    + remaining
+            );
+            helper.assertTrue(
+                player().getControlledVehicle() == boat,
+                "boat_travel_to lost the controlled vanilla boat"
+            );
+            prepareMinecart();
+        }
+
+        private void prepareMinecart() {
+            final var level = helper.getLevel();
+            player().stopRiding();
+            boat.discard();
+            for (int z = 2; z <= 12; z++) {
+                level.setBlockAndUpdate(
+                    origin.offset(0, -1, z),
+                    Blocks.REDSTONE_BLOCK.defaultBlockState()
+                );
+                level.setBlockAndUpdate(
+                    origin.offset(0, 0, z),
+                    Blocks.POWERED_RAIL.defaultBlockState()
+                );
+            }
+            level.setBlockAndUpdate(
+                origin.offset(0, 0, 1),
+                Blocks.AIR.defaultBlockState()
+            );
+            minecart = helper.spawn(
+                EntityTypes.MINECART,
+                fixtureRelative(0.5, 0.1, 2.5)
+            );
+            final var player = player();
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(player, minecart.getBoundingBox().getCenter());
+            enter(Stage.FINDING_MINECART);
+        }
+
+        private void tryStartMinecartEntry() {
+            face(player(), minecart.getBoundingBox().getCenter());
+            final BrainObservation observation = freshObservation();
+            final JsonObject entity = findEntity(
+                observation,
+                "minecraft:minecart"
+            );
+            if (entity == null) {
+                awaitTarget("rideable minecart");
+                return;
+            }
+            final long sample = sampleSequence(observation);
+            startSkill(
+                MinecartTransportSkills.ENTER_OBSERVED_MINECART,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument("sampleSequence", Long.toString(sample)),
+                    argument(
+                        "observationId",
+                        entity.get("observationId").getAsString()
+                    )
+                ),
+                observation
+            );
+            enter(Stage.ENTERING_MINECART);
+        }
+
+        private void tickMinecartEntry() {
+            face(player(), minecart.getBoundingBox().getCenter());
+            freshObservation();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(false);
+            if (!completed(snapshot)) {
+                return;
+            }
+            helper.assertTrue(
+                player().getVehicle() == minecart
+                    && minecart.getFirstPassenger() == player(),
+                "enter_observed_minecart completed without a vanilla mount"
+            );
+            // Keep the approach unobstructed while the first-person entry
+            // action resolves, then complete an ordinary powered-rail launch
+            // station. Vanilla uses the conductor behind a stationary cart
+            // to choose the initial rail direction.
+            helper.getLevel().setBlockAndUpdate(
+                origin.offset(0, 0, 1),
+                Blocks.SMOOTH_STONE.defaultBlockState()
+            );
+            minecartTravelStart = minecart.position();
+            minecartDestination =
+                minecartTravelStart.add(0.0, 0.0, 4.0);
+            final BrainObservation observation = freshObservation();
+            startSkill(
+                MinecartTransportSkills.MINECART_TRAVEL_TO,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument("x", decimal(minecartDestination.x())),
+                    argument("y", decimal(minecartDestination.y())),
+                    argument("z", decimal(minecartDestination.z())),
+                    argument("arrivalRadius", "1.0"),
+                    argument("timeoutTicks", "300"),
+                    argument("dismountAtArrival", "false")
+                ),
+                observation
+            );
+            enter(Stage.TRAVELLING_BY_MINECART);
+        }
+
+        private void tickMinecartTravel() {
+            if (minecartTravelVerified) {
+                return;
+            }
+            // Minecart rider input shares the core one-tick lease so the
+            // runtime fail-safe cannot erase it before vanilla rail physics.
+            // GameTest drives the supervisor after the normal server post
+            // event, therefore it must execute that lease explicitly here.
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                return;
+            }
+            final double travelled = horizontalDistance(
+                minecartTravelStart,
+                minecart.position()
+            );
+            final double remaining = horizontalDistance(
+                minecartDestination,
+                minecart.position()
+            );
+            helper.assertTrue(
+                travelled >= 2.0,
+                "minecart_travel_to did not produce material rail travel: "
+                    + travelled
+            );
+            helper.assertTrue(
+                remaining <= 1.75,
+                "minecart_travel_to completed outside its destination: "
+                    + remaining
+            );
+            helper.assertTrue(
+                player().getVehicle() == minecart,
+                "minecart_travel_to lost the ridden vanilla minecart"
+            );
+            // Preserve the first failure if preparation of the next fixture
+            // is rejected. GameTest records that assertion but can still run
+            // a later scheduled callback; the removed cart must not overwrite
+            // the real bridge-fixture failure with a misleading transport
+            // error.
+            minecartTravelVerified = true;
+            prepareBridge();
+        }
+
+        private void prepareBridge() {
+            final var level = helper.getLevel();
+            player().stopRiding();
+            minecart.discard();
+            /*
+             * The preceding boat lane leaves source water at z=2..12.
+             * Minecart rails replace only its centre line, so simply clearing
+             * the one-block bridge gap lets water flow back from the sides
+             * while the skill aligns. Build a bounded dry fixture around the
+             * new scenario so its first-person placement face remains a real
+             * solid face instead of being replaced by an old water column.
+             */
+            for (int x = -2; x <= 2; x++) {
+                for (int z = -1; z <= 4; z++) {
+                    final boolean boundary =
+                        x == -2 || x == 2 || z == -1 || z == 4;
+                    for (int y = -2; y <= 1; y++) {
+                        level.setBlockAndUpdate(
+                            origin.offset(x, y, z),
+                            boundary
+                                ? Blocks.SMOOTH_STONE.defaultBlockState()
+                                : Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            level.setBlockAndUpdate(
+                origin.below(),
+                Blocks.OBSIDIAN.defaultBlockState()
+            );
+            level.setBlockAndUpdate(
+                origin.offset(0, -1, 2),
+                Blocks.OBSIDIAN.defaultBlockState()
+            );
+            final var player = player();
+            player.getInventory().clearContent();
+            player.getInventory().setItem(
+                0,
+                new ItemStack(Items.COBBLESTONE, 4)
+            );
+            player.getInventory().setSelectedSlot(0);
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(
+                player,
+                Vec3.atCenterOf(
+                    origin.offset(0, -1, 2)
+                ).add(0.0, -0.15, 0.0)
+            );
+            enter(Stage.SETTLING_FOR_BRIDGE);
+        }
+
+        private void tickBridgePreparation() {
+            final var player = player();
+            if (!player.onGround()) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 20,
+                    "Bridge fixture did not settle on its vanilla support"
+                );
+                return;
+            }
+            helper.assertTrue(
+                helper.getLevel()
+                    .getFluidState(origin.offset(0, -1, 1))
+                    .isEmpty(),
+                "Bridge fixture gap was contaminated by an older water lane"
+            );
+            face(
+                player,
+                Vec3.atCenterOf(
+                    origin.offset(0, -1, 2)
+                ).add(0.0, -0.15, 0.0)
+            );
+            final BrainObservation observation = freshObservation();
+            helper.assertTrue(
+                semantic(observation)
+                    .getAsJsonObject("self")
+                    .get("onGround")
+                    .getAsBoolean(),
+                "Bridge semantic frame was published before vanilla landing"
+            );
+            startSkill(
+                BridgeSkills.BRIDGE_TO,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument(
+                        "x",
+                        decimal(origin.getX() + 0.5)
+                    ),
+                    argument(
+                        "y",
+                        decimal(origin.getY())
+                    ),
+                    argument(
+                        "z",
+                        decimal(origin.getZ() + 2.5)
+                    ),
+                    argument("arrivalRadius", "0.6"),
+                    argument("maxBlocks", "1")
+                ),
+                observation
+            );
+            enter(Stage.BRIDGING_GAP);
+        }
+
+        private void tickBridge() {
+            final SkillSupervisor.Snapshot snapshot =
+                tickSkill(true);
+            if (!completed(snapshot)) {
+                return;
+            }
+            final BlockPos placed = origin.offset(0, -1, 1);
+            helper.assertTrue(
+                helper.getLevel().getBlockState(placed)
+                    .is(Blocks.COBBLESTONE),
+                "bridge_to completed without one real cobblestone placement"
+            );
+            helper.assertTrue(
+                player().getInventory().countItem(
+                    Items.COBBLESTONE
+                ) == 3,
+                "bridge_to did not consume exactly one owned block"
+            );
+            helper.assertTrue(
+                player().getZ() >= origin.getZ() + 2.0,
+                "bridge_to completed without walking across the new support"
+            );
+            prepareTower();
+        }
+
+        private void prepareTower() {
+            final var level = helper.getLevel();
+            for (int x = -1; x <= 1; x++) {
+                for (int y = 0; y <= 5; y++) {
+                    for (int z = -1; z <= 1; z++) {
+                        level.setBlockAndUpdate(
+                            origin.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            level.setBlockAndUpdate(
+                origin.below(),
+                Blocks.OBSIDIAN.defaultBlockState()
+            );
+            final var player = player();
+            player.getInventory().clearContent();
+            player.getInventory().setItem(
+                0,
+                new ItemStack(Items.COBBLESTONE, 7)
+            );
+            player.getInventory().setSelectedSlot(0);
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(
+                player,
+                player.getEyePosition().add(0.0, 8.0, 0.0)
+            );
+            final BrainObservation observation = freshObservation();
+            startSkill(
+                BridgeSkills.TOWER_UP,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument(
+                        "targetY",
+                        decimal(origin.getY() + 5.0)
+                    ),
+                    argument("arrivalTolerance", "0.15"),
+                    argument("maxBlocks", "5")
+                ),
+                observation
+            );
+            enter(Stage.TOWERING_UP);
+        }
+
+        private void tickTower() {
+            final SkillSupervisor.Snapshot snapshot =
+                tickSkill(true);
+            if (!completed(snapshot)) {
+                return;
+            }
+            for (int y = 0; y < 5; y++) {
+                helper.assertTrue(
+                    helper.getLevel()
+                        .getBlockState(origin.above(y))
+                        .is(Blocks.COBBLESTONE),
+                    "tower_up completed without all five real pillar blocks"
+                );
+            }
+            helper.assertTrue(
+                player().getInventory().countItem(
+                    Items.COBBLESTONE
+                ) == 2,
+                "tower_up did not consume exactly five owned blocks"
+            );
+            helper.assertTrue(
+                player().getY() >= origin.getY() + 4.9,
+                "tower_up completed without landing on its pillar"
+            );
+            prepareDeliberateWaterClutchDescent();
+        }
+
+        private void prepareFocusedWaterStart() {
+            final var level = helper.getLevel();
+            for (int x = -2; x <= 2; x++) {
+                for (int z = -2; z <= 2; z++) {
+                    for (int y = -1; y <= 8; y++) {
+                        level.setBlockAndUpdate(
+                            origin.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            for (int y = 0; y < 5; y++) {
+                level.setBlockAndUpdate(
+                    origin.above(y),
+                    Blocks.SMOOTH_STONE.defaultBlockState()
+                );
+            }
+            final var player = player();
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY() + 5.0,
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            player.fallDistance = 0.0F;
+            prepareDeliberateWaterClutchFixture();
+            focusedWaterStableTicks = 0;
+            enter(Stage.SETTLING_FOR_FOCUSED_WATER);
+        }
+
+        private void tickFocusedWaterLedgeSettlement() {
+            final var player = player();
+            final var expectedSupport = scope == ScenarioScope.WATER_ONLY
+                ? Blocks.SMOOTH_STONE
+                : Blocks.COBBLESTONE;
+            final boolean stableDryLedge =
+                player.onGround()
+                    && !player.isInWater()
+                    && !player.isPassenger()
+                    && Math.abs(
+                        player.getY() - (origin.getY() + 5.0)
+                    ) <= 0.05
+                    && helper.getLevel()
+                        .getBlockState(player.blockPosition().below())
+                        .is(expectedSupport);
+            if (!stableDryLedge) {
+                focusedWaterStableTicks = 0;
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt
+                        <= FOCUSED_WATER_SETTLE_TIMEOUT_TICKS,
+                    "Water descent fixture did not settle on its "
+                        + "vanilla dry ledge"
+                );
+                return;
+            }
+            focusedWaterStableTicks++;
+            if (focusedWaterStableTicks
+                    < FOCUSED_WATER_STABLE_TICKS) {
+                return;
+            }
+            face(
+                player,
+                Vec3.atLowerCornerOf(deliberateWaterLanding())
+                    .add(0.5, 0.0, 0.5)
+            );
+            final BrainObservation observation = freshObservation();
+            helper.assertTrue(
+                semantic(observation)
+                    .getAsJsonObject("self")
+                    .get("onGround")
+                    .getAsBoolean(),
+                "Water descent semantic frame preceded vanilla landing"
+            );
+            startDeliberateWaterClutchDescent(observation);
+        }
+
+        private void prepareDeliberateWaterClutchDescent() {
+            prepareDeliberateWaterClutchFixture();
+            /*
+             * Tower completion and the edge reposition happen in one server
+             * callback.  Give vanilla collision/ground state several real
+             * ticks to settle before satisfying the production skill's
+             * stable-dry-ledge precondition, exactly as the focused fixture
+             * does.  Starting from the same callback can leave the body with
+             * a stale grounded frame and makes the first physics step walk
+             * off the ledge before the clutch controller owns its lease.
+             */
+            focusedWaterStableTicks = 0;
+            enter(Stage.SETTLING_FOR_FOCUSED_WATER);
+        }
+
+        private void prepareDeliberateWaterClutchFixture() {
+            final var level = helper.getLevel();
+            final BlockPos landing = deliberateWaterLanding();
+            /*
+             * The full chain's earlier dry bridge fixture has a retaining
+             * wall at origin x+2. That wall is intentionally useful during
+             * bridge validation, but it lies directly beyond this later
+             * eastbound landing and the production preflight correctly
+             * rejects it as an overshoot collision. Isolate only the later
+             * fixture's one-block-wide exit corridor; keep the tower ledge
+             * and exact landing support intact. Production rejection of an
+             * actually observed high block remains covered by JVM tests.
+             */
+            for (int y = 0; y <= 1; y++) {
+                level.setBlockAndUpdate(
+                    landing.offset(1, y, 0),
+                    Blocks.AIR.defaultBlockState()
+                );
+            }
+            level.setBlockAndUpdate(
+                    landing.below(),
+                    Blocks.SMOOTH_STONE.defaultBlockState()
+            );
+            for (int y = 0; y <= 7; y++) {
+                level.setBlockAndUpdate(
+                        landing.above(y),
+                        Blocks.AIR.defaultBlockState()
+                );
+            }
+            final var player = player();
+            /*
+             * Put the body at the legitimate edge of its one-block ledge.
+             * From the block centre an adjacent landing five blocks below is
+             * physically occluded by the ledge itself, so the fair
+             * first-person ray gate correctly refuses to pretend it was
+             * visible.  A centre at +0.90 still leaves 0.40 blocks of the
+             * 0.60-wide vanilla player box supported, while its sight line
+             * clears the ledge and reaches the adjacent lower surface.
+             */
+            player.teleportTo(
+                origin.getX() + 0.90,
+                player.getY(),
+                origin.getZ() + 0.5
+            );
+            player.getInventory().clearContent();
+            player.getInventory().setItem(
+                    0,
+                    new ItemStack(Items.WATER_BUCKET)
+            );
+            player.getInventory().setSelectedSlot(0);
+            player.setHealth(player.getMaxHealth());
+            player.fallDistance = 0.0F;
+            player.setDeltaMovement(Vec3.ZERO);
+            waterBucketUseStart = player.getStats().getValue(
+                Stats.ITEM_USED.get(Items.WATER_BUCKET)
+            );
+            maximumWaterFallDistance = 0.0F;
+            observedWaterDescent = false;
+            face(
+                    player,
+                    Vec3.atLowerCornerOf(landing)
+                        .add(0.5, 0.0, 0.5)
+            );
+        }
+
+        private void startDeliberateWaterClutchDescent(
+                final BrainObservation observation
+        ) {
+            final BlockPos landing = deliberateWaterLanding();
+            startSkill(
+                    BridgeSkills.WATER_CLUTCH_DESCEND,
+                    List.of(
+                            argument("dimension", OVERWORLD),
+                            argument(
+                                    "x",
+                                    decimal(landing.getX() + 0.5)
+                            ),
+                            argument(
+                                    "y",
+                                    decimal(landing.getY())
+                            ),
+                            argument(
+                                    "z",
+                                    decimal(landing.getZ() + 0.5)
+                            ),
+                            argument("arrivalRadius", "0.65"),
+                            argument("maximumDropBlocks", "6")
+                    ),
+                    observation
+            );
+            enter(Stage.WATER_CLUTCH_DESCENDING);
+        }
+
+        private void tickDeliberateWaterClutchDescent() {
+            final BlockPos landing = deliberateWaterLanding();
+            final var player = player();
+            maximumWaterFallDistance = Math.max(
+                maximumWaterFallDistance,
+                player.fallDistance
+            );
+            observedWaterDescent |=
+                player.getDeltaMovement().y() < -0.08;
+            movementObservation();
+            final SkillSupervisor.Snapshot snapshot =
+                    tickSkill(true);
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                        helper.getTick() - stageStartedAt <= 260,
+                        "water_clutch_descend exceeded its bounded window"
+                );
+                return;
+            }
+            helper.assertTrue(
+                    helper.getLevel().getBlockState(landing)
+                        .is(Blocks.WATER),
+                    "Deliberate descent completed without real water placement"
+            );
+            helper.assertTrue(
+                    player.getInventory().countItem(
+                        Items.WATER_BUCKET
+                    ) == 0
+                        && player.getInventory().countItem(
+                            Items.BUCKET
+                        ) == 1,
+                    "Deliberate descent did not consume the owned water bucket"
+            );
+            helper.assertTrue(
+                    player.getHealth() == player.getMaxHealth(),
+                    "Deliberate water clutch took vanilla fall damage"
+            );
+            helper.assertTrue(
+                player.getStats().getValue(
+                    Stats.ITEM_USED.get(Items.WATER_BUCKET)
+                ) - waterBucketUseStart == 1,
+                "Deliberate water clutch did not record one vanilla "
+                    + "water-bucket use"
+            );
+            helper.assertTrue(
+                observedWaterDescent
+                    && maximumWaterFallDistance >= 2.5F,
+                "Deliberate water clutch completed without a material "
+                    + "vanilla fall"
+            );
+            helper.assertTrue(
+                    player.getY() <= landing.getY() + 1.25,
+                    "Deliberate water clutch did not reach its visible landing"
+            );
+            prepareWaterClutch();
+        }
+
+        private BlockPos deliberateWaterLanding() {
+            return origin.east();
+        }
+
+        private void prepareWaterClutch() {
+            final var level = helper.getLevel();
+            final BlockPos landing = origin.offset(0, -1, 8);
+            for (int x = -2; x <= 2; x++) {
+                for (int z = -2; z <= 2; z++) {
+                    level.setBlockAndUpdate(
+                        landing.offset(x, 0, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int y = 1; y <= 14; y++) {
+                        level.setBlockAndUpdate(
+                            landing.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            final var player = player();
+            player.getInventory().clearContent();
+            player.getInventory().setItem(
+                0,
+                new ItemStack(Items.WATER_BUCKET)
+            );
+            player.getInventory().setSelectedSlot(0);
+            player.setHealth(player.getMaxHealth());
+            player.fallDistance = 0.0F;
+            waterBucketUseStart = player.getStats().getValue(
+                Stats.ITEM_USED.get(Items.WATER_BUCKET)
+            );
+            maximumWaterFallDistance = 0.0F;
+            observedWaterDescent = false;
+            player.teleportTo(
+                landing.getX() + 0.5,
+                landing.getY() + 12.0,
+                landing.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(
+                player,
+                Vec3.atCenterOf(landing).add(0.0, 0.5, 0.0)
+            );
+            freshObservation();
+            enter(Stage.WATER_CLUTCHING);
+        }
+
+        private void tickWaterClutch() {
+            final BlockPos landing = origin.offset(0, -1, 8);
+            movementObservation();
+            final var player = player();
+            maximumWaterFallDistance = Math.max(
+                maximumWaterFallDistance,
+                player.fallDistance
+            );
+            observedWaterDescent |=
+                player.getDeltaMovement().y() < -0.08;
+            final boolean waterPlaced = helper.getLevel()
+                .getBlockState(landing.above())
+                .is(Blocks.WATER);
+            final boolean bucketEmptied =
+                player.getInventory().countItem(Items.WATER_BUCKET) == 0
+                    && player.getInventory().countItem(Items.BUCKET) == 1;
+            if (waterPlaced
+                    && bucketEmptied
+                    && player.getY() <= landing.getY() + 2.25) {
+                helper.assertTrue(
+                    player.isAlive(),
+                    "fall rescue placed water after the companion died"
+                );
+                helper.assertTrue(
+                    player.getHealth() == player.getMaxHealth(),
+                    "water clutch did not prevent all vanilla fall damage: "
+                        + player.getHealth()
+                );
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 120,
+                    "water clutch exceeded its bounded response window"
+                );
+                helper.assertTrue(
+                    player.getStats().getValue(
+                        Stats.ITEM_USED.get(Items.WATER_BUCKET)
+                    ) - waterBucketUseStart == 1,
+                    "Emergency water clutch did not record one vanilla "
+                        + "water-bucket use"
+                );
+                helper.assertTrue(
+                    observedWaterDescent
+                        && maximumWaterFallDistance >= 7.0F,
+                    "Emergency water clutch completed without a real "
+                        + "twelve-block fall"
+                );
+                if (scope == ScenarioScope.WATER_ONLY) {
+                    completeFocused();
+                    return;
+                }
+                prepareParkour();
+                return;
+            }
+            helper.assertTrue(
+                helper.getTick() - stageStartedAt <= 160,
+                "production emergency controller failed a real water clutch"
+            );
+        }
+
+        /**
+         * Reproduces the real completion-chain geometry at a smaller physical
+         * scale. The body starts just inside a perpendicular survey baseline.
+         * The only route to the target first moves away from it into a diagonal
+         * branch. A monotonic Euclidean frontier walker follows the baseline
+         * west and becomes stranded; a bounded course-recovery walker must
+         * backtrack and enter the branch using ordinary first-person evidence.
+         */
+        private void prepareTravelDiagonalDetour() {
+            final var level = helper.getLevel();
+            /*
+             * Keep the branch physically adjacent to the baseline, but do
+             * not let its rasterized width include the body start. The
+             * companion must first travel east along observed support before
+             * it can enter the southwest-to-northeast diagonal.
+             */
+            final BlockPos diagonalStart = origin.offset(15, 0, 0);
+            final BlockPos target = origin.offset(-8, 0, 24);
+            final double branchRadiusSquared = 4.0;
+            for (int offsetX = -12; offsetX <= 15; offsetX++) {
+                for (int offsetZ = -3; offsetZ <= 27; offsetZ++) {
+                    final boolean baseline =
+                        offsetX >= -12
+                            && offsetX <= 12
+                            && Math.abs(offsetZ) <= 3;
+                    final double sampleX = origin.getX()
+                            + offsetX + 0.5;
+                    final double sampleZ = origin.getZ()
+                            + offsetZ + 0.5;
+                    final boolean diagonal =
+                        distanceSquaredToHorizontalSegment(
+                                sampleX,
+                                sampleZ,
+                                diagonalStart.getX() + 0.5,
+                                diagonalStart.getZ() + 0.5,
+                                target.getX() + 0.5,
+                                target.getZ() + 0.5
+                        ) <= branchRadiusSquared;
+                    if (!baseline && !diagonal) {
+                        continue;
+                    }
+                    final BlockPos floor =
+                        origin.offset(offsetX, -1, offsetZ);
+                    level.setBlockAndUpdate(
+                            floor,
+                            Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int y = 1; y <= 6; y++) {
+                        level.setBlockAndUpdate(
+                                floor.above(y),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+
+            final var body = player();
+            body.getInventory().clearContent();
+            body.setHealth(body.getMaxHealth());
+            body.getFoodData().setFoodLevel(20);
+            body.getFoodData().setSaturation(5.0F);
+            body.fallDistance = 0.0F;
+            body.teleportTo(
+                    origin.getX() + 8.5,
+                    origin.getY(),
+                    origin.getZ() + 0.5
+            );
+            body.setDeltaMovement(Vec3.ZERO);
+            travelDetourStart = body.position();
+            travelDetourTarget = new Vec3(
+                    target.getX() + 0.5,
+                    origin.getY(),
+                    target.getZ() + 0.5
+            );
+            travelDetourMaximumX = body.getX();
+            face(body, travelDetourTarget.add(0.0, 1.0, 0.0));
+            final BrainObservation observation = freshObservation();
+            startSkill(
+                    TravelSkills.TRAVEL_TO,
+                    List.of(
+                            argument("dimension", OVERWORLD),
+                            argument(
+                                    "x",
+                                    decimal(travelDetourTarget.x())
+                            ),
+                            argument(
+                                    "y",
+                                    decimal(travelDetourTarget.y())
+                            ),
+                            argument(
+                                    "z",
+                                    decimal(travelDetourTarget.z())
+                            ),
+                            argument("arrivalRadius", "0.8")
+                    ),
+                    observation
+            );
+            enter(Stage.TRAVELLING_DIAGONAL_DETOUR);
+        }
+
+        private void tickTravelDiagonalDetour() {
+            movementObservation();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            final var body = player();
+            travelDetourMaximumX = Math.max(
+                    travelDetourMaximumX,
+                    body.getX()
+            );
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                        helper.getTick() - stageStartedAt <= 2_400,
+                        "travel_to did not recover into the diagonal branch"
+                            + " position=" + body.position()
+                            + " target=" + travelDetourTarget
+                            + " maximumX=" + travelDetourMaximumX
+                            + " supervisor=" + snapshot
+                );
+                return;
+            }
+            final double remaining = horizontalDistance(
+                    body.position(),
+                    travelDetourTarget
+            );
+            helper.assertTrue(
+                    remaining <= 1.1,
+                    "travel_to completed outside the diagonal destination: "
+                        + remaining
+            );
+            helper.assertTrue(
+                    horizontalDistance(
+                            body.position(),
+                            travelDetourStart
+                    ) >= 20.0,
+                    "travel_to completed without material vanilla movement"
+            );
+            helper.assertTrue(
+                    travelDetourMaximumX
+                        >= travelDetourStart.x() + 0.70,
+                    "travel_to never made the mandatory short away-from-goal "
+                        + "detour into the diagonal branch: start="
+                        + travelDetourStart
+                        + " maximumX=" + travelDetourMaximumX
+                        + " final=" + body.position()
+            );
+            helper.assertTrue(
+                    body.onGround()
+                        && body.getHealth() == body.getMaxHealth()
+                        && helper.getLevel()
+                            .getBlockState(body.blockPosition().below())
+                            .is(Blocks.SMOOTH_STONE),
+                    "travel_to left the observed supported course: position="
+                        + body.position() + " health=" + body.getHealth()
+            );
+            completeFocused();
+        }
+
+        private static double distanceSquaredToHorizontalSegment(
+                final double pointX,
+                final double pointZ,
+                final double startX,
+                final double startZ,
+                final double endX,
+                final double endZ
+        ) {
+            final double deltaX = endX - startX;
+            final double deltaZ = endZ - startZ;
+            final double lengthSquared =
+                    deltaX * deltaX + deltaZ * deltaZ;
+            if (lengthSquared <= 1.0E-9) {
+                final double x = pointX - startX;
+                final double z = pointZ - startZ;
+                return x * x + z * z;
+            }
+            final double projection = Math.max(
+                    0.0,
+                    Math.min(
+                            1.0,
+                            ((pointX - startX) * deltaX
+                                + (pointZ - startZ) * deltaZ)
+                                / lengthSquared
+                    )
+            );
+            final double nearestX = startX + projection * deltaX;
+            final double nearestZ = startZ + projection * deltaZ;
+            final double x = pointX - nearestX;
+            final double z = pointZ - nearestZ;
+            return x * x + z * z;
+        }
+
+        private void prepareParkour() {
+            final var level = helper.getLevel();
+            final BlockPos course = origin.offset(8, -1, 0);
+            final int recoveryFloorDepth =
+                scope.forceHardcorePolicy() ? -3 : -5;
+            for (int x = -1; x <= 1; x++) {
+                for (int z = -3; z <= 8; z++) {
+                    final boolean platform = z <= 0
+                        || z == 2
+                        || z == 4
+                        || z >= 6;
+                    level.setBlockAndUpdate(
+                        course.offset(x, 0, z),
+                        platform
+                            ? Blocks.SMOOTH_STONE.defaultBlockState()
+                            : Blocks.AIR.defaultBlockState()
+                    );
+                    for (int y = 1; y <= 5; y++) {
+                        level.setBlockAndUpdate(
+                            course.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                    level.setBlockAndUpdate(
+                        course.offset(x, recoveryFloorDepth, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                }
+            }
+            final var player = player();
+            player.getInventory().clearContent();
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.fallDistance = 0.0F;
+            player.teleportTo(
+                course.getX() + 0.5,
+                course.getY() + 1.0,
+                course.getZ() - 1.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            parkourStableTicks = 0;
+            enter(Stage.SETTLING_FOR_PARKOUR);
+        }
+
+        private void tickParkourSettlement() {
+            final BlockPos course = origin.offset(8, -1, 0);
+            if (!settledOnParkourSupport(
+                    course.getY() + 1.0,
+                    "initial course"
+            )) {
+                return;
+            }
+            final var player = player();
+            face(
+                player,
+                Vec3.atCenterOf(
+                    course.offset(0, 0, 2)
+                ).add(0.0, 0.5, 0.0)
+            );
+            parkourInitialJumpStat = player.getStats().getValue(
+                Stats.CUSTOM.get(Stats.JUMP)
+            );
+            final BrainObservation observation = freshObservation();
+            assertParkourSemanticGrounded(observation);
+            startSkill(
+                ParkourSkills.PARKOUR_TO,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument(
+                        "x",
+                        decimal(course.getX() + 0.5)
+                    ),
+                    argument(
+                        "y",
+                        decimal(course.getY() + 1.0)
+                    ),
+                    argument(
+                        "z",
+                        decimal(course.getZ() + 7.5)
+                    ),
+                    argument("arrivalRadius", "0.65"),
+                    argument("maxJumps", "3"),
+                    argument("maxGap", "1")
+                ),
+                observation
+            );
+            enter(Stage.PARKOUR_RUNNING);
+        }
+
+        private void tickParkour() {
+            movementObservation();
+            final SkillSupervisor.Snapshot snapshot =
+                tickSkill(true);
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 240,
+                    "parkour_to exceeded its continuous course window"
+                        + " position=" + player().position()
+                        + " velocity=" + player().getDeltaMovement()
+                        + " onGround=" + player().onGround()
+                        + " supervisor=" + snapshot
+                );
+                return;
+            }
+            final BlockPos course = origin.offset(8, -1, 0);
+            final var player = player();
+            final int jumps = player.getStats().getValue(
+                Stats.CUSTOM.get(Stats.JUMP)
+            ) - parkourInitialJumpStat;
+            helper.assertTrue(
+                jumps >= 3,
+                "parkour_to completed without three vanilla jumps: "
+                    + jumps
+            );
+            helper.assertTrue(
+                player.getZ() >= course.getZ() + 6.85,
+                "parkour_to completed before reaching the final platform"
+            );
+            helper.assertTrue(
+                player.getHealth() == player.getMaxHealth()
+                    && player.fallDistance == 0.0F,
+                "parkour_to took fall damage on the verified course"
+            );
+            for (int gap : new int[]{1, 3, 5}) {
+                helper.assertTrue(
+                    helper.getLevel()
+                        .getBlockState(course.offset(0, 0, gap))
+                        .isAir(),
+                    "parkour_to modified a course gap instead of jumping"
+                );
+            }
+            prepareLongGapParkour();
+        }
+
+        private void prepareLongGapParkour() {
+            final var level = helper.getLevel();
+            final BlockPos course = origin.offset(12, -1, 0);
+            final int recoveryFloorDepth =
+                scope.forceHardcorePolicy() ? -3 : -5;
+            for (int x = -1; x <= 1; x++) {
+                for (int z = -4; z <= 6; z++) {
+                    final boolean platform = z <= 0 || z >= 3;
+                    level.setBlockAndUpdate(
+                        course.offset(x, 0, z),
+                        platform
+                            ? Blocks.SMOOTH_STONE.defaultBlockState()
+                            : Blocks.AIR.defaultBlockState()
+                    );
+                    for (int y = 1; y <= 5; y++) {
+                        level.setBlockAndUpdate(
+                            course.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                    level.setBlockAndUpdate(
+                        course.offset(x, recoveryFloorDepth, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                }
+            }
+            final var player = player();
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.fallDistance = 0.0F;
+            player.teleportTo(
+                course.getX() + 0.5,
+                course.getY() + 1.0,
+                course.getZ() - 2.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            parkourStableTicks = 0;
+            enter(Stage.SETTLING_FOR_PARKOUR_LONG_GAP);
+        }
+
+        private void tickLongGapParkourSettlement() {
+            final BlockPos course = origin.offset(12, -1, 0);
+            if (!settledOnParkourSupport(
+                    course.getY() + 1.0,
+                    "two-block-gap course"
+            )) {
+                return;
+            }
+            final var player = player();
+            face(
+                player,
+                Vec3.atCenterOf(
+                    course.offset(0, 0, 3)
+                ).add(0.0, 0.5, 0.0)
+            );
+            parkourInitialJumpStat = player.getStats().getValue(
+                Stats.CUSTOM.get(Stats.JUMP)
+            );
+            final BrainObservation observation = freshObservation();
+            assertParkourSemanticGrounded(observation);
+            startSkill(
+                ParkourSkills.PARKOUR_TO,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument(
+                        "x",
+                        decimal(course.getX() + 0.5)
+                    ),
+                    argument(
+                        "y",
+                        decimal(course.getY() + 1.0)
+                    ),
+                    argument(
+                        "z",
+                        decimal(course.getZ() + 4.5)
+                    ),
+                    argument("arrivalRadius", "0.65"),
+                    argument("maxJumps", "1"),
+                    argument("maxGap", "2")
+                ),
+                observation
+            );
+            enter(Stage.PARKOUR_LONG_GAP);
+        }
+
+        private void tickLongGapParkour() {
+            movementObservation();
+            final SkillSupervisor.Snapshot snapshot =
+                tickSkill(true);
+            if (!completed(snapshot)) {
+                final BlockPos course = origin.offset(12, -1, 0);
+                final var coreFrame = runtime.coreFrames().current();
+                final String navigationEvidence = coreFrame
+                    .map(frame -> {
+                        final GridPos landingFeet = new GridPos(
+                            course.getX(),
+                            course.getY() + 1,
+                            course.getZ() + 3
+                        );
+                        final GridPos nextFeet = landingFeet.offset(
+                            0,
+                            0,
+                            1
+                        );
+                        return " navRevision="
+                            + frame.navigation().revision()
+                            + " feet=" + frame.feet()
+                            + " look=" + frame.lookDirection()
+                            + " landingSupport="
+                            + frame.navigation()
+                                .voxelAt(landingFeet.below())
+                            + " nextSupport="
+                            + frame.navigation()
+                                .voxelAt(nextFeet.below())
+                            + " nextFeet="
+                            + frame.navigation().voxelAt(nextFeet)
+                            + " nextHead="
+                            + frame.navigation()
+                                .voxelAt(nextFeet.above());
+                    })
+                    .orElse(" coreFrame=unavailable");
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 140,
+                    "parkour_to exceeded its two-block-gap window"
+                        + " position="
+                        + player().position()
+                        + " supervisor="
+                        + snapshot
+                        + " yaw=" + player().getYRot()
+                        + " pitch=" + player().getXRot()
+                        + " input=" + player().getLastClientInput()
+                        + " survival="
+                        + runtime.survival().state()
+                        + " lease="
+                        + runtime.coreActions().snapshot()
+                        + navigationEvidence
+                );
+                return;
+            }
+            final BlockPos course = origin.offset(12, -1, 0);
+            final var player = player();
+            final int jumps = player.getStats().getValue(
+                Stats.CUSTOM.get(Stats.JUMP)
+            ) - parkourInitialJumpStat;
+            helper.assertTrue(
+                jumps >= 1,
+                "parkour_to crossed a two-block gap without a vanilla jump"
+            );
+            helper.assertTrue(
+                player.getZ() >= course.getZ() + 3.85
+                    && player.getHealth() == player.getMaxHealth(),
+                "parkour_to did not land safely beyond the two-block gap"
+            );
+            helper.assertTrue(
+                helper.getLevel()
+                    .getBlockState(course.offset(0, 0, 1))
+                    .isAir()
+                    && helper.getLevel()
+                        .getBlockState(course.offset(0, 0, 2))
+                        .isAir(),
+                "parkour_to filled its two-block gap"
+            );
+            prepareTurningElevatedParkour();
+        }
+
+        private void prepareTurningElevatedParkour() {
+            final var level = helper.getLevel();
+            final BlockPos course = origin.offset(18, -1, 0);
+            /*
+             * The traversed platforms are one block above course Y. Keep the
+             * focused Hardcore recovery surface at a three-block feet drop,
+             * matching ParkourToSkill's non-lethal recovery policy.
+             */
+            final int recoveryFloorDepth =
+                scope.forceHardcorePolicy() ? -2 : -5;
+            for (int x = -2; x <= 5; x++) {
+                for (int z = -2; z <= 5; z++) {
+                    for (int y = -1; y <= 5; y++) {
+                        level.setBlockAndUpdate(
+                            course.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                    level.setBlockAndUpdate(
+                        course.offset(x, recoveryFloorDepth, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                }
+            }
+            level.setBlockAndUpdate(
+                course,
+                Blocks.SMOOTH_STONE.defaultBlockState()
+            );
+            for (BlockPos raised : List.of(
+                    course.offset(2, 1, 0),
+                    course.offset(2, 1, 1),
+                    course.offset(2, 1, 3),
+                    course.offset(3, 1, 3)
+            )) {
+                level.setBlockAndUpdate(
+                    raised,
+                    Blocks.SMOOTH_STONE.defaultBlockState()
+                );
+            }
+            final var player = player();
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.fallDistance = 0.0F;
+            player.teleportTo(
+                course.getX() + 0.5,
+                course.getY() + 1.0,
+                course.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            parkourStableTicks = 0;
+            enter(Stage.SETTLING_FOR_PARKOUR_TURNING_UP);
+        }
+
+        private void tickTurningElevatedParkourSettlement() {
+            final BlockPos course = origin.offset(18, -1, 0);
+            if (!settledOnParkourSupport(
+                    course.getY() + 1.0,
+                    "turning/elevated course"
+            )) {
+                return;
+            }
+            final var player = player();
+            face(
+                player,
+                Vec3.atCenterOf(
+                    course.offset(2, 1, 0)
+                ).add(0.0, 0.5, 0.0)
+            );
+            parkourInitialJumpStat = player.getStats().getValue(
+                Stats.CUSTOM.get(Stats.JUMP)
+            );
+            final BrainObservation observation = freshObservation();
+            assertParkourSemanticGrounded(observation);
+            startSkill(
+                ParkourSkills.PARKOUR_TO,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument(
+                        "x",
+                        decimal(course.getX() + 3.5)
+                    ),
+                    argument(
+                        "y",
+                        decimal(course.getY() + 2.0)
+                    ),
+                    argument(
+                        "z",
+                        decimal(course.getZ() + 3.5)
+                    ),
+                    argument("arrivalRadius", "0.65"),
+                    argument("maxJumps", "2"),
+                    argument("maxGap", "1")
+                ),
+                observation
+            );
+            enter(Stage.PARKOUR_TURNING_UP);
+        }
+
+        private boolean settledOnParkourSupport(
+                final double expectedY,
+                final String courseName
+        ) {
+            final var player = player();
+            final boolean stableDrySupport =
+                player.onGround()
+                    && !player.isInWater()
+                    && !player.isPassenger()
+                    && Math.abs(player.getY() - expectedY) <= 0.05
+                    && helper.getLevel()
+                        .getBlockState(player.blockPosition().below())
+                        .is(Blocks.SMOOTH_STONE);
+            if (!stableDrySupport) {
+                parkourStableTicks = 0;
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt
+                        <= PARKOUR_SETTLE_TIMEOUT_TICKS,
+                    "Parkour fixture did not settle on vanilla support: "
+                        + courseName
+                );
+                return false;
+            }
+            parkourStableTicks++;
+            return parkourStableTicks >= PARKOUR_STABLE_TICKS;
+        }
+
+        private void assertParkourSemanticGrounded(
+                final BrainObservation observation
+        ) {
+            helper.assertTrue(
+                semantic(observation)
+                    .getAsJsonObject("self")
+                    .get("onGround")
+                    .getAsBoolean(),
+                "Parkour semantic frame preceded vanilla landing"
+            );
+        }
+
+        private void tickTurningElevatedParkour() {
+            movementObservation();
+            final SkillSupervisor.Snapshot snapshot =
+                tickSkill(true);
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 260,
+                    "parkour_to exceeded its turning/elevation window"
+                        + " position="
+                        + player().position()
+                        + " velocity="
+                        + player().getDeltaMovement()
+                        + " onGround="
+                        + player().onGround()
+                        + " supervisor="
+                        + snapshot
+                );
+                return;
+            }
+            final BlockPos course = origin.offset(18, -1, 0);
+            final var player = player();
+            final int jumps = player.getStats().getValue(
+                Stats.CUSTOM.get(Stats.JUMP)
+            ) - parkourInitialJumpStat;
+            helper.assertTrue(
+                jumps >= 2,
+                "parkour_to completed the turning course without two "
+                    + "vanilla jumps: " + jumps
+            );
+            helper.assertTrue(
+                player.getX() >= course.getX() + 2.85
+                    && player.getZ() >= course.getZ() + 2.85
+                    && player.getY() >= course.getY() + 1.85,
+                "parkour_to did not finish the turn on the raised platform"
+                    + " position=" + player.position()
+                    + " courseRelative=("
+                    + (player.getX() - course.getX()) + ","
+                    + (player.getY() - course.getY()) + ","
+                    + (player.getZ() - course.getZ()) + ")"
+                    + " velocity=" + player.getDeltaMovement()
+                    + " jumps=" + jumps
+            );
+            helper.assertTrue(
+                player.getHealth() == player.getMaxHealth(),
+                "turning/elevated parkour caused fall damage"
+            );
+            helper.assertTrue(
+                levelBlockIsAir(course.offset(1, 0, 0))
+                    && levelBlockIsAir(course.offset(2, 1, 2)),
+                "parkour_to filled a turning-course gap"
+            );
+            if (scope == ScenarioScope.PARKOUR_ONLY) {
+                completeFocused();
+                return;
+            }
+            prepareNetherPortalBuild();
+        }
+
+        private boolean levelBlockIsAir(final BlockPos position) {
+            return helper.getLevel().getBlockState(position).isAir();
+        }
+
+        private void prepareNetherPortalBuild() {
+            final var level = helper.getLevel();
+            builtPortalAnchor = origin.offset(-2, -1, 10);
+            for (int x = -2; x <= 5; x++) {
+                for (int z = -4; z <= 2; z++) {
+                    level.setBlockAndUpdate(
+                        builtPortalAnchor.offset(x, 0, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int y = 1; y <= 6; y++) {
+                        level.setBlockAndUpdate(
+                            builtPortalAnchor.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            for (int u = 0; u < 4; u++) {
+                level.setBlockAndUpdate(
+                    builtPortalAnchor.offset(u, 0, 0),
+                    Blocks.AIR.defaultBlockState()
+                );
+                level.setBlockAndUpdate(
+                    builtPortalAnchor.offset(u, -1, 0),
+                    Blocks.SMOOTH_STONE.defaultBlockState()
+                );
+            }
+            /*
+             * Give the ordinary first-person ray sampler an opaque surface
+             * behind the proposed X-axis frame. Looking through each future
+             * frame/interior cell at this wall proves that the site is empty;
+             * the production skill still receives only the accumulated fair
+             * semantic map and never reads fixture blocks directly.
+             */
+            for (int u = -1; u <= 4; u++) {
+                for (int v = 0; v <= 5; v++) {
+                    level.setBlockAndUpdate(
+                        builtPortalAnchor.offset(u, v, 2),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                }
+            }
+            final var player = player();
+            player.getInventory().clearContent();
+            player.getInventory().setItem(
+                0,
+                new ItemStack(Items.OBSIDIAN, 14)
+            );
+            player.getInventory().setItem(
+                1,
+                new ItemStack(Items.FLINT_AND_STEEL)
+            );
+            player.getInventory().setSelectedSlot(0);
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            level.setBlockAndUpdate(
+                builtPortalAnchor.offset(1, 1, -1),
+                Blocks.SMOOTH_STONE.defaultBlockState()
+            );
+            level.setBlockAndUpdate(
+                builtPortalAnchor.offset(2, 1, -1),
+                Blocks.SMOOTH_STONE.defaultBlockState()
+            );
+            player.teleportTo(
+                builtPortalAnchor.getX() + 2.0,
+                builtPortalAnchor.getY() + 2.0,
+                builtPortalAnchor.getZ() - 0.31
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            portalSiteScanIndex = 0;
+            enter(Stage.SCANNING_NETHER_PORTAL_SITE);
+        }
+
+        private void tickScanNetherPortalSite() {
+            final int supportSamples = 4;
+            final int airSamples = 20;
+            if (portalSiteScanIndex < supportSamples) {
+                final BlockPos support = builtPortalAnchor.offset(
+                    portalSiteScanIndex,
+                    -1,
+                    0
+                );
+                face(
+                    player(),
+                    new Vec3(
+                        support.getX() + 0.5,
+                        support.getY() + 1.0,
+                        support.getZ() + 0.5
+                    )
+                );
+            } else if (portalSiteScanIndex
+                    < supportSamples + airSamples) {
+                final int cell =
+                    portalSiteScanIndex - supportSamples;
+                final int u = cell % 4;
+                final int v = cell / 4;
+                face(
+                        player(),
+                        Vec3.atCenterOf(
+                        builtPortalAnchor.offset(u, v, 2)
+                    )
+                );
+            } else {
+                helper.getLevel().setBlockAndUpdate(
+                    builtPortalAnchor.offset(1, 2, -1),
+                    Blocks.SMOOTH_STONE_SLAB.defaultBlockState()
+                );
+                helper.getLevel().setBlockAndUpdate(
+                    builtPortalAnchor.offset(2, 2, -1),
+                    Blocks.SMOOTH_STONE_SLAB.defaultBlockState()
+                );
+                player().teleportTo(
+                    builtPortalAnchor.getX() + 2.0,
+                    builtPortalAnchor.getY() + 2.5,
+                    builtPortalAnchor.getZ() - 0.31
+                );
+                player().setDeltaMovement(Vec3.ZERO);
+                portalBuildStableTicks = 0;
+                enter(Stage.SETTLING_FOR_NETHER_PORTAL_BUILD);
+                return;
+            }
+            freshObservation();
+            portalSiteScanIndex++;
+        }
+
+        private void tickNetherPortalBuildSettlement() {
+            final var player = player();
+            if (!player.onGround()
+                    || Math.abs(
+                        player.getY()
+                            - (builtPortalAnchor.getY() + 2.5)
+                    ) > 0.05) {
+                portalBuildStableTicks = 0;
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 40,
+                    "Portal builder did not settle on its observed "
+                        + "construction scaffold"
+                );
+                return;
+            }
+            portalBuildStableTicks++;
+            final BrainObservation observation =
+                freshObservation();
+            if (portalBuildStableTicks < 3) {
+                return;
+            }
+            startSkill(
+                PortalBuildSkills.BUILD_AND_LIGHT_NETHER_PORTAL,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument(
+                        "x",
+                        Integer.toString(
+                            builtPortalAnchor.getX()
+                        )
+                    ),
+                    argument(
+                        "y",
+                        Integer.toString(
+                            builtPortalAnchor.getY()
+                        )
+                    ),
+                    argument(
+                        "z",
+                        Integer.toString(
+                            builtPortalAnchor.getZ()
+                        )
+                    ),
+                    argument("axis", "x")
+                ),
+                observation
+            );
+            enter(Stage.BUILDING_NETHER_PORTAL);
+        }
+
+        private void tickBuildNetherPortal() {
+            freshObservation();
+            final SkillSupervisor.Snapshot snapshot =
+                tickSkill(true);
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 900,
+                    "build_and_light_nether_portal exceeded its window"
+                );
+                return;
+            }
+            final var level = helper.getLevel();
+            int frameBlocks = 0;
+            for (int u = 0; u < 4; u++) {
+                for (int v = 0; v < 5; v++) {
+                    final boolean frame = v == 0
+                        || v == 4
+                        || u == 0
+                        || u == 3;
+                    final BlockPos position =
+                        builtPortalAnchor.offset(u, v, 0);
+                    if (frame) {
+                        helper.assertTrue(
+                            level.getBlockState(position)
+                                .is(Blocks.OBSIDIAN),
+                            "portal builder missed frame block " + position
+                        );
+                        frameBlocks++;
+                    } else {
+                        helper.assertTrue(
+                            level.getBlockState(position)
+                                .is(Blocks.NETHER_PORTAL),
+                            "portal builder did not activate interior "
+                                + position
+                        );
+                    }
+                }
+            }
+            helper.assertTrue(
+                frameBlocks == 14
+                    && player().getInventory().countItem(
+                        Items.OBSIDIAN
+                    ) == 0,
+                "portal builder did not consume exactly 14 obsidian"
+            );
+            final ItemStack flint = player().getMainHandItem();
+            helper.assertTrue(
+                flint.is(Items.FLINT_AND_STEEL)
+                    && flint.getDamageValue() == 1,
+                "portal builder did not use normal flint durability"
+            );
+            /*
+             * The raised half-block scaffold exists only so the stationary
+             * builder can fairly reach every frame face. Remove it after the
+             * build and begin the distinct entry capability from ordinary
+             * flat footing, as a player would after stepping off a temporary
+             * build scaffold. The portal remains wholly vanilla and the entry
+             * skill must still walk into it and trigger a real dimension
+             * change.
+             */
+            level.setBlockAndUpdate(
+                builtPortalAnchor.offset(1, 2, -1),
+                Blocks.AIR.defaultBlockState()
+            );
+            level.setBlockAndUpdate(
+                builtPortalAnchor.offset(2, 2, -1),
+                Blocks.AIR.defaultBlockState()
+            );
+            player().teleportTo(
+                builtPortalAnchor.getX() + 1.5,
+                builtPortalAnchor.getY() + 1.0,
+                builtPortalAnchor.getZ() - 1.3
+            );
+            player().setDeltaMovement(Vec3.ZERO);
+            enter(Stage.FINDING_BUILT_NETHER_PORTAL);
+        }
+
+        private void tryStartBuiltNetherPortalEntry() {
+            final var player = player();
+            face(
+                player,
+                Vec3.atCenterOf(
+                    builtPortalAnchor.offset(1, 1, 0)
+                )
+            );
+            final BrainObservation observation = freshObservation();
+            final JsonObject target = findBlock(
+                observation,
+                "minecraft:nether_portal"
+            );
+            if (target == null) {
+                awaitTarget("newly built nether portal");
+                return;
+            }
+            final JsonObject block =
+                target.getAsJsonObject("block");
+            MinecraftAiCompanion.LOGGER.warn(
+                "Portal entry target diagnostic anchor={} player={} "
+                    + "target={} face={} hit={}",
+                builtPortalAnchor,
+                player.position(),
+                block,
+                target.get("face"),
+                target.get("hit")
+            );
+            startSkill(
+                PortalSkills.ENTER_OBSERVED_PORTAL,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument(
+                        "sampleSequence",
+                        Long.toString(sampleSequence(observation))
+                    ),
+                    argument("x", block.get("x").getAsString()),
+                    argument("y", block.get("y").getAsString()),
+                    argument("z", block.get("z").getAsString()),
+                    argument(
+                        "face",
+                        target.get("face").getAsString()
+                    ),
+                    argument(
+                        "expectedDestination",
+                        "minecraft:the_nether"
+                    )
+                ),
+                observation
+            );
+            enter(Stage.ENTERING_BUILT_NETHER_PORTAL);
+        }
+
+        private void tickBuiltNetherPortalEntry() {
+            final SkillSupervisor.Snapshot snapshot =
+                tickSkill(true);
+            if ((helper.getTick() - stageStartedAt) % 20 == 0) {
+                final var body = player();
+                final var portal = body.portalProcess;
+                MinecraftAiCompanion.LOGGER.warn(
+                    "Portal entry diagnostic tick={} position={} "
+                        + "velocity={} yaw={} pitch={} block={} "
+                        + "portalActive={} portalTime={} portalInside={} "
+                        + "cooldown={} coreLease={}",
+                    helper.getTick(),
+                    body.position(),
+                    body.getDeltaMovement(),
+                    body.getYRot(),
+                    body.getXRot(),
+                    body.blockPosition(),
+                    portal != null,
+                    portal == null ? -1 : portal.getPortalTime(),
+                    portal != null && portal.isInsidePortalThisTick(),
+                    body.getPortalCooldown(),
+                    runtime.coreActions().snapshot()
+                );
+                final BlockPos feet = body.blockPosition();
+                MinecraftAiCompanion.LOGGER.warn(
+                    "Portal entry collision diagnostic horizontal={} "
+                        + "vertical={} minor={} input={} feetState={} "
+                        + "below={} north={} south={} west={} east={} "
+                        + "anchor={}",
+                    body.horizontalCollision,
+                    body.verticalCollision,
+                    body.minorHorizontalCollision,
+                    body.getLastClientInput(),
+                    body.level().getBlockState(feet),
+                    body.level().getBlockState(feet.below()),
+                    body.level().getBlockState(feet.north()),
+                    body.level().getBlockState(feet.south()),
+                    body.level().getBlockState(feet.west()),
+                    body.level().getBlockState(feet.east()),
+                    builtPortalAnchor
+                );
+            }
+            if (!completed(snapshot)) {
+                return;
+            }
+            final var player = player();
+            helper.assertTrue(
+                player.level().dimension().equals(Level.NETHER),
+                "newly built portal did not cause real Nether traversal"
+            );
+            prepareNetherExploration();
+        }
+
+        private void prepareNetherExploration() {
+            final var player = player();
+            final var level = player.level();
+            netherPortalBlock = nearestPortalBlock(
+                level,
+                player.blockPosition()
+            );
+            final boolean spansX =
+                level.getBlockState(netherPortalBlock.east())
+                    .is(Blocks.NETHER_PORTAL)
+                    || level.getBlockState(netherPortalBlock.west())
+                        .is(Blocks.NETHER_PORTAL);
+            final int forwardX = spansX ? 0 : 1;
+            final int forwardZ = spansX ? 1 : 0;
+            final int sideX = -forwardZ;
+            final int sideZ = forwardX;
+            final BlockPos portalFeet = player.blockPosition();
+            /*
+             * A generated destination portal may leave the body centered over
+             * its lower frame with no same-height departure floor. Portal
+             * traversal was already proven above; begin the independent
+             * exploration capability three blocks beyond that frame on a
+             * normal, observed, flat corridor.
+             */
+            final BlockPos feet = portalFeet.offset(
+                forwardX * 3,
+                0,
+                forwardZ * 3
+            );
+            /*
+             * Include the two cells between the safe departure point and the
+             * generated portal frame. A vanilla destination portal may stand
+             * above irregular netherrack; leaving those cells natural makes
+             * this controlled capability test depend on unrelated terrain
+             * and correctly causes the fail-closed entry skill to stop after
+             * it loses sight of the selected portal face.
+             */
+            for (int step = -2; step <= 36; step++) {
+                for (int side = -3; side <= 3; side++) {
+                    final BlockPos column = feet.offset(
+                        forwardX * step + sideX * side,
+                        0,
+                        forwardZ * step + sideZ * side
+                    );
+                    level.setBlockAndUpdate(
+                        column.below(),
+                        Blocks.NETHERRACK.defaultBlockState()
+                    );
+                    if (Math.abs(side) == 3) {
+                        for (int y = 0; y <= 4; y++) {
+                            level.setBlockAndUpdate(
+                                column.above(y),
+                                Blocks.NETHERRACK
+                                    .defaultBlockState()
+                            );
+                        }
+                    } else {
+                        for (int y = 0; y <= 3; y++) {
+                            level.setBlockAndUpdate(
+                                column.above(y),
+                                Blocks.AIR.defaultBlockState()
+                            );
+                        }
+                        level.setBlockAndUpdate(
+                            column.above(4),
+                            Blocks.NETHERRACK.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            player.teleportTo(
+                feet.getX() + 0.5,
+                feet.getY(),
+                feet.getZ() + 0.5
+            );
+            /*
+             * A normal coordinate route must end at a verified standable
+             * portal approach, never inside the non-standable portal volume.
+             * The dedicated observed-portal skill owns the final entry.
+             */
+            netherPortalReturnTarget = player.position();
+            final int landmarkDistance = 30;
+            netherExplorationTarget = feet.offset(
+                forwardX * landmarkDistance,
+                1,
+                forwardZ * landmarkDistance
+            );
+            for (int side = -1; side <= 1; side++) {
+                for (int y = 0; y <= 2; y++) {
+                    level.setBlockAndUpdate(
+                        feet.offset(
+                            forwardX * landmarkDistance
+                                + sideX * side,
+                            y,
+                            forwardZ * landmarkDistance
+                                + sideZ * side
+                        ),
+                        Blocks.NETHER_BRICKS.defaultBlockState()
+                    );
+                }
+            }
+            player.getInventory().clearContent();
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.setDeltaMovement(Vec3.ZERO);
+            face(player, Vec3.atCenterOf(netherExplorationTarget));
+            netherExplorationStart = player.position();
+            final BrainObservation observation = freshObservation();
+            MinecraftAiCompanion.LOGGER.warn(
+                "Nether exploration setup start={} target={} "
+                    + "forward=({},{}) look={} yaw={} pitch={}",
+                netherExplorationStart,
+                netherExplorationTarget,
+                forwardX,
+                forwardZ,
+                player.getLookAngle(),
+                player.getYRot(),
+                player.getXRot()
+            );
+            helper.assertTrue(
+                findBlock(observation, "minecraft:nether_bricks")
+                    == null,
+                "Nether landmark was already first-person visible"
+            );
+            startSkill(
+                ExplorationSkills.EXPLORE_FOR_OBSERVED_TARGET,
+                List.of(
+                    argument(
+                        "dimension",
+                        "minecraft:the_nether"
+                    ),
+                    argument("targetKind", "block"),
+                    argument(
+                        "targetId",
+                        "minecraft:nether_bricks"
+                    ),
+                    argument("maximumDistance", "64"),
+                    argument("stepDistance", "16")
+                ),
+                observation
+            );
+            enter(Stage.EXPLORING_NETHER_FOR_TARGET);
+        }
+
+        private void tickNetherExploration() {
+            final BrainObservation observation = freshObservation();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if ((helper.getTick() - stageStartedAt) % 50 == 0) {
+                final var body = player();
+                MinecraftAiCompanion.LOGGER.warn(
+                    "Nether exploration diagnostic tick={} position={} "
+                        + "target={} distance={} velocity={} input={} "
+                        + "look={} yaw={} pitch={} collision=({},{}) "
+                        + "visibleFaces={} "
+                        + "supervisor={}",
+                    helper.getTick(),
+                    body.position(),
+                    netherExplorationTarget,
+                    horizontalDistance(
+                        body.position(),
+                        Vec3.atCenterOf(netherExplorationTarget)
+                    ),
+                    body.getDeltaMovement(),
+                    body.getLastClientInput(),
+                    body.getLookAngle(),
+                    body.getYRot(),
+                    body.getXRot(),
+                    body.horizontalCollision,
+                    body.verticalCollision,
+                    semantic(observation)
+                        .getAsJsonArray("visibleBlockFaces")
+                        .size(),
+                    snapshot
+                );
+            }
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 700,
+                    "Nether exploration exceeded its window"
+                );
+                return;
+            }
+            helper.assertTrue(
+                player().level().dimension().equals(Level.NETHER),
+                "Nether exploration changed dimensions"
+            );
+            helper.assertTrue(
+                horizontalDistance(
+                    player().position(),
+                    netherExplorationStart
+                ) >= 4.0,
+                "Nether exploration completed without walking"
+            );
+            helper.assertTrue(
+                player().level()
+                    .getBlockState(netherExplorationTarget)
+                    .is(Blocks.NETHER_BRICKS),
+                "Nether exploration changed its landmark"
+            );
+            if (scope == ScenarioScope.PORTAL_RETURN_ONLY) {
+                startReturnToNetherPortal();
+                return;
+            }
+            prepareNetherFallClutch();
+        }
+
+        private void prepareNetherFallClutch() {
+            final var player = player();
+            final var level = player.level();
+            netherClutchLanding = player.blockPosition().below();
+            for (int x = -2; x <= 2; x++) {
+                for (int z = -2; z <= 2; z++) {
+                    final BlockPos support =
+                            netherClutchLanding.offset(x, 0, z);
+                    level.setBlockAndUpdate(
+                            support,
+                            Blocks.NETHERRACK.defaultBlockState()
+                    );
+                    for (int y = 1; y <= 14; y++) {
+                        level.setBlockAndUpdate(
+                                support.above(y),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            player.getInventory().clearContent();
+            player.getInventory().setItem(
+                    0,
+                    new ItemStack(Items.WATER_BUCKET)
+            );
+            player.getInventory().setItem(
+                    1,
+                    new ItemStack(Items.HAY_BLOCK)
+            );
+            player.getInventory().setSelectedSlot(0);
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.fallDistance = 0.0F;
+            player.teleportTo(
+                    netherClutchLanding.getX() + 0.5,
+                    netherClutchLanding.getY() + 12.0,
+                    netherClutchLanding.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(
+                    player,
+                    Vec3.atCenterOf(netherClutchLanding)
+                            .add(0.0, 0.5, 0.0)
+            );
+            freshObservation();
+            enter(Stage.NETHER_FALL_CLUTCHING);
+        }
+
+        private void tickNetherFallClutch() {
+            freshObservation();
+            final var player = player();
+            final boolean hayPlaced = player.level()
+                    .getBlockState(netherClutchLanding.above())
+                    .is(Blocks.HAY_BLOCK);
+            final boolean hayConsumed = player.getInventory()
+                    .countItem(Items.HAY_BLOCK) == 0;
+            final boolean waterPreserved = player.getInventory()
+                    .countItem(Items.WATER_BUCKET) == 1;
+            if (hayPlaced
+                    && hayConsumed
+                    && waterPreserved
+                    && player.getY()
+                        <= netherClutchLanding.getY() + 2.25) {
+                helper.assertTrue(
+                        player.isAlive()
+                            && player.getHealth() >= 17.0F,
+                        "Nether hay-bale clutch did not preserve a "
+                            + "safe health reserve: "
+                            + player.getHealth()
+                );
+                helper.assertTrue(
+                        helper.getTick() - stageStartedAt <= 160,
+                        "Nether fall clutch exceeded its bounded "
+                            + "response window"
+                );
+                prepareNetherBlazeCombat();
+                return;
+            }
+            helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 200,
+                    "production emergency controller failed a real "
+                        + "Nether fall clutch"
+            );
+        }
+
+        private void prepareNetherBlazeCombat() {
+            final var player = player();
+            final var level = player.level();
+            final BlockPos start = player.blockPosition();
+            netherBlazeArenaOrigin = start.immutable();
+            for (int x = -12; x <= 12; x++) {
+                for (int z = -6; z <= 12; z++) {
+                    final BlockPos column = start.offset(x, 0, z);
+                    level.setBlockAndUpdate(
+                            column.below(),
+                            Blocks.NETHER_BRICKS.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 4; y++) {
+                        level.setBlockAndUpdate(
+                                column.above(y),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            blazeTargetsSpawned = 0;
+            spawnControlledBlaze();
+            player.getInventory().clearContent();
+            player.setItemInHand(
+                    InteractionHand.MAIN_HAND,
+                    new ItemStack(Items.DIAMOND_SWORD)
+            );
+            player.setItemInHand(
+                    InteractionHand.OFF_HAND,
+                    new ItemStack(Items.SHIELD)
+            );
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.setDeltaMovement(Vec3.ZERO);
+            blazeWeaponDamageBefore =
+                    player.getMainHandItem().getDamageValue();
+            face(player, resourceTarget.getEyePosition());
+            enter(Stage.FINDING_NETHER_BLAZE);
+        }
+
+        private void spawnControlledBlaze() {
+            final var level = player().level();
+            resourceTarget = EntityTypes.BLAZE.create(
+                    level,
+                    EntitySpawnReason.COMMAND
+            );
+            helper.assertTrue(
+                    resourceTarget != null,
+                    "GameTest could not create a Nether Blaze"
+            );
+            final double zOffset =
+                    blazeTargetsSpawned % 2 == 0 ? 6.5 : 0.5;
+            resourceTarget.setPos(
+                    netherBlazeArenaOrigin.getX() + 0.5,
+                    netherBlazeArenaOrigin.getY(),
+                    netherBlazeArenaOrigin.getZ() + zOffset
+            );
+            resourceTarget.setNoAi(true);
+            resourceTarget.setHealth(5.0F);
+            resourceTarget.setItemSlot(
+                    EquipmentSlot.MAINHAND,
+                    new ItemStack(Items.BLAZE_ROD)
+            );
+            resourceTarget.setGuaranteedDrop(
+                    EquipmentSlot.MAINHAND
+            );
+            helper.assertTrue(
+                    resourceTarget.getMainHandItem()
+                        .is(Items.BLAZE_ROD),
+                    "Controlled Blaze did not retain its guaranteed rod"
+            );
+            helper.assertTrue(
+                    level.addFreshEntity(resourceTarget),
+                    "GameTest could not add the Nether Blaze"
+            );
+            blazeTargetsSpawned++;
+            face(player(), resourceTarget.getEyePosition());
+        }
+
+        private void prepareFocusedNetherBlazeCombat() {
+            final var nether = runtime.server().getLevel(Level.NETHER);
+            helper.assertTrue(
+                    nether != null,
+                    "Focused Blaze gate could not access the Nether"
+            );
+            final BlockPos feet = new BlockPos(
+                    origin.getX(),
+                    64,
+                    origin.getZ()
+            );
+            for (int x = -3; x <= 3; x++) {
+                for (int z = -3; z <= 10; z++) {
+                    final BlockPos column = feet.offset(x, 0, z);
+                    nether.setBlockAndUpdate(
+                            column.below(),
+                            Blocks.NETHER_BRICKS.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 5; y++) {
+                        nether.setBlockAndUpdate(
+                                column.above(y),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            final var player = player();
+            player.teleportTo(
+                    nether,
+                    feet.getX() + 0.5,
+                    feet.getY(),
+                    feet.getZ() + 0.5,
+                    Set.of(),
+                    0.0F,
+                    0.0F,
+                    false
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            /*
+             * Cross-dimension ServerPlayer placement installs the ordinary
+             * vanilla player ticket asynchronously. A production server's
+             * 20 TPS cadence naturally gives chunk promotion time to finish,
+             * while the unthrottled GameTest server can advance dozens of
+             * game ticks in the same wall-clock instant. Do not create the
+             * controlled Blaze or its ordinary delayed drop until this gate
+             * has proved that the headless player's own ticket made the
+             * destination entity-ticking. This keeps the oracle physical:
+             * no forced chunk, direct pickup, or shortened pickup delay.
+             */
+            enter(Stage.WAITING_FOR_FOCUSED_NETHER_SIMULATION);
+        }
+
+        private void tickFocusedNetherSimulationReadiness() {
+            final var player = player();
+            helper.assertTrue(
+                    player.level().dimension().equals(Level.NETHER),
+                    "Focused Blaze body left the Nether while awaiting "
+                        + "its player simulation ticket"
+            );
+            if (!player.level().isPositionEntityTicking(
+                    player.blockPosition()
+            )) {
+                final long elapsedTicks =
+                    helper.getTick() - stageStartedAt;
+                final long elapsedNanos =
+                    System.nanoTime() - stageStartedNanos;
+                /*
+                 * The dedicated GameTest server is deliberately
+                 * unthrottled. In a full batch it can advance more than
+                 * 3,000 server ticks in half a second, starving the vanilla
+                 * async chunk workers whose result this physical gate is
+                 * waiting to observe. Yield a bounded millisecond to those
+                 * workers; do not add or extend any chunk ticket.
+                 */
+                LockSupport.parkNanos(
+                    FOCUSED_ASYNC_CHUNK_YIELD_NANOS
+                );
+                helper.assertTrue(
+                        elapsedTicks
+                            <= FOCUSED_SIMULATION_TICKET_TIMEOUT_TICKS
+                            || elapsedNanos
+                                <= FOCUSED_SIMULATION_TICKET_TIMEOUT_NANOS,
+                        "Headless player's vanilla ticket did not make "
+                            + "the focused Nether fixture entity-ticking "
+                            + "within the bounded async window: ticks="
+                            + elapsedTicks + ", wallMillis="
+                            + java.time.Duration.ofNanos(elapsedNanos)
+                                .toMillis()
+                );
+                return;
+            }
+            freshObservation();
+            prepareNetherBlazeCombat();
+        }
+
+        private void tryStartNetherBlazeCombat() {
+            face(player(), resourceTarget.getEyePosition());
+            final BrainObservation observation = freshObservation();
+            final JsonObject target = findEntity(
+                    observation,
+                    "minecraft:blaze"
+            );
+            if (target == null) {
+                awaitTarget("Nether Blaze resource target");
+                return;
+            }
+            if (scope == ScenarioScope.BLAZE_RESERVE_ONLY) {
+                startSkill(
+                        LootSkills.SECURE_NETHER_BLAZE_MATERIAL,
+                        List.of(),
+                        observation
+                );
+                enter(Stage.ACQUIRING_NETHER_BLAZE_ROD);
+                return;
+            }
+            startSkill(
+                    LootSkills.ACQUIRE_NETHER_BLAZE_ROD,
+                    List.of(
+                            argument(
+                                    "sampleSequence",
+                                    Long.toString(
+                                            sampleSequence(observation)
+                                    )
+                            ),
+                            argument(
+                                    "observationId",
+                                    target.get("observationId")
+                                            .getAsString()
+                            ),
+                            argument("maximumTicks", "600")
+                    ),
+                    observation
+            );
+            enter(Stage.ACQUIRING_NETHER_BLAZE_ROD);
+        }
+
+        private void tickNetherBlazeCombat() {
+            if (scope == ScenarioScope.BLAZE_RESERVE_ONLY
+                    && (resourceTarget.isRemoved()
+                        || !resourceTarget.isAlive())
+                    && player().getInventory()
+                        .countItem(Items.BLAZE_ROD)
+                        < 7
+                    && player().getInventory()
+                        .countItem(Items.BLAZE_ROD)
+                        >= blazeTargetsSpawned) {
+                spawnControlledBlaze();
+            }
+            final BrainObservation observation = freshObservation();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if ((helper.getTick() - stageStartedAt)
+                    % (scope == ScenarioScope.BLAZE_ONLY
+                        || scope == ScenarioScope.BLAZE_RESERVE_ONLY
+                            ? 5
+                            : 50)
+                    == 0) {
+                final var body = player();
+                final List<String> nearbyDrops = body.level()
+                    .getEntitiesOfClass(
+                        ItemEntity.class,
+                        body.getBoundingBox().inflate(16.0)
+                    )
+                    .stream()
+                    .map(drop ->
+                        drop.getItem().getItem()
+                            + "x" + drop.getItem().getCount()
+                            + "@" + drop.position()
+                            + ",age=" + drop.getAge()
+                            + ",pickupDelay="
+                            + drop.hasPickUpDelay()
+                            + ",entityTicking="
+                            + body.level().isPositionEntityTicking(
+                                drop.blockPosition()
+                            )
+                            + ",pickupIntersection="
+                            + body.getBoundingBox()
+                                .inflate(1.0, 0.5, 1.0)
+                                .intersects(drop.getBoundingBox())
+                            + ",alive=" + drop.isAlive()
+                            + ",removed=" + drop.isRemoved()
+                            + ",distance="
+                            + body.distanceTo(drop)
+                    )
+                    .toList();
+                MinecraftAiCompanion.LOGGER.warn(
+                    "Nether Blaze diagnostic tick={} player={} target={} "
+                        + "distance={} targetAlive={} targetHealth={} "
+                        + "weaponDamage={} rods={} input={} yaw={} pitch={} "
+                        + "visibleEntities={} nearbyDrops={} supervisor={}",
+                    helper.getTick(),
+                    body.position(),
+                    resourceTarget.position(),
+                    body.distanceTo(resourceTarget),
+                    resourceTarget.isAlive(),
+                    resourceTarget.getHealth(),
+                    body.getMainHandItem().getDamageValue(),
+                    body.getInventory().countItem(Items.BLAZE_ROD),
+                    body.getLastClientInput(),
+                    body.getYRot(),
+                    body.getXRot(),
+                    semantic(observation)
+                        .getAsJsonArray("visibleEntities"),
+                    nearbyDrops,
+                    snapshot
+                );
+            }
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                        helper.getTick() - stageStartedAt
+                            <= (scope
+                                    == ScenarioScope.BLAZE_RESERVE_ONLY
+                                        ? 4_000
+                                        : 620),
+                        (scope == ScenarioScope.BLAZE_RESERVE_ONLY
+                            ? "secure_nether_blaze_material"
+                            : "acquire_nether_blaze_rod")
+                            + " exceeded its window"
+                );
+                return;
+            }
+            helper.assertTrue(
+                    player().level().dimension().equals(Level.NETHER),
+                    "Nether Blaze acquisition changed dimensions"
+            );
+            if (scope != ScenarioScope.BLAZE_RESERVE_ONLY) {
+                helper.assertTrue(
+                        resourceTarget.isRemoved()
+                            || !resourceTarget.isAlive(),
+                        "Nether resource skill completed before "
+                            + "defeating its bound Blaze"
+                );
+            }
+            helper.assertTrue(
+                    player().getInventory().countItem(Items.BLAZE_ROD)
+                        >= 1,
+                    "Nether resource skill did not confirm the ordinary "
+                        + "drop in owned inventory"
+            );
+            helper.assertTrue(
+                    player().getMainHandItem().is(Items.DIAMOND_SWORD)
+                        && player().getMainHandItem()
+                            .getDamageValue()
+                                > blazeWeaponDamageBefore,
+                    "Nether Blaze combat did not consume vanilla weapon "
+                        + "durability"
+            );
+            if (scope == ScenarioScope.BLAZE_RESERVE_ONLY) {
+                helper.assertTrue(
+                        player().getInventory()
+                            .countItem(Items.BLAZE_ROD) >= 7,
+                        "Blaze reserve skill completed below the "
+                            + "fourteen-unit route target"
+                );
+                helper.assertTrue(
+                        blazeTargetsSpawned >= 4,
+                        "Blaze reserve did not prove repeated independent "
+                            + "combat and pickup cycles: "
+                            + blazeTargetsSpawned
+                );
+                completeFocused();
+                return;
+            }
+            if (scope == ScenarioScope.BLAZE_ONLY) {
+                completeFocused();
+                return;
+            }
+            startReturnToNetherPortal();
+        }
+
+        private void startReturnToNetherPortal() {
+            clearExternalLavaFromControlledReturnCorridor();
+            final BrainObservation observation = freshObservation();
+            startSkill(
+                PortalSkills.RETURN_VIA_VERIFIED_PORTAL,
+                List.of(),
+                observation
+            );
+            enter(Stage.RETURNING_TO_NETHER_PORTAL);
+        }
+
+        private void clearExternalLavaFromControlledReturnCorridor() {
+            /*
+             * The destination portal is generated in the real Nether. A
+             * source outside this deliberately constructed tunnel can
+             * receive a delayed vanilla fluid tick and flow through its open
+             * portal end several seconds after setup. That makes this
+             * capability fixture depend on unrelated world generation:
+             * travel correctly refuses the new lava, but the test was meant
+             * to verify ordinary return navigation after the independent
+             * clutch scenario. Remove only lava in a bounded buffer around
+             * the already controlled portal approach, then seal the bounded
+             * return lane so another delayed outside fluid tick cannot enter.
+             * Never move the player or alter production
+             * observations/actions.
+             */
+            final var level = player().level();
+            final BlockPos target = BlockPos.containing(
+                    netherPortalReturnTarget
+            );
+            final BlockPos current = player().blockPosition();
+            final int minimumX =
+                    Math.min(target.getX(), current.getX()) - 4;
+            final int maximumX =
+                    Math.max(target.getX(), current.getX()) + 4;
+            final int minimumZ =
+                    Math.min(target.getZ(), current.getZ()) - 4;
+            final int maximumZ =
+                    Math.max(target.getZ(), current.getZ()) + 4;
+            final int floorY = target.getY() - 1;
+            for (int x = minimumX; x <= maximumX; x++) {
+                for (int z = minimumZ; z <= maximumZ; z++) {
+                    setUnlessPortalFrame(
+                            level,
+                            new BlockPos(x, floorY, z),
+                            Blocks.NETHERRACK.defaultBlockState()
+                    );
+                    for (int y = target.getY();
+                            y <= target.getY() + 3; y++) {
+                        final boolean perimeter =
+                                x == minimumX
+                                || x == maximumX
+                                || z == minimumZ
+                                || z == maximumZ;
+                        setUnlessPortalFrame(
+                                level,
+                                new BlockPos(x, y, z),
+                                perimeter
+                                        ? Blocks.NETHERRACK
+                                            .defaultBlockState()
+                                        : Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                    setUnlessPortalFrame(
+                            level,
+                            new BlockPos(
+                                    x,
+                                    target.getY() + 4,
+                                    z
+                            ),
+                            Blocks.NETHERRACK.defaultBlockState()
+                    );
+                }
+            }
+            if (current.getY() > target.getY()) {
+                level.setBlockAndUpdate(
+                        current.below(),
+                        Blocks.NETHER_BRICKS.defaultBlockState()
+                );
+            }
+            player().clearFire();
+        }
+
+        private static void setUnlessPortalFrame(
+                final net.minecraft.server.level.ServerLevel level,
+                final BlockPos position,
+                final net.minecraft.world.level.block.state.BlockState state
+        ) {
+            final var existing = level.getBlockState(position);
+            if (!existing.is(Blocks.NETHER_PORTAL)
+                    && !existing.is(Blocks.OBSIDIAN)) {
+                level.setBlockAndUpdate(position, state);
+            }
+        }
+
+        private void tickReturnToNetherPortal() {
+            final BrainObservation observation = freshObservation();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if ((helper.getTick() - stageStartedAt) % 50 == 0) {
+                final var body = player();
+                MinecraftAiCompanion.LOGGER.warn(
+                    "Nether portal return diagnostic tick={} "
+                        + "position={} target={} distance={} "
+                        + "velocity={} input={} yaw={} pitch={} "
+                        + "visibleFaces={} supervisor={} survival={} "
+                        + "survivalOwnsHostiles={} survivalOwnsContact={} "
+                        + "arbiter={}",
+                    helper.getTick(),
+                    body.position(),
+                    netherPortalReturnTarget,
+                    body.position().distanceTo(
+                        netherPortalReturnTarget
+                    ),
+                    body.getDeltaMovement(),
+                    body.getLastClientInput(),
+                    body.getYRot(),
+                    body.getXRot(),
+                    semantic(observation)
+                        .getAsJsonArray("visibleBlockFaces")
+                        .size(),
+                    snapshot,
+                    runtime.survival().state(),
+                    runtime.skillSupervisor()
+                        .activeSkillManagesVisibleHostileProximity(),
+                    runtime.skillSupervisor()
+                        .activeSkillManagesPhysicalContactThreats(),
+                    runtime.behaviorArbiter().latest().orElse(null)
+                );
+            }
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 2_200,
+                    "return_via_verified_portal did not complete: "
+                        + snapshot
+                );
+                return;
+            }
+            helper.assertTrue(
+                PortalSkills.RETURN_VIA_VERIFIED_PORTAL.equals(
+                    snapshot.skillName()
+                ),
+                "Portal return completed under another skill: "
+                    + snapshot
+            );
+            helper.assertTrue(
+                player().level().dimension().equals(Level.OVERWORLD),
+                "remembered arrival did not produce a real reverse "
+                    + "Nether traversal"
+            );
+            if (scope == ScenarioScope.PORTAL_RETURN_ONLY) {
+                completeFocused();
+                return;
+            }
+            prepareExploration();
+        }
+
+        private void tryStartNetherReturnPortalEntry() {
+            face(player(), Vec3.atCenterOf(netherPortalBlock));
+            final BrainObservation observation = freshObservation();
+            final JsonObject target = findBlock(
+                observation,
+                "minecraft:nether_portal"
+            );
+            if (target == null) {
+                awaitTarget("Nether return portal");
+                return;
+            }
+            final JsonObject block =
+                target.getAsJsonObject("block");
+            startSkill(
+                PortalSkills.ENTER_OBSERVED_PORTAL,
+                List.of(
+                    argument(
+                        "dimension",
+                        "minecraft:the_nether"
+                    ),
+                    argument(
+                        "sampleSequence",
+                        Long.toString(sampleSequence(observation))
+                    ),
+                    argument("x", block.get("x").getAsString()),
+                    argument("y", block.get("y").getAsString()),
+                    argument("z", block.get("z").getAsString()),
+                    argument(
+                        "face",
+                        target.get("face").getAsString()
+                    ),
+                    argument(
+                        "expectedDestination",
+                        OVERWORLD
+                    )
+                ),
+                observation
+            );
+            enter(Stage.ENTERING_NETHER_RETURN_PORTAL);
+        }
+
+        private void tickNetherReturnPortalEntry() {
+            final BrainObservation observation = freshObservation();
+            if ((helper.getTick() - stageStartedAt) % 5 == 0) {
+                final var body = player();
+                final BlockPos feet = body.blockPosition();
+                MinecraftAiCompanion.LOGGER.warn(
+                    "Nether return entry diagnostic tick={} position={} "
+                        + "health={} onFire={} fallDistance={} onGround={} "
+                        + "feet={} below={} dangers={}",
+                    helper.getTick(),
+                    body.position(),
+                    body.getHealth(),
+                    body.isOnFire(),
+                    body.fallDistance,
+                    body.onGround(),
+                    body.level().getBlockState(feet),
+                    body.level().getBlockState(feet.below()),
+                    semantic(observation).getAsJsonArray("dangers")
+                );
+            }
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 500,
+                    "Nether return portal traversal exceeded its window"
+                );
+                return;
+            }
+            helper.assertTrue(
+                player().level().dimension().equals(Level.OVERWORLD),
+                "AI did not return through the real Nether portal"
+            );
+            prepareExploration();
+        }
+
+        private void prepareExploration() {
+            final var level = helper.getLevel();
+            final var player = player();
+            player.stopRiding();
+            for (int x = -3; x <= 3; x++) {
+                for (int z = 0; z <= 36; z++) {
+                    level.setBlockAndUpdate(
+                        origin.offset(x, -1, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 3; y++) {
+                        level.setBlockAndUpdate(
+                            origin.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            explorationTarget = origin.offset(0, 1, 30);
+            for (int x = -1; x <= 1; x++) {
+                for (int y = 0; y <= 2; y++) {
+                    level.setBlockAndUpdate(
+                        origin.offset(x, y, 30),
+                        Blocks.NETHER_BRICKS.defaultBlockState()
+                    );
+                }
+            }
+            player.getInventory().clearContent();
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(player, Vec3.atCenterOf(explorationTarget));
+            explorationStart = player.position();
+            final BrainObservation observation = freshObservation();
+            helper.assertTrue(
+                findBlock(observation, "minecraft:nether_bricks") == null,
+                "Exploration landmark was already first-person visible"
+            );
+            startSkill(
+                ExplorationSkills.EXPLORE_FOR_OBSERVED_TARGET,
+                List.of(
+                    argument("dimension", OVERWORLD),
+                    argument("targetKind", "block"),
+                    argument("targetId", "minecraft:nether_bricks"),
+                    argument("maximumDistance", "64"),
+                    argument("stepDistance", "16")
+                ),
+                observation
+            );
+            enter(Stage.EXPLORING_FOR_TARGET);
+        }
+
+        private void tickExploreForObservedTarget() {
+            freshObservation();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 500,
+                    "explore_for_observed_target exceeded its window"
+                );
+                return;
+            }
+            helper.assertTrue(
+                horizontalDistance(player().position(), explorationStart)
+                    >= 4.0,
+                "Exploration completed without physically searching"
+            );
+            helper.assertTrue(
+                helper.getLevel().getBlockState(explorationTarget)
+                    .is(Blocks.NETHER_BRICKS),
+                "Exploration modified its target landmark"
+            );
+            final BrainObservation observation = freshObservation();
+            helper.assertTrue(
+                findBlock(observation, "minecraft:nether_bricks") != null,
+                "Exploration completed before the target was visible"
+            );
+            prepareDropCollection();
+        }
+
+        private void prepareDropCollection() {
+            final var level = helper.getLevel();
+            for (int x = -2; x <= 2; x++) {
+                for (int z = 0; z <= 12; z++) {
+                    level.setBlockAndUpdate(
+                        origin.offset(x, -1, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 2; y++) {
+                        level.setBlockAndUpdate(
+                            origin.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            final var player = player();
+            player.getInventory().clearContent();
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            lootDrop = new ItemEntity(
+                level,
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 9.5,
+                new ItemStack(Items.BLAZE_ROD)
+            );
+            helper.assertTrue(
+                level.addFreshEntity(lootDrop),
+                "GameTest could not add a dropped blaze rod"
+            );
+            face(player, lootDrop.getEyePosition());
+            lootCollectionStart = player.position();
+            final BrainObservation observation = freshObservation();
+            final JsonObject target = findEntity(
+                observation,
+                "minecraft:item"
+            );
+            helper.assertTrue(
+                target != null
+                    && target.getAsJsonObject("properties")
+                        .get("itemId")
+                        .getAsString()
+                        .equals("minecraft:blaze_rod"),
+                "Dropped item type was not fairly identified"
+            );
+            startSkill(
+                LootSkills.COLLECT_OBSERVED_ITEM,
+                List.of(
+                    argument(
+                        "sampleSequence",
+                        Long.toString(sampleSequence(observation))
+                    ),
+                    argument(
+                        "observationId",
+                        target.get("observationId").getAsString()
+                    ),
+                    argument("maximumTicks", "300")
+                ),
+                observation
+            );
+            enter(Stage.COLLECTING_DROP);
+        }
+
+        private void tickDropCollection() {
+            final BrainObservation observation = freshObservation();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if ((helper.getTick() - stageStartedAt) % 25 == 0) {
+                final var body = player();
+                MinecraftAiCompanion.LOGGER.warn(
+                    "Drop collection diagnostic tick={} position={} "
+                        + "drop={} distance={} alive={} inventory={} "
+                        + "yaw={} pitch={} input={} visibleEntities={} "
+                        + "visibleFaces={} supervisor={}",
+                    helper.getTick(),
+                    body.position(),
+                    lootDrop.position(),
+                    body.distanceTo(lootDrop),
+                    lootDrop.isAlive(),
+                    body.getInventory().countItem(Items.BLAZE_ROD),
+                    body.getYRot(),
+                    body.getXRot(),
+                    body.getLastClientInput(),
+                    semantic(observation)
+                        .getAsJsonArray("visibleEntities"),
+                    semantic(observation)
+                        .getAsJsonArray("visibleBlockFaces")
+                        .size(),
+                    snapshot
+                );
+            }
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 320,
+                    "collect_observed_item exceeded its window"
+                );
+                return;
+            }
+            helper.assertTrue(
+                player().getInventory().countItem(Items.BLAZE_ROD)
+                    == 1,
+                "collect_observed_item did not verify owned loot"
+            );
+            helper.assertTrue(
+                lootDrop.isRemoved() || !lootDrop.isAlive(),
+                "collect_observed_item completed before pickup"
+            );
+            helper.assertTrue(
+                horizontalDistance(
+                    player().position(),
+                    lootCollectionStart
+                ) >= 4.0,
+                "collect_observed_item did not physically approach the drop"
+            );
+            prepareOccludedThreatAudit();
+        }
+
+        private void prepareOccludedThreatAudit() {
+            final var level = helper.getLevel();
+            for (int x = -3; x <= 3; x++) {
+                for (int z = -2; z <= 8; z++) {
+                    level.setBlockAndUpdate(
+                        origin.offset(x, -1, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 4; y++) {
+                        level.setBlockAndUpdate(
+                            origin.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            for (int x = -1; x <= 1; x++) {
+                for (int y = 0; y <= 3; y++) {
+                    level.setBlockAndUpdate(
+                        origin.offset(x, y, 2),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                }
+            }
+            occludedThreat = helper.spawn(
+                EntityTypes.ZOMBIE,
+                fixtureRelative(0.5, 0.0, 5.0)
+            );
+            occludedThreat.setNoAi(true);
+            final var player = player();
+            player.getInventory().clearContent();
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(player, occludedThreat.getEyePosition());
+            enter(Stage.VERIFYING_OCCLUDED_THREAT);
+        }
+
+        private void tickOccludedThreatAudit() {
+            final BrainObservation observation = freshObservation();
+            helper.assertTrue(
+                findEntity(observation, "minecraft:zombie") == null,
+                "A hostile behind an opaque wall leaked into fair vision"
+            );
+            final var dangers = semantic(observation)
+                .getAsJsonArray("dangers");
+            for (final var element : dangers) {
+                helper.assertTrue(
+                    !"HOSTILE_PROXIMITY".equals(
+                        element.getAsJsonObject()
+                            .get("kind")
+                            .getAsString()
+                    ),
+                    "A hostile behind an opaque wall leaked through the "
+                        + "proximity danger channel"
+                );
+            }
+            helper.assertTrue(
+                occludedThreat.isAlive()
+                    && !occludedThreat.isRemoved(),
+                "Occluded-threat audit passed only because its target "
+                    + "disappeared"
+            );
+            occludedThreat.discard();
+            prepareShelteredEndermanCombat();
+        }
+
+        private void prepareFocusedEnderPearlReserve() {
+            final var level = helper.getLevel();
+            endermanShelterCenter = origin;
+            for (int x = -4; x <= 4; x++) {
+                for (int z = -4; z <= 10; z++) {
+                    level.setBlockAndUpdate(
+                        origin.offset(x, -1, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 5; y++) {
+                        level.setBlockAndUpdate(
+                            origin.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            final var player = player();
+            player.getInventory().clearContent();
+            player.setItemInHand(
+                InteractionHand.MAIN_HAND,
+                new ItemStack(Items.DIAMOND_SWORD)
+            );
+            player.setItemInHand(
+                InteractionHand.OFF_HAND,
+                new ItemStack(Items.SHIELD)
+            );
+            helper.assertTrue(
+                player.getInventory().add(
+                    new ItemStack(Items.COBBLESTONE, 64)
+                ),
+                "Focused pearl gate could not give the body its "
+                    + "ordinary starting building stack"
+            );
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.teleportTo(
+                endermanShelterCenter.getX() + 0.5,
+                endermanShelterCenter.getY(),
+                endermanShelterCenter.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            enderTargetsSpawned = 0;
+            enderStableTicks = 0;
+            enderRoofStableSince = -1L;
+            lastEnderTargetRemovedAt = -1L;
+            enderWeaponDamageBefore =
+                player.getMainHandItem().getDamageValue();
+            shelteredEnderman = null;
+            face(
+                player,
+                Vec3.atCenterOf(
+                    endermanShelterCenter.offset(0, 0, 5)
+                )
+            );
+            enter(Stage.SETTLING_FOR_ENDER_RESERVE);
+        }
+
+        private void tickEnderReserveSettlement() {
+            final var body = player();
+            if (body.onGround()
+                    && Math.abs(
+                        body.getY()
+                            - endermanShelterCenter.getY()
+                    ) <= 0.05
+                    && body.getDeltaMovement().lengthSqr() <= 0.01) {
+                enderStableTicks++;
+            } else {
+                enderStableTicks = 0;
+            }
+            helper.assertTrue(
+                helper.getTick() - stageStartedAt <= 120,
+                "Focused pearl body did not settle on its ordinary floor"
+            );
+            if (enderStableTicks < 3) {
+                return;
+            }
+            final BrainObservation observation = freshObservation();
+            startSkill(
+                LootSkills.SECURE_ENDER_PEARL_RESERVE,
+                List.of(),
+                observation
+            );
+            enter(Stage.ACQUIRING_ENDER_PEARL);
+        }
+
+        private void spawnControlledEnderman() {
+            final var level = helper.getLevel();
+            shelteredEnderman = EntityTypes.ENDERMAN.create(
+                    level,
+                    EntitySpawnReason.COMMAND
+            );
+            helper.assertTrue(
+                shelteredEnderman != null,
+                "GameTest could not create an Enderman"
+            );
+            shelteredEnderman.setPos(
+                endermanShelterCenter.getX() + 0.5,
+                endermanShelterCenter.getY(),
+                endermanShelterCenter.getZ()
+                    + CONTROLLED_ENDERMAN_OFFSET
+            );
+            /*
+             * The no-AI fixture target cannot answer an ordinary lure by
+             * walking closer. Keep it beyond the 3x3 roof footprint while
+             * guaranteeing vanilla melee reach from every accepted docking
+             * point under that roof.
+             */
+            helper.assertTrue(
+                CONTROLLED_ENDERMAN_OFFSET > 1.5
+                    && horizontalDistance(
+                        player().position(),
+                        shelteredEnderman.position()
+                    ) <= MAXIMUM_FIXTURE_MELEE_DISTANCE,
+                "Controlled Enderman fixture is outside reachable "
+                    + "sheltered melee geometry"
+            );
+            shelteredEnderman.setNoAi(true);
+            shelteredEnderman.setHealth(5.0F);
+            shelteredEnderman.setItemSlot(
+                EquipmentSlot.MAINHAND,
+                new ItemStack(Items.ENDER_PEARL)
+            );
+            shelteredEnderman.setGuaranteedDrop(
+                EquipmentSlot.MAINHAND
+            );
+            helper.assertTrue(
+                level.addFreshEntity(shelteredEnderman),
+                "GameTest could not add the controlled Enderman"
+            );
+            runtime.observations().requestObservation(
+                new RequestedObservation(
+                    ObservationKind.SEMANTIC_REFRESH,
+                    "GameTest fixture spawned a controlled Enderman"
+                )
+            );
+            enderTargetsSpawned++;
+            lastEnderTargetRemovedAt = -1L;
+        }
+
+        private void tickFocusedEnderPearlReserve() {
+            final var body = player();
+            final boolean targetGone = shelteredEnderman == null
+                || shelteredEnderman.isRemoved()
+                || !shelteredEnderman.isAlive();
+            if (targetGone && lastEnderTargetRemovedAt < 0L) {
+                lastEnderTargetRemovedAt = helper.getTick();
+            }
+            final boolean roofComplete =
+                focusedEndermanRoofComplete();
+            final boolean temporaryPillarRemoved =
+                focusedEndermanTemporaryPillarRemoved();
+            final boolean bodyCenteredUnderRoof =
+                body.onGround()
+                    && horizontalDistance(
+                        body.position(),
+                        Vec3.atBottomCenterOf(
+                            endermanShelterCenter
+                        )
+                    ) <= 0.30;
+            final boolean fairlyVerifiedRoof =
+                runtime.coreFrames().current()
+                    .map(
+                        SecureEnderPearlReserveSkill
+                            ::hasObservedSafetyRoof
+                    )
+                    .orElse(false);
+            if (roofComplete
+                    && temporaryPillarRemoved
+                    && bodyCenteredUnderRoof
+                    && fairlyVerifiedRoof) {
+                if (enderRoofStableSince < 0L) {
+                    enderRoofStableSince = helper.getTick();
+                }
+            } else {
+                enderRoofStableSince = -1L;
+            }
+            final boolean pearlDropPresent = body.level()
+                .getEntitiesOfClass(
+                    ItemEntity.class,
+                    body.getBoundingBox().inflate(16.0)
+                )
+                .stream()
+                .anyMatch(drop ->
+                    drop.getItem().is(Items.ENDER_PEARL)
+                        && drop.isAlive()
+                        && !drop.isRemoved()
+                );
+            if (roofComplete
+                    && temporaryPillarRemoved
+                    && targetGone
+                    && !pearlDropPresent
+                    && body.getInventory()
+                        .countItem(Items.ENDER_PEARL) < 14
+                    && bodyCenteredUnderRoof
+                    && enderRoofStableSince >= 0L
+                    && helper.getTick()
+                        - enderRoofStableSince >= 20L
+                    && helper.getTick()
+                        - lastEnderTargetRemovedAt >= 2L) {
+                spawnControlledEnderman();
+            }
+
+            /*
+             * Keep the production 4 Hz semantic boundary between explicit
+             * fixture mutations. A 20 Hz forced refresh concealed navigation
+             * loops that occur only when body pose is live but the fair local
+             * map is correctly sampled at its normal cadence.
+             */
+            final BrainObservation observation =
+                runtime.observations().observe(
+                    runtime.goals().snapshot()
+                );
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if ((helper.getTick() - stageStartedAt) % 25L == 0L) {
+                final var liveDangers = runtime.coreFrames().current()
+                    .map(frame -> frame.dangerSignals())
+                    .orElse(List.of());
+                MinecraftAiCompanion.LOGGER.info(
+                    "Ender reserve diagnostic tick={} body={} "
+                        + "roof={} targets={} pearls={} targetAlive={} "
+                        + "weapon={} dangers={} supervisor={}",
+                    helper.getTick(),
+                    body.position(),
+                    roofComplete,
+                    enderTargetsSpawned,
+                    body.getInventory().countItem(
+                        Items.ENDER_PEARL
+                    ),
+                    shelteredEnderman != null
+                        && shelteredEnderman.isAlive()
+                        && !shelteredEnderman.isRemoved(),
+                    body.getMainHandItem(),
+                    liveDangers,
+                    snapshot
+                );
+            }
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 8_000,
+                    "secure_ender_pearl_reserve exceeded its window"
+                );
+                return;
+            }
+            helper.assertTrue(
+                body.getInventory().countItem(Items.ENDER_PEARL)
+                    >= 14,
+                "Pearl reserve completed below fourteen "
+                    + "pearl-derived route units"
+            );
+            helper.assertTrue(
+                enderTargetsSpawned >= 7,
+                "Pearl reserve did not prove repeated independent "
+                    + "sheltered combat cycles: "
+                    + enderTargetsSpawned
+            );
+            helper.assertTrue(
+                focusedEndermanRoofComplete(),
+                "Pearl reserve did not retain its physically built roof"
+            );
+            helper.assertTrue(
+                focusedEndermanTemporaryPillarRemoved(),
+                "Pearl reserve left its temporary construction pillar"
+            );
+            helper.assertTrue(
+                body.getMainHandItem().is(Items.DIAMOND_SWORD)
+                    && body.getMainHandItem().getDamageValue()
+                        > enderWeaponDamageBefore,
+                "Pearl reserve did not consume vanilla weapon durability"
+            );
+            completeFocused();
+        }
+
+        private boolean focusedEndermanRoofComplete() {
+            if (endermanShelterCenter == null) {
+                return false;
+            }
+            for (int x = -1; x <= 1; x++) {
+                for (int z = -1; z <= 1; z++) {
+                    if (!helper.getLevel().getBlockState(
+                            endermanShelterCenter.offset(x, 2, z)
+                        ).is(Blocks.COBBLESTONE)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        private boolean focusedEndermanTemporaryPillarRemoved() {
+            if (endermanShelterCenter == null) {
+                return false;
+            }
+            final int[][] offsets = {
+                {1, 0},
+                {-1, 0},
+                {0, 1},
+                {0, -1}
+            };
+            for (int[] offset : offsets) {
+                for (int y = 0; y <= 1; y++) {
+                    if (helper.getLevel().getBlockState(
+                            endermanShelterCenter.offset(
+                                offset[0],
+                                y,
+                                offset[1]
+                            )
+                        ).is(Blocks.COBBLESTONE)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        private void prepareShelteredEndermanCombat() {
+            final var level = helper.getLevel();
+            endermanShelterCenter = origin;
+            endermanShelterScanIndex = 0;
+            for (int x = -3; x <= 3; x++) {
+                for (int z = -3; z <= 8; z++) {
+                    level.setBlockAndUpdate(
+                        origin.offset(x, -1, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 4; y++) {
+                        level.setBlockAndUpdate(
+                            origin.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            for (int x = -1; x <= 1; x++) {
+                for (int z = -1; z <= 1; z++) {
+                    level.setBlockAndUpdate(
+                        endermanShelterCenter.offset(x, 2, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                }
+            }
+            shelteredEnderman = helper.spawn(
+                EntityTypes.ENDERMAN,
+                fixtureRelative(0.5, 0.0, 3.0)
+            );
+            shelteredEnderman.setNoAi(true);
+            shelteredEnderman.setHealth(5.0F);
+            shelteredEnderman.setItemSlot(
+                EquipmentSlot.MAINHAND,
+                new ItemStack(Items.ENDER_PEARL)
+            );
+            shelteredEnderman.setGuaranteedDrop(
+                EquipmentSlot.MAINHAND
+            );
+            final var player = player();
+            player.getInventory().clearContent();
+            player.setItemInHand(
+                InteractionHand.MAIN_HAND,
+                new ItemStack(Items.DIAMOND_SWORD)
+            );
+            player.setItemInHand(
+                InteractionHand.OFF_HAND,
+                new ItemStack(Items.SHIELD)
+            );
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.teleportTo(
+                endermanShelterCenter.getX() + 0.5,
+                endermanShelterCenter.getY(),
+                endermanShelterCenter.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(player, shelteredEnderman.getEyePosition());
+            enter(Stage.FINDING_SHELTERED_ENDERMAN);
+        }
+
+        private void tryStartShelteredEndermanCombat() {
+            if (endermanShelterScanIndex < 9) {
+                final int xOffset =
+                    endermanShelterScanIndex % 3 - 1;
+                final int zOffset =
+                    endermanShelterScanIndex / 3 - 1;
+                face(
+                    player(),
+                    Vec3.atCenterOf(
+                        endermanShelterCenter.offset(
+                            xOffset,
+                            2,
+                            zOffset
+                        )
+                    )
+                );
+                freshObservation();
+                endermanShelterScanIndex++;
+                return;
+            }
+            face(player(), shelteredEnderman.getEyePosition());
+            final BrainObservation observation = freshObservation();
+            final JsonObject target = findEntity(
+                observation,
+                "minecraft:enderman"
+            );
+            if (target == null) {
+                awaitTarget("sheltered Enderman");
+                return;
+            }
+            startSkill(
+                LootSkills.ACQUIRE_SHELTERED_ENDER_PEARL,
+                List.of(
+                    argument(
+                        "sampleSequence",
+                        Long.toString(sampleSequence(observation))
+                    ),
+                    argument(
+                        "observationId",
+                        target.get("observationId").getAsString()
+                    ),
+                    argument("maximumTicks", "600")
+                ),
+                observation
+            );
+            enter(Stage.ACQUIRING_ENDER_PEARL);
+        }
+
+        private void tickShelteredEndermanCombat() {
+            if (scope == ScenarioScope.ENDER_RESERVE_ONLY) {
+                tickFocusedEnderPearlReserve();
+                return;
+            }
+            freshObservation();
+            final boolean targetAlive = shelteredEnderman.isAlive()
+                && !shelteredEnderman.isRemoved();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (targetAlive) {
+                helper.assertTrue(
+                    horizontalDistance(
+                        player().position(),
+                        Vec3.atBottomCenterOf(endermanShelterCenter)
+                    ) <= 0.40,
+                    "Sheltered Enderman combat left the verified roof "
+                        + "before the target was defeated"
+                );
+            }
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 620,
+                    "acquire_sheltered_ender_pearl exceeded its window"
+                );
+                return;
+            }
+            helper.assertTrue(
+                shelteredEnderman.isRemoved()
+                    || !shelteredEnderman.isAlive(),
+                "Sheltered pearl acquisition completed before defeating "
+                    + "its bound Enderman"
+            );
+            helper.assertTrue(
+                player().getInventory().countItem(Items.ENDER_PEARL)
+                    >= 1,
+                "Sheltered pearl acquisition did not confirm the ordinary "
+                    + "drop in owned inventory"
+            );
+            helper.assertTrue(
+                player().getMainHandItem().is(Items.DIAMOND_SWORD)
+                    && player().getMainHandItem().getDamageValue() > 0,
+                "Sheltered Enderman combat did not apply vanilla weapon "
+                    + "durability"
+            );
+            for (int x = -1; x <= 1; x++) {
+                for (int z = -1; z <= 1; z++) {
+                    helper.assertTrue(
+                        helper.getLevel().getBlockState(
+                            endermanShelterCenter.offset(x, 2, z)
+                        ).is(Blocks.SMOOTH_STONE),
+                        "Sheltered Enderman combat modified its protective "
+                            + "roof"
+                    );
+                }
+            }
+            if (scope == ScenarioScope.ENDER_SINGLE_ONLY) {
+                completeFocused();
+                return;
+            }
+            prepareResourceCombat();
+        }
+
+        private void prepareResourceCombat() {
+            final var level = helper.getLevel();
+            for (int x = -2; x <= 2; x++) {
+                for (int z = 0; z <= 9; z++) {
+                    level.setBlockAndUpdate(
+                        origin.offset(x, -1, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 3; y++) {
+                        level.setBlockAndUpdate(
+                            origin.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            resourceTarget = helper.spawn(
+                EntityTypes.BLAZE,
+                fixtureRelative(0.5, 0.0, 5.0)
+            );
+            resourceTarget.setNoAi(true);
+            resourceTarget.setHealth(5.0F);
+            resourceTarget.setItemSlot(
+                EquipmentSlot.MAINHAND,
+                new ItemStack(Items.BLAZE_ROD)
+            );
+            resourceTarget.setGuaranteedDrop(
+                EquipmentSlot.MAINHAND
+            );
+            final var player = player();
+            player.getInventory().clearContent();
+            player.setItemInHand(
+                InteractionHand.MAIN_HAND,
+                new ItemStack(Items.DIAMOND_SWORD)
+            );
+            player.setItemInHand(
+                InteractionHand.OFF_HAND,
+                new ItemStack(Items.SHIELD)
+            );
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(player, resourceTarget.getEyePosition());
+            enter(Stage.FINDING_RESOURCE_TARGET);
+        }
+
+        private void tryStartResourceCombat() {
+            face(player(), resourceTarget.getEyePosition());
+            final BrainObservation observation = freshObservation();
+            final JsonObject target = findEntity(
+                observation,
+                "minecraft:blaze"
+            );
+            if (target == null) {
+                awaitTarget("blaze resource target");
+                return;
+            }
+            startSkill(
+                LootSkills.ENGAGE_AND_COLLECT_OBSERVED_DROP,
+                List.of(
+                    argument(
+                        "sampleSequence",
+                        Long.toString(sampleSequence(observation))
+                    ),
+                    argument(
+                        "observationId",
+                        target.get("observationId").getAsString()
+                    ),
+                    argument(
+                        "expectedItemId",
+                        "minecraft:blaze_rod"
+                    ),
+                    argument("maximumTicks", "600")
+                ),
+                observation
+            );
+            enter(Stage.ENGAGING_AND_COLLECTING);
+        }
+
+        private void tickResourceCombat() {
+            freshObservation();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 620,
+                    "engage-and-collect exceeded its window"
+                );
+                return;
+            }
+            helper.assertTrue(
+                resourceTarget.isRemoved()
+                    || !resourceTarget.isAlive(),
+                "engage-and-collect completed before defeating its "
+                    + "bound hostile"
+            );
+            helper.assertTrue(
+                player().getInventory().countItem(Items.BLAZE_ROD)
+                    >= 1,
+                "engage-and-collect did not confirm the vanilla drop "
+                    + "in owned inventory"
+            );
+            helper.assertTrue(
+                player().getMainHandItem().is(Items.DIAMOND_SWORD)
+                    && player().getMainHandItem().getDamageValue() > 0,
+                "resource combat did not apply vanilla weapon durability"
+            );
+            prepareRangedCombat();
+        }
+
+        private void prepareRangedCombat() {
+            final var level = helper.getLevel();
+            player().stopRiding();
+            minecart.discard();
+            for (int x = -16; x <= 16; x++) {
+                for (int z = 0; z <= 12; z++) {
+                    level.setBlockAndUpdate(
+                            origin.offset(x, 0, z),
+                            Blocks.AIR.defaultBlockState()
+                    );
+                    level.setBlockAndUpdate(
+                            origin.offset(x, -1, z),
+                            z == 10
+                                ? Blocks.REDSTONE_BLOCK
+                                    .defaultBlockState()
+                                : Blocks.SMOOTH_STONE
+                                    .defaultBlockState()
+                    );
+                }
+                level.setBlockAndUpdate(
+                        origin.offset(x, 0, 10),
+                        Blocks.RAIL.defaultBlockState()
+                            .setValue(
+                                RailBlock.SHAPE,
+                                RailShape.EAST_WEST
+                            )
+                );
+            }
+            rangedMinecart = EntityTypes.MINECART.create(
+                    level,
+                    EntitySpawnReason.COMMAND
+            );
+            helper.assertTrue(
+                    rangedMinecart != null,
+                    "GameTest could not create the moving target cart"
+            );
+            rangedMinecart.setPos(
+                    origin.getX() - 10.5,
+                    origin.getY() + 0.1,
+                    origin.getZ() + 10.5
+            );
+            rangedMinecart.setDeltaMovement(0.4, 0.0, 0.0);
+            helper.assertTrue(
+                    level.addFreshEntity(rangedMinecart),
+                    "GameTest could not add the moving target cart"
+            );
+            rangedTarget = EntityTypes.PILLAGER.create(
+                    level,
+                    EntitySpawnReason.COMMAND
+            );
+            helper.assertTrue(
+                    rangedTarget != null,
+                    "GameTest could not create the moving ranged target"
+            );
+            rangedTarget.setNoAi(true);
+            rangedTarget.setItemSlot(
+                    EquipmentSlot.MAINHAND,
+                    ItemStack.EMPTY
+            );
+            rangedTarget.setPos(rangedMinecart.position());
+            helper.assertTrue(
+                    level.addFreshEntity(rangedTarget)
+                        && rangedTarget.startRiding(
+                                rangedMinecart
+                        ),
+                    "GameTest could not mount the target in its vanilla cart"
+            );
+            rangedTargetInitialHealth = rangedTarget.getHealth();
+            rangedTargetStart = rangedTarget.position();
+            final var player = player();
+            player.getInventory().clearContent();
+            player.getInventory().setItem(
+                0,
+                new ItemStack(Items.BOW)
+            );
+            player.getInventory().setItem(
+                1,
+                new ItemStack(Items.ARROW, 8)
+            );
+            player.getInventory().setSelectedSlot(0);
+            player.teleportTo(
+                origin.getX() + 0.5,
+                origin.getY(),
+                origin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(player, rangedTarget.getEyePosition());
+            enter(Stage.FINDING_RANGED_TARGET);
+        }
+
+        private void tryStartRangedAttack() {
+            face(player(), rangedTarget.getEyePosition());
+            final BrainObservation observation = freshObservation();
+            final JsonObject entity = findEntity(
+                observation,
+                "minecraft:pillager"
+            );
+            if (entity == null) {
+                awaitTarget("pillager ranged target");
+                return;
+            }
+            startSkill(
+                "shoot_observed_entity",
+                List.of(
+                    argument(
+                        "sampleSequence",
+                        Long.toString(sampleSequence(observation))
+                    ),
+                    argument(
+                        "observationId",
+                        entity.get("observationId").getAsString()
+                    ),
+                    argument("hand", "main_hand"),
+                    argument("shots", "1")
+                ),
+                observation
+            );
+            enter(Stage.SHOOTING_RANGED_TARGET);
+        }
+
+        private void tickRangedAttack() {
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                return;
+            }
+            helper.assertTrue(
+                player().getMainHandItem().is(Items.BOW)
+                    && player().getInventory().countItem(Items.ARROW)
+                        == 7,
+                "shoot_observed_entity did not consume one vanilla arrow"
+            );
+            enter(Stage.VERIFYING_RANGED_HIT);
+        }
+
+        private void verifyRangedHit() {
+            if (!rangedTarget.isAlive()
+                    || rangedTarget.getHealth()
+                        < rangedTargetInitialHealth) {
+                helper.assertTrue(
+                    horizontalDistance(
+                        rangedTarget.position(),
+                        rangedTargetStart
+                    ) >= 1.0,
+                    "Ranged combat passed against a target that never "
+                        + "moved"
+                );
+                prepareEndCrystalCombat();
+                return;
+            }
+            if ((helper.getTick() - stageStartedAt) % 5 == 0) {
+                final var body = player();
+                final List<String> arrows = body.level()
+                    .getEntitiesOfClass(
+                        AbstractArrow.class,
+                        body.getBoundingBox().inflate(64.0)
+                    )
+                    .stream()
+                    .map(arrow ->
+                        "position=" + arrow.position()
+                            + ",velocity=" + arrow.getDeltaMovement()
+                    )
+                    .toList();
+                MinecraftAiCompanion.LOGGER.warn(
+                    "Ranged hit diagnostic tick={} player={} yaw={} "
+                        + "pitch={} target={} targetVelocity={} cart={} "
+                        + "cartVelocity={} targetHealth={} arrows={}",
+                    helper.getTick(),
+                    body.position(),
+                    body.getYRot(),
+                    body.getXRot(),
+                    rangedTarget.position(),
+                    rangedTarget.getDeltaMovement(),
+                    rangedMinecart.position(),
+                    rangedMinecart.getDeltaMovement(),
+                    rangedTarget.getHealth(),
+                    arrows
+                );
+            }
+            helper.assertTrue(
+                helper.getTick() - stageStartedAt <= 40,
+                "Vanilla ranged projectile did not hit the observed target"
+            );
+        }
+
+        private void prepareEndCrystalCombat() {
+            rangedTarget.discard();
+            final var level = helper.getLevel();
+            for (int x = -3; x <= 3; x++) {
+                /*
+                 * Keep the bow station outside the production crystal
+                 * stand-off radius.  The former z=-2 edge put the station
+                 * roughly eight blocks from the crystal and correctly caused
+                 * ShootObservedEntitySkill to reject it as unsafe.
+                 */
+                for (int z = -5; z <= 10; z++) {
+                    level.setBlockAndUpdate(
+                            origin.offset(x, -1, z),
+                            Blocks.OBSIDIAN.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 8; y++) {
+                        level.setBlockAndUpdate(
+                                origin.offset(x, y, z),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            for (int x = -1; x <= 1; x++) {
+                for (int y = 3; y <= 6; y++) {
+                    level.setBlockAndUpdate(
+                            origin.offset(x, y, 5),
+                            Blocks.IRON_BARS.defaultBlockState()
+                    );
+                }
+            }
+            crystalCageBars = List.of(
+                    origin.offset(0, 6, 5),
+                    origin.offset(0, 5, 5),
+                    origin.offset(0, 4, 5),
+                    origin.offset(0, 3, 5)
+            );
+            crystalCageBarIndex = 0;
+            crystalTowerBase = origin.offset(0, 0, 2);
+            crystalLanding = crystalTowerBase.north(2);
+            crystalShotPosition = origin.offset(1, 0, -5);
+            endCrystal = EntityTypes.END_CRYSTAL.create(
+                    level,
+                    EntitySpawnReason.COMMAND
+            );
+            helper.assertTrue(
+                    endCrystal != null,
+                    "GameTest could not create the elevated End crystal"
+            );
+            endCrystal.setPos(
+                    origin.getX() + 0.5,
+                    origin.getY() + 5.0,
+                    origin.getZ() + 8.5
+            );
+            helper.assertTrue(
+                    level.addFreshEntity(endCrystal),
+                    "GameTest could not add the elevated End crystal"
+            );
+            final var player = player();
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.getInventory().clearContent();
+            player.getInventory().setItem(
+                0,
+                new ItemStack(Items.COBBLESTONE, 7)
+            );
+            player.getInventory().setItem(
+                1,
+                new ItemStack(Items.DIAMOND_PICKAXE)
+            );
+            player.getInventory().setItem(
+                2,
+                new ItemStack(Items.WATER_BUCKET)
+            );
+            player.getInventory().setItem(
+                3,
+                new ItemStack(Items.BOW)
+            );
+            player.getInventory().setItem(
+                4,
+                new ItemStack(Items.ARROW, 8)
+            );
+            player.getInventory().setSelectedSlot(0);
+            player.teleportTo(
+                crystalTowerBase.getX() + 0.5,
+                crystalTowerBase.getY(),
+                crystalTowerBase.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(player, endCrystal.getEyePosition());
+            final BrainObservation observation = freshObservation();
+            final JsonObject crystal = findEntity(
+                    observation,
+                    "minecraft:end_crystal"
+            );
+            helper.assertTrue(
+                    crystal != null
+                        && crystal.getAsJsonObject("properties")
+                            .get("interactionLineClear")
+                            .getAsString()
+                            .equals("false"),
+                    "Elevated caged crystal was not fairly visible and blocked"
+            );
+            startSkill(
+                    BridgeSkills.TOWER_UP,
+                    List.of(
+                            argument("dimension", OVERWORLD),
+                            argument(
+                                    "targetY",
+                                    decimal(origin.getY() + 5.0)
+                            ),
+                            argument("arrivalTolerance", "0.15"),
+                            argument("maxBlocks", "5")
+                    ),
+                    observation
+            );
+            enter(Stage.TOWERING_TO_CRYSTAL_CAGE);
+        }
+
+        private void tickCrystalCageTower() {
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                        helper.getTick() - stageStartedAt <= 720,
+                        "AI did not pillar-jump to the elevated crystal cage"
+                );
+                return;
+            }
+            for (int y = 0; y < 5; y++) {
+                helper.assertTrue(
+                        helper.getLevel()
+                            .getBlockState(
+                                crystalTowerBase.above(y)
+                            )
+                            .is(Blocks.COBBLESTONE),
+                        "Elevated cage route missed a real pillar block"
+                );
+            }
+            final BrainObservation observation = freshObservation();
+            startSkill(
+                    InventorySkills.EQUIP_ITEM,
+                    List.of(
+                            argument(
+                                    "itemId",
+                                    "minecraft:diamond_pickaxe"
+                            ),
+                            argument("slot", "mainhand")
+                    ),
+                    observation
+            );
+            enter(Stage.EQUIPPING_CRYSTAL_PICKAXE);
+        }
+
+        private void tickEquipCrystalPickaxe() {
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                return;
+            }
+            helper.assertTrue(
+                    player().getMainHandItem()
+                        .is(Items.DIAMOND_PICKAXE),
+                    "AI did not equip a pickaxe at the elevated cage"
+            );
+            face(
+                    player(),
+                    Vec3.atCenterOf(
+                            crystalCageBars.get(
+                                    crystalCageBarIndex
+                            )
+                    )
+            );
+            enter(Stage.FINDING_CRYSTAL_CAGE_BAR);
+        }
+
+        private void tryStartCrystalCageBreak() {
+            final BlockPos cageBar =
+                    crystalCageBars.get(crystalCageBarIndex);
+            face(player(), Vec3.atCenterOf(cageBar));
+            final BrainObservation observation = freshObservation();
+            final JsonObject bar = findBlockAt(
+                observation,
+                "minecraft:iron_bars",
+                cageBar
+            );
+            if (bar == null) {
+                awaitTarget("visible crystal-cage bar");
+                return;
+            }
+            startSkill(
+                FairInteractionSkills.BREAK_BLOCK,
+                blockArguments(observation, bar, false),
+                observation
+            );
+            enter(Stage.BREAKING_CRYSTAL_CAGE_BAR);
+        }
+
+        private void tickCrystalCageBreak() {
+            freshObservation();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                    helper.getTick() - stageStartedAt <= 140,
+                    "break_block did not open the crystal cage"
+                );
+                return;
+            }
+            final BlockPos cageBar =
+                    crystalCageBars.get(crystalCageBarIndex);
+            helper.assertTrue(
+                helper.getLevel().getBlockState(cageBar)
+                    .isAir(),
+                "crystal cage bar remained after verified mining"
+            );
+            helper.assertTrue(
+                player().getMainHandItem()
+                    .is(Items.DIAMOND_PICKAXE)
+                    && player().getMainHandItem()
+                        .getDamageValue()
+                        == crystalCageBarIndex + 1,
+                "cage mining did not apply vanilla tool durability"
+            );
+            crystalCageBarIndex++;
+            if (crystalCageBarIndex
+                    < crystalCageBars.size()) {
+                face(
+                        player(),
+                        Vec3.atCenterOf(
+                                crystalCageBars.get(
+                                        crystalCageBarIndex
+                                )
+                        )
+                );
+                enter(Stage.FINDING_CRYSTAL_CAGE_BAR);
+                return;
+            }
+            prepareCrystalCageDescent();
+        }
+
+        private void prepareCrystalCageDescent() {
+            face(
+                    player(),
+                    Vec3.atLowerCornerOf(crystalLanding)
+                        .add(0.5, 0.0, 0.001)
+            );
+            final BrainObservation observation = freshObservation();
+            startSkill(
+                    BridgeSkills.WATER_CLUTCH_DESCEND,
+                    List.of(
+                            argument("dimension", OVERWORLD),
+                            argument(
+                                    "x",
+                                    decimal(
+                                        crystalLanding.getX()
+                                                + 0.5
+                                    )
+                            ),
+                            argument(
+                                    "y",
+                                    decimal(crystalLanding.getY())
+                            ),
+                            argument(
+                                    "z",
+                                    decimal(
+                                        crystalLanding.getZ()
+                                                + 0.71
+                                    )
+                            ),
+                            argument("arrivalRadius", "0.65"),
+                            argument("maximumDropBlocks", "6")
+                    ),
+                    observation
+            );
+            enter(Stage.DESCENDING_FROM_CRYSTAL_CAGE);
+        }
+
+        private void tickCrystalCageDescent() {
+            freshObservation();
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                        helper.getTick() - stageStartedAt <= 280,
+                        "AI did not water-clutch down from the crystal cage"
+                );
+                return;
+            }
+            helper.assertTrue(
+                    helper.getLevel()
+                        .getBlockState(crystalLanding)
+                        .is(Blocks.WATER)
+                        && player().getHealth()
+                            == player().getMaxHealth(),
+                    "Elevated crystal descent was not damage-free"
+            );
+            final BrainObservation observation = freshObservation();
+            startSkill(
+                    TravelSkills.TRAVEL_TO,
+                    List.of(
+                            argument("dimension", OVERWORLD),
+                            argument(
+                                    "x",
+                                    decimal(
+                                            crystalShotPosition.getX()
+                                                + 0.5
+                                    )
+                            ),
+                            argument(
+                                    "y",
+                                    decimal(
+                                            crystalShotPosition.getY()
+                                    )
+                            ),
+                            argument(
+                                    "z",
+                                    decimal(
+                                            crystalShotPosition.getZ()
+                                                + 0.5
+                                    )
+                            ),
+                            argument("arrivalRadius", "0.65")
+                    ),
+                    observation
+            );
+            enter(Stage.MOVING_TO_CRYSTAL_SHOT);
+        }
+
+        private void tickMoveToCrystalShot() {
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                helper.assertTrue(
+                        helper.getTick() - stageStartedAt <= 240,
+                        "AI did not walk to its elevated crystal shot"
+                );
+                return;
+            }
+            final BrainObservation observation = freshObservation();
+            startSkill(
+                    InventorySkills.EQUIP_ITEM,
+                    List.of(
+                            argument("itemId", "minecraft:bow"),
+                            argument("slot", "mainhand")
+                    ),
+                    observation
+            );
+            enter(Stage.EQUIPPING_CRYSTAL_BOW);
+        }
+
+        private void tickEquipCrystalBow() {
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                return;
+            }
+            helper.assertTrue(
+                player().getMainHandItem().is(Items.BOW),
+                "equip_item did not put the bow in the main hand"
+            );
+            face(player(), endCrystal.getEyePosition());
+            enter(Stage.FINDING_END_CRYSTAL);
+        }
+
+        private void tryStartEndCrystalAttack() {
+            face(player(), endCrystal.getEyePosition());
+            final BrainObservation observation = freshObservation();
+            final JsonObject entity = findEntity(
+                observation,
+                "minecraft:end_crystal"
+            );
+            if (entity == null) {
+                awaitTarget("End crystal ranged target");
+                return;
+            }
+            helper.assertTrue(
+                entity.getAsJsonObject("properties")
+                    .get("interactionLineClear")
+                    .getAsString()
+                    .equals("true"),
+                "Opened crystal cage still blocked the shot line"
+            );
+            startSkill(
+                "shoot_observed_entity",
+                List.of(
+                    argument(
+                        "sampleSequence",
+                        Long.toString(sampleSequence(observation))
+                    ),
+                    argument(
+                        "observationId",
+                        entity.get("observationId").getAsString()
+                    ),
+                    argument("hand", "main_hand"),
+                    argument("shots", "1")
+                ),
+                observation
+            );
+            enter(Stage.SHOOTING_END_CRYSTAL);
+        }
+
+        private void tickEndCrystalAttack() {
+            final SkillSupervisor.Snapshot snapshot = tickSkill(true);
+            if (!completed(snapshot)) {
+                return;
+            }
+            helper.assertTrue(
+                player().getInventory().countItem(Items.ARROW) == 7,
+                "End crystal shot did not consume one vanilla arrow"
+            );
+            enter(Stage.VERIFYING_END_CRYSTAL);
+        }
+
+        private void verifyEndCrystalDestroyed() {
+            if (!endCrystal.isAlive() || endCrystal.isRemoved()) {
+                prepareStrongholdEyeTrace();
+                return;
+            }
+            helper.assertTrue(
+                helper.getTick() - stageStartedAt <= 60,
+                "Vanilla ranged projectile did not destroy the End crystal"
+            );
+        }
+
+        private void prepareStrongholdEyeTrace() {
+            final var level = helper.getLevel();
+            /*
+             * Mojang's dedicated GameTestServer deliberately creates a flat
+             * world with WorldOptions.generateStructures=false. The flat
+             * generator still owns the normal compatible structure sets, so
+             * temporarily enable the vanilla locate path before invoking the
+             * production item-use skill. This fixture toggle is excluded
+             * from release code with EmbodimentGameTests; neither the skill
+             * nor the production perception boundary receives structure
+             * lookup access.
+             */
+            setGenerateStructures(true);
+            final BlockPos generatedStronghold =
+                    level.findNearestMapStructure(
+                        StructureTags.EYE_OF_ENDER_LOCATED,
+                        BlockPos.ZERO,
+                        256,
+                        false
+                    );
+            helper.assertTrue(
+                generatedStronghold != null,
+                "GameTest world has no generated stronghold available "
+                    + "for a vanilla Eye of Ender trace"
+            );
+            strongholdTraceTarget = generatedStronghold.immutable();
+            final BlockPos traceOrigin = new BlockPos(
+                generatedStronghold.getX() - 96,
+                origin.getY(),
+                generatedStronghold.getZ()
+            );
+            for (int x = -6; x <= 6; x++) {
+                for (int z = -6; z <= 6; z++) {
+                    level.setBlockAndUpdate(
+                        traceOrigin.offset(x, -1, z),
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 8; y++) {
+                        level.setBlockAndUpdate(
+                            traceOrigin.offset(x, y, z),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            final var player = player();
+            player.getInventory().clearContent();
+            player.setItemInHand(
+                InteractionHand.MAIN_HAND,
+                new ItemStack(Items.ENDER_EYE, 2)
+            );
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.teleportTo(
+                traceOrigin.getX() + 0.5,
+                traceOrigin.getY(),
+                traceOrigin.getZ() + 0.5
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(
+                player,
+                new Vec3(
+                    generatedStronghold.getX() + 0.5,
+                    player.getEyeY() + 8.0,
+                    generatedStronghold.getZ() + 0.5
+                )
+            );
+            enter(Stage.WAITING_FOR_STRONGHOLD_TRACE_SAFETY);
+        }
+
+        private void prepareFocusedStrongholdTriangulation() {
+            final var level = helper.getLevel();
+            setGenerateStructures(true);
+            final BlockPos courseCenter = helper.absolutePos(
+                new BlockPos(300, 8, 300)
+            );
+            final BlockPos generatedStronghold =
+                    level.findNearestMapStructure(
+                        StructureTags.EYE_OF_ENDER_LOCATED,
+                        courseCenter,
+                        256,
+                        false
+                    );
+            helper.assertTrue(
+                generatedStronghold != null,
+                "GameTest world has no generated stronghold for the "
+                    + "compound triangulation gate"
+            );
+            strongholdTraceTarget = generatedStronghold.immutable();
+            firstEyeThrowPosition = new Vec3(
+                courseCenter.getX() + 0.5,
+                courseCenter.getY(),
+                courseCenter.getZ() + 0.5
+            );
+            final double towardX =
+                strongholdTraceTarget.getX() + 0.5
+                    - firstEyeThrowPosition.x();
+            final double towardZ =
+                strongholdTraceTarget.getZ() + 0.5
+                    - firstEyeThrowPosition.z();
+            final double length = Math.hypot(towardX, towardZ);
+            helper.assertTrue(
+                length > 32.0,
+                "Generated stronghold is too close for a two-ray gate"
+            );
+            final double directionX = towardX / length;
+            final double directionZ = towardZ / length;
+            final double baselineX = -directionZ;
+            final double baselineZ = directionX;
+            secondEyeThrowTarget = firstEyeThrowPosition.add(
+                baselineX
+                    * dev.mcai.companion.skills.stronghold
+                        .TriangulateStrongholdSearchAreaSkill
+                        .DEFAULT_BASELINE_DISTANCE,
+                0.0,
+                baselineZ
+                    * dev.mcai.companion.skills.stronghold
+                        .TriangulateStrongholdSearchAreaSkill
+                        .DEFAULT_BASELINE_DISTANCE
+            );
+
+            /*
+             * Fixture-only terrain follows the expected perpendicular
+             * corridor. The production skill receives none of these
+             * coordinates: its destination is derived again from the Eye
+             * trajectory published through fair first-person perception.
+             */
+            /*
+             * Rasterize by block centre instead of rotating integer sample
+             * points and flooring them. The latter can map two samples onto
+             * one block and leave a one-block support hole in an otherwise
+             * straight corridor; fail-closed A* correctly refuses that hole.
+             */
+            final int corridorRadius = 280;
+            final int minimumX = (int) Math.floor(
+                firstEyeThrowPosition.x()
+            ) - corridorRadius;
+            final int maximumX = (int) Math.ceil(
+                firstEyeThrowPosition.x()
+            ) + corridorRadius;
+            final int minimumZ = (int) Math.floor(
+                firstEyeThrowPosition.z()
+            ) - corridorRadius;
+            final int maximumZ = (int) Math.ceil(
+                firstEyeThrowPosition.z()
+            ) + corridorRadius;
+            for (int x = minimumX; x <= maximumX; x++) {
+                for (int z = minimumZ; z <= maximumZ; z++) {
+                    final double deltaX =
+                            x + 0.5 - firstEyeThrowPosition.x();
+                    final double deltaZ =
+                            z + 0.5 - firstEyeThrowPosition.z();
+                    final double forward =
+                            deltaX * baselineX + deltaZ * baselineZ;
+                    final double lateral =
+                            deltaX * directionX + deltaZ * directionZ;
+                    if (forward < -6.5
+                            || forward > 264.5
+                            || Math.abs(lateral) > 9.5) {
+                        continue;
+                    }
+                    final BlockPos floor = new BlockPos(
+                        x,
+                        courseCenter.getY() - 1,
+                        z
+                    );
+                    level.setBlockAndUpdate(
+                        floor,
+                        Blocks.SMOOTH_STONE.defaultBlockState()
+                    );
+                    for (int y = 0; y <= 6; y++) {
+                        level.setBlockAndUpdate(
+                            floor.above(y + 1),
+                            Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+
+            final var player = player();
+            player.getInventory().clearContent();
+            player.setItemInHand(
+                InteractionHand.MAIN_HAND,
+                new ItemStack(Items.ENDER_EYE, 14)
+            );
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.teleportTo(
+                firstEyeThrowPosition.x(),
+                firstEyeThrowPosition.y(),
+                firstEyeThrowPosition.z()
+            );
+            player.setDeltaMovement(Vec3.ZERO);
+            face(
+                player,
+                new Vec3(
+                    strongholdTraceTarget.getX() + 0.5,
+                    player.getEyeY() + 8.0,
+                    strongholdTraceTarget.getZ() + 0.5
+                )
+            );
+            enter(Stage.WAITING_FOR_STRONGHOLD_COMPOUND);
+        }
+
+        /**
+         * Supplies the measured-ray handoff that the preceding physical
+         * triangulation gate already proves, then verifies this production
+         * compound without exposing fixture coordinates to it. The only
+         * stronghold evidence available to the skill remains a block that
+         * eventually enters the companion's own first-person semantic frame.
+         */
+        private void prepareFocusedStrongholdReach() {
+            final var level = helper.getLevel();
+            strongholdReachSearchFeet = origin.offset(96, 0, 0);
+
+            /*
+             * A flat, ordinary walking approach followed by a solid search
+             * volume. Fixture construction is test-only; the production
              * skill receives neither these blocks nor their coordinates.
              */
             for (int x = -14; x <= 14; x++) {

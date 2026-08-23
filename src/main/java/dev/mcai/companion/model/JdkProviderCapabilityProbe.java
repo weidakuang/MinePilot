@@ -237,12 +237,16 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
                 if (failure.kind() == ModelFailureKind.ENDPOINT_UNSUPPORTED) {
                     return ProtocolAttempt.failed(failure);
                 }
-                if (reasoningControl == ReasoningControl.DISABLED
+                if (reasoningControl != ReasoningControl.DEFAULT
                         && explicitlyRejectsReasoningControl(
                                 failure,
-                                protocol
+                                protocol,
+                                reasoningControl
                         )) {
-                    reasoningControl = ReasoningControl.DEFAULT;
+                    reasoningControl = reasoningControl
+                            == ReasoningControl.DISABLED
+                                    ? ReasoningControl.LOW
+                                    : ReasoningControl.DEFAULT;
                     continue;
                 }
                 if (protocol == Protocol.CHAT_COMPLETIONS
@@ -722,9 +726,14 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
         root.addProperty("stream", false);
         root.addProperty("max_output_tokens", PROBE_OUTPUT_TOKENS);
         root.addProperty("input", PROBE_PROMPT);
-        if (reasoningControl == ReasoningControl.DISABLED) {
+        if (reasoningControl != ReasoningControl.DEFAULT) {
             JsonObject reasoning = new JsonObject();
-            reasoning.addProperty("effort", "none");
+            reasoning.addProperty(
+                    "effort",
+                    reasoningControl == ReasoningControl.DISABLED
+                            ? "none"
+                            : "low"
+            );
             root.add("reasoning", reasoning);
         }
         applyResponsesOutputContract(root, outputContract);
@@ -744,6 +753,8 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
             JsonObject thinking = new JsonObject();
             thinking.addProperty("type", "disabled");
             root.add("thinking", thinking);
+        } else if (reasoningControl == ReasoningControl.LOW) {
+            root.addProperty("reasoning_effort", "low");
         }
         JsonObject message = new JsonObject();
         message.addProperty("role", "user");
@@ -894,18 +905,25 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
         if (protocol == Protocol.CHAT_COMPLETIONS) {
             fields.add(chatTokenField.jsonName());
         }
-        if (reasoningControl == ReasoningControl.DISABLED) {
-            fields.addAll(reasoningCapabilityFields(protocol));
+        if (reasoningControl != ReasoningControl.DEFAULT) {
+            fields.addAll(reasoningCapabilityFields(
+                    protocol,
+                    reasoningControl
+            ));
         }
         return Set.copyOf(fields);
     }
 
     private static Set<String> reasoningCapabilityFields(
-            Protocol protocol
+            final Protocol protocol,
+            final ReasoningControl reasoningControl
     ) {
-        return protocol == Protocol.RESPONSES
-                ? Set.of("reasoning", "reasoning.effort")
-                : Set.of("thinking", "thinking.type");
+        if (protocol == Protocol.RESPONSES) {
+            return Set.of("reasoning", "reasoning.effort");
+        }
+        return reasoningControl == ReasoningControl.DISABLED
+                ? Set.of("thinking", "thinking.type")
+                : Set.of("reasoning_effort");
     }
 
     private static Set<String> outputCapabilityFields(
@@ -952,14 +970,15 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
     }
 
     private static boolean explicitlyRejectsReasoningControl(
-            ModelFailure failure,
-            Protocol protocol
+            final ModelFailure failure,
+            final Protocol protocol,
+            final ReasoningControl reasoningControl
     ) {
         if (failure.kind() != ModelFailureKind.CAPABILITY_UNSUPPORTED) {
             return false;
         }
         String rejected = failure.providerParam();
-        return reasoningCapabilityFields(protocol).stream()
+        return reasoningCapabilityFields(protocol, reasoningControl).stream()
                 .anyMatch(field -> isSameOrDescendant(rejected, field));
     }
 

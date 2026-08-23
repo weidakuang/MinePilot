@@ -20,11 +20,14 @@ import dev.mcai.companion.model.ModelFailureKind;
 import dev.mcai.companion.model.ModelGateway;
 import dev.mcai.companion.model.ModelOutcome;
 import dev.mcai.companion.model.PlannerInput;
+import dev.mcai.companion.memory.ConversationTurn;
+import dev.mcai.companion.memory.MemoryDatabase;
 import dev.mcai.companion.world.CompanionWorldData;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.HexFormat;
 import java.util.Locale;
@@ -54,7 +57,7 @@ public final class CompanionConversationCoordinator
             .disableHtmlEscaping()
             .create();
     private static final int MAX_QUEUE = 32;
-    private static final int MAX_HISTORY_TURNS = 8;
+    private static final int MAX_HISTORY_TURNS = 16;
     private static final int MAX_MESSAGE_CODE_POINTS = 512;
     private static final int MAX_OUTPUT_TOKENS = 384;
     private static final int MAX_REPAIR_ATTEMPTS = 2;
@@ -132,11 +135,15 @@ public final class CompanionConversationCoordinator
     private final ArrayDeque<Turn> history = new ArrayDeque<>();
     private final AtomicReference<Completion> mailbox =
             new AtomicReference<>();
+    private final Optional<MemoryDatabase> memoryDatabase;
+    private final AtomicReference<HistoryRestore> historyMailbox =
+            new AtomicReference<>();
 
     private InFlight inFlight;
     private long requestSequence;
     private long nextRequestNotBeforeTick;
     private boolean closed;
+    private boolean historyRestoring;
 
     public CompanionConversationCoordinator(
             final MinecraftServer server,
@@ -195,7 +202,8 @@ public final class CompanionConversationCoordinator
                 semanticJson,
                 trustedThreatSignal,
                 authorizedThreatWarning,
-                modelSoftTimeout
+                modelSoftTimeout,
+                Optional.empty()
         );
     }
 
@@ -212,7 +220,45 @@ public final class CompanionConversationCoordinator
             final Supplier<Optional<String>> semanticJson,
             final BooleanSupplier trustedThreatSignal,
             final Consumer<String> authorizedThreatWarning,
-            final Duration modelSoftTimeout
+            final Duration modelSoftTimeout,
+            final MemoryDatabase memoryDatabase
+    ) {
+        this(
+                server,
+                worldData,
+                goals,
+                gateway,
+                brain,
+                events,
+                modelReady,
+                modelProbeInFlight,
+                worldRevision,
+                semanticJson,
+                trustedThreatSignal,
+                authorizedThreatWarning,
+                modelSoftTimeout,
+                Optional.of(Objects.requireNonNull(
+                        memoryDatabase,
+                        "memoryDatabase"
+                ))
+        );
+    }
+
+    private CompanionConversationCoordinator(
+            final MinecraftServer server,
+            final CompanionWorldData worldData,
+            final GoalCoordinator goals,
+            final ModelGateway gateway,
+            final BrainOrchestrator brain,
+            final BrainEventSink events,
+            final BooleanSupplier modelReady,
+            final BooleanSupplier modelProbeInFlight,
+            final LongSupplier worldRevision,
+            final Supplier<Optional<String>> semanticJson,
+            final BooleanSupplier trustedThreatSignal,
+            final Consumer<String> authorizedThreatWarning,
+            final Duration modelSoftTimeout,
+            final Optional<MemoryDatabase> memoryDatabase
     ) {
         this.server = Objects.requireNonNull(server, "server");
         this.worldData = Objects.requireNonNull(
@@ -250,6 +296,58 @@ public final class CompanionConversationCoordinator
         this.modelSoftTimeout = requirePositive(
                 modelSoftTimeout,
                 "modelSoftTimeout"
+        );
+        this.memoryDatabase = Objects.requireNonNull(
+                memoryDatabase,
+                "memoryDatabase"
+        );
+        this.memoryDatabase.ifPresent(database -> {
+            historyRestoring = true;
+            database.loadRecentConversationTurns(MAX_HISTORY_TURNS)
+                    .whenComplete((turns, throwable) ->
+                            historyMailbox.compareAndSet(
+                                    null,
+                                    new HistoryRestore(
+                                            turns == null
+                                                    ? java.util.List.of()
+                                                    : turns,
+                                            throwable != null
+                                    )
+                            )
+                    );
+        });
+    }
+
+    public CompanionConversationCoordinator(
+            final MinecraftServer server,
+            final CompanionWorldData worldData,
+            final GoalCoordinator goals,
+            final ModelGateway gateway,
+            final BrainOrchestrator brain,
+            final BrainEventSink events,
+            final BooleanSupplier modelReady,
+            final BooleanSupplier modelProbeInFlight,
+            final LongSupplier worldRevision,
+            final Supplier<Optional<String>> semanticJson,
+            final BooleanSupplier trustedThreatSignal,
+            final Consumer<String> authorizedThreatWarning,
+            final Duration modelSoftTimeout
+    ) {
+        this(
+                server,
+                worldData,
+                goals,
+                gateway,
+                brain,
+                events,
+                modelReady,
+                modelProbeInFlight,
+                worldRevision,
+                semanticJson,
+                trustedThreatSignal,
+                authorizedThreatWarning,
+                modelSoftTimeout,
+                Optional.empty()
         );
     }
 
@@ -622,6 +720,18 @@ public final class CompanionConversationCoordinator
         if (closed) {
             return;
         }
+        final HistoryRestore restored = historyMailbox.getAndSet(null);
+        if (restored != null) {
+            if (!restored.failed() && history.isEmpty()) {
+                for (ConversationTurn turn : restored.turns()) {
+                    history.addLast(new Turn(
+                            turn.player(),
+                            turn.agent()
+                    ));
+                }
+            }
+            historyRestoring = false;
+        }
         clearStartupQueueAfterFailedProbe();
         expireQueuedMessages();
         final Completion completed = mailbox.getAndSet(null);
@@ -648,6 +758,7 @@ public final class CompanionConversationCoordinator
         }
         if (inFlight != null
                 || queue.isEmpty()
+                || historyRestoring
                 || !modelReady.getAsBoolean()
                 || currentTick() < nextRequestNotBeforeTick
                 || gateway.status() != GatewayStatus.IDLE) {
@@ -668,6 +779,7 @@ public final class CompanionConversationCoordinator
         queue.clear();
         history.clear();
         mailbox.set(null);
+        historyMailbox.set(null);
         inFlight = null;
     }
 
@@ -2132,7 +2244,24 @@ public final class CompanionConversationCoordinator
         while (history.size() >= MAX_HISTORY_TURNS) {
             history.removeFirst();
         }
-        history.addLast(new Turn(player, agent));
+        final Turn remembered = new Turn(player, agent);
+        history.addLast(remembered);
+        memoryDatabase.ifPresent(database ->
+                database.appendConversationTurn(new ConversationTurn(
+                        Instant.now(),
+                        remembered.player(),
+                        remembered.agent()
+                )).exceptionally(ignored -> null)
+        );
+    }
+
+    private record HistoryRestore(
+            java.util.List<ConversationTurn> turns,
+            boolean failed
+    ) {
+        private HistoryRestore {
+            turns = java.util.List.copyOf(turns);
+        }
     }
 
     private void sendTo(

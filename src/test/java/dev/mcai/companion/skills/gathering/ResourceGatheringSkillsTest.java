@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 final class ResourceGatheringSkillsTest {
     @Test
-    void registersOneBoundedPublicLongTaskAndDocumentsFairness() {
+    void registersBoundedPublicGatherersAndDocumentsFairness() {
         final var snapshots = GatheringSkillTestFixtures.frames(
                 40,
                 List.of(GatheringSkillTestFixtures.log(1, 40))
@@ -33,12 +33,19 @@ final class ResourceGatheringSkillsTest {
                 );
 
         assertEquals(
-                Set.of("gather_visible_block_cluster"),
+                Set.of(
+                        "gather_visible_block_cluster",
+                        "gather_nearby_wood"
+                ),
                 registry.names()
         );
         assertTrue(
                 ResourceGatheringSkills.plannerGuide()
                         .contains("never scans chunks")
+        );
+        assertTrue(
+                ResourceGatheringSkills.plannerGuide()
+                        .contains("takes no arguments")
         );
     }
 

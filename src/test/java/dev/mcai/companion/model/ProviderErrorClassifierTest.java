@@ -125,6 +125,26 @@ class ProviderErrorClassifierTest {
     }
 
     @Test
+    void recognizesExplicitUnderscoreAliasForNestedCapabilityField() {
+        final ModelFailure capability = classify(
+                400,
+                "{\"error\":{\"message\":\"This model does not support "
+                        + "`reasoning_effort` value `none`.\","
+                        + "\"code\":\"bad_response_status_code\","
+                        + "\"param\":\"\"}}",
+                Set.of("reasoning", "reasoning.effort"),
+                Map.of()
+        );
+
+        assertEquals(
+                ModelFailureKind.CAPABILITY_UNSUPPORTED,
+                capability.kind()
+        );
+        assertEquals("reasoning.effort", capability.providerParam());
+        assertTrue(capability.allowsCapabilityFallback());
+    }
+
+    @Test
     void understandsMinimaxStyleBusinessErrorsInsideHttp200() {
         ModelFailure failure = classifier.classify(
                 200,

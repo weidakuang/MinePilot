@@ -29,6 +29,22 @@ MinePilot change log
   manager's AI-enabled motion without fixture spawning or freezing, and made
   active visible dragon-breath clouds fair proximity threats for emergency
   avoidance.
+- Added a real MiMo inventory round-trip gate: the companion acquires an
+  observed oak-log stack through vanilla pickup, accepts a second player-chat
+  request, and drops the owned stack through the normal inventory THROW path.
+  The controlled Forge 65.1.1 run passed; random Hardcore and formal M1--M4
+  claims remain excluded.
+- Narrowed the final model-visible schema to `drop_item` when the current fair
+  self-inventory proves an explicit owned item/count, with an action-first
+  playbook and no change to unrelated route or observation handoffs.
+- Replayed the live pickup/drop gate on Forge 65.0.0 and 65.1.2; both patch
+  slices passed with the same real MiMo model chain. This is patch evidence,
+  not a complete Forge compatibility matrix or formal M1--M4 result.
+- Added a separate player-gift round-trip GameTest. A real logged-in player
+  gives three oak logs through vanilla `ServerPlayer.drop`; the companion
+  picks them up and immediately drops them through the normal inventory THROW
+  path. The first live run found and fixed the canonical `itemId` inventory
+  field mismatch; the fixed Forge 65.1.1 MiMo run passed in 18.70 seconds.
 
 0.1.10-dev-mc26.2
 -----------------

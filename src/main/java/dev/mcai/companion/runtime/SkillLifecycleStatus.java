@@ -75,6 +75,7 @@ record SkillLifecycleStatus(Type type, String skillName) {
             case "consume_owned_food" -> "进食";
             case "navigate_to_waypoint" -> "前往目标地点";
             case "mine_block", "break_block" -> "挖掘方块";
+            case "gather_nearby_wood" -> "砍树并收集木材";
             case "place_block" -> "放置方块";
             case "attack_entity", "fight_ender_dragon" -> "战斗";
             case "open_container", "container_transfer" -> "整理容器";

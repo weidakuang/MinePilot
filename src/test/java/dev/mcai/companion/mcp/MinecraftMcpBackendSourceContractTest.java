@@ -9,9 +9,9 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 /**
- * Keeps the screenshot MCP result honest until a separately authenticated
- * first-person client capture path is implemented.  An Observer render is
- * evidence for an external gate, never the companion's model input.
+ * Keeps the screenshot MCP result honest when no explicitly opted-in
+ * off-screen renderer is connected. An Observer render is evidence for an
+ * external gate, never the companion's model input.
  */
 final class MinecraftMcpBackendSourceContractTest {
     @Test
@@ -39,6 +39,32 @@ final class MinecraftMcpBackendSourceContractTest {
         ));
         assertFalse(source.contains(
                 "observer-rendered.png"
+        ));
+    }
+
+    @Test
+    void ordinaryPlayerCameraCannotBeBorrowedAsTheAiRenderer()
+            throws IOException {
+        final String service = Files.readString(Path.of(
+                "src/main/java/dev/mcai/companion/vision/"
+                        + "VisionCaptureService.java"
+        ));
+        final String client = Files.readString(Path.of(
+                "src/main/java/dev/mcai/companion/client/vision/"
+                        + "ClientVisionCaptureRuntime.java"
+        ));
+
+        assertTrue(service.contains(
+                "registeredRenderers.contains"
+        ));
+        assertTrue(client.contains(
+                "mcai.companion.hiddenRenderer"
+        ));
+        assertTrue(client.contains(
+                "VisionCaptureNetwork.registerRenderer(true)"
+        ));
+        assertTrue(client.contains(
+                "renderer_not_opted_in"
         ));
     }
 }

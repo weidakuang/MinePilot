@@ -2,6 +2,7 @@ package dev.mcai.companion;
 
 import com.mojang.logging.LogUtils;
 import dev.mcai.companion.communication.CommunicationModule;
+import dev.mcai.companion.blackbox.HeadlessBlackboxModule;
 import dev.mcai.companion.embodiment.EmbodimentModule;
 import dev.mcai.companion.evaluation.EvaluationVictoryTracker;
 import dev.mcai.companion.gametest.GameTestRegistrar;
@@ -10,6 +11,7 @@ import dev.mcai.companion.modelsetup.ModelSetupModule;
 import dev.mcai.companion.runtime.CompanionRuntime;
 import dev.mcai.companion.skin.SkinModule;
 import dev.mcai.companion.skills.loot.VanillaLootReceiptLedger;
+import dev.mcai.companion.vision.VisionCaptureModule;
 import org.slf4j.Logger;
 
 import net.minecraftforge.fml.common.Mod;
@@ -30,9 +32,11 @@ public final class MinecraftAiCompanion {
         GameTestRegistrar.register(context);
         ModelSetupModule.register(context);
         SkinModule.register();
+        VisionCaptureModule.register();
         EmbodimentModule.register();
         VanillaLootReceiptLedger.register();
         CompanionRuntime.register();
+        HeadlessBlackboxModule.register();
         EvaluationVictoryTracker.register();
         XaeroIntegrationModule.register();
         CommunicationModule.register();

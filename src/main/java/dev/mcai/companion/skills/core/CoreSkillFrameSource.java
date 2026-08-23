@@ -1,9 +1,11 @@
 package dev.mcai.companion.skills.core;
 
+import dev.mcai.companion.perception.PerceptionVec3;
 import dev.mcai.companion.perception.VisibleEntity;
 import dev.mcai.companion.waypoint.DimensionRef;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 @FunctionalInterface
 public interface CoreSkillFrameSource {
@@ -49,6 +51,21 @@ public interface CoreSkillFrameSource {
         });
     }
 
+    /**
+     * Returns the live public position of a non-sneaking player.
+     *
+     * <p>This is deliberately separate from first-person semantic vision.
+     * Minecraft teammates ordinarily have server-visible coordinates in the
+     * companion contract, while sneaking opts the player out of that exact
+     * tracking. Implementations that cannot provide an authenticated player
+     * position keep the fail-closed empty default.</p>
+     */
+    default Optional<TrackablePlayer> trackablePlayer(
+            final UUID playerId
+    ) {
+        return Optional.empty();
+    }
+
     record VisibleEntityBinding(
             DimensionRef dimension,
             VisibleEntity entity
@@ -56,6 +73,24 @@ public interface CoreSkillFrameSource {
         public VisibleEntityBinding {
             Objects.requireNonNull(dimension, "dimension");
             Objects.requireNonNull(entity, "entity");
+        }
+    }
+
+    record TrackablePlayer(
+            UUID playerId,
+            DimensionRef dimension,
+            PerceptionVec3 position,
+            long gameTime
+    ) {
+        public TrackablePlayer {
+            Objects.requireNonNull(playerId, "playerId");
+            Objects.requireNonNull(dimension, "dimension");
+            Objects.requireNonNull(position, "position");
+            if (gameTime < 0) {
+                throw new IllegalArgumentException(
+                        "Trackable player game time must be non-negative"
+                );
+            }
         }
     }
 }

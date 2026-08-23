@@ -142,6 +142,7 @@ final class PlayerTaskIntent {
         if (reportedImmediateThreat(normalized)
                 || isFollowRequest(normalized)
                 || obviousChineseImperative(normalized)
+                || containsExplicitChineseRequestClause(normalized)
                 || obviousEnglishImperative(lower)) {
             final String goal = normalize(ordinaryGoalText);
             return new Result(
@@ -351,6 +352,13 @@ final class PlayerTaskIntent {
         if (value.isEmpty()) {
             return false;
         }
+        if (value.startsWith("请问")
+                || value.endsWith("吗")
+                || value.endsWith("吗？")
+                || value.endsWith("么")
+                || value.endsWith("么？")) {
+            return false;
+        }
         final boolean directPrefix = value.startsWith("请")
                 || value.startsWith("你去")
                 || value.startsWith("你先")
@@ -423,6 +431,39 @@ final class PlayerTaskIntent {
                 || value.contains("看着我")
                 || value.contains("看向我")
                 || value.contains("转过来");
+    }
+
+    /**
+     * Natural chat often starts with context before the actual command, for
+     * example "we are starting from zero; please chop a nearby tree". The
+     * prefix-only recognizer deliberately misses that shape and unnecessarily
+     * spends a full model round trip merely deciding that it is a task. This
+     * bounded clause check identifies only an explicit non-questioning 请
+     * request followed by a gameplay verb; it still leaves the model in
+     * charge of selecting the high-level action.
+     */
+    private static boolean containsExplicitChineseRequestClause(
+            final String value
+    ) {
+        if (value.isEmpty()
+                || value.contains("请问")
+                || value.endsWith("?")
+                || value.endsWith("？")) {
+            return false;
+        }
+        final int request = value.indexOf('请');
+        if (request < 0) {
+            return false;
+        }
+        final String clause = bounded(
+                value.substring(request + 1),
+                64
+        );
+        return clause.matches(
+                ".*(?:跟|来|去|走|跑|逃|合成|制作|丢|扔|给|拿|取|"
+                        + "砍|挖|采|收|种|建|造|放|打开|关闭|攻击|打|"
+                        + "防御|吃|喝|穿|装备|观察|看|探索|搜刮|救).*"
+        );
     }
 
     static boolean isFollowRequest(final String value) {

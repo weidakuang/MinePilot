@@ -10,10 +10,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -31,6 +35,7 @@ import dev.mcai.companion.memory.waypoint.WaypointRepository;
  */
 public final class MemoryDatabase implements AutoCloseable {
     public static final int MAX_PENDING_OPERATIONS = 4_096;
+    private static final int MAX_DURABLE_CONVERSATION_TURNS = 4_096;
 
     private final Connection connection;
     private final ExecutorService executor;
@@ -174,6 +179,74 @@ public final class MemoryDatabase implements AutoCloseable {
         });
     }
 
+    public CompletableFuture<Void> appendConversationTurn(
+            final ConversationTurn turn
+    ) {
+        Objects.requireNonNull(turn, "turn");
+        return submit(() -> {
+            try (PreparedStatement statement =
+                    connection.prepareStatement("""
+                        INSERT INTO conversation_turn(
+                            occurred_at, player_text, agent_text
+                        ) VALUES (?, ?, ?)
+                        """)) {
+                statement.setString(1, turn.occurredAt().toString());
+                statement.setString(2, turn.player());
+                statement.setString(3, turn.agent());
+                statement.executeUpdate();
+            }
+            try (PreparedStatement prune =
+                    connection.prepareStatement("""
+                        DELETE FROM conversation_turn
+                        WHERE sequence <= (
+                            SELECT MAX(sequence) - ?
+                            FROM conversation_turn
+                        )
+                        """)) {
+                prune.setInt(1, MAX_DURABLE_CONVERSATION_TURNS);
+                prune.executeUpdate();
+            }
+            return null;
+        });
+    }
+
+    public CompletableFuture<List<ConversationTurn>>
+            loadRecentConversationTurns(final int maximumTurns) {
+        if (maximumTurns < 1 || maximumTurns > 256) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException(
+                            "maximumTurns must be in [1,256]"
+                    )
+            );
+        }
+        return submit(() -> {
+            final List<ConversationTurn> newestFirst =
+                    new ArrayList<>();
+            try (PreparedStatement statement =
+                    connection.prepareStatement("""
+                        SELECT sequence, occurred_at,
+                               player_text, agent_text
+                        FROM conversation_turn
+                        ORDER BY sequence DESC
+                        LIMIT ?
+                        """)) {
+                statement.setInt(1, maximumTurns);
+                try (ResultSet result = statement.executeQuery()) {
+                    while (result.next()) {
+                        newestFirst.add(new ConversationTurn(
+                                result.getLong(1),
+                                Instant.parse(result.getString(2)),
+                                result.getString(3),
+                                result.getString(4)
+                        ));
+                    }
+                }
+            }
+            Collections.reverse(newestFirst);
+            return List.copyOf(newestFirst);
+        });
+    }
+
     /**
      * Reads the newest audit event of one exact type. The query remains on
      * the database executor so diagnostics and live GameTests never block the
@@ -309,6 +382,19 @@ public final class MemoryDatabase implements AutoCloseable {
                         state_json TEXT NOT NULL,
                         updated_at TEXT NOT NULL
                     )
+                    """);
+                statement.execute("""
+                    CREATE TABLE IF NOT EXISTS conversation_turn(
+                        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                        occurred_at TEXT NOT NULL,
+                        player_text TEXT NOT NULL,
+                        agent_text TEXT NOT NULL
+                    )
+                    """);
+                statement.execute("""
+                    CREATE INDEX IF NOT EXISTS
+                        conversation_turn_sequence_idx
+                    ON conversation_turn(sequence)
                     """);
                 statement.execute("""
                     CREATE TABLE IF NOT EXISTS waypoint(

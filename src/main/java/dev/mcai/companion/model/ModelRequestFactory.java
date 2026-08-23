@@ -50,9 +50,15 @@ final class ModelRequestFactory {
         root.addProperty("instructions", input.systemPrompt() + CONTRACT_INSTRUCTION);
         root.addProperty("max_output_tokens", input.maxOutputTokens());
         root.addProperty("temperature", input.temperature());
-        if (capabilities.reasoningControl() == ReasoningControl.DISABLED) {
+        if (capabilities.reasoningControl() != ReasoningControl.DEFAULT) {
             JsonObject reasoning = new JsonObject();
-            reasoning.addProperty("effort", "none");
+            reasoning.addProperty(
+                    "effort",
+                    capabilities.reasoningControl()
+                            == ReasoningControl.DISABLED
+                                    ? "none"
+                                    : "low"
+            );
             root.add("reasoning", reasoning);
         }
 
@@ -89,6 +95,9 @@ final class ModelRequestFactory {
             JsonObject thinking = new JsonObject();
             thinking.addProperty("type", "disabled");
             root.add("thinking", thinking);
+        } else if (capabilities.reasoningControl()
+                == ReasoningControl.LOW) {
+            root.addProperty("reasoning_effort", "low");
         }
         root.addProperty(
                 capabilities.chatTokenField().jsonName(),

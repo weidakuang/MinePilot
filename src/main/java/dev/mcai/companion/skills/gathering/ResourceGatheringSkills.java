@@ -14,6 +14,8 @@ import java.util.UUID;
 public final class ResourceGatheringSkills {
     public static final String GATHER_VISIBLE_BLOCK_CLUSTER =
             "gather_visible_block_cluster";
+    public static final String GATHER_NEARBY_WOOD =
+            GatherNearbyWoodSkill.NAME;
 
     private ResourceGatheringSkills() {
     }
@@ -50,7 +52,7 @@ public final class ResourceGatheringSkills {
             GatheringSkillPolicy policy
     ) {
         Objects.requireNonNull(registry, "registry");
-        return registry.register(
+        registry.register(
                 GATHER_VISIBLE_BLOCK_CLUSTER,
                 new GatherVisibleBlockClusterSkill(
                         Objects.requireNonNull(playerId, "playerId"),
@@ -71,10 +73,24 @@ public final class ResourceGatheringSkills {
                         Objects.requireNonNull(policy, "policy")
                 )
         );
+        return registry.register(
+                GATHER_NEARBY_WOOD,
+                new GatherNearbyWoodSkill(
+                        playerId,
+                        coreActuator,
+                        coreFrames,
+                        interactionActuator,
+                        interactionFrames,
+                        inventory
+                )
+        );
     }
 
     public static String plannerGuide() {
         return """
+            gather_nearby_wood takes no arguments; it fairly scans, walks,
+            mines nearby tree wood, and physically picks up the drops without
+            another model decision.
             gather_visible_block_cluster is a bounded local long task for one
             six-direction-connected cluster of exactly one block type. Pass
             dimension, sampleSequence, x/y/z, face, and blockId from one

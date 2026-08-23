@@ -59,8 +59,9 @@ public final class CompanionConfig {
         .comment(
             "Allow task-triggered redacted screenshots only after an "
                 + "authenticated first-person capture path and model image "
-                + "capability have both been verified. The current headless "
-                + "ServerPlayer path remains fail-closed."
+                + "capability have both been verified. A dedicated off-screen "
+                + "renderer must opt in; ordinary player cameras remain "
+                + "ineligible and the headless ServerPlayer stays fail-closed."
         )
         .define("perception.activeVision", true);
 

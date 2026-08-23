@@ -422,13 +422,65 @@ public final class JdkModelGateway implements ModelGateway {
                         ),
                         input.observationJson()
                 );
-        final DecisionEnvelope decision;
+        DecisionEnvelope decision;
         try {
             decision = validator.validate(
                     canonicalDecision,
                     input.decisionContext()
             );
         } catch (DecisionValidationException exception) {
+            /*
+             * optionalSpeech is deliberately non-authoritative.  MiMo and a
+             * few OpenAI-compatible providers sometimes return a long
+             * natural-language acknowledgement next to a valid structured
+             * START_SKILL call.  Rejecting the whole envelope makes the body
+             * stand still even though the selected action is fully bound to
+             * the current fair observation.  Preserve the action, retain only
+             * a bounded speech prefix, and run the complete validator again;
+             * malformed/overlong arguments still fail closed.
+             */
+            if (exception.code().equals("text_too_long")
+                    && canonicalDecision.decision()
+                            == DecisionKind.START_SKILL
+                    && canonicalDecision.optionalSpeech()
+                            .codePointCount(
+                                    0,
+                                    canonicalDecision.optionalSpeech().length()
+                            ) > DecisionEnvelopeValidator.MAX_SPEECH_CODE_POINTS) {
+                final DecisionEnvelope speechBounded = new DecisionEnvelope(
+                        canonicalDecision.requestId(),
+                        canonicalDecision.observedWorldRevision(),
+                        canonicalDecision.goalRevision(),
+                        canonicalDecision.decision(),
+                        canonicalDecision.skillName(),
+                        canonicalDecision.typedArguments(),
+                        canonicalDecision.requestedObservation(),
+                        DecisionEnvelopeValidator.boundedSpeech(
+                                canonicalDecision.optionalSpeech()
+                        ),
+                        canonicalDecision.confidence()
+                );
+                try {
+                    decision = validator.validate(
+                            speechBounded,
+                            input.decisionContext()
+                    );
+                    if (Boolean.getBoolean("mcai.liveModelTest")) {
+                        MinecraftAiCompanion.LOGGER.info(
+                                "Live-model action retained after optionalSpeech truncation: skill={}",
+                                safeDecisionSummary(decision)
+                        );
+                    }
+                } catch (DecisionValidationException boundedFailure) {
+                    return new ModelOutcome.Failure(responseFailure(
+                            ModelFailureKind.MALFORMED_RESPONSE,
+                            response,
+                            request,
+                            "The model decision failed local validation: "
+                                    + boundedFailure.code()
+                    ));
+                }
+            } else {
             if (Boolean.getBoolean("mcai.liveModelTest")) {
                 MinecraftAiCompanion.LOGGER.info(
                         "Live-model decoded decision rejected: {}, "
@@ -448,6 +500,7 @@ public final class JdkModelGateway implements ModelGateway {
                     request,
                     "The model decision failed local validation: " + exception.code()
             ));
+            }
         }
         if (Boolean.getBoolean("mcai.liveModelTest")) {
             MinecraftAiCompanion.LOGGER.info(

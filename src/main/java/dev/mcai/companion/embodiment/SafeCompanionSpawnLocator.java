@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityTypes;
@@ -44,6 +45,7 @@ final class SafeCompanionSpawnLocator {
             final Anchor anchor
     ) {
         Objects.requireNonNull(anchor, "anchor");
+        Placement canopyFallback = null;
         for (final HorizontalOffset offset : offsets()) {
             for (final int yOffset : Y_OFFSETS) {
                 final BlockPos feet = anchor.origin().offset(
@@ -58,16 +60,47 @@ final class SafeCompanionSpawnLocator {
                                 feet,
                                 true
                         );
-                if (safe != null) {
-                    return Optional.of(new Placement(
+                if (safe == null) {
+                    continue;
+                }
+                final Placement placement = new Placement(
                             anchor.level(),
                             safe,
                             anchor.yaw()
-                    ));
+                );
+                if (hasStableGroundSupport(anchor.level(), safe)) {
+                    return Optional.of(placement);
+                }
+                if (canopyFallback == null) {
+                    canopyFallback = placement;
                 }
             }
         }
-        return Optional.empty();
+        /* A canopy body is recoverable by the local descent skill; an absent
+         * companion is not. Keep vanilla dismount safety as the final bounded
+         * fallback when the whole nearby ring is forest canopy. */
+        return Optional.ofNullable(canopyFallback);
+    }
+
+    /**
+     * Vanilla dismount safety accepts leaf canopies as collision-safe. That is
+     * correct for leaving a vehicle but a poor first login location: the new
+     * companion can be isolated above an unseen trunk before it owns tools or
+     * has mapped a descent. Prefer ordinary ground and keep tree tops out of
+     * the initial spawn candidate set.
+     */
+    private static boolean hasStableGroundSupport(
+            final ServerLevel level,
+            final Vec3 feet
+    ) {
+        final BlockPos support = BlockPos.containing(
+                feet.x(),
+                feet.y() - 1.0E-4,
+                feet.z()
+        );
+        final var state = level.getBlockState(support);
+        return !state.is(BlockTags.LEAVES)
+                && !state.is(BlockTags.LOGS);
     }
 
     private static List<HorizontalOffset> offsets() {

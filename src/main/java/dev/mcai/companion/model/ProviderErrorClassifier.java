@@ -182,7 +182,12 @@ public final class ProviderErrorClassifier {
                                 .thenComparing(Comparator.naturalOrder())
                 )
                 .filter(field -> isSameOrDescendant(param, field)
-                        || mentionsField(message, field))
+                        || mentionsField(message, field)
+                        || field.indexOf('.') >= 0
+                            && mentionsField(
+                                message,
+                                field.replace('.', '_')
+                            ))
                 .findFirst();
     }
 
@@ -199,6 +204,7 @@ public final class ProviderErrorClassifier {
                 || code.contains("extra_forbidden")
                 || message.contains("unsupported")
                 || message.contains("not supported")
+                || message.contains("does not support")
                 || message.contains("unknown parameter")
                 || message.contains("unrecognized")
                 || message.contains("extra field")

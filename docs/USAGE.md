@@ -1,7 +1,6 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 # MinePilot Usage Guide
 
-This guide covers the `0.1.11-dev-mc26.2` development line: Minecraft Java
+This guide covers the `0.1.12-dev-mc26.2` development line: Minecraft Java
 26.2, Forge 65.x, and Java 25. It is not a two-hour completion guarantee; the
 formal M0–M4 gates remain in progress.
 
@@ -99,6 +98,15 @@ MCP is a control surface, not a privileged execution path. The same permission,
 revision, fair-perception, and skill checks apply as for chat. The bundled
 `skills/minecraft-companion` Codex skill describes the high-level workflow and
 does not embed a game encyclopedia.
+
+`get_screenshot` does not open or focus a Minecraft window. The dedicated
+server and headless companion produce semantic perception without a renderer.
+Optional pixel capture requires a separately launched background client with
+`-Dmcai.companion.hiddenRenderer=true`; that client registers explicitly,
+renders one HUD-free companion first-person frame on demand, and keeps its
+window transparent and non-focusing. Normal player clients never register and
+their cameras are never borrowed. Without the renderer, the tool fails closed
+with `authenticated_renderer_unavailable`.
 
 ## Testing without a launcher
 

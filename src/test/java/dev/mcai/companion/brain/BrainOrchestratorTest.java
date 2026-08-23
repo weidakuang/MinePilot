@@ -1,4 +1,3 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 package dev.mcai.companion.brain;
 
 import com.google.gson.JsonParser;
@@ -2413,6 +2412,51 @@ class BrainOrchestratorTest {
     }
 
     @Test
+    void explicitWoodTaskUsesOnePhysicalHandoffAtSoftDeadlineAndCompletes() {
+        try (Fixture fixture = new Fixture()) {
+            fixture.gatherWoodSkill.defaultStep =
+                    SkillTickResult.completed();
+            assertTrue(fixture.goals.setGoal(
+                    "请在附近砍一棵树，捡起木头",
+                    GoalSource.PLAYER_CHAT
+            ).accepted());
+
+            fixture.brain.tick();
+            assertEquals(1, fixture.gateway.requestCount());
+
+            fixture.clock.set(500L);
+            fixture.brain.tick();
+
+            assertEquals(1, fixture.gateway.cancelRevisions.size());
+            assertEquals(
+                    "gather_nearby_wood",
+                    fixture.skills.snapshot().skillName()
+            );
+            assertEquals(1, fixture.gatherWoodSkill.startCalls);
+            assertTrue(fixture.hasNotice(
+                    "soft_deadline_nearby_wood_handoff"
+            ));
+
+            fixture.brain.tick();
+
+            assertEquals(
+                    GoalStatus.COMPLETED,
+                    fixture.goals.snapshot().status()
+            );
+            assertEquals(
+                    "server_verified_nearby_wood_complete",
+                    fixture.goals.snapshot().detailCode()
+            );
+            assertEquals(
+                    1,
+                    fixture.gateway.requestCount(),
+                    "A verified one-action task must not request or start "
+                            + "the same work again"
+            );
+        }
+    }
+
+    @Test
     void goalCancellationDrivesTheSkillToACheckpointBeforeStopping() {
         try (Fixture fixture = new Fixture()) {
             fixture.skill.steps.add(SkillTickResult.running(true, false));
@@ -2549,12 +2593,14 @@ class BrainOrchestratorTest {
         private final TestSkill surveySkill = new TestSkill(true);
         private final TestSkill collectSkill = new TestSkill(true);
         private final TestSkill consumeSkill = new TestSkill(true);
+        private final TestSkill gatherWoodSkill = new TestSkill();
         private final SkillRegistry registry = new SkillRegistry()
                 .register("test", skill)
                 .register("follow_entity", followSkill)
                 .register("survey_surroundings", surveySkill)
                 .register("collect_observed_item", collectSkill)
-                .register("consume_owned_food", consumeSkill);
+                .register("consume_owned_food", consumeSkill)
+                .register("gather_nearby_wood", gatherWoodSkill);
         private final SkillSupervisor skills = new SkillSupervisor(
                 registry,
                 SkillCheckpointSink.discard(),

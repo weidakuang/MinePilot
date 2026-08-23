@@ -151,7 +151,9 @@ final class ConversationCommitmentSourceContractTest {
                 "modelSoftTimeout,\n                modelHardTimeout"
         ));
         assertTrue(source.contains(
-                "modelSoftTimeout\n            );"
+                "coreFrames::recordPlayerThreatWarning,\n"
+                    + "                modelSoftTimeout,\n"
+                    + "                database"
         ));
     }
 }

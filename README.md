@@ -14,7 +14,7 @@ rules, and a single high-level language model. It does not run a second game
 client, use a Microsoft account, teleport, read hidden blocks, or grant cheat
 abilities.
 
-> **Current status: `0.1.11-dev-mc26.2`.** The embodied player, model gateway,
+> **Current status: `0.1.12-dev-mc26.2`.** The embodied player, model gateway,
 > fair perception, memory, configuration screen, skin synchronization, and
 > many atomic survival skills are implemented. The release is still a
 > development build: the 24-hour stability gate, unseen random Hardcore
@@ -43,7 +43,9 @@ abilities.
   cancellation that remains responsive during model latency.
 - First-person semantic perception with distance, field-of-view, occlusion,
   provenance, sample sequence, and world/goal revision checks. Screenshots are
-  task-triggered and never a continuous video upload.
+  task-triggered and never a continuous video upload. Pixel capture requires
+  an explicitly opted-in, transparent background renderer; the server never
+  borrows or changes an ordinary player's camera.
 - SQLite WAL memory with event and task checkpoints, FTS5 name search, R*Tree
   spatial search, waypoints, assets, and verified portal edges.
 - Structured Xaero shared-waypoint input. The companion walks, sails, rides,

@@ -26,6 +26,7 @@ import dev.mcai.companion.skills.stronghold.EyeTraceResultBuffer;
 import dev.mcai.companion.skills.transport.ServerBoatSkillActuator;
 import dev.mcai.companion.skills.transport.ServerMinecartSkillActuator;
 import net.minecraft.server.MinecraftServer;
+import dev.mcai.companion.vision.VisionCaptureService;
 
 public record ServerRuntime(
     MinecraftServer server,
@@ -55,6 +56,7 @@ public record ServerRuntime(
     RuntimeTickMetrics tickMetrics,
     AtomicLong observedBodySessionGeneration,
     AtomicLong lastTransportAuditTick,
+    VisionCaptureService visionCapture,
     Optional<LoopbackMcpServer> mcp
 ) implements AutoCloseable {
     @Override
@@ -75,6 +77,7 @@ public record ServerRuntime(
         closeSafely("brain", brain::close);
         closeSafely("skill supervisor", skillSupervisor::close);
         closeSafely("MCP", () -> mcp.ifPresent(LoopbackMcpServer::close));
+        closeSafely("vision capture", visionCapture::close);
         closeSafely("model bootstrap", modelBootstrap::close);
         closeSafely("model setup", modelSetup::close);
         closeSafely("model", model::close);

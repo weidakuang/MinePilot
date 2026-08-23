@@ -204,10 +204,20 @@ class JdkProviderCapabilityProbeContractTest {
                     await(probe.probe())
             );
 
-            assertEquals(2, supported.requestsMade());
-            assertEquals(2, requests.size());
+            assertEquals(3, supported.requestsMade());
+            assertEquals(3, requests.size());
             assertTrue(requests.get(0).has("reasoning"));
-            assertFalse(requests.get(1).has("reasoning"));
+            assertEquals(
+                    "none",
+                    requests.get(0).getAsJsonObject("reasoning")
+                            .get("effort").getAsString()
+            );
+            assertEquals(
+                    "low",
+                    requests.get(1).getAsJsonObject("reasoning")
+                            .get("effort").getAsString()
+            );
+            assertFalse(requests.get(2).has("reasoning"));
             assertEquals(
                     ReasoningControl.DEFAULT,
                     supported.capabilities().reasoningControl()
@@ -215,6 +225,55 @@ class JdkProviderCapabilityProbeContractTest {
             assertEquals(
                     OutputContract.JSON_SCHEMA,
                     supported.capabilities().outputContract()
+            );
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void reasoningModelThatRejectsNoneNegotiatesLowLatencyEffort()
+            throws Exception {
+        List<JsonObject> requests = new ArrayList<>();
+        HttpServer server = startServer(exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            JsonObject request = GSON.fromJson(
+                    readRequestBody(exchange),
+                    JsonObject.class
+            );
+            requests.add(request);
+            final String effort = request.has("reasoning")
+                    ? request.getAsJsonObject("reasoning")
+                            .get("effort").getAsString()
+                    : "";
+            if (effort.equals("none")) {
+                send(
+                        exchange,
+                        400,
+                        unsupported("reasoning.effort")
+                );
+            } else {
+                send(exchange, 200, successfulResponse(path));
+            }
+        });
+
+        try (JdkProviderCapabilityProbe probe = probe(
+                server,
+                "latency-sensitive-reasoning-model",
+                placeholderSecret()
+        )) {
+            CapabilityProbeOutcome.Supported supported = assertInstanceOf(
+                    CapabilityProbeOutcome.Supported.class,
+                    await(probe.probe())
+            );
+
+            assertEquals(2, supported.requestsMade());
+            assertEquals(ReasoningControl.LOW,
+                    supported.capabilities().reasoningControl());
+            assertEquals(
+                    "low",
+                    requests.get(1).getAsJsonObject("reasoning")
+                            .get("effort").getAsString()
             );
         } finally {
             server.stop(0);

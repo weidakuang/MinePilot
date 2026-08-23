@@ -59,6 +59,8 @@ public final class McaiE2eClientMod {
     private static final double FOLLOW_ARRIVAL_DISTANCE = 4.0;
     private static final String OBSERVER_SCREENSHOT_NAME =
             "observer-rendered.png";
+    private static final String ACTOR_SCREENSHOT_NAME =
+            "actor-rendered.png";
     private static final int SCREENSHOT_POLL_TIMEOUT_TICKS = 200;
 
     private final AtomicLong sequence = new AtomicLong();
@@ -74,6 +76,7 @@ public final class McaiE2eClientMod {
     private final Path eventFile;
 
     private long ticks;
+    private long lastBlackBoxDriverNanos;
     private long readyAtTick = -1L;
     private long followArrivalAtTick = -1L;
     private long aiFollowupOrdinal;
@@ -164,6 +167,11 @@ public final class McaiE2eClientMod {
         TickEvent.ClientTickEvent.Post.BUS.addListener(
                 ignored -> onClientTick()
         );
+        if (isBlackBoxChatScenario()) {
+            TickEvent.RenderTickEvent.Post.BUS.addListener(
+                    ignored -> onBlackBoxRenderTick()
+            );
+        }
         write("client_mod_ready", event -> {
             event.addProperty("server", serverText);
             event.addProperty("scenario", scenario);
@@ -178,6 +186,15 @@ public final class McaiE2eClientMod {
             return;
         }
         loggedIn = true;
+        if (isBlackBoxChatScenario()) {
+            /*
+             * A black-box run has no privileged server-side Oracle and no
+             * synthetic readiness marker. Login is the only prerequisite;
+             * the utterance still travels through the ordinary client chat
+             * packet below.
+             */
+            readyAtTick = ticks;
+        }
         write("client_logged_in", payload -> {
             payload.addProperty(
                     "playerName",
@@ -258,6 +275,21 @@ public final class McaiE2eClientMod {
         ticks++;
         final Minecraft minecraft = Minecraft.getInstance();
         pollObserverScreenshot();
+        if (!loggedIn
+                && minecraft.getConnection() != null
+                && minecraft.player != null
+                && minecraft.level != null) {
+            loggedIn = true;
+            if (isBlackBoxChatScenario()) {
+                readyAtTick = ticks;
+            }
+            write("client_login_inferred_from_world", payload -> {
+                payload.addProperty(
+                        "playerName",
+                        minecraft.player.getGameProfile().name()
+                );
+            });
+        }
         if (!connectAttempted
                 && ticks >= CONNECT_DELAY_TICKS
                 && minecraft.getConnection() == null
@@ -308,6 +340,7 @@ public final class McaiE2eClientMod {
 
         if (role == Role.ACTOR
                 && !isInitialAnchorScenario()
+                && !isBlackBoxChatScenario()
                 && loggedIn
                 && followChatSent
                 && firstAiFollowupReceived
@@ -327,6 +360,16 @@ public final class McaiE2eClientMod {
                 payload.addProperty("objective", "collect_item");
             });
         }
+    }
+
+    private void onBlackBoxRenderTick() {
+        final long now = System.nanoTime();
+        if (lastBlackBoxDriverNanos != 0L
+                && now - lastBlackBoxDriverNanos < 50_000_000L) {
+            return;
+        }
+        lastBlackBoxDriverNanos = now;
+        onClientTick();
     }
 
     private void sampleVisibleState(final Minecraft minecraft) {
@@ -377,7 +420,7 @@ public final class McaiE2eClientMod {
                                 minecraft,
                                 player
                         );
-                        requestObserverScreenshot(minecraft);
+                        requestVisibleScreenshot(minecraft);
                         final JsonObject ai = new JsonObject();
                         addPosition(ai, player);
                         ai.addProperty(
@@ -437,13 +480,17 @@ public final class McaiE2eClientMod {
         return "delayed_first_human_anchor".equals(scenario);
     }
 
+    private boolean isBlackBoxChatScenario() {
+        return "blackbox_chat".equals(scenario);
+    }
+
     /**
      * Capture one real frame only after the Observer has rendered the AI in
      * its own world.  This is audit evidence, never model input, and is kept
      * in the isolated run directory rather than the user's screenshots.
      */
-    private void requestObserverScreenshot(final Minecraft minecraft) {
-        if (role != Role.OBSERVER
+    private void requestVisibleScreenshot(final Minecraft minecraft) {
+        if ((role != Role.OBSERVER && !isBlackBoxChatScenario())
                 || observerScreenshotRequested
                 || minecraft.gameRenderer == null
                 || eventFile.getParent() == null) {
@@ -457,7 +504,7 @@ public final class McaiE2eClientMod {
         try {
             Screenshot.grab(
                     eventFile.getParent().toFile(),
-                    OBSERVER_SCREENSHOT_NAME,
+                    screenshotName(),
                     minecraft.gameRenderer.mainRenderTarget(),
                     2,
                     ignored -> {
@@ -474,7 +521,7 @@ public final class McaiE2eClientMod {
     }
 
     private void pollObserverScreenshot() {
-        if (role != Role.OBSERVER
+        if ((role != Role.OBSERVER && !isBlackBoxChatScenario())
                 || !observerScreenshotRequested
                 || observerScreenshotRecorded) {
             return;
@@ -504,7 +551,14 @@ public final class McaiE2eClientMod {
     private Path screenshotPath() {
         return eventFile.getParent()
                 .resolve(Screenshot.SCREENSHOT_DIR)
-                .resolve(OBSERVER_SCREENSHOT_NAME);
+                .resolve(screenshotName());
+    }
+
+    private String screenshotName() {
+        final String base = role == Role.OBSERVER
+                ? OBSERVER_SCREENSHOT_NAME
+                : ACTOR_SCREENSHOT_NAME;
+        return nonce + "-" + base;
     }
 
     private static PngHeader readPngHeader(final Path path) {
@@ -693,7 +747,8 @@ public final class McaiE2eClientMod {
 
     private static String checkedScenario(final String value) {
         if (!"chat_follow_inventory".equals(value)
-                && !"delayed_first_human_anchor".equals(value)) {
+                && !"delayed_first_human_anchor".equals(value)
+                && !"blackbox_chat".equals(value)) {
             throw new IllegalArgumentException(
                     "Unsupported E2E scenario"
             );

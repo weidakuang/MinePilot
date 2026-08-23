@@ -461,7 +461,33 @@ public final class LiveModelChatGameTests {
                         "Companion runtime is unavailable"
                 ));
         final LiveItemCollectionScenario scenario =
-                new LiveItemCollectionScenario(helper, runtime);
+                new LiveItemCollectionScenario(helper, runtime, true);
+        helper.addCleanup(ignored -> scenario.cleanup());
+        scenario.start();
+        helper.onEachTick(scenario::tick);
+    }
+
+    /**
+     * Uses a real logged-in player's vanilla drop action as the gift source,
+     * then exercises the same live-model pickup and immediate inventory-drop
+     * round trip. This is separate from the authored-item collection test so
+     * a pass proves the player-to-companion handoff path as well.
+     */
+    public static void realPlayerTaskToLiveModelPlayerGiftRoundTrip(
+            final GameTestHelper helper
+    ) {
+        if (!Boolean.getBoolean("mcai.liveModelTest")) {
+            helper.succeed();
+            return;
+        }
+        final ServerRuntime runtime = CompanionRuntime.active()
+                .filter(candidate -> candidate.server()
+                        == helper.getLevel().getServer())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Companion runtime is unavailable"
+                ));
+        final LiveItemCollectionScenario scenario =
+                new LiveItemCollectionScenario(helper, runtime, true, true);
         helper.addCleanup(ignored -> scenario.cleanup());
         scenario.start();
         helper.onEachTick(scenario::tick);
@@ -3264,15 +3290,21 @@ public final class LiveModelChatGameTests {
 
         private final GameTestHelper helper;
         private final ServerRuntime runtime;
+        private final boolean roundTrip;
+        private final boolean playerGift;
         private final long createdAt;
 
         private ItemCollectionStage stage = ItemCollectionStage.BODY;
         private CompletableFuture<CapabilityProbeOutcome> probe;
         private PlacedHuman humanSession;
         private ItemEntity drop;
+        private ServerPlayer bodyBeforeHumanLogin;
         private long stageStartedNanos;
         private long goalRevisionBefore;
         private long collectionGoalRevision;
+        private long dropGoalRevisionBefore;
+        private long dropGoalRevision;
+        private boolean dropGoalSubmitted;
         private Vec3 bodyStart;
         private Vec3 previousBody;
         private ServerPlayer previousBodyInstance;
@@ -3283,8 +3315,27 @@ public final class LiveModelChatGameTests {
                 final GameTestHelper helper,
                 final ServerRuntime runtime
         ) {
+            this(helper, runtime, false);
+        }
+
+        private LiveItemCollectionScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime,
+                final boolean roundTrip
+        ) {
+            this(helper, runtime, roundTrip, false);
+        }
+
+        private LiveItemCollectionScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime,
+                final boolean roundTrip,
+                final boolean playerGift
+        ) {
             this.helper = helper;
             this.runtime = runtime;
+            this.roundTrip = roundTrip;
+            this.playerGift = playerGift;
             createdAt = helper.getTick();
             stageStartedNanos = System.nanoTime();
         }
@@ -3309,10 +3360,14 @@ public final class LiveModelChatGameTests {
             switch (stage) {
                 case BODY -> waitForBody();
                 case PROBE -> waitForProbe();
+                case GIFT -> waitForPlayerGift();
                 case VISIBLE -> waitForVisibleDrop();
                 case GOAL -> waitForGoal();
                 case SKILL -> waitForCollectionSkill();
                 case COLLECT -> waitForVanillaPickup();
+                case DROP_GOAL -> waitForDropGoal();
+                case DROP_SKILL -> waitForDropSkill();
+                case DROP_ENTITY -> waitForDropEntity();
                 case DONE -> {
                     // GameTest is already terminal.
                 }
@@ -3374,6 +3429,17 @@ public final class LiveModelChatGameTests {
                 return;
             }
             final ServerPlayer body = bodyCandidate.orElseThrow();
+            if (playerGift) {
+                bodyBeforeHumanLogin = body;
+                humanSession = PlacedHuman.create(
+                        helper,
+                        runtime,
+                        body.position().add(0.0D, 0.0D, -2.0D)
+                );
+                stage = ItemCollectionStage.GIFT;
+                stageStartedNanos = System.nanoTime();
+                return;
+            }
             drop = new ItemEntity(
                     helper.getLevel(),
                     body.getX() + DROP_DISTANCE,
@@ -3386,6 +3452,34 @@ public final class LiveModelChatGameTests {
                     helper.getLevel().addFreshEntity(drop),
                     "Could not create the ordinary dropped log stack"
             );
+            body.lookAt(
+                    EntityAnchorArgument.Anchor.EYES,
+                    drop.getEyePosition()
+            );
+            body.setYHeadRot(body.getYRot());
+            stage = ItemCollectionStage.VISIBLE;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForPlayerGift() {
+            assertWithinModelDeadline(
+                    "Player gift was not delivered through the vanilla drop path"
+            );
+            if (humanSession == null) {
+                helper.assertTrue(false, "Player gift session disappeared");
+                return;
+            }
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            if (runtime.worldData().bodyNeedsInitialAnchor()
+                    && body == bodyBeforeHumanLogin) {
+                return;
+            }
+            physicallyGiveLogs(body, humanSession.player());
             body.lookAt(
                     EntityAnchorArgument.Anchor.EYES,
                     drop.getEyePosition()
@@ -3412,11 +3506,13 @@ public final class LiveModelChatGameTests {
                 return;
             }
             final ServerPlayer body = bodyCandidate.orElseThrow();
-            humanSession = PlacedHuman.create(
-                    helper,
-                    runtime,
-                    body.position().add(0.0D, 0.0D, -2.0D)
-            );
+            if (humanSession == null) {
+                humanSession = PlacedHuman.create(
+                        helper,
+                        runtime,
+                        body.position().add(0.0D, 0.0D, -2.0D)
+                );
+            }
             final ServerPlayer human = humanSession.player();
             helper.assertTrue(
                     CompanionCommandAccess.mayAdmin(
@@ -3444,6 +3540,35 @@ public final class LiveModelChatGameTests {
             humanSession = null;
             stage = ItemCollectionStage.GOAL;
             stageStartedNanos = System.nanoTime();
+        }
+
+        private void physicallyGiveLogs(
+                final ServerPlayer body,
+                final ServerPlayer human
+        ) {
+            human.setItemSlot(
+                    EquipmentSlot.MAINHAND,
+                    new ItemStack(Items.OAK_LOG, DROP_COUNT)
+            );
+            final ItemStack transferred = human.getMainHandItem().copy();
+            human.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+            drop = human.drop(transferred, true);
+            helper.assertTrue(
+                    drop != null,
+                    "Logged-in player could not drop the oak-log gift"
+            );
+            drop.setNoPickUpDelay();
+            drop.setPos(
+                    body.getX() + DROP_DISTANCE,
+                    body.getY(),
+                    body.getZ()
+            );
+            drop.setDeltaMovement(Vec3.ZERO);
+            body.inventoryMenu.broadcastChanges();
+            helper.assertTrue(
+                    human.getInventory().countItem(Items.OAK_LOG) == 0,
+                    "The player retained a duplicate oak-log gift"
+            );
         }
 
         private void waitForGoal() {
@@ -3537,8 +3662,14 @@ public final class LiveModelChatGameTests {
                         "Logs entered inventory without material approach: "
                             + diagnostics()
                 );
-                stage = ItemCollectionStage.DONE;
-                helper.succeed();
+                if (!roundTrip) {
+                    stage = ItemCollectionStage.DONE;
+                    helper.succeed();
+                    return;
+                }
+                if (!dropGoalSubmitted) {
+                    submitDropGoal(body);
+                }
                 return;
             }
             helper.assertTrue(
@@ -3546,6 +3677,105 @@ public final class LiveModelChatGameTests {
                         <= PICKUP_TIMEOUT_NANOS,
                     "Vanilla dropped-item pickup timed out: "
                         + diagnostics()
+            );
+        }
+
+        private void submitDropGoal(final ServerPlayer body) {
+            dropGoalSubmitted = true;
+            final PlacedHuman human = PlacedHuman.create(
+                    helper,
+                    runtime,
+                    body.position().add(0.0D, 0.0D, -2.0D)
+            );
+            humanSession = human;
+            final ServerPlayer player = human.player();
+            dropGoalRevisionBefore = runtime.goals().snapshot().revision();
+            final Component submitted = ForgeHooks.onServerChatSubmittedEvent(
+                    player,
+                    Component.literal(
+                            runtime.worldData().displayName()
+                                    + "，请立即把背包里的3个橡木原木丢到地上，"
+                                    + "不要只回复。"
+                    )
+            );
+            helper.assertTrue(
+                    submitted != null,
+                    "Companion cancelled the inventory drop chat"
+            );
+            stage = ItemCollectionStage.DROP_GOAL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForDropGoal() {
+            assertWithinModelDeadline(
+                    "Live model did not classify the inventory drop task"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            if (goal.revision() == dropGoalRevisionBefore) {
+                return;
+            }
+            if (humanSession != null) {
+                humanSession.close();
+                humanSession = null;
+            }
+            assertNoHumanPlayers();
+            helper.assertTrue(
+                    goal.revision() > dropGoalRevisionBefore
+                            && goal.status() == GoalStatus.RUNNING
+                            && goal.goal().contains("丢"),
+                    "Inventory drop chat did not become a running goal: "
+                            + goal
+            );
+            dropGoalRevision = goal.revision();
+            stage = ItemCollectionStage.DROP_SKILL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForDropSkill() {
+            assertNoHumanPlayers();
+            assertWithinModelDeadline(
+                    "Live model did not start drop_item; " + diagnostics()
+            );
+            final var skill = runtime.skillSupervisor().snapshot();
+            if (!skill.skillName().equals("drop_item")
+                    || skill.state() != SkillSupervisor.State.RUNNING) {
+                return;
+            }
+            helper.assertTrue(
+                    skill.boundGoalRevision() == dropGoalRevision,
+                    "drop_item bound the wrong goal revision"
+            );
+            stage = ItemCollectionStage.DROP_ENTITY;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForDropEntity() {
+            assertNoHumanPlayers();
+            final Optional<ServerPlayer> bodyCandidate =
+                    AiPlayerManager.onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                assertWithinModelDeadline(
+                        "Companion body disappeared during inventory drop"
+                );
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            final int owned = body.getInventory().countItem(Items.OAK_LOG);
+            final int dropped = helper.getLevel().getEntitiesOfClass(
+                    ItemEntity.class,
+                    body.getBoundingBox().inflate(3.0D),
+                    entity -> entity.isAlive()
+                            && entity.getItem().is(Items.OAK_LOG)
+                            && entity.getItem().getCount() == DROP_COUNT
+            ).stream().mapToInt(entity -> entity.getItem().getCount()).sum();
+            if (owned == 0 && dropped >= DROP_COUNT) {
+                stage = ItemCollectionStage.DONE;
+                helper.succeed();
+                return;
+            }
+            assertWithinModelDeadline(
+                    "Vanilla inventory drop did not produce the owned item "
+                            + diagnostics()
             );
         }
 
@@ -3650,6 +3880,7 @@ public final class LiveModelChatGameTests {
                             + body.getInventory().countItem(Items.OAK_LOG))
                     .orElse("offline");
             return "supervisor=" + runtime.skillSupervisor().snapshot()
+                    + ", goal=" + runtime.goals().snapshot()
                     + ", body=" + bodySummary
                     + ", bodyPath=" + bodyPath
                     + ", maxTickStep=" + maximumTickStep
@@ -3677,10 +3908,14 @@ public final class LiveModelChatGameTests {
     private enum ItemCollectionStage {
         BODY,
         PROBE,
+        GIFT,
         VISIBLE,
         GOAL,
         SKILL,
         COLLECT,
+        DROP_GOAL,
+        DROP_SKILL,
+        DROP_ENTITY,
         DONE
     }
 

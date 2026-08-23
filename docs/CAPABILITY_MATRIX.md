@@ -14,10 +14,10 @@ construction, commissioning, and formal companion evidence, is in
 | Main/off hand, armor, hunger, death/respawn | yes | lifecycle/menu fixtures | NOT_RUN |
 | Simulated chunks/view distance | yes | moving-chunk fixture plus zero-human same-section Overworld-to-Nether entity/block simulation on Forge 65.0.0 and 65.1.1 | NOT_RUN |
 | Fair first-person semantic observation | yes | observation/revision tests | NOT_RUN |
-| First-person screenshot model input | no (fail-closed) | MCP reports authenticated capture required; Observer PNG is evidence-only | NOT_RUN |
+| On-demand first-person screenshot capture | partial | authenticated protocol, PNG bounds, explicit background-renderer opt-in, and ordinary-player camera exclusion have focused code tests; no live background-renderer capture yet | NOT_RUN |
 | Auditory hostile sound cue | yes | bounded Forge entity-sound event, actual 4–16 block distance filter, 20-tick identity-free cue, semantic refresh and local safety wiring | NOT_RUN |
 | Model decision envelope/revision invalidation | yes | JVM/model protocol tests | NOT_RUN |
-| Movement/follow/search/replan | yes | controlled follow and physical fixtures | NOT_RUN |
+| Movement/follow/search/replan | yes | controlled fixtures plus one 25-block no-window natural-world follow slice | NOT_RUN |
 | Boat and minecart transport | yes | integrated Forge lifecycle fixture drives vanilla mount, boat travel, powered-rail minecart travel | NOT_RUN |
 | Parkour and water-clutch safety | yes | controlled physical fixtures | NOT_RUN |
 | Combat emergency lane | yes | Enderman/Slime Forge fixtures | NOT_RUN |

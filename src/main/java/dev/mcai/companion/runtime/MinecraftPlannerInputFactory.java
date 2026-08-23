@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.mcai.companion.brain.BrainObservation;
 import dev.mcai.companion.brain.PlannerInputFactory;
+import dev.mcai.companion.MinecraftAiCompanion;
 import dev.mcai.companion.control.GoalSnapshot;
 import dev.mcai.companion.model.DecisionContext;
 import dev.mcai.companion.model.PlannerInput;
@@ -215,7 +216,8 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
         availableSkills = immediateVisibleBlockGatheringHandoffSkills(
                 availableSkills,
                 goal,
-                observation.semanticJson()
+                observation.semanticJson(),
+                observation.trustedRuntimeJson()
         );
         availableSkills = immediateFoodConsumptionHandoffSkills(
                 availableSkills,
@@ -227,6 +229,23 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                 goal,
                 observation.semanticJson()
         );
+        /*
+         * An explicit owned-item disposal request is also a fair, current
+         * frame handoff.  Use the complete model-visible registry here so a
+         * foundation/completion compound cannot erase the one legal action
+         * the owner just asked for.  The helper proves the item/count from
+         * self.inventory and never fabricates a world target or slot.
+         */
+        if (immediateOwnedItemDropHandoffForRecovery(
+                goal.goal(),
+                observation.semanticJson()
+        ).isPresent()) {
+            availableSkills = immediateOwnedItemDropHandoffSkills(
+                    allModelSkills,
+                    goal,
+                    observation.semanticJson()
+            );
+        }
         availableSkills = immediateBoundFollowHandoffSkills(
                 availableSkills,
                 goal,
@@ -258,6 +277,20 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
         availableSkills = completionPhaseSkills(
                 availableSkills,
                 observation.trustedRuntimeJson()
+        );
+        /*
+         * Route phases are re-applied above to prevent a stale deictic
+         * handoff from escaping the server-authored progression boundary.
+         * A live, explicit container withdrawal is the inverse case: the
+         * current fair frame is the progression boundary for this exact
+         * menu transaction. Re-apply only this narrow handoff after the
+         * final phase filter so a provider cannot answer with a harmless
+         * REPLAN while a visible chest is already actionable.
+         */
+        availableSkills = immediateContainerWithdrawalHandoffSkills(
+                availableSkills,
+                goal,
+                observation.semanticJson()
         );
         final Set<String> allSkillNames = skills.names();
         final Set<String> availableSkillNames = availableSkills.keySet();
@@ -448,6 +481,17 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
             );
         if (prompt.length() > MAX_SYSTEM_PROMPT_CHARACTERS) {
             throw new IllegalArgumentException("Planner system prompt exceeds its bound");
+        }
+
+        if (Boolean.getBoolean("mcai.liveModelTest")
+                && isImmediateContainerWithdrawalGoal(goal.goal())) {
+            MinecraftAiCompanion.LOGGER.info(
+                    "Live container handoff: goalRevision={}, availableSkills={}, openMenu={}, visibleFaces={}",
+                    goal.revision(),
+                    availableSkillNames,
+                    observation.semanticJson().contains("openMenu"),
+                    observation.semanticJson().contains("minecraft:chest")
+            );
         }
 
         return new PlannerInput(
@@ -1282,6 +1326,186 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
     }
 
     /**
+     * Returns the next exact, observation-bound stage for an explicit chest
+     * withdrawal after a provider returned a non-action.  This is a bounded
+     * recovery for the same two-stage handoff exposed in the planner schema;
+     * it never searches a container or invents coordinates/slots.
+     */
+    public static Optional<ImmediateContainerWithdrawalHandoff>
+            immediateContainerWithdrawalHandoffForRecovery(
+                    final String goal,
+                    final String semanticJson
+            ) {
+        if (!isImmediateContainerWithdrawalGoal(goal)) {
+            return Optional.empty();
+        }
+        try {
+            final JsonObject root = JsonParser.parseString(
+                    Objects.requireNonNullElse(semanticJson, "")
+            ).getAsJsonObject();
+            final long sampleSequence = root.has("sampleSequence")
+                    ? root.get("sampleSequence").getAsLong()
+                    : -1L;
+            final JsonObject self = root.getAsJsonObject("self");
+            if (sampleSequence < 0L || self == null
+                    || !self.has("dimension")) {
+                return Optional.empty();
+            }
+            final String dimension = self.get("dimension").getAsString();
+            DimensionRef.parse(dimension);
+            final int requestedCount = requestedContainerCount(goal);
+            final JsonObject openMenu = root.getAsJsonObject("openMenu");
+            if (openMenu != null && openMenu.has("slots")
+                    && openMenu.has("containerId")
+                    && openMenu.has("stateId")) {
+                final String requested = requestedContainerItemId(goal)
+                        .orElse("");
+                int sourceSlot = -1;
+                int destinationSlot = -1;
+                for (var element : openMenu.getAsJsonArray("slots")) {
+                    if (!element.isJsonObject()) {
+                        continue;
+                    }
+                    final JsonObject slot = element.getAsJsonObject();
+                    if (!slot.has("slot") || !slot.has("location")
+                            || !slot.has("item") || !slot.has("count")) {
+                        continue;
+                    }
+                    final int index = slot.get("slot").getAsInt();
+                    final String location = slot.get("location")
+                            .getAsString();
+                    final String item = slot.get("item").getAsString();
+                    final int count = slot.get("count").getAsInt();
+                    if (sourceSlot < 0 && "MENU".equals(location)
+                            && requested.equals(item)
+                            && count >= requestedCount) {
+                        sourceSlot = index;
+                    }
+                    if (destinationSlot < 0 && "PLAYER".equals(location)
+                            && "minecraft:air".equals(item)
+                            && count == 0) {
+                        destinationSlot = index;
+                    }
+                }
+                if (sourceSlot >= 0 && destinationSlot >= 0) {
+                    return Optional.of(
+                            ImmediateContainerWithdrawalHandoff.transfer(
+                                    sampleSequence,
+                                    openMenu.get("containerId").getAsInt(),
+                                    openMenu.get("stateId").getAsInt(),
+                                    sourceSlot,
+                                    destinationSlot,
+                                    requestedCount
+                            )
+                    );
+                }
+                return Optional.empty();
+            }
+            final JsonArray faces = root.getAsJsonArray("visibleBlockFaces");
+            if (faces == null) {
+                return Optional.empty();
+            }
+            for (var element : faces) {
+                if (!element.isJsonObject()) {
+                    continue;
+                }
+                final JsonObject face = element.getAsJsonObject();
+                final JsonObject block = face.getAsJsonObject("block");
+                if (!isRequestedContainerType(
+                            goal,
+                            face.has("type") ? face.get("type").getAsString() : ""
+                        )
+                        || block == null
+                        || !block.has("x") || !block.has("y")
+                        || !block.has("z") || !face.has("face")) {
+                    continue;
+                }
+                return Optional.of(ImmediateContainerWithdrawalHandoff.open(
+                        dimension,
+                        sampleSequence,
+                        block.get("x").getAsInt(),
+                        block.get("y").getAsInt(),
+                        block.get("z").getAsInt(),
+                        face.get("face").getAsString()
+                ));
+            }
+            return Optional.empty();
+        } catch (RuntimeException malformedSemantic) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Proves an explicit owned-item drop request from the companion's own
+     * inventory sample.  This is intentionally limited to the item/count
+     * vocabulary understood by the goal classifier and never reads a world
+     * entity or creates a drop target.
+     */
+    public static Optional<ImmediateItemDropHandoff>
+            immediateOwnedItemDropHandoffForRecovery(
+                    final String goal,
+                    final String semanticJson
+            ) {
+        final String normalized = Objects.requireNonNullElse(goal, "")
+                .toLowerCase(Locale.ROOT);
+        if (!(normalized.contains("丢")
+                || normalized.contains("扔")
+                || normalized.contains("抛")
+                || normalized.matches(".*\\b(?:drop|throw|discard)\\b.*"))) {
+            return Optional.empty();
+        }
+        final Optional<String> itemId = requestedDropItemId(normalized);
+        if (itemId.isEmpty()) {
+            return Optional.empty();
+        }
+        final int count = requestedDropCount(normalized);
+        try {
+            final JsonObject root = JsonParser.parseString(
+                    Objects.requireNonNullElse(semanticJson, "")
+            ).getAsJsonObject();
+            final JsonObject body = root.getAsJsonObject("self");
+            final JsonArray inventory = body == null
+                    ? null
+                    : body.getAsJsonArray("inventory");
+            if (inventory == null) {
+                return Optional.empty();
+            }
+            int owned = 0;
+            for (var element : inventory) {
+                if (!element.isJsonObject()) {
+                    continue;
+                }
+                final JsonObject stack = element.getAsJsonObject();
+                /*
+                 * The production semantic codec serializes
+                 * InventoryItemSummary.itemId as `itemId`.  Accept the
+                 * historical `item` spelling as a bounded compatibility
+                 * fallback for older persisted test fixtures, but never infer
+                 * an item from a world entity or an unobserved slot.
+                 */
+                final String observedItemId = stack.has("itemId")
+                        ? stack.get("itemId").getAsString()
+                        : stack.has("item")
+                                ? stack.get("item").getAsString()
+                                : "";
+                if (itemId.orElseThrow().equals(observedItemId)) {
+                    owned += stack.has("count")
+                            ? stack.get("count").getAsInt()
+                            : 0;
+                }
+            }
+            return owned >= count
+                    ? Optional.of(new ImmediateItemDropHandoff(
+                            itemId.orElseThrow(),
+                            count
+                    ))
+                    : Optional.empty();
+        } catch (RuntimeException malformedSemantic) {
+            return Optional.empty();
+        }
+    }
+
+    /**
      * A bounded, first-person food handoff shared by the schema and brain
      * recovery path.  {@code visibleDrop} is true only when
      * {@code observationId} and {@code sampleSequence} came from the current
@@ -1340,6 +1564,94 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                 throw new IllegalArgumentException(
                         "observationId must not be blank"
                 );
+            }
+        }
+    }
+
+    public record ImmediateContainerWithdrawalHandoff(
+            boolean open,
+            String dimension,
+            long sampleSequence,
+            int x,
+            int y,
+            int z,
+            String face,
+            int containerId,
+            int stateId,
+            int sourceSlot,
+            int destinationSlot,
+            int count
+    ) {
+        public ImmediateContainerWithdrawalHandoff {
+            dimension = Objects.requireNonNull(dimension, "dimension");
+            face = Objects.requireNonNull(face, "face");
+            if (sampleSequence < 0L || count < 1 || count > 64) {
+                throw new IllegalArgumentException(
+                        "invalid container withdrawal handoff"
+                );
+            }
+            if (open && (containerId < 0 || stateId < 0
+                    || sourceSlot < 0 || destinationSlot < 0)) {
+                throw new IllegalArgumentException(
+                        "invalid transfer handoff"
+                );
+            }
+        }
+
+        static ImmediateContainerWithdrawalHandoff open(
+                final String dimension,
+                final long sampleSequence,
+                final int x,
+                final int y,
+                final int z,
+                final String face
+        ) {
+            return new ImmediateContainerWithdrawalHandoff(
+                    false,
+                    dimension,
+                    sampleSequence,
+                    x,
+                    y,
+                    z,
+                    face,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    1
+            );
+        }
+
+        static ImmediateContainerWithdrawalHandoff transfer(
+                final long sampleSequence,
+                final int containerId,
+                final int stateId,
+                final int sourceSlot,
+                final int destinationSlot,
+                final int count
+        ) {
+            return new ImmediateContainerWithdrawalHandoff(
+                    true,
+                    "",
+                    sampleSequence,
+                    0,
+                    0,
+                    0,
+                    "",
+                    containerId,
+                    stateId,
+                    sourceSlot,
+                    destinationSlot,
+                    count
+            );
+        }
+    }
+
+    public record ImmediateItemDropHandoff(String itemId, int count) {
+        public ImmediateItemDropHandoff {
+            itemId = Objects.requireNonNull(itemId, "itemId");
+            if (itemId.isBlank() || count < 1 || count > 64) {
+                throw new IllegalArgumentException("invalid item drop handoff");
             }
         }
     }
@@ -1417,6 +1729,33 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
         return validator == null
                 ? Map.of()
                 : Map.of(requiredSkill, validator);
+    }
+
+    /**
+     * Narrows an explicit owned-item disposal request to the ordinary
+     * inventory THROW skill when the current fair self-inventory frame proves
+     * the requested item and count.  Ambiguous item names, insufficient
+     * inventory, malformed observations, and unrelated goals keep the normal
+     * schema instead of guessing or mutating state locally.
+     */
+    static Map<String, SkillArgumentValidator>
+            immediateOwnedItemDropHandoffSkills(
+                    final Map<String, SkillArgumentValidator> allSkills,
+                    final GoalSnapshot goal,
+                    final String semanticJson
+            ) {
+        Objects.requireNonNull(allSkills, "allSkills");
+        Objects.requireNonNull(goal, "goal");
+        if (immediateOwnedItemDropHandoffForRecovery(
+                goal.goal(),
+                semanticJson
+        ).isEmpty()) {
+            return Map.copyOf(allSkills);
+        }
+        final SkillArgumentValidator validator = allSkills.get("drop_item");
+        return validator == null
+                ? Map.of()
+                : Map.of("drop_item", validator);
     }
 
     private enum ContainerWithdrawalStage {
@@ -1534,6 +1873,29 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
         return matcher.find() ? Integer.parseInt(matcher.group(1)) : 1;
     }
 
+    private static Optional<String> requestedDropItemId(final String goal) {
+        if (goal.contains("橡木原木") || goal.contains("oak log")) {
+            return Optional.of("minecraft:oak_log");
+        }
+        if (goal.contains("橡木木板") || goal.contains("oak plank")) {
+            return Optional.of("minecraft:oak_planks");
+        }
+        if (goal.contains("石头") || goal.matches(".*\\bstone\\b.*")) {
+            return Optional.of("minecraft:stone");
+        }
+        if (goal.contains("铁锭") || goal.contains("iron ingot")) {
+            return Optional.of("minecraft:iron_ingot");
+        }
+        if (goal.contains("钻石") || goal.contains("diamond")) {
+            return Optional.of("minecraft:diamond");
+        }
+        return Optional.empty();
+    }
+
+    private static int requestedDropCount(final String goal) {
+        return requestedContainerCount(goal);
+    }
+
     private static boolean isRequestedContainerType(
             final String goal,
             final String type
@@ -1569,10 +1931,39 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                     final GoalSnapshot goal,
                     final String semanticJson
             ) {
+        return immediateVisibleBlockGatheringHandoffSkills(
+                allSkills,
+                goal,
+                semanticJson,
+                "{}"
+        );
+    }
+
+    static Map<String, SkillArgumentValidator>
+            immediateVisibleBlockGatheringHandoffSkills(
+                    final Map<String, SkillArgumentValidator> allSkills,
+                    final GoalSnapshot goal,
+                    final String semanticJson,
+                    final String trustedRuntimeJson
+            ) {
         Objects.requireNonNull(allSkills, "allSkills");
         Objects.requireNonNull(goal, "goal");
-        if (!isImmediateVisibleBlockGatheringGoal(goal.goal())
-                || !containsVisibleWoodSurface(semanticJson)) {
+        if (!isImmediateNearbyWoodGoal(goal.goal())) {
+            return Map.copyOf(allSkills);
+        }
+        if (trustedSkillCompleted(
+                trustedRuntimeJson,
+                "gather_nearby_wood"
+        )) {
+            return Map.of();
+        }
+        final SkillArgumentValidator compound = allSkills.get(
+                "gather_nearby_wood"
+        );
+        if (compound != null) {
+            return Map.of("gather_nearby_wood", compound);
+        }
+        if (!containsVisibleWoodSurface(semanticJson)) {
             return Map.copyOf(allSkills);
         }
         final SkillArgumentValidator validator = allSkills.get(
@@ -1581,6 +1972,27 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
         return validator == null
                 ? Map.of()
                 : Map.of("gather_visible_block_cluster", validator);
+    }
+
+    private static boolean trustedSkillCompleted(
+            final String trustedRuntimeJson,
+            final String skillName
+    ) {
+        try {
+            final JsonObject trusted = JsonParser.parseString(
+                    Objects.requireNonNullElse(trustedRuntimeJson, "")
+            ).getAsJsonObject();
+            return trusted.has("skillName")
+                    && skillName.equals(
+                            trusted.get("skillName").getAsString()
+                    )
+                    && trusted.has("terminalStatus")
+                    && "COMPLETED".equals(
+                            trusted.get("terminalStatus").getAsString()
+                    );
+        } catch (RuntimeException malformedTrustedRuntime) {
+            return false;
+        }
     }
 
     /**
@@ -1806,7 +2218,15 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
         }
     }
 
-    private static boolean isImmediateVisibleBlockGatheringGoal(
+    /**
+     * Returns whether a player goal is the narrow, unambiguous nearby-wood
+     * task owned by {@code gather_nearby_wood}. This predicate contains no
+     * target coordinate or world lookup, so the brain may use it only as a
+     * bounded soft-deadline handoff when the configured provider has not
+     * answered. The skill still discovers and revalidates every physical
+     * action through the companion's fair first-person frames.
+     */
+    public static boolean isImmediateNearbyWoodGoal(
             final String goal
     ) {
         final String text = Objects.requireNonNullElse(goal, "").strip();
@@ -2545,6 +2965,11 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                 TRUSTED_IMMEDIATE_XAERO_WAYPOINT_PLAYBOOK_END
                 """;
         }
+        if (isImmediateNearbyWoodGoal(goal.goal())) {
+            return woodGatheringPlaybook(
+                    observation.trustedRuntimeJson()
+            );
+        }
         if (!isImmediateCropMaintenanceGoal(goal.goal())
                 && isImmediateObservedItemCollectionGoal(goal.goal())) {
             return """
@@ -2595,29 +3020,6 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                 TRUSTED_IMMEDIATE_CROP_MAINTENANCE_PLAYBOOK_END
                 """;
         }
-        if (isImmediateVisibleBlockGatheringGoal(goal.goal())) {
-            return """
-                TRUSTED_IMMEDIATE_VISIBLE_WOOD_GATHERING_PLAYBOOK
-                This is an explicit player request to gather wood or chop a
-                tree. It is not a request to discuss how trees work. When the
-                current first-person visibleBlockFaces contains a log, wood,
-                stem, or hyphae surface, choose START_SKILL
-                gather_visible_block_cluster now. Copy dimension and
-                sampleSequence from the same current observation, and copy
-                one complete visibleBlockFaces.block x/y/z, face, and type as
-                the seed/blockId. Use a bounded maxBlocks (normally 8..32),
-                clusterRadius (normally 4..8), and an owned matching toolId;
-                use minecraft:air only when keeping the current hand is
-                explicitly safe. Never invent a tree coordinate, search a
-                hidden chunk, or mix fields from different samples. The
-                gather skill rechecks each connected block and collects its
-                drops through ordinary player actions. If no current fair log
-                surface is visible, request one SEMANTIC_REFRESH and then use
-                a bounded first-person survey; do not promise that chopping
-                has started until START_SKILL is accepted.
-                TRUSTED_IMMEDIATE_VISIBLE_WOOD_GATHERING_PLAYBOOK_END
-                """;
-        }
         if (isImmediateContainerWithdrawalGoal(goal.goal())) {
             return """
                 TRUSTED_IMMEDIATE_CONTAINER_WITHDRAWAL_PLAYBOOK
@@ -2644,6 +3046,25 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                 SEMANTIC_REFRESH and then perform a bounded first-person
                 survey; never scan hidden containers or chunks.
                 TRUSTED_IMMEDIATE_CONTAINER_WITHDRAWAL_PLAYBOOK_END
+                """;
+        }
+        if (immediateOwnedItemDropHandoffForRecovery(
+                goal.goal(),
+                observation.semanticJson()
+        ).isPresent()) {
+            return """
+                TRUSTED_IMMEDIATE_OWNED_ITEM_DROP_PLAYBOOK
+                This is an explicit request to throw an item from the
+                companion's own inventory onto the ground now. The current
+                fair self.inventory frame proves the exact item and count.
+                Choose START_SKILL drop_item immediately with itemId copied
+                from that frame and count copied from the owner's request.
+                Do not answer with an acknowledgement, survey, or REPLAN.
+                The skill uses the normal player inventory THROW transaction;
+                it does not edit slots directly. Do not claim completion
+                until the owned count decreases and a live dropped item is
+                observed by the server.
+                TRUSTED_IMMEDIATE_OWNED_ITEM_DROP_PLAYBOOK_END
                 """;
         }
         if (isImmediateEndPortalActivationAndEntryGoal(goal)) {
@@ -2909,6 +3330,39 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                 || text.contains("战斗")
                 || text.contains("击退")
                 || text.contains("击杀");
+    }
+
+    private static String woodGatheringPlaybook(
+            final String trustedRuntimeJson
+    ) {
+        if (trustedSkillCompleted(
+                trustedRuntimeJson,
+                "gather_nearby_wood"
+        )) {
+            return """
+                TRUSTED_COMPLETED_WOOD_GATHERING_PLAYBOOK
+                The local gather_nearby_wood action completed and verified
+                that owned wood increased. Do not start another skill. Read
+                exact current wood item ids and counts only from
+                self.inventory/mainHand/offHand, choose COMPLETE_GOAL, and
+                use optionalSpeech to tell the player what is actually owned.
+                Never invent a species or count.
+                TRUSTED_COMPLETED_WOOD_GATHERING_PLAYBOOK_END
+                """;
+        }
+        return """
+            TRUSTED_IMMEDIATE_VISIBLE_WOOD_GATHERING_PLAYBOOK
+            This is an explicit player request to gather wood or chop a tree,
+            not a request to discuss trees. Choose START_SKILL
+            gather_nearby_wood now with no arguments. Its local executor
+            continuously scans through the player's own eyes, walks over
+            observed safe terrain, mines a bounded tree cluster through
+            vanilla actions, and physically picks up the drops. Do not choose
+            survey_surroundings, request another model turn, invent a
+            coordinate, or claim success before the local result and owned-
+            inventory delta verify collected wood.
+            TRUSTED_IMMEDIATE_VISIBLE_WOOD_GATHERING_PLAYBOOK_END
+            """;
     }
 
     private static String completionRoutePlaybook(

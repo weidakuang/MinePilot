@@ -1,11 +1,13 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-23T03:35:00+09:00",
-  "sourceState": "LOCAL_AUDIT_15_1_TO_15_4_WITH_MENU_ROLE_HINTS",
+  "updatedAtUtc": "2026-08-23T04:11:00+09:00",
+  "sourceState": "LOCAL_LIVE_PLAYER_GIFT_DROP_PASS",
   "publicMainHead": "600f37051765a578eb2b2bc595bd71b7188ed56f",
+  "localHead": "UNPUBLISHED_LOCAL_COMMIT",
+  "publicBackupStatus": "PENDING_AUTHENTICATED_PUSH",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
-  "version": "0.1.11-dev-mc26.2",
+  "version": "0.1.12-dev-mc26.2",
   "compatibility": {
     "minecraft": "26.2",
     "forgeRange": "[65.0.0,66.0.0)",
@@ -598,11 +600,55 @@
       "supersededFailure": "The preceding clean-target attempt allowed a natural slime to be selected while separately activating the golem and was retained as invalid fixture negative evidence.",
       "formalGate": "NOT_RUN"
     },
+    "professionalCompanionLiveInventoryRoundTrip": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL collect_observed_item -> START_SKILL drop_item",
+      "actions": "A real embedded player sent ordinary chat. The live model selected collection, the ServerPlayer walked to and picked up exactly three oak logs through vanilla pickup, then accepted a second immediate drop request. The model selected drop_item with minecraft:oak_log count 3; the normal inventory-menu THROW path removed the owned stack and produced a live ItemEntity with the three logs.",
+      "runtimeSeconds": 26.08,
+      "runRoot": "/tmp/minepilot-live-inventory-roundtrip-8.log",
+      "patchSlices": {
+        "65.0.0": {
+          "status": "PASS_CONTROLLED_LIVE_MODEL",
+          "runtimeSeconds": 25.16,
+          "runRoot": "/tmp/minepilot-live-inventory-roundtrip-forge6500.log"
+        },
+        "65.1.2": {
+          "status": "PASS_CONTROLLED_LIVE_MODEL",
+          "runtimeSeconds": 30.23,
+          "runRoot": "/tmp/minepilot-live-inventory-roundtrip-forge6512.log"
+        }
+      },
+      "plannerChange": "When the fair self.inventory frame proves the explicit item/count, the final model-visible schema is narrowed to drop_item and the action-first owned-item playbook is added. Other goals retain their existing handoff schemas.",
+      "fixtureConstraint": "Controlled flat course with one embedded human chat session and one authored dropped stack; not a rendered Actor/Observer client, random Hardcore, PVP, speedrun, long-soak, or formal M1-M4 result.",
+      "supersededFailures": [
+        "Attempts 1-4 did not reach a valid selector or closed the human session before the second goal was installed.",
+        "Attempt 5 installed the drop goal but did not start drop_item while recovery still read the wrong semantic root.",
+        "Attempt 6 installed the goal but remained no-action before the bounded recovery correction."
+      ],
+      "credentials": "Process-only; no credential persisted",
+      "formalGate": "NOT_RUN"
+    },
+    "professionalCompanionLivePlayerGiftRoundTrip": {
+      "status": "PASS_CONTROLLED_LIVE_MODEL",
+      "providerModel": "mimo-v2.5",
+      "forge": "65.1.1",
+      "decision": "START_SKILL collect_observed_item -> START_SKILL drop_item",
+      "actions": "A real logged-in embedded player dropped exactly three oak logs through the vanilla ServerPlayer.drop path. The companion physically approached and picked up the gift, the fair self inventory reached three logs, and a second ordinary chat request caused the normal inventory THROW transaction to remove all three and produce a live three-log ItemEntity. No item was inserted by direct inventory mutation.",
+      "runtimeSeconds": 18.70,
+      "runRoot": "run-live-player-gift-roundtrip-6511-fix1",
+      "rootCauseFixed": "Production InventoryItemSummary evidence is encoded as itemId; the recovery parser previously only accepted the historical item spelling used by unit fixtures.",
+      "supersededFailure": "The first player-gift run physically reached ownedLogs=3 but remained without drop_item because the parser rejected the canonical itemId field. The failure is retained in run-live-player-gift-roundtrip-6511.",
+      "fixtureConstraint": "Controlled flat course with one real embedded player session and one vanilla gift drop; not a rendered Actor/Observer client, random Hardcore, PVP, speedrun, long-soak, or formal M1-M4 result.",
+      "credentials": "Process-only; no credential persisted",
+      "formalGate": "NOT_RUN"
+    },
     "latestReleaseAudit": {
       "status": "PASS_OFFLINE_BUILD_AND_TESTS",
       "details": "The exact current tree passed a clean Gradle test/build, production JAR content verification, Forge compatibility validation, the 65 Python protocol tests, all ten mutation variants, and a Forge 65.0.0 brewing GameTest with explicit open-menu role assertions after the 15.x capability audit, placement-guard fix, and menu-role enhancement. The detailed audit remains source/controlled evidence only; formal M0-M4 gates remain NOT_RUN.",
       "artifact": "build/libs/mcai_companion-0.1.11-dev-mc26.2.jar",
-      "sha256": "c77d1374e96c0e3bac3ded1a38e21bcf3faaa336220cc02360d6c9a0d3203160",
+      "sha256": "7c7c2376a1337dea0deaf5f609239160f6d9b6a15a4652833b5b6a95a94ce523",
       "formalGate": "NOT_RUN"
     }
   },

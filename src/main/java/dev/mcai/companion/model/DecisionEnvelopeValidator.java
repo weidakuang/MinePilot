@@ -17,6 +17,23 @@ public final class DecisionEnvelopeValidator {
     public static final int MAX_SPEECH_CODE_POINTS = 512;
     public static final int MAX_OBSERVATION_REASON_CODE_POINTS = 256;
 
+    /**
+     * Gameplay speech is advisory and has no authority over the body.  Keep a
+     * bounded, code-point-safe prefix available to the transport layer when a
+     * provider puts an overlong narration beside an otherwise valid action.
+     * Argument and observation fields are never repaired this way.
+     */
+    static String boundedSpeech(final String value) {
+        if (value.codePointCount(0, value.length()) <= MAX_SPEECH_CODE_POINTS) {
+            return value;
+        }
+        final int end = value.offsetByCodePoints(
+                0,
+                MAX_SPEECH_CODE_POINTS
+        );
+        return value.substring(0, end);
+    }
+
     private static final Pattern SKILL_NAME = Pattern.compile("[a-z0-9_.:-]{1,64}");
     private static final Pattern ARGUMENT_NAME = Pattern.compile("[A-Za-z0-9_.:-]{1,64}");
     /**

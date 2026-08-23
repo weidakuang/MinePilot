@@ -31,6 +31,8 @@ run-live-*/
 run-delayed-*/
 run-offline-*/
 run-patch-matrix/
+run-blackbox-*/
+installer.log
 
 # Local credentials and generated companion state
 .env

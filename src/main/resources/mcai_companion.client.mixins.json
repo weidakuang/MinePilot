@@ -4,7 +4,8 @@
   "package": "dev.mcai.companion.client.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "AbstractClientPlayerSkinMixin"
+    "AbstractClientPlayerSkinMixin",
+    "HiddenRendererWindowMixin"
   ],
   "injectors": {
     "defaultRequire": 1

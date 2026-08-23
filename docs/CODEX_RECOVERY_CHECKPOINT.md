@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-23T03:35:00+09:00
+Last updated: 2026-08-24T03:33:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,111 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+### 2026-08-24 headless natural-world black-box checkpoint
+
+- The current test path is a background Forge 65.0.9 dedicated server with
+  one product JAR, a fresh random Hard survival world, one real embedded human
+  `ServerPlayer`, and the normal companion `ServerPlayer`. No Minecraft client
+  window is opened. Pass evidence is restricted to actual chat packets,
+  coordinates, health, inventory/hotbar, and nearby world state written by
+  `HeadlessBlackboxModule`; product audit rows are diagnostic only.
+- `grok-4.5` now negotiates `reasoning.effort=low` through the Responses API.
+  The persisted capability profile migrated from v2 `DEFAULT` to v3 `LOW`.
+  A wood action selection fell from roughly 47--79 seconds in earlier runs to
+  10--14 seconds. This is improved but is not yet a human-like latency pass.
+- Natural-world trials 1--2 failed with repeated speech/survey cycles and no
+  motion. Trial 3 selected the new `gather_nearby_wood` compound but failed on
+  an oak-leaf canopy with an empty inventory. Trial 4 exposed an over-strict
+  stable-ground filter that left the companion absent when the whole spawn
+  ring was canopy; the locator now prefers ground but retains a vanilla-safe
+  canopy fallback. Trial 5 physically moved the body over ordinary terrain
+  and acquired 12 spruce logs with full health. However, it ran the bounded
+  gather action three times instead of completing after the first verified
+  inventory delta. Trial 5 therefore remains a failure for the player goal.
+- Trial 8 passed the bounded wood task with Grok 4.5 selecting the compound in
+  6,997 ms: the body moved, acquired five birch logs, completed once, and then
+  remained stable. The terminal result is now the server-verified completion
+  boundary for that exact one-action player goal; it does not wait for a model
+  echo or admit a repeated mutation skill. The trial remains a single-task
+  pass, not an M1--M4 promotion.
+- Trial 9 failed the first natural-world moving-target follow gate. The
+  background observer walked through normal clientless player input from
+  `(-6.5,77,-5.5)` to `(-6.5,67,2.7)`. The companion spent four model turns
+  surveying, started follow after about 84 seconds, moved only from
+  `(-3.5,74,-8.5)` to about `(-3.5,74,-6.54)`, then failed twice with
+  `follow_entity.no_physical_progress`. External coordinates established the
+  failure before product events were inspected. The follow skill now performs
+  at most two first-person floor/side route scans only after measured physical
+  stalling, retries its local route, and terminates with
+  `follow_entity.no_walkable_route` rather than entering an unlimited
+  paid replan/spin loop. This has focused unit coverage but no replacement
+  natural-world pass yet.
+- Trial 10 failed an ordinary five-block separation on snow/gravel: the
+  companion remained at `(-4.5,64,112.5)` while the observer moved to
+  `(-3.5,64,117.7)`. The bound player crossed the follow threshold between
+  semantic samples; the skill retained the authorized non-sneaking player
+  coordinate but did not turn toward it before conservative route planning.
+  The fix adds one bounded directed reacquisition look toward that already
+  bound teammate, then requires a fresh ordinary first-person sample before
+  the direct movement lane is used. It is not an all-direction scan.
+- Trial 11 was not a valid ordinary-follow score because the development
+  observer blindly walked off a 20-block mountainside. The companion stayed
+  safe at the rim. The observer driver now checks only its next collision and
+  same-level support, preferring a cardinal detour over a cliff; it still uses
+  vanilla clientless input and never assigns coordinates.
+- Trial 12 passed one bounded natural-world moving-target follow slice on the
+  rebuilt artifact. One real player chat and one Grok 4.5 response started one
+  `follow_entity` skill in 9,928 ms. Across 32 one-second movement samples the
+  observer travelled about 25 blocks with turns and a one-block elevation
+  change; the companion moved from `(-3.5,90,0.5)` to about
+  `(3.65,90,22.59)`, remained at 20 health, held a median separation of 1.75
+  blocks, recovered from a maximum of 5.02 blocks, and settled at 1.88 blocks
+  after the observer stopped. No follow failure or replan occurred. The exact
+  JAR SHA-256 is
+  `1a41b0718f0fcf1d97077e6fb735cf1e532be3111f89add4e62496fe31b8c1f3`.
+  This passes only continuous ordinary-terrain follow; cliff descent,
+  long-distance pursuit, vehicles, portals, and M3 remain unverified.
+- Current relevant changed files: `HeadlessBlackboxModule`,
+  `GatherNearbyWoodSkill`, `ResourceGatheringSkills`,
+  `SafeCompanionSpawnLocator`, `PlayerTaskIntent`,
+  `MinecraftPlannerInputFactory`, the provider capability negotiation/profile
+  classes, and their focused tests.
+- Last completed gate: fresh-world trial 8 passed only the chat-to-model-to-
+  physical-wood terminal boundary. Next: preserve this regression while
+  testing a different professional-companion task and the optional off-screen
+  screenshot path without opening or borrowing a human player's client.
+
+### 2026-08-24 black-box reset
+
+- Formal M0--M4 and real-world survival gates remain `NOT_RUN`. Controlled
+  GameTests, source-contract tests, action-issued events, and model text are
+  not evidence that the body visibly moved or completed a task in a normal
+  world. Earlier wording that implied otherwise was invalid.
+- The active field failures are broader than the one passing wood slice:
+  follow can still stop/reorient or lose its target; arbitrary terrain and
+  combat survival remain unverified in natural worlds; conversation continuity
+  has no formal long-session gate; and the new first-person screenshot path
+  has protocol/opt-in tests but no live off-screen renderer pass.
+- Screenshot capture now accepts PNGs only from an explicitly registered
+  client launched with `mcai.companion.hiddenRenderer=true`. Ordinary modded
+  players are excluded from renderer selection, so the service cannot switch
+  or borrow a human camera. A dedicated server with no such background client
+  remains fail-closed instead of fabricating pixels.
+- Current modified files are
+  `src/main/java/dev/mcai/companion/skills/core/FollowEntitySkill.java` and
+  `src/test/java/dev/mcai/companion/skills/core/FollowEntitySkillTest.java`.
+  They contain an uncommitted direct visible-follow lane and a physical-stall
+  timer correction; this has only focused inner-loop coverage and is not a
+  black-box pass.
+- The last valid product gate is the user's ordinary-world trial, which
+  failed movement, tree gathering, terrain recovery, combat, respawn recovery,
+  and chat-to-action. No Nether or End claim is valid.
+- Next: use Minecraft 26.2 / Forge 65.0.9 with only this Mod, securely select
+  the verified `grok-4.5` provider profile, implement continuous target memory,
+  durable summarized conversation, and authenticated AI-view capture, then
+  run chat-only Hard-survival trials using only world view, coordinates,
+  inventory/hotbar, chat, and requested AI-view images as behavioral evidence.
 
 - The current 15.1--15.4 audit found no evidence that generic block/menu
   interaction implied complete farm or machine commissioning. The detailed
@@ -66,7 +171,7 @@ This section supersedes older chronological notes below when they conflict.
   passed, the 65 Python protocol tests passed, and the 10/10 mutation gate
   passed. The rebuilt development JAR is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `c77d1374e96c0e3bac3ded1a38e21bcf3faaa336220cc02360d6c9a0d3203160`.
+  `7c7c2376a1337dea0deaf5f609239160f6d9b6a15a4652833b5b6a95a94ce523`.
   The Forge 65.0.0 `real_brewing_stand_batch` GameTest also passed with
   explicit assertions for all five open-menu role labels. The next action is
   to publish this exact staged snapshot and then continue with real
@@ -210,7 +315,7 @@ This section supersedes older chronological notes below when they conflict.
 - The current local `build` passed after these combat and ingress changes. The
   resulting development artifact is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `fde3a6600b31b47a72b4e71fb6b1201e5ae034d93523414ca0d7d805afbafbd0`.
+  `7c7c2376a1337dea0deaf5f609239160f6d9b6a15a4652833b5b6a95a94ce523`.
 - A diagnostic-only rerun with the obsidian-frontier re-entry completion
   target tightened to 30 blocks was reverted: it moved the body to about
   `(47.5,51.0,-0.3)` but the fair ingress child timed out after 6,000 ticks
@@ -978,6 +1083,63 @@ evidence, not a combat result.
   transient shot failures, bounded retreat, and End fall recovery.
 - English-only public project documentation and a compact evidence status.
 
+## Recovery turn: live inventory round-trip
+
+- Root cause of the first controlled failure: the provider returned valid
+  non-action responses for a visible container handoff, but the final route
+  phase filter removed the narrow `use_block`/`transfer_menu_item` skills.
+  A second failure exposed that the owned inventory is encoded under the fair
+  semantic root `self`, not `body`.
+- Source changes in this turn: bounded optional-speech truncation for valid
+  action envelopes; final re-application of the current visible-container
+  handoff after route filtering; fair recovery for open-container withdrawal;
+  fair owned-item drop recovery; final-schema narrowing to `drop_item` when
+  the current `self.inventory` proves an explicit item/count; and a real
+  round-trip extension of the canonical live item-collection GameTest. The
+  standalone duplicate test was removed so the selector has one authoritative
+  gate.
+- Negative evidence retained: round-trip attempts 1--4 failed because the
+  selector did not resolve the duplicate test or the human chat connection
+  closed before the second goal was installed; attempt 5 installed the drop
+  goal but did not start the action while the recovery parser still read the
+  wrong semantic root; attempt 6 installed the goal but remained no-action
+  until the controlled recovery path was corrected.
+- Real evidence now available: attempt 7 used Forge 65.1.1, the configured
+  MiMo `mimo-v2.5` gateway, a headless `ServerPlayer`, and ordinary player
+  chat. The model first selected `collect_observed_item`, the body acquired
+  exactly three oak logs through vanilla pickup, a second human chat requested
+  immediate disposal, and the model selected `START_SKILL drop_item` with
+  `minecraft:oak_log` count 3. The normal inventory-menu THROW path produced
+  a live `ItemEntity` containing the three logs. Forge reported `All 1
+  required tests passed` in 41.79 seconds. This is a controlled live-model
+  slice, not a formal M1--M4, random-seed, Hardcore, rendered-client, PVP, or
+  speedrun result.
+- Last failed gate before the pass: `/tmp/minepilot-live-inventory-roundtrip-6.log`
+  (controlled no-action diagnosis). Passing evidence:
+  `/tmp/minepilot-live-inventory-roundtrip-8.log` (26.08 seconds, direct
+  model `collect_observed_item` followed by `drop_item`). Credentials were
+  process only and were not written to source, world data, SQLite, or
+  documentation.
+- Follow-up player-gift evidence deliberately used a real logged-in
+  `ServerPlayer.drop` instead of an authored item entity. Its first run
+  failed with a physical diagnostic of `ownedLogs=3` but no `drop_item`
+  start: the recovery parser accepted the test fixture spelling `item` while
+  production `InventoryItemSummary` encodes `itemId`. The parser now accepts
+  the canonical `itemId` field (and retains the bounded legacy spelling).
+  The fixed Forge 65.1.1 MiMo run selected collection, verified the three-log
+  inventory delta, selected `drop_item`, verified the inventory reached zero,
+  and observed a live three-log item entity. This is action evidence, not
+  speech evidence.
+- The exact Forge 65.0.8 line used by the configured local XMCL instance also
+  passed that same real-model player-gift round trip in 16.25 seconds. The
+  companion selected `collect_observed_item`, then `drop_item`; the gate
+  asserted the resulting live inventory and `ItemEntity` state rather than
+  its chat. The release JAR was then installed as the sole active companion
+  JAR in the requested instance. The prior 0.1.3 JAR was moved to the
+  instance's disabled-mod backup directory. The endpoint/model are in the
+  non-secret Forge config and the API credential was replaced in the macOS
+  Keychain after a newline-safe digest check. No API value is recorded here.
+
 ## Last completed checks
 
 ```text
@@ -987,6 +1149,10 @@ Offline End/dragon/return physical baseline       PASS (no model)
 Live MiMo standalone End victory and return      PASS (controlled real-model chain; Forge 65.1.1, 2.183 min)
 Live MiMo movement, follow, surprise defense, food PASS (four controlled live-model slices)
 Live MiMo container withdrawal and item collection PASS (latest item recovery rerun; two controlled live-model slices)
+Live MiMo inventory pickup then immediate drop PASS (26.08-second direct-model round trip; vanilla THROW entity and inventory delta)
+Forge 65.0.0 live inventory round trip                 PASS (25.16-second minimum-line patch slice)
+Forge 65.1.2 live inventory round trip                 PASS (30.23-second latest-patch slice)
+Live MiMo player-gift pickup then immediate drop    PASS (18.70-second fixed run; vanilla gift, inventory delta, and live ItemEntity)
 Live MiMo foundation bootstrap and shelter       PASS (8.912-minute controlled slice; isolated SQLite)
 Live MiMo Nether portal build and entry          PASS (52.17-second controlled slice; isolated SQLite)
 Live MiMo stronghold search, portal activation, End entry PASS (controlled real-model prefix)
@@ -1030,6 +1196,19 @@ seed statistic.
 
 ## Immediate next steps
 
+### Current deployment checkpoint
+
+- **Root cause fixed:** the owned-item recovery handoff parsed fixture-only
+  `item` while production perception serializes `itemId`; it now reads the
+  canonical field with a bounded legacy fallback.
+- **Changed files:** `CompanionRuntime`, `LiveModelChatGameTests`, live-run
+  records, release notes, goal state, and this checkpoint (commit `815e60c`).
+- **Last failed gate:** the formal rendered Actor/Observer client gate remains
+  `NOT_RUN`; controlled embedded-player evidence does not satisfy it.
+- **Next action:** user launches the installed instance and verifies the first
+  real client world; collect its log and reproduce any observed physical
+  non-action before declaring the deployment usable.
+
 1. Preserve the closed formal-evidence nonce boundary: the manifest now owns
    the externally expected nonce and both functional and delayed-anchor
    verifiers bind every Actor, Observer, Oracle, and Oracle-result event to it.
@@ -1066,9 +1245,98 @@ seed statistic.
   publications must keep using blob/tree objects for large files. Generated
   run directories remain disposable and must not be staged.
 - API keys are process-only during live tests and are never written here.
+- Current local verification commit (`test: verify live inventory round trip`)
+  is not yet published. A normal push was attempted after preflight, but
+  this worker has no usable GitHub credential: its configured helper points to
+  the missing `/opt/homebrew/bin/gh`. The remote `main` was not changed and
+  no force push was attempted; publish remains pending authenticated GitHub
+  access.
 - The latest exact-blob repair snapshot is public `main` commit
   `1d1c75173c475470dde808582e4b07d70f1a7254`; a fresh clone matched all
   seven changed source, test, and evidence files byte-for-byte, parsed the
   goal JSON, and passed Forge 65.1.1 `compileJava`. The immediately
   preceding publication was repaired after a shell-prefix upload corruption;
   the repaired blobs now match local Git object hashes exactly.
+
+## 2026-08-24 Headless Grok 4.5 black-box checkpoint
+
+- Scope: Minecraft 26.2, Forge 65.0.9, a fresh hard-survival dedicated server
+  launched with `nogui`, and one ordinary embedded observer submitting a real
+  `ServerboundChatPacket`. No Minecraft client window was opened. The external
+  pass oracle was restricted to chat packets, companion pose/health,
+  inventory/hotbar, and nearby-world state written by
+  `HeadlessBlackboxModule`; product audit and SQLite rows were used only after
+  a failed run to diagnose it.
+- World 5 supplied partial physical evidence: after the Chinese wood request,
+  the companion moved from approximately `(49.5,81,78.5)` to
+  `(64.5,82,80.5)` and its real inventory contained twelve spruce logs. The
+  overall goal still failed because the planner started
+  `gather_nearby_wood` repeatedly instead of accepting the first verified
+  completion. `MinecraftPlannerInputFactory` now exposes no follow-up skill
+  schema after a trusted terminal `COMPLETED` result and requires exact
+  inventory-based completion. This boundary is covered by a focused unit
+  test but has not yet passed a fresh black-box run.
+- World 6 failed. The companion spawned beside several Drowned, remained
+  alive at full health, and the visible hostiles eventually disappeared, but
+  it never began the requested wood skill before shutdown. Initial inspection
+  incorrectly suspected a permanent emergency-controller lease. The actual
+  internal timeline shows the alternating recent-damage scan ended after
+  roughly sixteen seconds; the high-level Grok 4.5 request remained pending
+  for the rest of the run. The server stopped about 89 seconds after
+  `model_request_started`, just before the configured 90-second hard deadline,
+  so that run does not test timeout recovery. No completion or skill-start row
+  exists for the request.
+- The existing `BrainOrchestrator` timeout path cancels only the timed-out
+  request, leaves the goal running, schedules provider-outage backoff, and
+  retries. Its focused regression passes, but this behavior is not yet proven
+  in the real background server with Grok 4.5.
+- Files changed in the current black-box increment include
+  `src/main/java/dev/mcai/companion/blackbox/HeadlessBlackboxModule.java`,
+  `src/main/java/dev/mcai/companion/model/ReasoningControl.java`,
+  `src/main/java/dev/mcai/companion/model/ModelRequestFactory.java`,
+  `src/main/java/dev/mcai/companion/model/JdkProviderCapabilityProbe.java`,
+  `src/main/java/dev/mcai/companion/modelsetup/ModelProfileStore.java`,
+  `src/main/java/dev/mcai/companion/skills/gathering/GatherNearbyWoodSkill.java`,
+  `src/main/java/dev/mcai/companion/skills/gathering/ResourceGatheringSkills.java`,
+  `src/main/java/dev/mcai/companion/runtime/MinecraftPlannerInputFactory.java`,
+  `src/main/java/dev/mcai/companion/embodiment/SafeCompanionSpawnLocator.java`,
+  and `src/main/java/dev/mcai/companion/communication/PlayerTaskIntent.java`,
+  together with their focused tests.
+- Last gate: focused planner, intent, capability-probe, and profile-store tests
+  passed, and the development JAR built. World 6 remains a failed black-box
+  gate; it does not promote any M0-M4 status.
+- Next action: run a fresh random world for longer than the 90-second hard
+  deadline, verify timeout/retry from external behavior if the provider hangs,
+  and require the same run to physically gather wood and stop after the first
+  verified completion. If it fails, preserve the external trace, diagnose only
+  afterward, and fix the concrete causal boundary before expanding scope.
+- World 7 crossed the real deadline and remained a failed run. Its first
+  generation request was cancelled at 90 seconds, a second request started
+  about two seconds later, and the body stayed at `(-147.5,79,-5.5)` with an
+  empty inventory until shutdown. Independent minimal probes showed that the
+  same valid credential and provider returned `/v1/models` in under one second
+  and listed `grok-4.5`, while non-streaming Responses, streaming Responses,
+  and Chat Completions generation calls each returned zero bytes before their
+  45-second client deadlines. This was provider-generation unavailability at
+  that time, not evidence that the product action path worked.
+- The brain now gives the model its normal first opportunity, then has one
+  narrowly scoped soft-deadline handoff for an explicit player-authored nearby
+  wood task. It cancels only the stalled request and starts the no-argument
+  `gather_nearby_wood` executor; it cannot invent a target, coordinate, route,
+  or hidden observation. A successful compound result now closes that exact
+  one-action player goal immediately because the skill's `COMPLETED` boundary
+  already verifies a real owned-wood increase. A focused regression verifies
+  one handoff, one skill start, server completion, and no second request.
+- World 8 passed this one bounded black-box scenario with artifact SHA-256
+  `ca87e853e8e6686967e150a63cadaca53b1538f8f18fc5d0a6735070cb778a75`.
+  In this run the provider recovered before the soft deadline: Grok 4.5
+  returned HTTP 200 in 6,997 ms and selected `gather_nearby_wood`. External
+  observations show the body move from `(-0.5,76,-1.5)` to approximately
+  `(-4.3,76,5.5)`, stay at 20 health, and change from an empty inventory to
+  five birch logs. After the server-emitted completion status, ten consecutive
+  one-second observations kept the same position and five-log inventory. The
+  saved goal was `COMPLETED` with
+  `server_verified_nearby_wood_complete`; no repeated skill or request began.
+  This is evidence only for one chat-to-model-to-physical-wood action and its
+  terminal boundary. It is not an M1, M2, M3, M4, Hardcore, combat, shelter,
+  or two-hour-completion pass.

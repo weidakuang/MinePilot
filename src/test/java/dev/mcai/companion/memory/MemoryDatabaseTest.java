@@ -68,4 +68,33 @@ final class MemoryDatabaseTest {
 
         assertTrue(result.isCompletedExceptionally());
     }
+
+    @Test
+    void persistsRecentConversationInChronologicalOrder()
+            throws Exception {
+        final Path databaseFile = temporaryDirectory.resolve(
+                "conversation.db"
+        );
+        try (MemoryDatabase database = MemoryDatabase.open(databaseFile)) {
+            database.appendConversationTurn(new ConversationTurn(
+                    Instant.parse("2026-08-24T00:00:01Z"),
+                    "follow me",
+                    "Following."
+            )).get(5, TimeUnit.SECONDS);
+            database.appendConversationTurn(new ConversationTurn(
+                    Instant.parse("2026-08-24T00:00:02Z"),
+                    "do you remember?",
+                    "Yes."
+            )).get(5, TimeUnit.SECONDS);
+        }
+
+        try (MemoryDatabase reopened = MemoryDatabase.open(databaseFile)) {
+            final var turns = reopened.loadRecentConversationTurns(16)
+                    .get(5, TimeUnit.SECONDS);
+            assertEquals(2, turns.size());
+            assertEquals("follow me", turns.getFirst().player());
+            assertEquals("Yes.", turns.getLast().agent());
+            assertTrue(turns.getFirst().sequence() < turns.getLast().sequence());
+        }
+    }
 }

@@ -13,7 +13,7 @@ bounded crop run is not a complete machine/farm or formal companion result.
 - Repository: `MinePilot`; mod id: `mcai_companion`.
 - Minecraft Java 26.2; Forge 65.0.0 inclusive through 66.0.0 exclusive;
   Java 25.
-- Development version: `0.1.11-dev-mc26.2`.
+- Development version: `0.1.12-dev-mc26.2`.
 - Public repository: `https://github.com/weidakuang/MinePilot`; the latest
   verified source snapshot is public `main` commit
   `600f37051765a578eb2b2bc595bd71b7188ed56f` with tree
@@ -58,6 +58,11 @@ or speedrun claim.
 - First-person fair perception, loaded-chunk bounds, FOV/occlusion/LOS,
   multipart dragon collider evidence, semantic memory, SQLite WAL/FTS5/R*Tree,
   waypoints, portal graph, MCP, and Xaero structured waypoint intake.
+- Optional PNG capture is isolated from normal player clients: only a client
+  launched with the explicit hidden-renderer flag can register as an
+  authenticated first-person renderer. The dedicated server remains `nogui`,
+  ordinary player cameras cannot be selected, and the path still needs a live
+  off-screen capture gate before it is considered complete.
 - Open-menu observations now include bounded role hints for vanilla input,
   fuel, output, payment, and player-inventory slots. Actions remain bound to
   the exact observed menu revision and still execute through vanilla menus.
@@ -123,7 +128,7 @@ or speedrun claim.
   the compatibility checker. The latest protocol-only change separately
   passed all 65 Python audit tests and ten mutation variants. The artifact is
   `build/libs/mcai_companion-0.1.11-dev-mc26.2.jar` with SHA-256
-  `fde3a6600b31b47a72b4e71fb6b1201e5ae034d93523414ca0d7d805afbafbd0`.
+  `7c7c2376a1337dea0deaf5f609239160f6d9b6a15a4652833b5b6a95a94ce523`.
 
 ### Natural dynamic-dragon presence slice
 

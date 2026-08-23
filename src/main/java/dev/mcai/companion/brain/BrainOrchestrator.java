@@ -1,4 +1,3 @@
-/Users/weida/.zprofile:7: no such file or directory: /opt/homebrew/bin/brew
 package dev.mcai.companion.brain;
 
 import com.google.gson.JsonArray;
@@ -120,6 +119,13 @@ public final class BrainOrchestrator {
     private long immediateFollowSearchGoalRevision = -1L;
     /** One bounded local reacquisition sweep for a deictic item request. */
     private long immediateItemSurveyGoalRevision = -1L;
+    /**
+     * At most one provider-soft-deadline handoff for an explicit nearby-wood
+     * request. This is not a general fallback planner: the player already
+     * chose the goal, the admitted compound skill takes no model-generated
+     * target, and every body action remains first-person and vanilla-bound.
+     */
+    private long immediateWoodHandoffGoalRevision = -1L;
     private volatile boolean closed;
 
     public BrainOrchestrator(
@@ -396,6 +402,26 @@ public final class BrainOrchestrator {
         }
 
         /*
+         * A clear "chop nearby wood" command already names the high-level
+         * outcome, and its compound executor needs no target coordinates or
+         * model-authored arguments. If the provider misses the configured
+         * conversational soft deadline, cancel only that request and let the
+         * ordinary fair skill start. This prevents a transient provider stall
+         * from turning the body into a motionless acknowledgement while still
+         * giving the high-level model the first opportunity to decide.
+         */
+        if (inFlight != null
+                && inFlight.softDeadlineReported
+                && !waitingForPlayer
+                && tryStartSoftDeadlineWoodHandoff(
+                        goal,
+                        observation,
+                        now
+                )) {
+            return snapshot();
+        }
+
+        /*
          * A literal, player-authored "follow me" command already provides
          * the high-level goal and the authorized player identity.  Do not
          * make that narrow, low-risk request wait for a slow, unavailable or
@@ -418,6 +444,57 @@ public final class BrainOrchestrator {
             issuePlannerRequest(goal, observation, now);
         }
         return snapshot();
+    }
+
+    private boolean tryStartSoftDeadlineWoodHandoff(
+            final GoalSnapshot goal,
+            final BrainObservation observation,
+            final long now
+    ) {
+        if (goal.source() != GoalSource.PLAYER_CHAT
+                || goal.externalWritesLocked()
+                || immediateWoodHandoffGoalRevision == goal.revision()
+                || !MinecraftPlannerInputFactory
+                        .isImmediateNearbyWoodGoal(goal.goal())
+                || inFlight == null
+                || !inFlight.softDeadlineReported) {
+            return false;
+        }
+        final InFlight yielded = inFlight;
+        yielded.cancellationRequested = true;
+        final long differentRevision = goal.revision() == Long.MAX_VALUE
+                ? goal.revision() - 1L
+                : goal.revision() + 1L;
+        modelGateway.cancelForGoalRevision(differentRevision);
+        if (inFlight == yielded) {
+            inFlight = null;
+        }
+        mailbox.set(null);
+        immediateWoodHandoffGoalRevision = goal.revision();
+        emitNotice(
+                goal.revision(),
+                "soft_deadline_nearby_wood_handoff"
+        );
+        final DecisionEnvelope direct = new DecisionEnvelope(
+                "direct-wood-" + goal.revision() + "-"
+                        + observation.epoch(),
+                observation.epoch(),
+                goal.revision(),
+                DecisionKind.START_SKILL,
+                "gather_nearby_wood",
+                List.of(),
+                dev.mcai.companion.model.RequestedObservation.none(),
+                "",
+                1.0
+        );
+        applyStartSkill(
+                goal,
+                observation,
+                direct,
+                Optional.empty(),
+                now
+        );
+        return isActive(skills.snapshot());
     }
 
     /**
@@ -792,6 +869,7 @@ public final class BrainOrchestrator {
         consecutiveNoActionDecisions = 0;
         immediateFollowSearchGoalRevision = -1L;
         immediateItemSurveyGoalRevision = -1L;
+        immediateWoodHandoffGoalRevision = -1L;
         clearRepeatedStartRejection();
         nextRequestNotBeforeNanos = 0L;
     }
@@ -877,6 +955,7 @@ public final class BrainOrchestrator {
         consecutiveNoActionDecisions = 0;
         immediateFollowSearchGoalRevision = -1L;
         immediateItemSurveyGoalRevision = -1L;
+        immediateWoodHandoffGoalRevision = -1L;
     }
 
     private void handleGoalCancellation(
@@ -1006,6 +1085,30 @@ public final class BrainOrchestrator {
                         "skill_completed",
                         skill.skillName()
                 );
+                if (goal.source() == GoalSource.PLAYER_CHAT
+                        && !goal.externalWritesLocked()
+                        && "gather_nearby_wood".equals(skill.skillName())
+                        && MinecraftPlannerInputFactory
+                                .isImmediateNearbyWoodGoal(goal.goal())) {
+                    /*
+                     * This compound skill reports COMPLETED only after the
+                     * server observes that owned wood increased. For the
+                     * exact one-action player request, another model call
+                     * cannot add completion evidence; it can only repeat the
+                     * action or leave the body waiting. Close the goal at the
+                     * verified physical boundary.
+                     */
+                    emitNotice(
+                            goal.revision(),
+                            "server_verified_nearby_wood_complete"
+                    );
+                    terminal(
+                            goal,
+                            GoalStatus.COMPLETED,
+                            "server_verified_nearby_wood_complete"
+                    );
+                    break;
+                }
                 scheduleBackoff(now, policy.minimumReplanBackoff());
             }
             case CANCELLED -> {
@@ -2044,6 +2147,24 @@ public final class BrainOrchestrator {
         if (item.isPresent()) {
             return item;
         }
+        final Optional<DecisionEnvelope> container =
+                recoverBoundContainerWithdrawalDecision(
+                        goal,
+                        observation,
+                        noActionDecision
+                );
+        if (container.isPresent()) {
+            return container;
+        }
+        final Optional<DecisionEnvelope> drop =
+                recoverBoundOwnedItemDropDecision(
+                        goal,
+                        observation,
+                        noActionDecision
+                );
+        if (drop.isPresent()) {
+            return drop;
+        }
         if (immediateItemSurveyGoalRevision == goal.revision()) {
             return Optional.empty();
         }
@@ -2057,6 +2178,143 @@ public final class BrainOrchestrator {
             immediateItemSurveyGoalRevision = goal.revision();
         }
         return survey;
+    }
+
+    private static Optional<DecisionEnvelope>
+            recoverBoundOwnedItemDropDecision(
+                    final GoalSnapshot goal,
+                    final BrainObservation observation,
+                    final DecisionEnvelope noActionDecision
+            ) {
+        if ((goal.source() != GoalSource.PLAYER_CHAT
+                    && goal.source() != GoalSource.MCP)
+                || goal.externalWritesLocked()
+                || (noActionDecision.decision() != DecisionKind.CONTINUE
+                    && noActionDecision.decision() != DecisionKind.REPLAN
+                    && noActionDecision.decision() != DecisionKind.ASK_PLAYER
+                    && noActionDecision.decision() != DecisionKind.SAFE_IDLE
+                    && noActionDecision.decision() != DecisionKind.COMPLETE_GOAL)) {
+            return Optional.empty();
+        }
+        final Optional<MinecraftPlannerInputFactory.ImmediateItemDropHandoff>
+                handoff = MinecraftPlannerInputFactory
+                        .immediateOwnedItemDropHandoffForRecovery(
+                                goal.goal(),
+                                observation.semanticJson()
+                        );
+        if (handoff.isEmpty()) {
+            return Optional.empty();
+        }
+        final MinecraftPlannerInputFactory.ImmediateItemDropHandoff value =
+                handoff.orElseThrow();
+        return Optional.of(new DecisionEnvelope(
+                noActionDecision.requestId(),
+                noActionDecision.observedWorldRevision(),
+                noActionDecision.goalRevision(),
+                DecisionKind.START_SKILL,
+                "drop_item",
+                List.of(
+                        new SkillArgument("itemId", value.itemId()),
+                        new SkillArgument("count", Integer.toString(value.count()))
+                ),
+                dev.mcai.companion.model.RequestedObservation.none(),
+                "",
+                0.98
+        ));
+    }
+
+    /**
+     * Keeps an explicit visible-container task from becoming a speech-only
+     * loop when a provider returns REPLAN/SAFE_IDLE or an otherwise malformed
+     * envelope.  The handoff is entirely derived from the current fair
+     * semantic frame; the normal validator, skill supervisor and vanilla
+     * menu transaction still own execution.
+     */
+    private static Optional<DecisionEnvelope>
+            recoverBoundContainerWithdrawalDecision(
+                    final GoalSnapshot goal,
+                    final BrainObservation observation,
+                    final DecisionEnvelope noActionDecision
+            ) {
+        if ((goal.source() != GoalSource.PLAYER_CHAT
+                    && goal.source() != GoalSource.MCP)
+                || goal.externalWritesLocked()
+                || (noActionDecision.decision() != DecisionKind.CONTINUE
+                    && noActionDecision.decision() != DecisionKind.REPLAN
+                    && noActionDecision.decision() != DecisionKind.ASK_PLAYER
+                    && noActionDecision.decision() != DecisionKind.SAFE_IDLE
+                    && noActionDecision.decision() != DecisionKind.COMPLETE_GOAL)) {
+            return Optional.empty();
+        }
+        final Optional<MinecraftPlannerInputFactory
+                .ImmediateContainerWithdrawalHandoff> handoff =
+                MinecraftPlannerInputFactory
+                        .immediateContainerWithdrawalHandoffForRecovery(
+                                goal.goal(),
+                                observation.semanticJson()
+                        );
+        if (handoff.isEmpty()) {
+            return Optional.empty();
+        }
+        final MinecraftPlannerInputFactory
+                .ImmediateContainerWithdrawalHandoff value = handoff.orElseThrow();
+        if (!value.open()) {
+            return Optional.of(new DecisionEnvelope(
+                    noActionDecision.requestId(),
+                    noActionDecision.observedWorldRevision(),
+                    noActionDecision.goalRevision(),
+                    DecisionKind.START_SKILL,
+                    "use_block",
+                    List.of(
+                            new SkillArgument("dimension", value.dimension()),
+                            new SkillArgument(
+                                    "sampleSequence",
+                                    Long.toString(value.sampleSequence())
+                            ),
+                            new SkillArgument("x", Integer.toString(value.x())),
+                            new SkillArgument("y", Integer.toString(value.y())),
+                            new SkillArgument("z", Integer.toString(value.z())),
+                            new SkillArgument("face", value.face()),
+                            new SkillArgument("hand", "main_hand")
+                    ),
+                    dev.mcai.companion.model.RequestedObservation.none(),
+                    "",
+                    0.98
+            ));
+        }
+        return Optional.of(new DecisionEnvelope(
+                noActionDecision.requestId(),
+                noActionDecision.observedWorldRevision(),
+                noActionDecision.goalRevision(),
+                DecisionKind.START_SKILL,
+                "transfer_menu_item",
+                List.of(
+                        new SkillArgument(
+                                "sampleSequence",
+                                Long.toString(value.sampleSequence())
+                        ),
+                        new SkillArgument(
+                                "containerId",
+                                Integer.toString(value.containerId())
+                        ),
+                        new SkillArgument(
+                                "stateId",
+                                Integer.toString(value.stateId())
+                        ),
+                        new SkillArgument(
+                                "sourceSlot",
+                                Integer.toString(value.sourceSlot())
+                        ),
+                        new SkillArgument(
+                                "destinationSlot",
+                                Integer.toString(value.destinationSlot())
+                        ),
+                        new SkillArgument("count", Integer.toString(value.count()))
+                ),
+                dev.mcai.companion.model.RequestedObservation.none(),
+                "",
+                0.98
+        ));
     }
 
     /**

@@ -1,6 +1,8 @@
 package dev.mcai.companion.mcp;
 
 import java.time.Instant;
+import java.time.Duration;
+import java.util.Base64;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -24,6 +26,7 @@ import dev.mcai.companion.waypoint.WaypointPoint;
 import dev.mcai.companion.waypoint.WaypointProvenance;
 import dev.mcai.companion.waypoint.WaypointStatus;
 import dev.mcai.companion.world.CompanionWorldData;
+import dev.mcai.companion.vision.VisionCaptureService;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -42,6 +45,7 @@ public final class MinecraftMcpBackend implements McpBackend {
     private final GoalCoordinator goals;
     private final LongSupplier decisionEpoch;
     private final RuntimeTickMetrics tickMetrics;
+    private final Optional<VisionCaptureService> visionCapture;
 
     public MinecraftMcpBackend(
         final MinecraftServer server,
@@ -50,6 +54,49 @@ public final class MinecraftMcpBackend implements McpBackend {
         final GoalCoordinator goals,
         final LongSupplier decisionEpoch,
         final RuntimeTickMetrics tickMetrics
+    ) {
+        this(
+            server,
+            worldData,
+            memory,
+            goals,
+            decisionEpoch,
+            tickMetrics,
+            Optional.empty()
+        );
+    }
+
+    public MinecraftMcpBackend(
+        final MinecraftServer server,
+        final CompanionWorldData worldData,
+        final MemoryDatabase memory,
+        final GoalCoordinator goals,
+        final LongSupplier decisionEpoch,
+        final RuntimeTickMetrics tickMetrics,
+        final VisionCaptureService visionCapture
+    ) {
+        this(
+            server,
+            worldData,
+            memory,
+            goals,
+            decisionEpoch,
+            tickMetrics,
+            Optional.of(Objects.requireNonNull(
+                visionCapture,
+                "visionCapture"
+            ))
+        );
+    }
+
+    private MinecraftMcpBackend(
+        final MinecraftServer server,
+        final CompanionWorldData worldData,
+        final MemoryDatabase memory,
+        final GoalCoordinator goals,
+        final LongSupplier decisionEpoch,
+        final RuntimeTickMetrics tickMetrics,
+        final Optional<VisionCaptureService> visionCapture
     ) {
         this.server = Objects.requireNonNull(server, "server");
         this.worldData = Objects.requireNonNull(worldData, "worldData");
@@ -62,6 +109,10 @@ public final class MinecraftMcpBackend implements McpBackend {
         this.tickMetrics = Objects.requireNonNull(
             tickMetrics,
             "tickMetrics"
+        );
+        this.visionCapture = Objects.requireNonNull(
+            visionCapture,
+            "visionCapture"
         );
     }
 
@@ -191,6 +242,52 @@ public final class MinecraftMcpBackend implements McpBackend {
     }
 
     private JsonElement screenshotState() {
+        if (visionCapture.isPresent()) {
+            final VisionCaptureService capture =
+                visionCapture.orElseThrow();
+            final var latest = capture.latest().filter(snapshot ->
+                Duration.between(
+                    snapshot.capturedAt(),
+                    Instant.now()
+                ).compareTo(Duration.ofSeconds(5)) <= 0
+            );
+            if (latest.isPresent()) {
+                final var snapshot = latest.orElseThrow();
+                final JsonObject result = new JsonObject();
+                result.addProperty("available", true);
+                result.addProperty("code", "ok");
+                result.addProperty("mimeType", "image/png");
+                result.addProperty("width", snapshot.width());
+                result.addProperty("height", snapshot.height());
+                result.addProperty(
+                    "capturedAt",
+                    snapshot.capturedAt().toString()
+                );
+                result.addProperty(
+                    "base64",
+                    Base64.getEncoder().encodeToString(snapshot.png())
+                );
+                result.addProperty(
+                    "captureProvenance",
+                    "authenticated_client_companion_first_person"
+                );
+                result.addProperty("modelInput", false);
+                return result;
+            }
+            final VisionCaptureService.RequestState request =
+                capture.request();
+            final JsonObject result = new JsonObject();
+            result.addProperty("available", false);
+            result.addProperty("pending", request.pending());
+            result.addProperty("accepted", request.accepted());
+            result.addProperty("code", request.code());
+            result.addProperty("requestId", request.requestId());
+            result.addProperty(
+                "requiresAuthenticatedClientCapture",
+                true
+            );
+            return result;
+        }
         final JsonObject result = new JsonObject();
         result.addProperty("available", false);
         result.addProperty("code", "first_person_capture_not_ready");

@@ -2111,6 +2111,7 @@ final class MinecraftPlannerInputFactoryTest {
     void visibleWoodTaskAdmitsOnlyObservationBoundGathering() {
         final SkillRegistry skills = new SkillRegistry()
                 .register("gather_visible_block_cluster", noArgumentSkill())
+                .register("gather_nearby_wood", noArgumentSkill())
                 .register("survey_surroundings", noArgumentSkill())
                 .register("move_to", noArgumentSkill())
                 .register("craft_recipe", noArgumentSkill());
@@ -2126,7 +2127,7 @@ final class MinecraftPlannerInputFactoryTest {
         );
 
         assertEquals(
-                java.util.Set.of("gather_visible_block_cluster"),
+                java.util.Set.of("gather_nearby_wood"),
                 MinecraftPlannerInputFactory
                         .immediateVisibleBlockGatheringHandoffSkills(
                                 skills.modelArgumentValidators(),
@@ -2175,17 +2176,17 @@ final class MinecraftPlannerInputFactoryTest {
                 );
 
         assertEquals(
-                java.util.Set.of("gather_visible_block_cluster"),
+                java.util.Set.of("gather_nearby_wood"),
                 input.decisionContext().availableSkills().keySet()
         );
         assertTrue(input.systemPrompt().contains(
                 "TRUSTED_IMMEDIATE_VISIBLE_WOOD_GATHERING_PLAYBOOK"
         ));
         assertTrue(input.systemPrompt().contains(
-                "gather_visible_block_cluster now"
+                "gather_nearby_wood now"
         ));
         assertTrue(input.systemPrompt().contains(
-                "visibleBlockFaces.block x/y/z"
+                "with no arguments"
         ));
     }
 
@@ -2319,9 +2320,10 @@ final class MinecraftPlannerInputFactoryTest {
     }
 
     @Test
-    void woodTaskWithoutFairLogKeepsSchemaAndCannotInventTree() {
+    void woodTaskWithoutVisibleLogAdmitsContinuousFairWoodCompound() {
         final SkillRegistry skills = new SkillRegistry()
                 .register("gather_visible_block_cluster", noArgumentSkill())
+                .register("gather_nearby_wood", noArgumentSkill())
                 .register("survey_surroundings", noArgumentSkill())
                 .register("move_to", noArgumentSkill());
         final GoalSnapshot goal = new GoalSnapshot(
@@ -2367,16 +2369,69 @@ final class MinecraftPlannerInputFactoryTest {
                 );
 
         assertEquals(
-                java.util.Set.of(
-                        "gather_visible_block_cluster",
-                        "move_to",
-                        "survey_surroundings"
-                ),
+                java.util.Set.of("gather_nearby_wood"),
                 input.decisionContext().availableSkills().keySet()
         );
         assertTrue(input.systemPrompt().contains(
-                "request one SEMANTIC_REFRESH"
+                "continuously scans through the player's own eyes"
         ));
+    }
+
+    @Test
+    void completedWoodCompoundCannotBeStartedAgain() {
+        final SkillRegistry skills = new SkillRegistry()
+                .register("gather_visible_block_cluster", noArgumentSkill())
+                .register("gather_nearby_wood", noArgumentSkill())
+                .register("survey_surroundings", noArgumentSkill());
+        final GoalSnapshot goal = new GoalSnapshot(
+                java.util.Optional.empty(),
+                3,
+                GoalStatus.RUNNING,
+                GoalSource.PLAYER_CHAT,
+                "请砍一棵树，捡起木头，然后告诉我实际拿到了什么",
+                "",
+                java.time.Instant.EPOCH,
+                false
+        );
+        final var input = new MinecraftPlannerInputFactory(skills, "guide")
+                .create(
+                        "request-wood-complete",
+                        goal,
+                        new BrainObservation(
+                                9,
+                                new SkillContext(
+                                        3,
+                                        9,
+                                        20,
+                                        false,
+                                        true,
+                                        0.0
+                                ),
+                                """
+                                {
+                                  "self": {
+                                    "inventory": [{
+                                      "itemId": "minecraft:spruce_log",
+                                      "count": 3
+                                    }]
+                                  }
+                                }
+                                """,
+                                """
+                                {
+                                  "skillState": "TERMINAL",
+                                  "skillName": "gather_nearby_wood",
+                                  "terminalStatus": "COMPLETED"
+                                }
+                                """
+                        )
+                );
+
+        assertTrue(input.decisionContext().availableSkills().isEmpty());
+        assertTrue(input.systemPrompt().contains(
+                "TRUSTED_COMPLETED_WOOD_GATHERING_PLAYBOOK"
+        ));
+        assertTrue(input.systemPrompt().contains("choose COMPLETE_GOAL"));
     }
 
     @Test
@@ -2659,6 +2714,198 @@ final class MinecraftPlannerInputFactoryTest {
                                 openChest
                         )
                         .keySet()
+        );
+    }
+
+    @Test
+    void ownedItemDropSchemaAdmitsOnlyTheFairThrowAction() {
+        final SkillArgumentValidator accepts =
+                arguments -> Optional.empty();
+        final Map<String, SkillArgumentValidator> all = Map.of(
+                "drop_item", accepts,
+                "move_to", accepts,
+                "survey_surroundings", accepts
+        );
+        final GoalSnapshot goal = new GoalSnapshot(
+                Optional.empty(),
+                9,
+                GoalStatus.RUNNING,
+                GoalSource.PLAYER_CHAT,
+                "请立即把背包里的3个橡木原木丢到地上",
+                "",
+                java.time.Instant.EPOCH,
+                false
+        );
+        final String owned = """
+                {
+                  "sampleSequence": 81,
+                  "self": {
+                    "dimension": "minecraft:overworld",
+                    "inventory": [
+                      {"item":"minecraft:oak_log","count":3}
+                    ]
+                  }
+                }
+                """;
+        assertEquals(
+                java.util.Set.of("drop_item"),
+                MinecraftPlannerInputFactory
+                        .immediateOwnedItemDropHandoffSkills(
+                                all,
+                                goal,
+                                owned
+                        )
+                        .keySet()
+        );
+
+        final String insufficient = owned.replace("\"count\":3", "\"count\":2");
+        assertEquals(
+                all.keySet(),
+                MinecraftPlannerInputFactory
+                        .immediateOwnedItemDropHandoffSkills(
+                                all,
+                                goal,
+                                insufficient
+                        )
+                        .keySet()
+        );
+    }
+
+    @Test
+    void ownedItemDropReceivesActionFirstPlaybook() {
+        final GoalSnapshot goal = new GoalSnapshot(
+                Optional.empty(),
+                9,
+                GoalStatus.RUNNING,
+                GoalSource.PLAYER_CHAT,
+                "drop 3 oak logs now",
+                "",
+                java.time.Instant.EPOCH,
+                false
+        );
+        final var input = new MinecraftPlannerInputFactory(
+                new SkillRegistry(),
+                "guide"
+        ).create(
+                "request-drop",
+                goal,
+                new BrainObservation(
+                        12,
+                        new SkillContext(9, 12, 20, false, true, 0.0),
+                        """
+                        {
+                          "sampleSequence": 81,
+                          "self": {
+                            "dimension": "minecraft:overworld",
+                            "inventory": [
+                              {"item":"minecraft:oak_log","count":3}
+                            ]
+                          }
+                        }
+                        """,
+                        "{}"
+                )
+        );
+        assertTrue(input.systemPrompt().contains(
+                "TRUSTED_IMMEDIATE_OWNED_ITEM_DROP_PLAYBOOK"
+        ));
+        assertTrue(input.systemPrompt().contains(
+                "Choose START_SKILL drop_item immediately"
+        ));
+    }
+
+    @Test
+    void visibleChestWithdrawalRecoveryCopiesOnlyCurrentFairFields() {
+        final String goal =
+                "请从你面前的箱子里取出3块橡木木板放进背包";
+        final String closedChest = """
+                {
+                  "sampleSequence": 52,
+                  "self": {"dimension": "minecraft:overworld"},
+                  "visibleBlockFaces": [{
+                    "block": {"x": 3, "y": 64, "z": 0},
+                    "type": "minecraft:chest",
+                    "face": "west"
+                  }]
+                }
+                """;
+        final var open = MinecraftPlannerInputFactory
+                .immediateContainerWithdrawalHandoffForRecovery(
+                        goal,
+                        closedChest
+                )
+                .orElseThrow();
+        assertFalse(open.open());
+        assertEquals("minecraft:overworld", open.dimension());
+        assertEquals(52L, open.sampleSequence());
+        assertEquals(3, open.x());
+        assertEquals("west", open.face());
+
+        final String openChest = """
+                {
+                  "sampleSequence": 53,
+                  "self": {"dimension": "minecraft:overworld"},
+                  "openMenu": {
+                    "containerId": 4,
+                    "stateId": 7,
+                    "slots": [
+                      {"slot":0,"location":"MENU","item":"minecraft:oak_planks","count":5},
+                      {"slot":9,"location":"PLAYER","item":"minecraft:air","count":0}
+                    ]
+                  }
+                }
+                """;
+        final var transfer = MinecraftPlannerInputFactory
+                .immediateContainerWithdrawalHandoffForRecovery(
+                        goal,
+                        openChest
+                )
+                .orElseThrow();
+        assertTrue(transfer.open());
+        assertEquals(53L, transfer.sampleSequence());
+        assertEquals(4, transfer.containerId());
+        assertEquals(7, transfer.stateId());
+        assertEquals(0, transfer.sourceSlot());
+        assertEquals(9, transfer.destinationSlot());
+        assertEquals(3, transfer.count());
+    }
+
+    @Test
+    void ownedItemDropRecoveryRequiresCurrentInventoryEvidence() {
+        final String semantic = """
+                {
+                  "self": {
+                    "inventory": [
+                      {"itemId":"minecraft:oak_log","count":3}
+                    ]
+                  }
+                }
+                """;
+        final var handoff = MinecraftPlannerInputFactory
+                .immediateOwnedItemDropHandoffForRecovery(
+                        "请立即把背包里的3个橡木原木丢到地上",
+                        semantic
+                )
+                .orElseThrow();
+        assertEquals("minecraft:oak_log", handoff.itemId());
+        assertEquals(3, handoff.count());
+        assertTrue(
+                MinecraftPlannerInputFactory
+                        .immediateOwnedItemDropHandoffForRecovery(
+                                "请立即把背包里的4个橡木原木丢到地上",
+                                semantic
+                        )
+                        .isEmpty()
+        );
+        final String legacy = semantic.replace("itemId", "item");
+        assertEquals(
+                handoff,
+                MinecraftPlannerInputFactory
+                        .immediateOwnedItemDropHandoffForRecovery(
+                                "请立即把背包里的3个橡木原木丢到地上",
+                                legacy
+                        )
+                        .orElseThrow()
         );
     }
 

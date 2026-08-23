@@ -32,8 +32,9 @@ import java.util.Optional;
  */
 public final class ModelProfileStore {
     static final String FILE_NAME = "model-profile.json";
-    private static final int FORMAT_VERSION = 2;
+    private static final int FORMAT_VERSION = 3;
     private static final int LEGACY_FORMAT_VERSION = 1;
+    private static final int PRE_LOW_REASONING_FORMAT_VERSION = 2;
     private static final int MAX_FILE_BYTES = 8_192;
     private static final Gson GSON = new GsonBuilder()
             .disableHtmlEscaping()
@@ -67,7 +68,8 @@ public final class ModelProfileStore {
             }
             final int version = root.get("version").getAsInt();
             if (version != FORMAT_VERSION
-                    && version != LEGACY_FORMAT_VERSION) {
+                    && version != LEGACY_FORMAT_VERSION
+                    && version != PRE_LOW_REASONING_FORMAT_VERSION) {
                 return Optional.empty();
             }
             final ModelEndpoint endpoint = new EndpointValidator().validate(

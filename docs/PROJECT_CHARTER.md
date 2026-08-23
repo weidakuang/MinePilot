@@ -6,7 +6,7 @@ MinePilot is the repository and product name. The Forge mod id remains
 `mcai_companion`. The mod creates a visible AI teammate for Minecraft Java
 26.2 using a normal server-side `ServerPlayer` body and one high-level model.
 
-The current line is `0.1.11-dev-mc26.2`:
+The current line is `0.1.12-dev-mc26.2`:
 
 - Minecraft Java 26.2;
 - Forge 65.0.0 inclusive through 66.0.0 exclusive;
@@ -67,7 +67,10 @@ gameplay permissions.
 Messages are labeled `[AI]` and the mod does not forge secure player signatures,
 accounts, or a human identity. A live model may use a screenshot only when the
 model capability was verified and the task explicitly requests it; the
-observer's third-person camera is never the companion's perception.
+observer's third-person camera is never the companion's perception. A pixel
+capture may come only from an explicitly opted-in off-screen renderer using
+the companion as its first-person camera; an ordinary player's client never
+qualifies merely because the Mod network channel is installed.
 
 ## UI, skin, and credentials
 

@@ -30,6 +30,9 @@ final class PlayerTaskIntentTest {
         assertTrue(classify("Could you gather some wood?").task());
         assertTrue(classify("你后面有僵尸").task());
         assertTrue(classify("僵尸就在附近，快跑").task());
+        assertTrue(classify(
+                "我们先从零开始。请在附近砍一棵树，捡起木头；不要只回复，先完成动作。"
+        ).task());
     }
 
     @Test
@@ -51,6 +54,7 @@ final class PlayerTaskIntentTest {
         assertFalse(classify("你还有多少血量？").task());
         assertFalse(classify("在吗？").task());
         assertFalse(classify("你附近有僵尸吗？").task());
+        assertFalse(classify("请问你会砍树吗？").task());
     }
 
     @Test

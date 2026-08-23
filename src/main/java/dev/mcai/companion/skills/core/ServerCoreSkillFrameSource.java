@@ -192,6 +192,39 @@ public final class ServerCoreSkillFrameSource
         ));
     }
 
+    @Override
+    public synchronized Optional<TrackablePlayer> trackablePlayer(
+            final UUID playerId
+    ) {
+        Objects.requireNonNull(playerId, "playerId");
+        if (!server.isSameThread()
+                || !currentSessionMatchesPublication()) {
+            return Optional.empty();
+        }
+        final ServerPlayer target = server.getPlayerList().getPlayer(
+                playerId
+        );
+        if (target == null
+                || target.isRemoved()
+                || !target.isAlive()
+                || target.isSpectator()
+                || target.isCrouching()) {
+            return Optional.empty();
+        }
+        return Optional.of(new TrackablePlayer(
+                target.getUUID(),
+                DimensionRef.parse(
+                        target.level().dimension().identifier().toString()
+                ),
+                new PerceptionVec3(
+                        target.getX(),
+                        target.getY(),
+                        target.getZ()
+                ),
+                target.level().getGameTime()
+        ));
+    }
+
     /**
      * Drops all body-local semantic geometry after remove, respawn, or
      * replacement. Keeping the old session's nearby voxels can make a new

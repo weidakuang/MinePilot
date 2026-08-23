@@ -10,6 +10,7 @@ import dev.mcai.companion.perception.HeldItemSummary;
 import dev.mcai.companion.perception.PerceptionProvenance;
 import dev.mcai.companion.perception.PerceptionVec3;
 import dev.mcai.companion.perception.VisibleEntity;
+import dev.mcai.companion.navigation.LocalNavSnapshot;
 import dev.mcai.companion.skill.SkillContext;
 import dev.mcai.companion.skill.SkillTickResult;
 import dev.mcai.companion.waypoint.DimensionRef;
@@ -65,6 +66,64 @@ final class FollowEntitySkillTest {
     }
 
     @Test
+    void visiblyNearbyPlayerGetsContinuousInputsBeforeNavMapIsComplete()
+            throws Exception {
+        final CoreSkillTestFixtures.MutableFrames frames =
+                new CoreSkillTestFixtures.MutableFrames(frameWithNavigation(
+                        1,
+                        List.of(targetAt(10.5)),
+                        new LocalNavSnapshot(
+                                DimensionRef.OVERWORLD,
+                                1,
+                                List.of()
+                        )
+                ));
+        final CoreSkillTestFixtures.RecordingActuator actuator =
+                new CoreSkillTestFixtures.RecordingActuator();
+        final FollowEntitySkill skill = new FollowEntitySkill(
+                PLAYER_ID,
+                actuator,
+                frames,
+                new dev.mcai.companion.navigation.LocalAStarPlanner(),
+                CoreSkillPolicy.defaults()
+        );
+        final FollowEntityParameters parameters = new FollowEntityParameters(
+                "visible-0",
+                1,
+                1.5,
+                40
+        );
+
+        skill.start(context(1), parameters);
+        for (long tick = 2; tick <= 6; tick++) {
+            frames.frame = frameWithNavigation(
+                    tick,
+                    List.of(targetAt(10.5)),
+                    new LocalNavSnapshot(
+                            DimensionRef.OVERWORLD,
+                            tick,
+                            List.of()
+                    )
+            );
+            assertEquals(
+                    SkillTickResult.Status.RUNNING,
+                    skill.tick(context(tick), parameters).status()
+            );
+        }
+
+        assertEquals(
+                5,
+                actuator.movements.size(),
+                "a visible same-level player must not wait for a full route scan"
+        );
+        assertTrue(
+                actuator.movements.stream().allMatch(
+                        movement -> movement.forward() > 0.0
+                )
+        );
+    }
+
+    @Test
     void losingLineOfSightStopsAndPerformsBoundedScan() throws Exception {
         CoreSkillTestFixtures.MutableFrames frames =
                 new CoreSkillTestFixtures.MutableFrames(frame(
@@ -97,6 +156,88 @@ final class FollowEntitySkillTest {
         assertEquals(movementsBeforeLoss, actuator.movements.size());
         assertTrue(actuator.stops > 0);
         assertFalse(actuator.looks.isEmpty());
+    }
+
+    @Test
+    void nonSneakingPlayerCoordinateTurnsOnceThenContinuesVisibleFollow()
+            throws Exception {
+        final CoreSkillFrame authored = frame(
+                1,
+                List.of(targetAt(6.5))
+        );
+        final CoreSkillFrame[] current = {frameWithNavigation(
+                2,
+                List.of(),
+                corridor(2, 8)
+        )};
+        final CoreSkillFrameSource frames = new CoreSkillFrameSource() {
+            @Override
+            public Optional<CoreSkillFrame> current() {
+                return Optional.of(current[0]);
+            }
+
+            @Override
+            public Optional<CoreSkillFrame> atObservation(
+                    final long observationRevision
+            ) {
+                return observationRevision == 1
+                        ? Optional.of(authored)
+                        : Optional.of(current[0]);
+            }
+
+            @Override
+            public Optional<TrackablePlayer> trackablePlayer(
+                    final UUID playerId
+            ) {
+                return Optional.of(new TrackablePlayer(
+                        TARGET,
+                        DimensionRef.OVERWORLD,
+                        new PerceptionVec3(6.5, 1.0, 0.5),
+                        2
+                ));
+            }
+        };
+        final CoreSkillTestFixtures.RecordingActuator actuator =
+                new CoreSkillTestFixtures.RecordingActuator();
+        final FollowEntitySkill skill = new FollowEntitySkill(
+                PLAYER_ID,
+                actuator,
+                frames,
+                new dev.mcai.companion.navigation.LocalAStarPlanner(),
+                CoreSkillPolicy.defaults()
+        );
+        final FollowEntityParameters parameters = new FollowEntityParameters(
+                "visible-0",
+                1,
+                1.5,
+                40
+        );
+
+        skill.start(context(1), parameters);
+        final SkillTickResult reacquiring = skill.tick(
+                context(2),
+                parameters
+        );
+
+        assertEquals(SkillTickResult.Status.RUNNING, reacquiring.status());
+        assertTrue(actuator.movements.isEmpty());
+        assertEquals(1, actuator.stops);
+        assertEquals(
+                1,
+                actuator.looks.size(),
+                "the authorized coordinate should produce one directed look, "
+                        + "not a spin search"
+        );
+
+        current[0] = frameWithNavigation(
+                3,
+                List.of(targetAt(6.5)),
+                corridor(3, 8)
+        );
+        final SkillTickResult result = skill.tick(context(3), parameters);
+
+        assertEquals(SkillTickResult.Status.RUNNING, result.status());
+        assertFalse(actuator.movements.isEmpty());
     }
 
     @Test
@@ -323,7 +464,7 @@ final class FollowEntitySkillTest {
     }
 
     @Test
-    void turnsAndScansCannotCountAsInfinitePhysicalFollowProgress()
+    void stalledFollowScansForRoutesButStillFailsWithinABound()
             throws Exception {
         final CoreSkillTestFixtures.MutableFrames frames =
                 new CoreSkillTestFixtures.MutableFrames(frame(
@@ -344,7 +485,7 @@ final class FollowEntitySkillTest {
 
         skill.start(context(1), parameters);
         SkillTickResult result = null;
-        for (long tick = 2; tick <= 82; tick++) {
+        for (long tick = 2; tick <= 360; tick++) {
             result = skill.tick(context(tick), parameters);
             if (result.status() == SkillTickResult.Status.FAILED) {
                 break;
@@ -353,10 +494,15 @@ final class FollowEntitySkillTest {
 
         assertEquals(SkillTickResult.Status.FAILED, result.status());
         assertEquals(
-                "follow_entity.no_physical_progress",
+                "follow_entity.no_walkable_route",
                 result.failure().orElseThrow().code()
         );
         assertTrue(actuator.stops > 0);
+        assertTrue(
+                actuator.looks.size() >= 24,
+                "two bounded 360-degree floor/side scans must happen before "
+                        + "the route is declared unavailable"
+        );
     }
 
     @Test
@@ -411,6 +557,14 @@ final class FollowEntitySkillTest {
             long revision,
             List<VisibleEntity> entities
     ) {
+        return frameWithNavigation(revision, entities, corridor(revision, 3));
+    }
+
+    private static CoreSkillFrame frameWithNavigation(
+            long revision,
+            List<VisibleEntity> entities,
+            LocalNavSnapshot navigation
+    ) {
         return new CoreSkillFrame(
                 PLAYER_ID,
                 DimensionRef.OVERWORLD,
@@ -422,7 +576,7 @@ final class FollowEntitySkillTest {
                 true,
                 false,
                 0.0,
-                corridor(revision, 3),
+                navigation,
                 List.of(),
                 20.0F,
                 20.0F,

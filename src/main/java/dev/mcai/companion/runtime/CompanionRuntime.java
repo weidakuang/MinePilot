@@ -99,6 +99,7 @@ import dev.mcai.companion.skills.transport.ServerBoatSkillFrameSource;
 import dev.mcai.companion.skills.transport.ServerMinecartSkillActuator;
 import dev.mcai.companion.skills.transport.ServerMinecartSkillFrameSource;
 import dev.mcai.companion.world.CompanionWorldData;
+import dev.mcai.companion.vision.VisionCaptureService;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
@@ -852,9 +853,15 @@ public final class CompanionRuntime {
                 observations::latestSemanticJson,
                 coreFrames::hasRecentThreatSignal,
                 coreFrames::recordPlayerThreatWarning,
-                modelSoftTimeout
+                modelSoftTimeout,
+                database
             );
         final RuntimeTickMetrics tickMetrics = new RuntimeTickMetrics();
+        final VisionCaptureService visionCapture =
+            new VisionCaptureService(
+                server,
+                worldData.companionUuid()
+            );
         final BehaviorArbiter behaviorArbiter =
             new BehaviorArbiter();
         final Optional<LoopbackMcpServer> mcp = startMcp(
@@ -863,7 +870,8 @@ public final class CompanionRuntime {
             database,
             goals,
             observations,
-            tickMetrics
+            tickMetrics,
+            visionCapture
         );
         final ModelSetupModule.RuntimeAttachment modelSetup =
             ModelSetupModule.attach(server, model);
@@ -904,10 +912,12 @@ public final class CompanionRuntime {
                 AiPlayerManager.status(server).sessionGeneration()
             ),
             new java.util.concurrent.atomic.AtomicLong(-1L),
+            visionCapture,
             mcp
         );
         if (!ACTIVE.compareAndSet(null, runtime)) {
             mcp.ifPresent(LoopbackMcpServer::close);
+            visionCapture.close();
             mechanismPlans.close();
             modelSetup.close();
             brain.close();
@@ -972,7 +982,8 @@ public final class CompanionRuntime {
         final MemoryDatabase database,
         final GoalCoordinator goals,
         final MinecraftObservationProvider observations,
-        final RuntimeTickMetrics tickMetrics
+        final RuntimeTickMetrics tickMetrics,
+        final VisionCaptureService visionCapture
     ) {
         if (!CompanionConfig.MCP_ENABLED.get()) {
             return Optional.empty();
@@ -985,7 +996,8 @@ public final class CompanionRuntime {
                     database,
                     goals,
                     observations::latestDecisionEpoch,
-                    tickMetrics
+                    tickMetrics,
+                    visionCapture
                 );
             final String configuredToken = System.getenv("MCAI_MCP_TOKEN");
             if (configuredToken == null || configuredToken.isBlank()) {

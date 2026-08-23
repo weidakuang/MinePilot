@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-24T05:45:00+09:00
+Last updated: 2026-08-24T05:57:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -40,7 +40,19 @@ This section supersedes older chronological notes below when they conflict.
   generation endpoint returned no bytes and the conversation request hit its
   90-second hard timeout. A separate non-content health check returned HTTP
   200 from `/v1/models` in 0.83 seconds, while a minimal Grok 4.5 chat request
-  received zero bytes and timed out after 20 seconds. No iron pass is claimed.
+  received zero bytes and timed out after 20 seconds. No iron pass was claimed
+  from those attempts.
+- After the generation endpoint recovered, the exact replacement gate passed
+  on Forge 65.0.9 in 1.789 GameTest minutes (about 107 seconds). Grok 4.5's
+  first response combined the route and terminal into one invalid field; the
+  existing bounded repair request produced canonical
+  `FOUNDATION/IRON_OBTAINED`, after which the embedded human left. The body
+  physically acquired five logs, crafted the wooden and stone progression,
+  mined and picked up the required cobblestone and coal, then mined iron and
+  picked up raw iron. Completion required a positive vanilla iron-ore mining
+  delta, positive raw-iron pickup delta, retained raw iron or ingot, the
+  verified `IRON_OBTAINED` milestone, and an observed production
+  `prepare_iron_toolkit` controller. Forge reported all required tests passed.
 - `./gradlew check build --no-configuration-cache` passes after the route
   and observer-stage changes (1,247 tests, two skipped). The development line
   is now `0.1.14-dev-mc26.2`; its local product JAR SHA-256 is
@@ -49,11 +61,10 @@ This section supersedes older chronological notes below when they conflict.
   `CompanionConversationCoordinator`, `JdkModelGateway`,
   `GoalExecutionPlan`, `SurvivalMilestone`, `SurvivalRouteTracker`, the live
   chat GameTest and Forge fixture registration/resource, completion verification,
-  and focused tests. The last failed gate is the five-minute live iron test,
-  blocked at task encoding by provider generation timeout. Next: rerun the
-  exact gate when generation responds, then preserve both bounded gates as
-  regressions. The dedicated GameTest server has no renderer, so it cannot
-  produce a genuine video without adding a real rendering client.
+  and focused tests. The latest bounded iron gate passes; next, preserve both
+  bounded gates as regressions and move to an uncontrolled natural-world iron
+  acquisition trial. The dedicated GameTest server has no renderer, so it
+  cannot produce a genuine video without adding a real rendering client.
 
 ### 2026-08-24 relocated 60-second stone-tool gate
 

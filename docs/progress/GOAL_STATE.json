@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-23T04:11:00+09:00",
-  "sourceState": "LOCAL_LIVE_PLAYER_GIFT_DROP_PASS",
+  "updatedAtUtc": "2026-08-24T07:38:00+09:00",
+  "sourceState": "LOCAL_DISTRIBUTED_STORAGE_POST_PASS_AUDIT",
   "publicMainHead": "600f37051765a578eb2b2bc595bd71b7188ed56f",
   "localHead": "UNPUBLISHED_LOCAL_COMMIT",
   "publicBackupStatus": "PENDING_AUTHENTICATED_PUSH",
@@ -39,6 +39,15 @@
     "delayedFirstHumanAnchorClient": "NOT_RUN_XVFB_MISSING"
   },
   "developmentEvidence": {
+    "latestDistributedLogStorage": {
+      "status": "BLOCKED_INFRA_CURRENT_SOURCE_RERUN",
+      "providerModel": "grok-4.5",
+      "forge": "65.0.9",
+      "historicalPass": "A prior dirty-source live run completed the exact physical task in 4.118 minutes: thirty vanilla oak-log mining and pickup deltas, ordinary tool and chest recipes, four independent chest block entities, balanced remaining-log counts, and no raw logs on the companion.",
+      "postPassFixes": "Later retained failures exposed and fixed livestock-obstructed crafting-table placement, an unbounded wood-exploration child, and internal rolling-route docking at an already occupied endpoint cell. The corresponding physical GameTests and the full 1,249-test build pass.",
+      "currentBlocker": "The current-source live rerun is not a pass. Two full attempts and later 25-second and 35-second minimal generation probes received zero response bytes; the credentialed models endpoint remained reachable. No scripted model response was substituted.",
+      "formalGate": "NOT_RUN"
+    },
     "capabilityMatrixAudit15x": {
       "status": "PASS_CONTROLLED_SOURCE_AUDIT",
       "details": "Audited professional companion, workstation/transport, farm, and machine capabilities against registered production skills, focused Forge contracts, controlled real-model slices, and the formal M3 protocol. Added explicit interaction-versus-commissioning boundaries, fixed the interactive placement guard, and added open-menu role hints for vanilla workstation input, fuel, output, payment, and player-inventory slots. Live model slices and machine commissioning remain separate gates.",

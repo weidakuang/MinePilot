@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.LongFunction;
+import java.util.function.LongConsumer;
 
 /**
  * Registration slice for bounded, multi-step early survival transactions.
@@ -29,6 +30,8 @@ public final class FoundationCraftingSkills {
             EstablishFoundationWorkstationsSkill.NAME;
     public static final String PREPARE_FOUNDATION_SHELTER_MATERIALS =
             PrepareFoundationShelterMaterialsSkill.NAME;
+    public static final String PREPARE_DISTRIBUTED_LOG_STORAGE =
+            PrepareDistributedLogStorageSkill.NAME;
 
     private FoundationCraftingSkills() {
     }
@@ -49,7 +52,8 @@ public final class FoundationCraftingSkills {
             final LongFunction<Optional<VerifiedFixtureLocation>>
                     knownFurnace,
             final LongFunction<Optional<VerifiedFixtureLocation>>
-                    knownStorage
+                    knownStorage,
+            final LongConsumer distributedStorageEvidence
     ) {
         Objects.requireNonNull(registry, "registry");
         registry.register(
@@ -109,6 +113,24 @@ public final class FoundationCraftingSkills {
                         knownStorage
                 )
         );
+        registry.register(
+                PREPARE_DISTRIBUTED_LOG_STORAGE,
+                new PrepareDistributedLogStorageSkill(
+                        playerId,
+                        core,
+                        coreFrames,
+                        interactions,
+                        interactionFrames,
+                        inventory,
+                        resourceInventory,
+                        menus,
+                        menuFrames,
+                        knownCraftingTable,
+                        knownFurnace,
+                        knownStorage,
+                        distributedStorageEvidence
+                )
+        );
         return registry.register(
                 PREPARE_FOUNDATION_SHELTER_MATERIALS,
                 new PrepareFoundationShelterMaterialsSkill(
@@ -132,6 +154,7 @@ public final class FoundationCraftingSkills {
             Foundation compounds take no args: prepare_basic_crafting,
             prepare_stone_tools, prepare_iron_toolkit,
             establish_foundation_workstations,
+            prepare_distributed_log_storage,
             prepare_foundation_shelter_materials. They use bounded legal
             actions. Iron toolkit performs furnace smelting and crafts the
             iron pickaxe/bucket/shield.

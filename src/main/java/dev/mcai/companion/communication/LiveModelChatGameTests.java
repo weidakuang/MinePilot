@@ -898,6 +898,39 @@ public final class LiveModelChatGameTests {
     }
 
     /**
+     * Sends one natural player-chat request from a clean relocated start.
+     * Completion requires thirty vanilla log breaks and pickups, ordinary
+     * tool recipes, four independent chest placements, and an exact balanced
+     * distribution of the remaining logs across those four block entities.
+     */
+    public static void realPlayerChatToLiveModelDistributedLogStorage(
+            final GameTestHelper helper
+    ) {
+        if (!Boolean.getBoolean("mcai.liveModelTest")) {
+            helper.succeed();
+            return;
+        }
+        final ServerRuntime runtime = CompanionRuntime.active()
+                .filter(candidate -> candidate.server()
+                        == helper.getLevel().getServer())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Companion runtime is unavailable"
+                ));
+        final LiveFoundationBootstrapScenario scenario =
+                new LiveFoundationBootstrapScenario(
+                        helper,
+                        runtime,
+                        false,
+                        false,
+                        false,
+                        true
+                );
+        helper.addCleanup(ignored -> scenario.cleanup());
+        scenario.start();
+        helper.onEachTick(scenario::tick);
+    }
+
+    /**
      * Covers the first unverified M2 handoff after the iron toolkit. A real
      * player submits one completion-route chat request and leaves. The live
      * model must bind the ordinary portal builder, that builder must consume
@@ -8119,6 +8152,8 @@ public final class LiveModelChatGameTests {
                 java.time.Duration.ofSeconds(60).toNanos();
         private static final long FAST_IRON_DEADLINE_NANOS =
                 java.time.Duration.ofMinutes(5).toNanos();
+        private static final long DISTRIBUTED_STORAGE_DEADLINE_NANOS =
+                java.time.Duration.ofMinutes(8).toNanos();
 
         private final GameTestHelper helper;
         private final ServerRuntime runtime;
@@ -8126,6 +8161,7 @@ public final class LiveModelChatGameTests {
         private final boolean zeroHumanFromStart;
         private final boolean completeAfterStoneTools;
         private final boolean completeAfterIron;
+        private final boolean completeAfterDistributedStorage;
 
         private FoundationBootstrapStage stage =
                 FoundationBootstrapStage.BODY;
@@ -8174,7 +8210,7 @@ public final class LiveModelChatGameTests {
                 final GameTestHelper helper,
                 final ServerRuntime runtime
         ) {
-            this(helper, runtime, false, false, false);
+            this(helper, runtime, false, false, false, false);
         }
 
         private LiveFoundationBootstrapScenario(
@@ -8182,7 +8218,14 @@ public final class LiveModelChatGameTests {
                 final ServerRuntime runtime,
                 final boolean zeroHumanFromStart
         ) {
-            this(helper, runtime, zeroHumanFromStart, false, false);
+            this(
+                    helper,
+                    runtime,
+                    zeroHumanFromStart,
+                    false,
+                    false,
+                    false
+            );
         }
 
         private LiveFoundationBootstrapScenario(
@@ -8196,6 +8239,7 @@ public final class LiveModelChatGameTests {
                     runtime,
                     zeroHumanFromStart,
                     completeAfterStoneTools,
+                    false,
                     false
             );
         }
@@ -8203,16 +8247,38 @@ public final class LiveModelChatGameTests {
         private LiveFoundationBootstrapScenario(
                 final GameTestHelper helper,
                 final ServerRuntime runtime,
-                final boolean zeroHumanFromStart,
-                final boolean completeAfterStoneTools,
-                final boolean completeAfterIron
-        ) {
+            final boolean zeroHumanFromStart,
+            final boolean completeAfterStoneTools,
+            final boolean completeAfterIron
+    ) {
+        this(
+                helper,
+                runtime,
+                zeroHumanFromStart,
+                completeAfterStoneTools,
+                completeAfterIron,
+                false
+        );
+    }
+
+    private LiveFoundationBootstrapScenario(
+            final GameTestHelper helper,
+            final ServerRuntime runtime,
+            final boolean zeroHumanFromStart,
+            final boolean completeAfterStoneTools,
+            final boolean completeAfterIron,
+            final boolean completeAfterDistributedStorage
+    ) {
             this.helper = helper;
             this.runtime = runtime;
             this.zeroHumanFromStart = zeroHumanFromStart;
             this.completeAfterStoneTools = completeAfterStoneTools;
             this.completeAfterIron = completeAfterIron;
-            if (completeAfterStoneTools && completeAfterIron) {
+            this.completeAfterDistributedStorage =
+                    completeAfterDistributedStorage;
+            if ((completeAfterStoneTools ? 1 : 0)
+                    + (completeAfterIron ? 1 : 0)
+                    + (completeAfterDistributedStorage ? 1 : 0) > 1) {
                 throw new IllegalArgumentException(
                         "Only one bounded terminal may be selected"
                 );
@@ -8256,6 +8322,8 @@ public final class LiveModelChatGameTests {
                 case BASIC_CRAFTING -> waitForBasicCrafting();
                 case STONE_GATHERING -> waitForStoneGathering();
                 case STONE_CRAFTING -> waitForStoneCrafting();
+                case DISTRIBUTED_STORAGE ->
+                        waitForDistributedStorage();
                 case FOOD -> waitForFood();
                 case IRON_TOOLKIT -> waitForIronToolkit();
                 case WORKSTATIONS -> waitForWorkstations();
@@ -8445,7 +8513,9 @@ public final class LiveModelChatGameTests {
                     "Logged-in foundation test player lacked task-write "
                         + "permission"
             );
-            if (completeAfterStoneTools || completeAfterIron) {
+            if (completeAfterStoneTools
+                    || completeAfterIron
+                    || completeAfterDistributedStorage) {
                 taskSubmittedNanos = System.nanoTime();
             }
             final Component submitted =
@@ -8465,6 +8535,14 @@ public final class LiveModelChatGameTests {
                                             + "真正用于铁器时代的矿物原料，"
                                             + "东西实际进入背包后就停下；"
                                             + "不要使用命令。"
+                                    : completeAfterDistributedStorage
+                                        ? runtime.worldData().displayName()
+                                            + "，请从空背包自己制作需要的"
+                                            + "工具，亲手砍下并捡起30个橡木"
+                                            + "原木；随后制作并放置4个彼此"
+                                            + "独立的箱子，把剩余原木尽量"
+                                            + "平均地放进这4个箱子里。完成"
+                                            + "实体操作后停下，不要使用命令。"
                                     : runtime.worldData().displayName()
                                         + "，从空背包开始建立安全据点并"
                                         + "生存到第二天。先把你眼前这组"
@@ -8495,6 +8573,9 @@ public final class LiveModelChatGameTests {
                             ? goal.goal().contains("石镐")
                             : completeAfterIron
                                 ? goal.goal().contains("铁器时代")
+                            : completeAfterDistributedStorage
+                                ? goal.goal().contains("30个橡木")
+                                    && goal.goal().contains("4个")
                             : goal.goal().contains("安全据点")
                                 && goal.goal().contains("第二天")),
                     (zeroHumanFromStart
@@ -8528,6 +8609,20 @@ public final class LiveModelChatGameTests {
                         )),
                         "The live model encoded the abstract iron task "
                             + "as the wrong route: " + plan
+                );
+            } else if (completeAfterDistributedStorage) {
+                final GoalExecutionPlan plan = GoalExecutionPlan
+                        .fromDetailCode(goal.detailCode())
+                        .orElseThrow(() -> new AssertionError(
+                                "The live model did not encode a route plan"
+                        ));
+                helper.assertTrue(
+                        plan.equals(GoalExecutionPlan.foundation(
+                                GoalExecutionPlan.Target
+                                        .LOG_STORAGE_DISTRIBUTED
+                        )),
+                        "The live model encoded the quantified storage "
+                            + "task as the wrong route: " + plan
                 );
             }
             if (zeroHumanFromStart) {
@@ -8575,6 +8670,8 @@ public final class LiveModelChatGameTests {
             ) - initialMinedLogs;
             final int requiredLogs = completeAfterStoneTools
                     ? 3
+                    : completeAfterDistributedStorage
+                        ? 30
                     : REQUIRED_LOGS;
             final boolean milestone = runtime.worldData()
                     .verifiedRouteProgress(foundationGoalRevision)
@@ -8616,7 +8713,9 @@ public final class LiveModelChatGameTests {
             }
             helper.assertTrue(
                     System.nanoTime() - stageStartedNanos
-                        <= MODEL_TIMEOUT_NANOS,
+                        <= (completeAfterDistributedStorage
+                                ? DISTRIBUTED_STORAGE_DEADLINE_NANOS
+                                : MODEL_TIMEOUT_NANOS),
                     "Live foundation bootstrap did not gather the "
                         + "visible logs: owned=" + ownedLogs
                         + ", pickedUp=" + pickedUpLogs
@@ -8723,6 +8822,8 @@ public final class LiveModelChatGameTests {
                             + ", skill=" + skill.skillName()
                             + ", rejection="
                             + skill.lastStartRejection()
+                            + ", "
+                            + basicCraftingDiagnostic(body)
                 );
             }
             helper.assertTrue(
@@ -8880,6 +8981,11 @@ public final class LiveModelChatGameTests {
                     helper.succeed();
                     return;
                 }
+                if (completeAfterDistributedStorage) {
+                    stage = FoundationBootstrapStage.DISTRIBUTED_STORAGE;
+                    stageStartedNanos = System.nanoTime();
+                    return;
+                }
                 stage = completeAfterIron
                         ? FoundationBootstrapStage.IRON_TOOLKIT
                         : FoundationBootstrapStage.FOOD;
@@ -8977,6 +9083,147 @@ public final class LiveModelChatGameTests {
                         + ", skill=" + skill.skillName()
                         + ", rejection="
                         + skill.lastStartRejection()
+            );
+        }
+
+        private void waitForDistributedStorage() {
+            assertNoHumanPlayersDuringAutonomy();
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            helper.assertTrue(
+                    body.isAlive(),
+                    "Companion died during quantified log storage"
+            );
+            final int minedLogs = body.getStats().getValue(
+                    Stats.BLOCK_MINED.get(Blocks.OAK_LOG)
+            ) - initialMinedLogs;
+            final int pickedLogs = body.getStats().getValue(
+                    Stats.ITEM_PICKED_UP.get(Items.OAK_LOG)
+            ) - initialPickedUpLogs;
+            final int craftedChests = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(Items.CHEST)
+            ) - initialCraftedChests;
+            final boolean milestone = runtime.worldData()
+                    .verifiedRouteProgress(foundationGoalRevision)
+                    .milestones()
+                    .contains(
+                            SurvivalMilestone.LOG_STORAGE_DISTRIBUTED
+                    );
+            final List<BlockPos> chestPositions =
+                    BlockPos.betweenClosedStream(
+                            autonomousWorkCenter.offset(-10, 0, -10),
+                            autonomousWorkCenter.offset(10, 5, 10)
+                    ).filter(pos -> helper.getLevel()
+                            .getBlockState(pos)
+                            .is(Blocks.CHEST)
+                    ).map(BlockPos::immutable).toList();
+            if (milestone && chestPositions.size() == 4) {
+                helper.assertTrue(
+                        minedLogs == 30,
+                        "Quantified task did not mine exactly thirty logs: "
+                            + minedLogs
+                );
+                helper.assertTrue(
+                        pickedLogs == 30,
+                        "Quantified task did not pick up exactly thirty "
+                            + "logs: " + pickedLogs
+                );
+                helper.assertTrue(
+                        craftedChests >= 4,
+                        "Four placed chests were not backed by four "
+                            + "vanilla recipe outputs: " + craftedChests
+                );
+                for (int first = 0;
+                        first < chestPositions.size(); first++) {
+                    for (int second = first + 1;
+                            second < chestPositions.size(); second++) {
+                        final BlockPos a = chestPositions.get(first);
+                        final BlockPos b = chestPositions.get(second);
+                        helper.assertTrue(
+                                a.getY() != b.getY()
+                                    || Math.abs(a.getX() - b.getX())
+                                        + Math.abs(a.getZ() - b.getZ()) > 1,
+                                "Storage placements merged into a double "
+                                    + "chest: " + chestPositions
+                        );
+                    }
+                }
+                final List<Integer> stored = chestPositions.stream()
+                        .map(position -> helper.getLevel()
+                                .getBlockEntity(position))
+                        .map(entity -> {
+                            helper.assertTrue(
+                                    entity instanceof ChestBlockEntity,
+                                    "Placed chest lacked a chest block entity"
+                            );
+                            final ChestBlockEntity chest =
+                                    (ChestBlockEntity) entity;
+                            int count = 0;
+                            for (int slot = 0;
+                                    slot < chest.getContainerSize(); slot++) {
+                                final ItemStack stack = chest.getItem(slot);
+                                if (stack.is(Items.OAK_LOG)) {
+                                    count += stack.getCount();
+                                }
+                            }
+                            return count;
+                        })
+                        .sorted()
+                        .toList();
+                helper.assertTrue(
+                        stored.getLast() - stored.getFirst() <= 1,
+                        "Remaining logs were not evenly distributed: "
+                            + stored
+                );
+                helper.assertTrue(
+                        stored.getFirst() > 0,
+                        "At least one chest received no remaining logs: "
+                            + stored
+                );
+                helper.assertTrue(
+                        body.getInventory().countItem(Items.OAK_LOG) == 0
+                            && !body.getMainHandItem().is(Items.OAK_LOG)
+                            && !body.getOffhandItem().is(Items.OAK_LOG),
+                        "Raw logs remained on the companion after the "
+                            + "four-way transfer"
+                );
+                finishScenarioGoal(runtime);
+                stage = FoundationBootstrapStage.DONE;
+                helper.succeed();
+                return;
+            }
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            final var skill = runtime.skillSupervisor().snapshot();
+            helper.assertTrue(
+                    goal.status() == GoalStatus.RUNNING
+                        || goal.status() == GoalStatus.CANCEL_PENDING
+                        || milestone
+                            && goal.status() == GoalStatus.COMPLETED,
+                    "Quantified storage goal became terminal before its "
+                        + "physical evidence: " + goal
+                        + ", mined=" + minedLogs
+                        + ", picked=" + pickedLogs
+                        + ", craftedChests=" + craftedChests
+                        + ", chestPositions=" + chestPositions
+                        + ", skill=" + skill.skillName()
+                        + ", rejection=" + skill.lastStartRejection()
+            );
+            helper.assertTrue(
+                    System.nanoTime() - stageStartedNanos
+                        <= DISTRIBUTED_STORAGE_DEADLINE_NANOS,
+                    "Quantified log storage timed out: mined=" + minedLogs
+                        + ", picked=" + pickedLogs
+                        + ", craftedChests=" + craftedChests
+                        + ", chestPositions=" + chestPositions
+                        + ", inventory=" + body.getInventory()
+                        + ", skill=" + skill.skillName()
+                        + ", rejection=" + skill.lastStartRejection()
+                        + ", checkpoint=" + runtime.skillSupervisor()
+                            .lastCheckpointPayload().orElse("<none>")
             );
         }
 
@@ -9546,7 +9793,9 @@ public final class LiveModelChatGameTests {
                 center = helper.absolutePos(
                         new BlockPos(8, 1, 8)
                 ).offset(640, 0, 0);
-            } else if (completeAfterStoneTools || completeAfterIron) {
+            } else if (completeAfterStoneTools
+                    || completeAfterIron
+                    || completeAfterDistributedStorage) {
                 center = helper.absolutePos(
                         new BlockPos(8, 1, 8)
                 ).offset(256, 0, 192);
@@ -9606,6 +9855,10 @@ public final class LiveModelChatGameTests {
                             base.offset(x, 0, z)
                     );
                 }
+            }
+            if (completeAfterDistributedStorage) {
+                preparedReserveLogs.add(base.offset(-4, 0, -2));
+                preparedReserveLogs.add(base.offset(-4, 0, -1));
             }
             reserveLogs = List.copyOf(preparedReserveLogs);
             reserveLogs.forEach(pos -> level.setBlockAndUpdate(
@@ -9693,7 +9946,9 @@ public final class LiveModelChatGameTests {
             autonomousAnchorChunk = body.chunkPosition();
             body.setDeltaMovement(Vec3.ZERO);
             body.fallDistance = 0.0F;
-            if (completeAfterStoneTools || completeAfterIron) {
+            if (completeAfterStoneTools
+                    || completeAfterIron
+                    || completeAfterDistributedStorage) {
                 helper.assertTrue(
                         positionBeforeRelocation.distanceToSqr(
                                 body.position()
@@ -9724,14 +9979,18 @@ public final class LiveModelChatGameTests {
         }
 
         private void assertFastTerminalDeadline() {
-            if (!(completeAfterStoneTools || completeAfterIron)
+            if (!(completeAfterStoneTools
+                    || completeAfterIron
+                    || completeAfterDistributedStorage)
                     || taskSubmittedNanos < 0L
                     || stage == FoundationBootstrapStage.DONE) {
                 return;
             }
             final long deadline = completeAfterStoneTools
                     ? FAST_STONE_TOOLS_DEADLINE_NANOS
-                    : FAST_IRON_DEADLINE_NANOS;
+                    : completeAfterIron
+                        ? FAST_IRON_DEADLINE_NANOS
+                        : DISTRIBUTED_STORAGE_DEADLINE_NANOS;
             helper.assertTrue(
                     System.nanoTime() - taskSubmittedNanos
                         <= deadline,
@@ -9941,6 +10200,7 @@ public final class LiveModelChatGameTests {
         BASIC_CRAFTING,
         STONE_GATHERING,
         STONE_CRAFTING,
+        DISTRIBUTED_STORAGE,
         FOOD,
         IRON_TOOLKIT,
         WORKSTATIONS,

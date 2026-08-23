@@ -811,10 +811,29 @@ public final class TravelToSkill implements Skill<TravelToParameters> {
                     "travel_to.stuck");
         }
 
-        SkillTickResult result = segment.tick(
-                context,
-                Objects.requireNonNull(segmentParameters)
-        );
+        final SkillTickResult result;
+        if (segmentEndpoint != null
+                && frame.feet().equals(segmentEndpoint)) {
+            /*
+             * A rolling segment endpoint is a planner-verified standing
+             * cell, not a precise interaction coordinate. Once the body's
+             * feet physically occupy that exact cell, forcing it to dock
+             * within 0.55 blocks of the center can leave normal movement
+             * stopped at a cell corner forever. Preserve precise arrival at
+             * the public journey target, but consume this internal segment
+             * and replan from the actually reached safe cell.
+             */
+            segment.cancel(
+                    context,
+                    Objects.requireNonNull(segmentParameters)
+            );
+            result = SkillTickResult.completed();
+        } else {
+            result = segment.tick(
+                    context,
+                    Objects.requireNonNull(segmentParameters)
+            );
+        }
         if (result.status() == SkillTickResult.Status.FAILED) {
             String code = result.failure().orElseThrow().code();
             if (code.contains("hardcore")

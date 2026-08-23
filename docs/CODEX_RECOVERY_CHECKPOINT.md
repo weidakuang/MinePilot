@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-24T05:57:00+09:00
+Last updated: 2026-08-24T07:38:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,47 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+### 2026-08-24 distributed-storage post-pass audit
+
+- A prior live Grok 4.5 run passed the exact physical task in 4.118 minutes:
+  thirty mined and picked-up oak logs, ordinary tool and chest recipes, four
+  nonadjacent chest block entities, no raw logs in body inventory, and a
+  maximum stored-count difference of one. Later clean reruns are retained
+  because they exposed defects not exercised by that pass.
+- A rerun stopped at basic crafting when eight nearby cows occupied every
+  otherwise valid support face. `PrepareBasicCraftingSkill` now selects a
+  fresh, safely observed standing cell through ordinary `MoveToSkill`, moves
+  at most three times, and rescans. Its completion tick is idempotent. The
+  cow-obstructed physical GameTest now passes with a real placed table and a
+  recipe-crafted wooden pickaxe.
+- Two subsequent reruns reached 29/30 and 28/30 physical oak logs before
+  stalling. The first showed that the gathering no-progress watchdog covered
+  a connected tree cluster but not its exploration child. Exploration is now
+  cancelled and rescanned after the same bounded 400-tick interval, and its
+  nested checkpoint is persisted. The second showed a rolling travel segment
+  stopped 0.609 blocks from its cell center despite the body's feet already
+  occupying the exact planner-verified endpoint cell. Internal segments now
+  complete on physical endpoint-cell occupancy; public journey precision is
+  unchanged. The real diagonal-detour GameTest passes after this fix.
+- The locked-recipe chest GameTest passes: eight planks are physically placed
+  in the real crafting menu, one chest is produced, ingredients are consumed,
+  and the recipe is awarded only after the vanilla transaction. The full
+  `check build` gate passes with 1,249 tests, zero failures, and two skips.
+  The current product is `build/libs/mcai_companion-0.1.14-dev-mc26.2.jar`
+  with SHA-256
+  `1e4518791f7efcfb7c4b6e7815273d6f6a271df055f46797ce6f1c4894f8b8e7`.
+- The current-source full live rerun remains pending, not passed. Two fresh
+  attempts failed before player chat because the configured Grok 4.5
+  capability request received zero bytes for 90 seconds. A direct credentialed
+  `/v1/models` request returned HTTP 200 in 0.98 seconds, while a minimal
+  `/v1/chat/completions` generation request received zero bytes for 25 seconds.
+  A later 35-second minimal generation probe also received zero bytes and no
+  HTTP status, confirming that inference remained unavailable while account
+  authentication and model discovery were reachable.
+  No scripted decision replaced the unavailable model. Next: rerun the exact
+  live physical gate when provider inference recovers, then publish the exact
+  artifact-bound source snapshot. Formal M0--M4 remain `NOT_RUN`.
 
 ### 2026-08-24 bounded stone and iron acquisition gates
 
@@ -1495,3 +1536,35 @@ seed statistic.
   hidden-renderer gate, so screenshot capture and every M0--M4 milestone
   remain `NOT_RUN`. The next action is that off-screen end-to-end gate on an
   isolated renderer worker; the normal dedicated-server path remains `nogui`.
+
+## 2026-08-24 exact distributed-log-storage checkpoint
+
+- Root causes fixed during the gate: a quantified routed wood task could be
+  closed by the old one-cluster shortcut; selected-slot wood was counted
+  twice in gather checkpoints; a connected cluster could monopolize the body
+  without pickup progress; a rejected last seed could oscillate with survey
+  recovery; and the crafting actuator incorrectly treated recipe-book
+  visibility as a survival crafting permission check.
+- Changed areas include the goal route and terminal milestone, planner schema
+  and prompt, conversation routing, foundation storage skill, wood recovery,
+  vanilla inventory actuator, physical GameTests, and focused regressions.
+  `PrepareDistributedLogStorageSkill` extends the production foundation path;
+  it does not inject blocks or inventory contents.
+- The recipe regression uses a real crafting-table menu with only eight oak
+  planks and a locked chest recipe. Vanilla menu placement consumes the eight
+  planks, produces one chest, and awards the recipe after the actual craft.
+- The final live gate used Minecraft 26.2, Forge 65.0.9, Java 25, and the real
+  configured Grok 4.5 endpoint. One Chinese player-chat request was repaired
+  into `FOUNDATION/LOG_STORAGE_DISTRIBUTED`; the human then left. The physical
+  oracle passed after 4.118 minutes with exactly 30 oak-log mining and pickup
+  statistics, ordinary wood/stone tool recipes, four nonadjacent real chest
+  block entities, no raw logs left in the body inventory, and all remaining
+  logs balanced across the four chests with a maximum difference of one.
+  Model speech and product audit events were not completion evidence.
+- Last gate: `real_player_chat_to_live_model_distributed_log_storage` passed
+  with `All 1 required tests passed`. The prior seven attempts remain negative
+  evidence for the fixed routing, timeout, gathering, retry, and recipe-book
+  defects.
+- Next action: run the relevant JVM/Forge regression set and release build,
+  then publish the exact source snapshot. This controlled fixture does not
+  promote any random-world, Hardcore, rendered-client, M1, M2, M3, or M4 gate.

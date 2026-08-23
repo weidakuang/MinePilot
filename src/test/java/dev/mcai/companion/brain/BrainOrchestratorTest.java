@@ -2620,6 +2620,51 @@ class BrainOrchestratorTest {
     }
 
     @Test
+    void routedQuantifiedWoodTaskDoesNotEndAfterOneGatherCluster() {
+        try (Fixture fixture = new Fixture()) {
+            fixture.gatherWoodSkill.defaultStep =
+                    SkillTickResult.completed();
+            assertTrue(fixture.goals.setGoal(
+                    "砍30个原木制作4个箱子并平均存放剩余原木",
+                    GoalSource.PLAYER_CHAT,
+                    GoalExecutionPlan.foundation(
+                            GoalExecutionPlan.Target
+                                    .LOG_STORAGE_DISTRIBUTED
+                    )
+            ).accepted());
+
+            fixture.brain.tick();
+            fixture.gateway.completeCurrent(success(
+                    fixture.gateway.lastInput(),
+                    DecisionKind.START_SKILL,
+                    "gather_nearby_wood",
+                    "",
+                    List.of()
+            ));
+            fixture.brain.tick();
+            assertEquals(
+                    "gather_nearby_wood",
+                    fixture.skills.snapshot().skillName()
+            );
+            fixture.brain.tick();
+
+            assertEquals(
+                    GoalStatus.RUNNING,
+                    fixture.goals.snapshot().status(),
+                    "One bounded tree cluster cannot complete a quantified "
+                            + "multi-stage route"
+            );
+            assertEquals(
+                    GoalExecutionPlan.foundation(
+                            GoalExecutionPlan.Target
+                                    .LOG_STORAGE_DISTRIBUTED
+                    ).detailCode(),
+                    fixture.goals.snapshot().detailCode()
+            );
+        }
+    }
+
+    @Test
     void goalCancellationDrivesTheSkillToACheckpointBeforeStopping() {
         try (Fixture fixture = new Fixture()) {
             fixture.skill.steps.add(SkillTickResult.running(true, false));

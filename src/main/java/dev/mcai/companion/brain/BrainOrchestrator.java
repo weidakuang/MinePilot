@@ -555,6 +555,8 @@ public final class BrainOrchestrator {
             case "PREPARE_BASIC_CRAFTING" ->
                     "prepare_basic_crafting";
             case "CRAFT_AND_MINE_STONE" -> "prepare_stone_tools";
+            case "DISTRIBUTE_LOG_STORAGE" ->
+                    "prepare_distributed_log_storage";
             case "SECURE_FOOD_RESERVE" ->
                     "secure_visible_food_reserve";
             case "ACQUIRE_IRON_TOOLKIT" -> "prepare_iron_toolkit";
@@ -773,6 +775,8 @@ public final class BrainOrchestrator {
                     "WOOD_OBTAINED";
             case "prepare_basic_crafting" -> "BASIC_CRAFTING_READY";
             case "prepare_stone_tools" -> "STONE_TOOL_OBTAINED";
+            case "prepare_distributed_log_storage" ->
+                    "LOG_STORAGE_DISTRIBUTED";
             case "secure_visible_food_reserve" -> "FOOD_SECURED";
             case "prepare_iron_toolkit" -> "IRON_TOOLKIT_OBTAINED";
             case "establish_foundation_workstations" ->
@@ -1227,6 +1231,9 @@ public final class BrainOrchestrator {
                 if (goal.source() == GoalSource.PLAYER_CHAT
                         && !goal.externalWritesLocked()
                         && "gather_nearby_wood".equals(skill.skillName())
+                        && GoalExecutionPlan.fromDetailCode(
+                                goal.detailCode()
+                            ).isEmpty()
                         && MinecraftPlannerInputFactory
                                 .isImmediateNearbyWoodGoal(goal.goal())) {
                     /*

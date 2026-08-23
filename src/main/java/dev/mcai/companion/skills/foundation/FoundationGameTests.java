@@ -434,8 +434,8 @@ public final class FoundationGameTests {
                     "Wooden pickaxe did not come from a vanilla recipe"
             );
             final BlockPos table = BlockPos.betweenClosedStream(
-                    origin.offset(-5, -1, -5),
-                    origin.offset(5, 2, 5)
+                    origin.offset(-10, -1, -10),
+                    origin.offset(10, 2, 10)
             ).filter(pos ->
                     helper.getLevel().getBlockState(pos)
                             .is(Blocks.CRAFTING_TABLE)

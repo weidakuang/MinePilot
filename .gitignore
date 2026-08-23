@@ -30,6 +30,9 @@ run-debug*.log
 run-live-*/
 run-delayed-*/
 run-offline-*/
+run-basic-*/
+run-locked-*/
+run-travel-*/
 run-patch-matrix/
 run-blackbox-*/
 installer.log

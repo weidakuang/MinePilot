@@ -284,6 +284,85 @@ public final class InventoryGameTests {
         player.closeContainer();
     }
 
+    /**
+     * A recipe-book lock must not prevent a knowledgeable companion from
+     * arranging an ordinary vanilla recipe through real crafting-menu slots.
+     * In 26.2 the chest recipe is intentionally hidden until ten inventory
+     * slots are occupied, which is common during a clean survival start.
+     */
+    @GameTest(
+        name = "locked_chest_recipe_uses_vanilla_menu_placement",
+        structure = "forge:empty3x3x3",
+        maxTicks = 40
+    )
+    public static void lockedChestRecipeUsesVanillaMenuPlacement(
+            final GameTestHelper helper
+    ) {
+        final ServerPlayer player = helper.makeMockServerPlayer(false);
+        player.initInventoryMenu();
+        player.getInventory().clearContent();
+        player.getInventory().setItem(
+                0,
+                new ItemStack(Items.OAK_PLANKS, 8)
+        );
+        final BlockPos table = helper.absolutePos(
+                new BlockPos(2, 1, 2)
+        );
+        helper.getLevel().setBlockAndUpdate(
+                table,
+                Blocks.CRAFTING_TABLE.defaultBlockState()
+        );
+        player.teleportTo(
+                table.getX() + 0.5,
+                table.getY() + 1.0,
+                table.getZ() + 0.5
+        );
+        player.openMenu(
+                helper.getLevel()
+                        .getBlockState(table)
+                        .getMenuProvider(helper.getLevel(), table)
+        );
+        helper.assertTrue(
+                player.containerMenu instanceof CraftingMenu,
+                "The real crafting-table menu did not open"
+        );
+        final ResourceKey<Recipe<?>> chestKey = ResourceKey.create(
+                Registries.RECIPE,
+                Identifier.parse("minecraft:chest")
+        );
+        helper.assertTrue(
+                !player.getRecipeBook().contains(chestKey),
+                "The sparse fixture unexpectedly knew the chest recipe"
+        );
+        final ServerInventorySkillActuator actuator =
+                new ServerInventorySkillActuator(
+                        helper.getLevel().getServer(),
+                        player.getUUID(),
+                        () -> Optional.of(player)
+                );
+        final CraftRecipeParameters chest = new CraftRecipeParameters(
+                "minecraft:chest",
+                1
+        );
+        helper.assertTrue(
+                actuator.checkCraft(chest).succeeded(),
+                "A locked but manually craftable chest was rejected"
+        );
+        final InventoryOperationResult result = actuator.craftOnce(chest);
+        helper.assertTrue(
+                result.succeeded()
+                    && result.affectedCount() == 1
+                    && count(player, Items.CHEST) == 1,
+                "Vanilla menu placement did not craft the locked chest"
+        );
+        helper.assertTrue(
+                count(player, Items.OAK_PLANKS) == 0,
+                "Locked chest crafting did not consume eight planks"
+        );
+        player.closeContainer();
+        helper.succeed();
+    }
+
     private static void unlock(
             final ServerPlayer player,
             final String recipeId

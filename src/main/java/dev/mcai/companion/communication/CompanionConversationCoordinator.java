@@ -102,11 +102,14 @@ public final class CompanionConversationCoordinator
         Choose the furthest outcome the player actually requested: BODY_ACTIVE,
         WOOD_OBTAINED, BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED, FOOD_SECURED,
         IRON_OBTAINED, IRON_TOOLKIT_OBTAINED, WORKSTATIONS_ESTABLISHED,
-        SUPPLIES_STORED,
+        SUPPLIES_STORED, LOG_STORAGE_DISTRIBUTED,
         SHELTER_MATERIALS_PREPARED, SHELTER_COMPLETED, or
         FIRST_NIGHT_SURVIVED. A request to chop wood and obtain stone tools is
         FOUNDATION/STONE_TOOL_OBTAINED even if the player uses slang, indirect
         wording, another supported language, or no fixed product keyword.
+        A request to gather thirty logs, craft four chests, and divide the
+        remaining logs evenly among them is
+        FOUNDATION/LOG_STORAGE_DISTRIBUTED.
         Use COMPLETION only for a staged route toward beating Minecraft, with
         the furthest requested outcome: BODY_ACTIVE, WOOD_OBTAINED,
         BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED, FOOD_SECURED,
@@ -160,7 +163,8 @@ public final class CompanionConversationCoordinator
         WOOD_OBTAINED, BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED,
         FOOD_SECURED, IRON_OBTAINED, IRON_TOOLKIT_OBTAINED,
         WORKSTATIONS_ESTABLISHED,
-        SUPPLIES_STORED, SHELTER_MATERIALS_PREPARED, SHELTER_COMPLETED, or
+        SUPPLIES_STORED, LOG_STORAGE_DISTRIBUTED,
+        SHELTER_MATERIALS_PREPARED, SHELTER_COMPLETED, or
         FIRST_NIGHT_SURVIVED. Use COMPLETION only for a route toward beating
         Minecraft; its additional outcomes are NETHER_ENTERED,
         BLAZE_MATERIAL_OBTAINED, ENDER_PEARL_OBTAINED, EYE_OF_ENDER_CRAFTED,
@@ -173,6 +177,9 @@ public final class CompanionConversationCoordinator
         obtaining the first iron material is FOUNDATION/IRON_OBTAINED; use
         IRON_TOOLKIT_OBTAINED only when usable iron tools, shield, and bucket
         readiness are actually requested.
+        A request to gather thirty logs, make four chests, and evenly divide
+        the remaining logs among those chests is
+        FOUNDATION/LOG_STORAGE_DISTRIBUTED.
 
         optionalSpeech is one short natural acknowledgement in the player's
         language. Never return START_SKILL, CONTINUE, COMPLETE_GOAL,

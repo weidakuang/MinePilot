@@ -8,7 +8,7 @@ Hardcore world or the rendered Actor/Observer protocol.
 
 ## Provider and privacy
 
-- Model: `mimo-v2.5`.
+- Models used by the recorded runs: `mimo-v2.5` and `grok-4.5`.
 - Base URL host: `api.slomerex.xyz` (the runtime normalized the API prefix to
   `/v1`).
 - Credentials were injected only through the process environment.
@@ -22,7 +22,8 @@ Hardcore world or the rendered Actor/Observer protocol.
 
 ## Results
 
-All runs used Forge `65.1.1`, Minecraft `26.2`, and Java `25`. Each passing
+Unless a row records a different Forge patch, runs used Forge `65.1.1`;
+all runs used Minecraft `26.2` and Java `25`. Each passing
 test ran one case and exited cleanly with `All 1 required tests passed`; the
 newest movement, follow, defense, food, combat, and delayed-login results are
 recorded in the validated source tree snapshot
@@ -34,6 +35,7 @@ evidence, not release artifacts.
 | Scenario | Model decision evidence | Vanilla-world evidence | Result |
 | --- | --- | --- | --- |
 | `real_player_chat_to_live_model_wood_and_stone_tools` (2026-08-24 relocated bounded gate) | One abstract Chinese player chat reached the real Grok 4.5 gateway and was encoded exactly as `FOUNDATION/STONE_TOOL_OBTAINED`; the player then left. | After every inventory, armor, offhand, and ender-chest slot was cleared and the body was relocated more than 64 blocks, it physically mined and picked up three oak logs and three cobblestone, used normal crafting, and retained a stone pickaxe. Vanilla awarded `Stone Age` and `Getting an Upgrade`. | PASS (36.04 seconds from the bounded live GameTest; Forge 65.0.9; controlled terrain, not a random world or formal M1--M4 evidence) |
+| `real_player_chat_to_live_model_distributed_log_storage` (2026-08-24 exact storage gate) | One natural Chinese player-chat instruction reached the real Grok 4.5 gateway. Its first combined route token was rejected; the bounded repair returned canonical `FOUNDATION/LOG_STORAGE_DISTRIBUTED`, after which the human left and issued no further input. | From cleared inventory, equipment, offhand, and ender chest in a fresh controlled area, the body physically mined and picked up exactly 30 oak logs, crafted a wooden pickaxe and stone pickaxe through ordinary menus, mined stone, crafted and placed four nonadjacent chest block entities, and moved every remaining oak log into those four inventories with a maximum count difference of one. The oracle checked vanilla mining, pickup, and recipe statistics plus final inventory and world state; speech and internal completion events were not accepted as evidence. | PASS (4.118-minute controlled live GameTest; Forge 65.0.9; development failures retained as negative evidence). Later reruns exposed livestock-blocked workstation placement, an unbounded exploration child, and rolling-segment center docking. Their current-source physical regressions pass, but a fresh full-chain rerun is still pending because two subsequent Grok 4.5 capability probes timed out with zero inference bytes. This is not a random-world, Hardcore, rendered-client, or formal M1--M4 gate. |
 | `real_player_chat_to_live_model_iron_acquisition` (2026-08-24 first attempt) | The same real model encoded an abstract empty-handed request exactly as `FOUNDATION/IRON_OBTAINED`. | The body acquired four logs and a stone pickaxe, then the old route incorrectly entered an unrelated food-reserve stage and stalled after physically collecting six food items. | FAIL; this exposed and removed `FOOD_SECURED` only from the explicitly bounded first-iron dependency chain. Full foundation/toolkit routes still retain food. No iron pass is claimed. |
 | `real_player_chat_to_live_model_iron_acquisition` (2026-08-24 replacement attempts) | Two independent production conversation requests received zero provider bytes and reached the 90-second model hard timeout. A separate check reached `/v1/models` with HTTP 200 in 0.83 seconds, while minimal Grok 4.5 generation requests to both supported generation protocols timed out without a first byte. | No gameplay route was authorized and no physical iron action occurred. | FAIL before action because the configured provider generation path was unavailable; retained as negative evidence, not replaced with a scripted decision. |
 | `real_player_chat_to_live_model_iron_acquisition` (2026-08-24 recovered endpoint) | Grok 4.5's first response produced a locally rejected combined route field; the bounded repair request returned canonical `FOUNDATION/IRON_OBTAINED`, then the embedded human left. | From cleared inventory, equipment, offhand, and ender chest in a relocated area, the body physically acquired five logs, crafted through the stone-pickaxe progression, mined coal and iron, picked up raw iron, retained iron material, and reached the server-verified `IRON_OBTAINED` milestone through `prepare_iron_toolkit`. The oracle required positive vanilla iron-mining and raw-iron-pickup statistic deltas rather than speech. | PASS (1.789 GameTest minutes, about 107 seconds; Forge 65.0.9; no human after the one abstract Chinese chat; controlled terrain, not a random world or formal M1--M4 evidence) |

@@ -481,6 +481,8 @@ public final class SurvivalRouteTracker {
                     SurvivalRouteObjective.SECURE_FOOD_RESERVE;
             case STONE_TOOL_OBTAINED ->
                     SurvivalRouteObjective.CRAFT_AND_MINE_STONE;
+            case LOG_STORAGE_DISTRIBUTED ->
+                    SurvivalRouteObjective.DISTRIBUTE_LOG_STORAGE;
             case IRON_OBTAINED ->
                     SurvivalRouteObjective.ACQUIRE_IRON_TOOLKIT;
             case IRON_TOOLKIT_OBTAINED ->
@@ -603,6 +605,23 @@ public final class SurvivalRouteTracker {
                 terminalMilestone(goal);
         if (terminal.isEmpty()) {
             return List.copyOf(guidanceOrder);
+        }
+        if (terminal.orElseThrow()
+                == SurvivalMilestone.LOG_STORAGE_DISTRIBUTED) {
+            /*
+             * Balanced four-chest storage is an explicit player-authored
+             * terminal, not a prerequisite for ordinary foundation or
+             * completion routes. Keep its tool dependencies local to that
+             * route so unrelated iron and shelter goals do not inherit this
+             * expensive storage exercise.
+             */
+            return List.of(
+                    SurvivalMilestone.BODY_ACTIVE,
+                    SurvivalMilestone.WOOD_OBTAINED,
+                    SurvivalMilestone.BASIC_CRAFTING_READY,
+                    SurvivalMilestone.STONE_TOOL_OBTAINED,
+                    SurvivalMilestone.LOG_STORAGE_DISTRIBUTED
+            );
         }
         final int terminalIndex = guidanceOrder.indexOf(
                 terminal.orElseThrow()
@@ -991,6 +1010,7 @@ public final class SurvivalRouteTracker {
                 .map(target -> switch (target) {
                     case WOOD_OBTAINED -> 1;
                     case BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED -> 3;
+                    case LOG_STORAGE_DISTRIBUTED -> 30;
                     default -> FOUNDATION_WOOD_RESERVE;
                 })
                 .orElse(FOUNDATION_WOOD_RESERVE);

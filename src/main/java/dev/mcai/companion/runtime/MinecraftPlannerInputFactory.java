@@ -39,6 +39,7 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
     private static final Set<String> FOUNDATION_PHASE_SKILLS = Set.of(
             "prepare_basic_crafting",
             "prepare_stone_tools",
+            "prepare_distributed_log_storage",
             "prepare_iron_toolkit",
             "establish_foundation_workstations",
             "prepare_foundation_shelter_materials",
@@ -685,6 +686,8 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                     Set.of("prepare_basic_crafting");
             case "CRAFT_AND_MINE_STONE" ->
                     Set.of("prepare_stone_tools");
+            case "DISTRIBUTE_LOG_STORAGE" ->
+                    Set.of("prepare_distributed_log_storage");
             case "SECURE_FOOD_RESERVE" ->
                     Set.of("secure_visible_food_reserve");
             case "ACQUIRE_IRON_TOOLKIT" ->
@@ -715,6 +718,7 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
         if (Set.of(
                 "PREPARE_BASIC_CRAFTING",
                 "CRAFT_AND_MINE_STONE",
+                "DISTRIBUTE_LOG_STORAGE",
                 "SECURE_FOOD_RESERVE",
                 "ACQUIRE_IRON_TOOLKIT"
         ).contains(currentObjective)) {
@@ -882,6 +886,8 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                     Set.of("prepare_basic_crafting");
             case "CRAFT_AND_MINE_STONE" ->
                     Set.of("prepare_stone_tools");
+            case "DISTRIBUTE_LOG_STORAGE" ->
+                    Set.of("prepare_distributed_log_storage");
             case "SECURE_FOOD_RESERVE" ->
                     Set.of("secure_visible_food_reserve");
             case "ACQUIRE_IRON_TOOLKIT" ->
@@ -3172,6 +3178,16 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                     Choose prepare_stone_tools with no arguments now. It owns
                     visible stone mining, pickup, table revisit and stone
                     pickaxe crafting locally.
+                    """;
+                case "DISTRIBUTE_LOG_STORAGE" -> """
+                    Current verified teammate phase:
+                    DISTRIBUTE_LOG_STORAGE. Choose
+                    prepare_distributed_log_storage with no arguments now.
+                    The local transaction crafts four independent chests,
+                    places them on currently observed safe supports, and
+                    divides every remaining owned raw log through exact
+                    vanilla chest-menu transfers. Do not claim completion
+                    from speech or inventory estimates.
                     """;
                 case "SECURE_FOOD_RESERVE" -> """
                     Current verified M1 phase: SECURE_FOOD_RESERVE.

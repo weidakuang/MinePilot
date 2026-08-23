@@ -551,7 +551,13 @@ public final class CompanionRuntime {
                 .flatMap(evidence -> evidence.furnace()),
             goalRevision -> worldData
                 .verifiedFoundationEvidence(goalRevision)
-                .flatMap(evidence -> evidence.storage())
+                .flatMap(evidence -> evidence.storage()),
+            revision -> worldData.markVerifiedRouteMilestones(
+                    revision,
+                    java.util.EnumSet.of(
+                            SurvivalMilestone.LOG_STORAGE_DISTRIBUTED
+                    )
+            )
         );
         BridgeSkills.registerAll(
             skills,

@@ -57,6 +57,7 @@ public final class GatherNearbyWoodSkill implements Skill<NoParameters> {
     private static final int SEARCH_RADIUS = 48;
     private static final int SEARCH_STEP = 8;
     private static final int MAXIMUM_DESCENT_TICKS = 100;
+    private static final int MAXIMUM_GATHER_NO_PROGRESS_TICKS = 400;
     private static final float[] SCAN_YAW_OFFSETS = {
             0.0F, -45.0F, 45.0F, -90.0F,
             90.0F, -135.0F, 135.0F, 180.0F
@@ -80,6 +81,8 @@ public final class GatherNearbyWoodSkill implements Skill<NoParameters> {
     private int scanTurns;
     private float scanBaseYaw;
     private int initialWoodCount;
+    private int lastProgressWoodCount;
+    private long lastWoodProgressAtTick;
     private int gatherFailures;
     private GatherVisibleBlockClusterParameters gatherParameters;
     private BreakBlockSkill canopyBreaker;
@@ -157,6 +160,8 @@ public final class GatherNearbyWoodSkill implements Skill<NoParameters> {
         scanTurns = 0;
         scanBaseYaw = yaw(frame.lookDirection());
         initialWoodCount = woodCount(frame);
+        lastProgressWoodCount = initialWoodCount;
+        lastWoodProgressAtTick = context.gameTick();
         gatherFailures = 0;
         gatherParameters = null;
         canopyBreaker = null;
@@ -189,19 +194,36 @@ public final class GatherNearbyWoodSkill implements Skill<NoParameters> {
             final NoParameters parameters
     ) {
         final CoreSkillFrame frame = ownedFrame().orElse(null);
+        final String gatherCheckpoint = gatherParameters == null
+                ? ""
+                : escapeCheckpoint(gatherer.checkpoint(
+                        context,
+                        gatherParameters
+                ).payload());
+        final String explorationCheckpoint = explorer == null
+                || exploreParameters == null
+                ? ""
+                : escapeCheckpoint(explorer.checkpoint(
+                        context,
+                        exploreParameters
+                ).payload());
         return new SkillCheckpoint(
                 1,
                 String.format(
                         Locale.ROOT,
                         "{\"phase\":\"%s\",\"elapsedTicks\":%d,"
                                 + "\"scanTurns\":%d,\"gatherFailures\":%d,"
-                                + "\"initialWood\":%d,\"currentWood\":%d}",
+                                + "\"initialWood\":%d,\"currentWood\":%d,"
+                                + "\"gatherCheckpoint\":\"%s\","
+                                + "\"explorationCheckpoint\":\"%s\"}",
                         phase.name(),
                         Math.max(0L, context.gameTick() - startedAtTick),
                         scanTurns,
                         gatherFailures,
                         initialWoodCount,
-                        frame == null ? -1 : woodCount(frame)
+                        frame == null ? -1 : woodCount(frame),
+                        gatherCheckpoint,
+                        explorationCheckpoint
                 )
         );
     }
@@ -242,6 +264,21 @@ public final class GatherNearbyWoodSkill implements Skill<NoParameters> {
         }
         if (context.gameTick() - startedAtTick >= MAXIMUM_TICKS) {
             return finishOrFail(context, frame, NAME + ".timed_out");
+        }
+        final int currentWoodCount = woodCount(frame);
+        if (currentWoodCount > lastProgressWoodCount) {
+            lastProgressWoodCount = currentWoodCount;
+            lastWoodProgressAtTick = context.gameTick();
+        }
+        if (phase == Phase.GATHERING
+                && context.gameTick() - lastWoodProgressAtTick
+                    >= MAXIMUM_GATHER_NO_PROGRESS_TICKS) {
+            return recoverStalledGather(context, frame);
+        }
+        if (phase == Phase.EXPLORING
+                && context.gameTick() - lastWoodProgressAtTick
+                    >= MAXIMUM_GATHER_NO_PROGRESS_TICKS) {
+            return recoverStalledExploration(context, frame);
         }
         return switch (phase) {
             case SCANNING -> scanOrBind(context, frame);
@@ -442,7 +479,14 @@ public final class GatherNearbyWoodSkill implements Skill<NoParameters> {
                 () -> interactions.sessionGeneration().orElse(-1L),
                 (candidate, ignored) -> candidate.visibleBlockFaces()
                         .stream()
-                        .anyMatch(GatherNearbyWoodSkill::isWood)
+                        .filter(GatherNearbyWoodSkill::isWood)
+                        .map(face -> new GridPos(
+                                face.block().x(),
+                                face.block().y(),
+                                face.block().z()
+                        ))
+                        .anyMatch(position ->
+                                !rejectedSeeds.contains(position))
         );
         final Optional<SkillFailure> rejected = explorer.preconditions(
                 context,
@@ -481,6 +525,24 @@ public final class GatherNearbyWoodSkill implements Skill<NoParameters> {
             return SkillTickResult.running(true, true);
         }
         if (result.status() == SkillTickResult.Status.FAILED) {
+            if (!rejectedSeeds.isEmpty()
+                    && gatherFailures < MAXIMUM_GATHER_FAILURES) {
+                /*
+                 * Exploration has changed the viewing position. A seed that
+                 * was unreachable from the previous side may now be legal,
+                 * so give those observed coordinates one bounded retry
+                 * instead of oscillating between an immediate visibility
+                 * success and a scan that permanently ignores them.
+                 */
+                explorer = null;
+                exploreParameters = null;
+                rejectedSeeds.clear();
+                scanTurns = 0;
+                scanBaseYaw = yaw(frame.lookDirection());
+                nextScanTick = context.gameTick();
+                phase = Phase.SCANNING;
+                return SkillTickResult.running(true, true);
+            }
             return finishOrFail(
                     context,
                     frame,
@@ -536,6 +598,74 @@ public final class GatherNearbyWoodSkill implements Skill<NoParameters> {
                 result.madeProgress(),
                 result.safeCheckpoint()
         );
+    }
+
+    /**
+     * A connected-cluster child must not monopolize the body indefinitely
+     * after its last physical pickup. Keep any item already acquired, end
+     * this bounded parent action, and let the route issue a fresh fair scan.
+     * If nothing was acquired, reject only that observed seed and continue
+     * searching locally.
+     */
+    private SkillTickResult recoverStalledGather(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        if (gatherParameters != null) {
+            final GridPos stalledSeed = new GridPos(
+                    gatherParameters.seed().x(),
+                    gatherParameters.seed().y(),
+                    gatherParameters.seed().z()
+            );
+            gatherer.cancel(context, gatherParameters);
+            gatherParameters = null;
+            rejectedSeeds.add(stalledSeed);
+        }
+        core.stop();
+        if (woodCount(frame) > initialWoodCount) {
+            return complete(context);
+        }
+        if (++gatherFailures >= MAXIMUM_GATHER_FAILURES) {
+            scanTurns = MAXIMUM_SCAN_TURNS;
+        } else {
+            scanTurns = 0;
+        }
+        scanBaseYaw = yaw(frame.lookDirection());
+        nextScanTick = context.gameTick();
+        lastWoodProgressAtTick = context.gameTick();
+        phase = Phase.SCANNING;
+        return SkillTickResult.running(true, true);
+    }
+
+    /**
+     * Exploration is also a bounded part of gathering. If it makes no item
+     * progress for the same watchdog interval as a connected tree cluster,
+     * discard its rolling route and rescan from the body's current position.
+     * This prevents one unreachable spiral segment from monopolizing the
+     * body until the five-minute parent deadline.
+     */
+    private SkillTickResult recoverStalledExploration(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        if (explorer != null && exploreParameters != null) {
+            explorer.cancel(context, exploreParameters);
+        }
+        explorer = null;
+        exploreParameters = null;
+        core.stop();
+        rejectedSeeds.clear();
+        scanTurns = 0;
+        scanBaseYaw = yaw(frame.lookDirection());
+        nextScanTick = context.gameTick();
+        lastWoodProgressAtTick = context.gameTick();
+        phase = Phase.SCANNING;
+        return SkillTickResult.running(true, true);
+    }
+
+    private static String escapeCheckpoint(final String value) {
+        return value.replace("\\", "\\\\")
+                .replace("\"", "\\\"");
     }
 
     private SkillTickResult finishOrFail(
@@ -643,15 +773,24 @@ public final class GatherNearbyWoodSkill implements Skill<NoParameters> {
     }
 
     private static int woodCount(final CoreSkillFrame frame) {
-        int count = frame.inventory().stream()
+        /*
+         * CoreSkillFrame.inventory already contains the selected hotbar
+         * slot. Adding mainHand again doubled every held log and made live
+         * checkpoints claim 42 logs when the physical inventory contained
+         * 21. Use the inventory total as the authoritative owned count and
+         * only fall back to a hand stack for minimal test/frame adapters
+         * that intentionally omit hotbar slots.
+         */
+        final int inventoryCount = frame.inventory().stream()
                 .filter(item -> isWoodItem(item.itemId()))
                 .mapToInt(InventoryItemSummary::count)
                 .sum();
+        int count = inventoryCount;
         if (isWoodItem(frame.mainHand().itemId())) {
-            count += frame.mainHand().count();
+            count = Math.max(count, frame.mainHand().count());
         }
         if (isWoodItem(frame.offHand().itemId())) {
-            count += frame.offHand().count();
+            count = Math.max(count, frame.offHand().count());
         }
         return count;
     }

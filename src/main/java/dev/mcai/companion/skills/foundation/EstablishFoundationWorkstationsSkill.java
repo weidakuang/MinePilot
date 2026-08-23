@@ -47,6 +47,7 @@ import dev.mcai.companion.skills.menu.MenuSkillActuator;
 import dev.mcai.companion.skills.menu.MenuSkillFrame;
 import dev.mcai.companion.skills.menu.MenuSkillFrameSource;
 import dev.mcai.companion.skills.menu.TransferMenuItemParameters;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -56,6 +57,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.LongFunction;
+import java.util.function.LongConsumer;
 
 /**
  * Establishes the persistent workstation/storage boundary after the iron
@@ -76,6 +78,7 @@ public final class EstablishFoundationWorkstationsSkill
             "minecraft:crafting_table";
     private static final String CHEST = "minecraft:chest";
     private static final int REQUIRED_CHEST_PLANKS = 8;
+    private static final int DISTRIBUTED_STORAGE_CHESTS = 4;
     private static final int MAXIMUM_TICKS = 10_200;
     private static final int MAXIMUM_RECIPE_WAIT_TICKS = 100;
     private static final int MAXIMUM_AIM_TICKS = 80;
@@ -123,6 +126,9 @@ public final class EstablishFoundationWorkstationsSkill
             knownCraftingTable;
     private final LongFunction<Optional<VerifiedFixtureLocation>>
             knownStorage;
+    private final int requiredChestCount;
+    private final boolean distributeOwnedLogs;
+    private final LongConsumer completionEvidence;
 
     private Phase phase = Phase.IDLE;
     private SkillFailure failure;
@@ -145,6 +151,17 @@ public final class EstablishFoundationWorkstationsSkill
     private final Set<BlockCoordinate> rejectedSupports =
             new HashSet<>();
     private long lastLiveDiagnosticTick = Long.MIN_VALUE;
+    private int initialChestCount;
+    private int chestsCraftedForTask;
+    private int chestsPlacedForTask;
+    private final List<BlockCoordinate> placedChestPositions =
+            new ArrayList<>();
+    private final List<Integer> logDistributionTargets =
+            new ArrayList<>();
+    private int logDistributionIndex;
+    private int remainingLogDeposit;
+    private long distributionTransferSampleSequence = -1L;
+    private boolean completionEvidenceRecorded;
 
     public EstablishFoundationWorkstationsSkill(
             final UUID expectedPlayerId,
@@ -162,6 +179,82 @@ public final class EstablishFoundationWorkstationsSkill
                     knownFurnace,
             final LongFunction<Optional<VerifiedFixtureLocation>>
                     knownStorage
+    ) {
+        this(
+                expectedPlayerId,
+                core,
+                coreFrames,
+                interactions,
+                interactionFrames,
+                inventory,
+                resourceInventory,
+                menus,
+                menuFrames,
+                knownCraftingTable,
+                knownFurnace,
+                knownStorage,
+                1,
+                false,
+                ignored -> { }
+        );
+    }
+
+    static EstablishFoundationWorkstationsSkill distributedLogStorage(
+            final UUID expectedPlayerId,
+            final CoreSkillActuator core,
+            final CoreSkillFrameSource coreFrames,
+            final InteractionSkillActuator interactions,
+            final InteractionSkillFrameSource interactionFrames,
+            final InventorySkillActuator inventory,
+            final ResourceInventorySource resourceInventory,
+            final MenuSkillActuator menus,
+            final MenuSkillFrameSource menuFrames,
+            final LongFunction<Optional<VerifiedFixtureLocation>>
+                    knownCraftingTable,
+            final LongFunction<Optional<VerifiedFixtureLocation>>
+                    knownFurnace,
+            final LongFunction<Optional<VerifiedFixtureLocation>>
+                    knownStorage,
+            final LongConsumer completionEvidence
+    ) {
+        return new EstablishFoundationWorkstationsSkill(
+                expectedPlayerId,
+                core,
+                coreFrames,
+                interactions,
+                interactionFrames,
+                inventory,
+                resourceInventory,
+                menus,
+                menuFrames,
+                knownCraftingTable,
+                knownFurnace,
+                knownStorage,
+                DISTRIBUTED_STORAGE_CHESTS,
+                true,
+                completionEvidence
+        );
+    }
+
+    private EstablishFoundationWorkstationsSkill(
+            final UUID expectedPlayerId,
+            final CoreSkillActuator core,
+            final CoreSkillFrameSource coreFrames,
+            final InteractionSkillActuator interactions,
+            final InteractionSkillFrameSource interactionFrames,
+            final InventorySkillActuator inventory,
+            final ResourceInventorySource resourceInventory,
+            final MenuSkillActuator menus,
+            final MenuSkillFrameSource menuFrames,
+            final LongFunction<Optional<VerifiedFixtureLocation>>
+                    knownCraftingTable,
+            final LongFunction<Optional<VerifiedFixtureLocation>>
+                    knownFurnace,
+            final LongFunction<Optional<VerifiedFixtureLocation>>
+                    knownStorage,
+            final int requiredChestCount,
+            final boolean distributeOwnedLogs,
+            final LongConsumer completionEvidence
     ) {
         this.expectedPlayerId = Objects.requireNonNull(
                 expectedPlayerId,
@@ -197,6 +290,17 @@ public final class EstablishFoundationWorkstationsSkill
                 knownStorage,
                 "knownStorage"
         );
+        if (requiredChestCount < 1 || requiredChestCount > 8) {
+            throw new IllegalArgumentException(
+                    "requiredChestCount must be in [1, 8]"
+            );
+        }
+        this.requiredChestCount = requiredChestCount;
+        this.distributeOwnedLogs = distributeOwnedLogs;
+        this.completionEvidence = Objects.requireNonNull(
+                completionEvidence,
+                "completionEvidence"
+        );
         materialPreparer =
                 new PrepareFoundationShelterMaterialsSkill(
                         expectedPlayerId,
@@ -216,7 +320,7 @@ public final class EstablishFoundationWorkstationsSkill
                                 knownFurnace,
                                 "knownFurnace"
                         ),
-                        REQUIRED_CHEST_PLANKS
+                        REQUIRED_CHEST_PLANKS * requiredChestCount
                 );
     }
 
@@ -246,7 +350,8 @@ public final class EstablishFoundationWorkstationsSkill
         if (unsafe.isPresent()) {
             return unsafe;
         }
-        if (hasStorageEvidence(context, frame)) {
+        if (!distributeOwnedLogs
+                && hasStorageEvidence(context, frame)) {
             return Optional.empty();
         }
         if (!hasCraftingTableEvidence(context, frame)) {
@@ -254,8 +359,9 @@ public final class EstablishFoundationWorkstationsSkill
                     NAME + ".crafting_table_required"
             ));
         }
-        if (ownsChest(frame)
-                || potentialPlanks(frame) >= REQUIRED_CHEST_PLANKS) {
+        if (!distributeOwnedLogs && ownsChest(frame)
+                || potentialPlanks(frame)
+                    >= requiredChestPlanks()) {
             return Optional.empty();
         }
         return materialPreparer.preconditions(
@@ -292,12 +398,22 @@ public final class EstablishFoundationWorkstationsSkill
         fixtureMovementLastProgressTick = -1L;
         rejectedSupports.clear();
         lastLiveDiagnosticTick = Long.MIN_VALUE;
-        if (hasStorageEvidence(context, frame)) {
+        initialChestCount = itemCount(frame, CHEST);
+        chestsCraftedForTask = 0;
+        chestsPlacedForTask = 0;
+        placedChestPositions.clear();
+        logDistributionTargets.clear();
+        logDistributionIndex = 0;
+        remainingLogDeposit = 0;
+        distributionTransferSampleSequence = -1L;
+        completionEvidenceRecorded = false;
+        if (!distributeOwnedLogs
+                && hasStorageEvidence(context, frame)) {
             beginScan(context, frame, Phase.FIND_CHEST);
-        } else if (ownsChest(frame)) {
+        } else if (!distributeOwnedLogs && ownsChest(frame)) {
             phase = Phase.EQUIP_CHEST;
         } else if (potentialPlanks(frame)
-                < REQUIRED_CHEST_PLANKS) {
+                < requiredChestPlanks()) {
             materialPreparer.start(
                     context,
                     NoParameters.INSTANCE
@@ -478,7 +594,7 @@ public final class EstablishFoundationWorkstationsSkill
                     reclaimChest(context, frame);
             case DEPOSIT_SURPLUS -> depositSurplus(context);
             case CLOSE_CHEST -> closeChest(context);
-            case FINISH -> complete();
+            case FINISH -> complete(context);
             default -> fail(NAME + ".invalid_state");
         };
     }
@@ -504,7 +620,7 @@ public final class EstablishFoundationWorkstationsSkill
             if (frame == null) {
                 return fail(NAME + ".body_unavailable");
             }
-            if (ownsChest(frame)) {
+            if (!distributeOwnedLogs && ownsChest(frame)) {
                 return transition(context, Phase.EQUIP_CHEST);
             }
             beginScan(context, frame, Phase.PREPARE_PLANKS);
@@ -520,7 +636,7 @@ public final class EstablishFoundationWorkstationsSkill
             final SkillContext context,
             final CoreSkillFrame frame
     ) {
-        if (plankCount(frame) >= REQUIRED_CHEST_PLANKS) {
+        if (plankCount(frame) >= requiredChestPlanks()) {
             beginScan(context, frame, Phase.FIND_TABLE);
             return SkillTickResult.running(true, true);
         }
@@ -814,6 +930,10 @@ public final class EstablishFoundationWorkstationsSkill
     private SkillTickResult craftChest(
             final SkillContext context
     ) {
+        if (distributeOwnedLogs
+                && chestsCraftedForTask >= requiredChestCount) {
+            return transition(context, Phase.CLOSE_TABLE);
+        }
         final CraftRecipeParameters recipe =
                 new CraftRecipeParameters(CHEST, 1);
         final InventoryOperationResult checked =
@@ -822,6 +942,9 @@ public final class EstablishFoundationWorkstationsSkill
             final InventoryOperationResult crafted =
                     inventory.craftOnce(recipe);
             if (crafted.succeeded()) {
+                if (distributeOwnedLogs) {
+                    chestsCraftedForTask++;
+                }
                 return transition(
                         context,
                         Phase.CONFIRM_CHEST_ITEM
@@ -839,10 +962,22 @@ public final class EstablishFoundationWorkstationsSkill
             final SkillContext context,
             final CoreSkillFrame frame
     ) {
-        if (itemCount(frame, CHEST) > 0
+        final int expectedOwnedChests = distributeOwnedLogs
+                ? initialChestCount + chestsCraftedForTask
+                    - chestsPlacedForTask
+                : 1;
+        if (itemCount(frame, CHEST) >= expectedOwnedChests
                 || frame.mainHand().itemId().equals(CHEST)
-                    && frame.mainHand().count() > 0) {
-            return transition(context, Phase.CLOSE_TABLE);
+                    && frame.mainHand().count()
+                        >= expectedOwnedChests) {
+            return transition(
+                    context,
+                    distributeOwnedLogs
+                            && chestsCraftedForTask
+                                < requiredChestCount
+                            ? Phase.CRAFT_CHEST
+                            : Phase.CLOSE_TABLE
+            );
         }
         if (context.gameTick() - phaseStartedAtTick
                 >= MAXIMUM_CONFIRM_TICKS) {
@@ -969,6 +1104,9 @@ public final class EstablishFoundationWorkstationsSkill
                 visibleExpectedChest(frame);
         if (chest.isPresent()) {
             selectedTarget = chest.orElseThrow();
+            if (distributeOwnedLogs) {
+                return recordPlacedChestAndContinue(context, frame);
+            }
             return transition(context, Phase.AIM_CHEST);
         }
         final Optional<VisibleBlockFace> crosshair =
@@ -983,6 +1121,9 @@ public final class EstablishFoundationWorkstationsSkill
                                 ));
         if (crosshair.isPresent()) {
             selectedTarget = crosshair.orElseThrow();
+            if (distributeOwnedLogs) {
+                return recordPlacedChestAndContinue(context, frame);
+            }
             return transition(context, Phase.OPEN_CHEST);
         }
         if (context.gameTick() - phaseStartedAtTick
@@ -1004,6 +1145,44 @@ public final class EstablishFoundationWorkstationsSkill
             );
         }
         return SkillTickResult.running(false, true);
+    }
+
+    private SkillTickResult recordPlacedChestAndContinue(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        if (expectedChestPosition == null) {
+            return fail(NAME + ".placed_chest_position_missing");
+        }
+        if (!placedChestPositions.contains(expectedChestPosition)) {
+            placedChestPositions.add(expectedChestPosition);
+            chestsPlacedForTask++;
+        }
+        if (chestsPlacedForTask < requiredChestCount) {
+            expectedChestPosition = null;
+            selectedTarget = null;
+            selectedSupport = null;
+            chestOpenAttempts = 0;
+            return transition(context, Phase.EQUIP_CHEST);
+        }
+        final int logs = ownedRawLogCount(frame);
+        if (logs <= 0) {
+            return fail(NAME + ".no_logs_remaining_to_distribute");
+        }
+        logDistributionTargets.clear();
+        final int base = logs / requiredChestCount;
+        final int remainder = logs % requiredChestCount;
+        for (int index = 0; index < requiredChestCount; index++) {
+            logDistributionTargets.add(
+                    base + (index < remainder ? 1 : 0)
+            );
+        }
+        logDistributionIndex = 0;
+        remainingLogDeposit = logDistributionTargets.getFirst();
+        distributionTransferSampleSequence = -1L;
+        expectedChestPosition = placedChestPositions.getFirst();
+        beginScan(context, frame, Phase.FIND_CHEST);
+        return SkillTickResult.running(true, true);
     }
 
     private SkillTickResult openChest(
@@ -1175,6 +1354,9 @@ public final class EstablishFoundationWorkstationsSkill
     private SkillTickResult depositSurplus(
             final SkillContext context
     ) {
+        if (distributeOwnedLogs) {
+            return depositDistributedLogs(context);
+        }
         final Optional<MenuSkillFrame> maybeMenu =
                 currentChestMenu();
         if (maybeMenu.isEmpty()) {
@@ -1217,13 +1399,79 @@ public final class EstablishFoundationWorkstationsSkill
         return transition(context, Phase.CLOSE_CHEST);
     }
 
+    private SkillTickResult depositDistributedLogs(
+            final SkillContext context
+    ) {
+        final Optional<MenuSkillFrame> maybeMenu = currentChestMenu();
+        if (maybeMenu.isEmpty()) {
+            return fail(NAME + ".chest_menu_lost");
+        }
+        final MenuSkillFrame frame = maybeMenu.orElseThrow();
+        if (distributionTransferSampleSequence >= 0
+                && frame.sampleSequence()
+                    <= distributionTransferSampleSequence) {
+            if (context.gameTick() - phaseStartedAtTick
+                    >= MAXIMUM_CONFIRM_TICKS) {
+                return fail(NAME + ".log_transfer_unconfirmed");
+            }
+            return SkillTickResult.running(false, true);
+        }
+        distributionTransferSampleSequence = -1L;
+        if (remainingLogDeposit <= 0) {
+            depositSampleSequence = frame.sampleSequence() - 1L;
+            return transition(context, Phase.CLOSE_CHEST);
+        }
+        final Optional<MenuSlotSummary> source =
+                selectOwnedLogSource(frame);
+        final Optional<MenuSlotSummary> destination =
+                frame.menu().slots().stream()
+                        .filter(slot -> !slot.playerInventory())
+                        .filter(slot -> slot.count() == 0)
+                        .min(Comparator.comparingInt(
+                                MenuSlotSummary::slot
+                        ));
+        if (source.isEmpty()) {
+            return fail(NAME + ".remaining_logs_missing");
+        }
+        if (destination.isEmpty()) {
+            return fail(NAME + ".storage_full");
+        }
+        final int count = Math.min(
+                remainingLogDeposit,
+                source.orElseThrow().count()
+        );
+        final MenuOperationResult moved = menus.transfer(
+                new TransferMenuItemParameters(
+                        binding(frame),
+                        source.orElseThrow().slot(),
+                        destination.orElseThrow().slot(),
+                        count
+                )
+        );
+        if (!moved.succeeded()) {
+            if (context.gameTick() - phaseStartedAtTick
+                    < MAXIMUM_CONFIRM_TICKS) {
+                return SkillTickResult.running(false, true);
+            }
+            return fail(NAME + ".log_distribution_rejected");
+        }
+        depositedItemId = source.orElseThrow().itemId();
+        remainingLogDeposit -= count;
+        depositSampleSequence = frame.sampleSequence();
+        distributionTransferSampleSequence = frame.sampleSequence();
+        phaseStartedAtTick = context.gameTick();
+        return SkillTickResult.running(true, true);
+    }
+
     private SkillTickResult closeChest(
             final SkillContext context
     ) {
         final Optional<MenuSkillFrame> maybeMenu =
                 currentChestMenu();
         if (maybeMenu.isEmpty()) {
-            return transition(context, Phase.FINISH);
+            return distributeOwnedLogs
+                    ? advanceDistributedChest(context)
+                    : transition(context, Phase.FINISH);
         }
         final MenuSkillFrame frame = maybeMenu.orElseThrow();
         final MenuBinding binding = binding(frame);
@@ -1238,9 +1486,36 @@ public final class EstablishFoundationWorkstationsSkill
         final MenuOperationResult closed = menus.close(
                 new CloseMenuParameters(binding)
         );
-        return closed.succeeded()
-                ? transition(context, Phase.FINISH)
-                : fail(NAME + ".chest_close_failed");
+        if (!closed.succeeded()) {
+            return fail(NAME + ".chest_close_failed");
+        }
+        return distributeOwnedLogs
+                ? advanceDistributedChest(context)
+                : transition(context, Phase.FINISH);
+    }
+
+    private SkillTickResult advanceDistributedChest(
+            final SkillContext context
+    ) {
+        logDistributionIndex++;
+        if (logDistributionIndex >= requiredChestCount) {
+            return transition(context, Phase.FINISH);
+        }
+        final CoreSkillFrame frame = ownedFrame().orElse(null);
+        if (frame == null) {
+            return fail(NAME + ".body_unavailable");
+        }
+        expectedChestPosition = placedChestPositions.get(
+                logDistributionIndex
+        );
+        remainingLogDeposit = logDistributionTargets.get(
+                logDistributionIndex
+        );
+        depositSampleSequence = -1L;
+        distributionTransferSampleSequence = -1L;
+        chestOpenAttempts = 0;
+        beginScan(context, frame, Phase.FIND_CHEST);
+        return SkillTickResult.running(true, true);
     }
 
     private SkillTickResult scan(
@@ -1322,7 +1597,15 @@ public final class EstablishFoundationWorkstationsSkill
         selectedSupport = null;
     }
 
-    private SkillTickResult complete() {
+    private SkillTickResult complete(final SkillContext context) {
+        if (!completionEvidenceRecorded) {
+            try {
+                completionEvidence.accept(context.goalRevision());
+                completionEvidenceRecorded = true;
+            } catch (RuntimeException rejectedEvidence) {
+                return fail(NAME + ".completion_evidence_rejected");
+            }
+        }
         core.stop();
         phase = Phase.COMPLETED;
         return SkillTickResult.completed();
@@ -1424,7 +1707,12 @@ public final class EstablishFoundationWorkstationsSkill
                         : knownStorage(context, frame);
         return frame.visibleBlockFaces().stream()
                 .filter(face -> isFixture(face, fixture))
+                .filter(face -> fixture != Fixture.CHEST
+                        || expectedChestPosition == null
+                        || face.block().equals(expectedChestPosition))
                 .filter(face -> remembered.isEmpty()
+                        || fixture == Fixture.CHEST
+                            && expectedChestPosition != null
                         || matches(
                                 face.block(),
                                 remembered.orElseThrow()
@@ -1495,6 +1783,8 @@ public final class EstablishFoundationWorkstationsSkill
                                 frame,
                                 face
                         ))
+                .filter(face -> !distributeOwnedLogs
+                        || placementIsSeparateChest(face))
                 .filter(face -> {
                     final double centerX = face.block().x() + 0.5;
                     final double centerZ = face.block().z() + 0.5;
@@ -1506,6 +1796,19 @@ public final class EstablishFoundationWorkstationsSkill
                 .min(Comparator.comparingDouble(
                         VisibleBlockFace::distance
                 ));
+    }
+
+    private boolean placementIsSeparateChest(
+            final VisibleBlockFace support
+    ) {
+        final int x = support.block().x();
+        final int y = support.block().y() + 1;
+        final int z = support.block().z();
+        return placedChestPositions.stream().noneMatch(existing ->
+                existing.y() == y
+                        && Math.abs(existing.x() - x)
+                            + Math.abs(existing.z() - z) <= 1
+        );
     }
 
     static boolean hasObservedChestPlacementClearance(
@@ -1612,6 +1915,17 @@ public final class EstablishFoundationWorkstationsSkill
                         .comparingInt(MenuSlotSummary::count)
                         .reversed()
                         .thenComparingInt(MenuSlotSummary::slot));
+    }
+
+    private static Optional<MenuSlotSummary> selectOwnedLogSource(
+            final MenuSkillFrame frame
+    ) {
+        return frame.menu().slots().stream()
+                .filter(MenuSlotSummary::playerInventory)
+                .filter(MenuSlotSummary::mayPickup)
+                .filter(slot -> slot.count() > 0)
+                .filter(slot -> isRawLog(slot.itemId()))
+                .min(Comparator.comparingInt(MenuSlotSummary::slot));
     }
 
     private static boolean isSafeSurplus(
@@ -1742,6 +2056,27 @@ public final class EstablishFoundationWorkstationsSkill
                         )
                         .mapToInt(InventoryItemSummary::count)
                         .sum() * 4;
+    }
+
+    private int requiredChestPlanks() {
+        return REQUIRED_CHEST_PLANKS * requiredChestCount;
+    }
+
+    private static int ownedRawLogCount(final CoreSkillFrame frame) {
+        int count = frame.inventory().stream()
+                .filter(item -> isRawLog(item.itemId()))
+                .mapToInt(InventoryItemSummary::count)
+                .sum();
+        if (isRawLog(frame.mainHand().itemId())) {
+            count = Math.max(count, frame.mainHand().count());
+        }
+        return count;
+    }
+
+    private static boolean isRawLog(final String itemId) {
+        return itemId.endsWith("_log")
+                || itemId.endsWith("_stem")
+                || itemId.endsWith("_hyphae");
     }
 
     private static int plankCount(

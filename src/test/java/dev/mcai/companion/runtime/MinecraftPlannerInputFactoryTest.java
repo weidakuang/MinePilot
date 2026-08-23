@@ -103,6 +103,7 @@ final class MinecraftPlannerInputFactoryTest {
         final Map<String, SkillArgumentValidator> all = Map.ofEntries(
                 Map.entry("prepare_basic_crafting", accepts),
                 Map.entry("prepare_stone_tools", accepts),
+                Map.entry("prepare_distributed_log_storage", accepts),
                 Map.entry("prepare_iron_toolkit", accepts),
                 Map.entry("gather_visible_block_cluster", accepts),
                 Map.entry("survey_surroundings", accepts),
@@ -157,6 +158,25 @@ final class MinecraftPlannerInputFactoryTest {
         assertFalse(iron.containsKey("secure_visible_food_reserve"));
         assertFalse(iron.containsKey("prepare_basic_crafting"));
         assertFalse(iron.containsKey("prepare_stone_tools"));
+        assertFalse(iron.containsKey(
+                "prepare_distributed_log_storage"
+        ));
+
+        final String distributedStorageRuntime = """
+            {
+              "verifiedCompletionRouteData": {
+                "profile": "FOUNDATION",
+                "nextObjectives": ["DISTRIBUTE_LOG_STORAGE"]
+              }
+            }
+            """;
+        assertEquals(
+                java.util.Set.of("prepare_distributed_log_storage"),
+                MinecraftPlannerInputFactory.foundationPhaseSkills(
+                        all,
+                        distributedStorageRuntime
+                ).keySet()
+        );
 
         final String workstationRuntime = """
             {

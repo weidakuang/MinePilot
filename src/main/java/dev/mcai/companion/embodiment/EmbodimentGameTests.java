@@ -4240,6 +4240,21 @@ public final class EmbodimentGameTests {
     }
 
     @GameTest(
+        name = "real_player_chat_to_live_model_distributed_log_storage",
+        environment = "exclusive_live_model_foundation_bootstrap",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerChatToLiveModelDistributedLogStorage(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerChatToLiveModelDistributedLogStorage(helper);
+    }
+
+    @GameTest(
         name =
             "real_player_task_to_live_model_nether_portal_build_and_entry",
         environment =

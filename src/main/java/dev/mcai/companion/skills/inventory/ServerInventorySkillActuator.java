@@ -474,11 +474,17 @@ public final class ServerInventorySkillActuator
                     "craft_recipe.recipe_not_placeable"
             );
         }
-        if (!player.getRecipeBook().contains(resolved.holder().id())) {
-            return InventoryOperationResult.rejected(
-                    "craft_recipe.recipe_locked"
-            );
-        }
+        /*
+         * Recipe-book visibility is a UI hint, not a survival crafting
+         * permission. Vanilla 26.2 deliberately withholds the chest recipe
+         * until ten inventory slots are occupied, but a knowledgeable player
+         * may still place the eight-plank pattern manually. handlePlacement
+         * below performs ordinary menu-slot placement from owned materials;
+         * it does not pre-award the recipe or create ingredients, so
+         * rejecting a locked recipe here incorrectly made expert crafting
+         * impossible. Vanilla may record the recipe after the real result
+         * click, just as it does for a human player.
+         */
         if (!(player.containerMenu instanceof AbstractCraftingMenu menu)) {
             return InventoryOperationResult.rejected(
                     "craft_recipe.crafting_menu_required"

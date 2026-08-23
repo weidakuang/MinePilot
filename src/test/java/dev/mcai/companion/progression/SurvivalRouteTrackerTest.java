@@ -49,6 +49,12 @@ final class SurvivalRouteTrackerTest {
                 ))
         );
         assertEquals(
+                30,
+                SurvivalRouteTracker.requiredWoodReserve(plannedGoal(
+                        GoalExecutionPlan.Target.LOG_STORAGE_DISTRIBUTED
+                ))
+        );
+        assertEquals(
                 5,
                 SurvivalRouteTracker.requiredWoodReserve(goal(
                         GoalSource.PLAYER_CHAT,
@@ -76,6 +82,9 @@ final class SurvivalRouteTrackerTest {
         assertFalse(required.orElseThrow().contains(
                 SurvivalMilestone.IRON_TOOLKIT_OBTAINED
         ));
+        assertFalse(required.orElseThrow().contains(
+                SurvivalMilestone.LOG_STORAGE_DISTRIBUTED
+        ));
 
         final Set<SurvivalMilestone> toolkitRequired =
                 SurvivalRouteTracker.explicitlyRequiredMilestones(
@@ -87,6 +96,33 @@ final class SurvivalRouteTrackerTest {
         assertTrue(toolkitRequired.contains(
                 SurvivalMilestone.FOOD_SECURED
         ));
+        assertFalse(toolkitRequired.contains(
+                SurvivalMilestone.LOG_STORAGE_DISTRIBUTED
+        ));
+    }
+
+    @Test
+    void distributedStorageTerminalHasOnlyItsPhysicalPrerequisites() {
+        final Set<SurvivalMilestone> required =
+                SurvivalRouteTracker.explicitlyRequiredMilestones(
+                        plannedGoal(
+                                GoalExecutionPlan.Target
+                                        .LOG_STORAGE_DISTRIBUTED
+                        )
+                ).orElseThrow();
+
+        assertEquals(
+                Set.of(
+                        SurvivalMilestone.BODY_ACTIVE,
+                        SurvivalMilestone.WOOD_OBTAINED,
+                        SurvivalMilestone.BASIC_CRAFTING_READY,
+                        SurvivalMilestone.STONE_TOOL_OBTAINED,
+                        SurvivalMilestone.LOG_STORAGE_DISTRIBUTED
+                ),
+                required
+        );
+        assertFalse(required.contains(SurvivalMilestone.FOOD_SECURED));
+        assertFalse(required.contains(SurvivalMilestone.IRON_OBTAINED));
     }
 
     @Test

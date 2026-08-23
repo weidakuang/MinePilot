@@ -6,6 +6,9 @@ import dev.mcai.companion.action.ActionVec3;
 import dev.mcai.companion.action.BlockFace;
 import dev.mcai.companion.action.BlockInteractionTarget;
 import dev.mcai.companion.action.LookIntent;
+import dev.mcai.companion.navigation.GridPos;
+import dev.mcai.companion.navigation.NavigationEvidence;
+import dev.mcai.companion.navigation.ObservedVoxel;
 import dev.mcai.companion.model.SkillArgument;
 import dev.mcai.companion.perception.BlockCoordinate;
 import dev.mcai.companion.perception.InventoryItemSummary;
@@ -24,6 +27,8 @@ import dev.mcai.companion.skill.SkillTickResult;
 import dev.mcai.companion.skills.core.CoreSkillActuator;
 import dev.mcai.companion.skills.core.CoreSkillFrame;
 import dev.mcai.companion.skills.core.CoreSkillFrameSource;
+import dev.mcai.companion.skills.core.MoveToParameters;
+import dev.mcai.companion.skills.core.MoveToSkill;
 import dev.mcai.companion.skills.core.NoParameters;
 import dev.mcai.companion.skills.interaction.InteractionSkillActuator;
 import dev.mcai.companion.skills.interaction.InteractionSkillFrameSource;
@@ -65,6 +70,15 @@ public final class PrepareBasicCraftingSkill
     private static final int MAXIMUM_TABLE_CONFIRM_TICKS = 100;
     private static final int SCAN_INTERVAL_TICKS = 5;
     private static final int MAXIMUM_SUPPORT_SCANS = 16;
+    private static final int MAXIMUM_SUPPORT_REPOSITIONS = 3;
+    /*
+     * At standing eye height, a 55-degree floor ray lands only about 1.13
+     * blocks away and is then correctly rejected by the 1.35-block
+     * self-clearance rule below. A shallower look exposes a reachable support
+     * outside the body envelope instead of rotating through sixteen
+     * geometrically impossible samples.
+     */
+    private static final float SUPPORT_SCAN_PITCH = 42.0F;
     private static final double MINIMUM_PLACEMENT_DISTANCE = 1.35;
     private static final double MAXIMUM_PLACEMENT_DISTANCE = 4.25;
     private static final double MAXIMUM_TABLE_CENTER_DISTANCE = 3.75;
@@ -101,6 +115,11 @@ public final class PrepareBasicCraftingSkill
     private int phaseTransitions;
     private int tablePlacementAttempts;
     private int menuOpenAttempts;
+    private MoveToSkill supportMovement;
+    private MoveToParameters supportMovementParameters;
+    private GridPos supportMovementTarget;
+    private final Set<GridPos> rejectedSupportStands = new HashSet<>();
+    private int supportRepositions;
 
     public PrepareBasicCraftingSkill(
             final UUID expectedPlayerId,
@@ -196,6 +215,11 @@ public final class PrepareBasicCraftingSkill
         phaseTransitions = 0;
         tablePlacementAttempts = 0;
         menuOpenAttempts = 0;
+        supportMovement = null;
+        supportMovementParameters = null;
+        supportMovementTarget = null;
+        rejectedSupportStands.clear();
+        supportRepositions = 0;
     }
 
     @Override
@@ -205,6 +229,9 @@ public final class PrepareBasicCraftingSkill
     ) {
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(parameters, "parameters");
+        if (phase == Phase.COMPLETED) {
+            return SkillTickResult.completed();
+        }
         if (!phase.active()) {
             return SkillTickResult.failed(NAME + ".invalid_state");
         }
@@ -221,6 +248,8 @@ public final class PrepareBasicCraftingSkill
             final NoParameters parameters
     ) {
         final CoreSkillFrame frame = ownedFrame().orElse(null);
+        final SupportDiagnostics support =
+                supportDiagnostics(frame, rejectedSupports);
         return new SkillCheckpoint(
                 1,
                 String.format(
@@ -231,6 +260,16 @@ public final class PrepareBasicCraftingSkill
                                 + "\"phaseTransitions\":%d,"
                                 + "\"tablePlacementAttempts\":%d,"
                                 + "\"menuOpenAttempts\":%d,"
+                                + "\"visibleFaces\":%d,"
+                                + "\"upFaces\":%d,"
+                                + "\"sturdyUpFaces\":%d,"
+                                + "\"reachableUpFaces\":%d,"
+                                + "\"entityClearUpFaces\":%d,"
+                                + "\"rangeClearUpFaces\":%d,"
+                                + "\"selfClearUpFaces\":%d,"
+                                + "\"rejectedSupports\":%d,"
+                                + "\"supportRepositions\":%d,"
+                                + "\"supportMovementTarget\":%s,"
                                 + "\"onGround\":%s,"
                                 + "\"bodyPosition\":%s,"
                                 + "\"expectedTable\":%s,"
@@ -246,6 +285,16 @@ public final class PrepareBasicCraftingSkill
                         phaseTransitions,
                         tablePlacementAttempts,
                         menuOpenAttempts,
+                        support.visibleFaces(),
+                        support.upFaces(),
+                        support.sturdyUpFaces(),
+                        support.reachableUpFaces(),
+                        support.entityClearUpFaces(),
+                        support.rangeClearUpFaces(),
+                        support.selfClearUpFaces(),
+                        rejectedSupports.size(),
+                        supportRepositions,
+                        gridJson(supportMovementTarget),
                         frame == null ? "null" : frame.onGround(),
                         frame == null
                                 ? "null"
@@ -270,6 +319,13 @@ public final class PrepareBasicCraftingSkill
             final SkillContext context,
             final NoParameters parameters
     ) {
+        if (supportMovement != null
+                && supportMovementParameters != null) {
+            supportMovement.cancel(context, supportMovementParameters);
+        }
+        supportMovement = null;
+        supportMovementParameters = null;
+        supportMovementTarget = null;
         core.stop();
         closeCraftingMenuIfOpen();
         phase = Phase.CANCELLED;
@@ -328,6 +384,8 @@ public final class PrepareBasicCraftingSkill
             case CRAFT_STICKS -> craftSticks(context, frame);
             case EQUIP_TABLE -> equipTable(context, frame);
             case FIND_SUPPORT -> findSupport(context, frame);
+            case REPOSITION_FOR_SUPPORT ->
+                    repositionForSupport(context, frame);
             case AIM_SUPPORT -> aimSupport(context, frame);
             case PLACE_TABLE -> placeTable(context);
             case CONFIRM_TABLE -> confirmTable(context, frame);
@@ -442,6 +500,13 @@ public final class PrepareBasicCraftingSkill
             return transition(context, Phase.AIM_SUPPORT);
         }
         if (supportScans >= MAXIMUM_SUPPORT_SCANS) {
+            if (supportRepositions < MAXIMUM_SUPPORT_REPOSITIONS) {
+                final Optional<SkillTickResult> reposition =
+                        beginSupportReposition(context, frame);
+                if (reposition.isPresent()) {
+                    return reposition.orElseThrow();
+                }
+            }
             return fail(NAME + ".safe_support_not_visible");
         }
         if (context.gameTick() < nextScanTick) {
@@ -453,12 +518,98 @@ public final class PrepareBasicCraftingSkill
                                 % SUPPORT_SCAN_YAW_OFFSETS.length
                 ];
         if (!core.stop().accepted()
-                || !core.look(new LookIntent(yaw, 55.0F)).accepted()) {
+                || !core.look(new LookIntent(
+                        yaw,
+                        SUPPORT_SCAN_PITCH
+                )).accepted()) {
             return fail(NAME + ".support_scan_rejected");
         }
         supportScans++;
         nextScanTick = context.gameTick() + SCAN_INTERVAL_TICKS;
         return SkillTickResult.running(true, true);
+    }
+
+    private Optional<SkillTickResult> beginSupportReposition(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        final Optional<GridPos> candidate = selectSupportReposition(
+                frame,
+                rejectedSupportStands,
+                context.hardcore() ? 0.08 : 0.25
+        );
+        if (candidate.isEmpty()) {
+            return Optional.empty();
+        }
+        final GridPos target = candidate.orElseThrow();
+        final MoveToParameters parameters = new MoveToParameters(
+                frame.dimension(),
+                target.x() + 0.5,
+                target.y(),
+                target.z() + 0.5,
+                0.45
+        );
+        final MoveToSkill movement = new MoveToSkill(
+                expectedPlayerId,
+                core,
+                coreFrames
+        );
+        final Optional<SkillFailure> rejected = movement.preconditions(
+                context,
+                parameters
+        );
+        if (rejected.isPresent()) {
+            rejectedSupportStands.add(target);
+            return Optional.empty();
+        }
+        movement.start(context, parameters);
+        supportMovement = movement;
+        supportMovementParameters = parameters;
+        supportMovementTarget = target;
+        rejectedSupportStands.add(target);
+        supportRepositions++;
+        return Optional.of(transition(
+                context,
+                Phase.REPOSITION_FOR_SUPPORT
+        ));
+    }
+
+    private SkillTickResult repositionForSupport(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        if (supportMovement == null
+                || supportMovementParameters == null
+                || supportMovementTarget == null) {
+            return fail(NAME + ".support_reposition_state_missing");
+        }
+        final SkillTickResult moved = supportMovement.tick(
+                context,
+                supportMovementParameters
+        );
+        if (moved.status() == SkillTickResult.Status.RUNNING) {
+            return SkillTickResult.running(
+                    moved.madeProgress(),
+                    moved.safeCheckpoint()
+            );
+        }
+        supportMovement = null;
+        supportMovementParameters = null;
+        supportMovementTarget = null;
+        if (moved.status() == SkillTickResult.Status.FAILED) {
+            if (supportRepositions < MAXIMUM_SUPPORT_REPOSITIONS) {
+                return beginSupportReposition(context, frame)
+                        .orElseGet(() -> fail(
+                                NAME + ".support_reposition_failed"
+                        ));
+            }
+            return fail(NAME + ".support_reposition_failed");
+        }
+        supportScans = 0;
+        nextScanTick = context.gameTick();
+        supportScanBaseYaw = yaw(frame.lookDirection());
+        selectedSupport = null;
+        return transition(context, Phase.FIND_SUPPORT);
     }
 
     private SkillTickResult aimSupport(
@@ -782,7 +933,22 @@ public final class PrepareBasicCraftingSkill
                 );
     }
 
+    private static String gridJson(final GridPos position) {
+        return position == null
+                ? "null"
+                : String.format(
+                        Locale.ROOT,
+                        "[%d,%d,%d]",
+                        position.x(),
+                        position.y(),
+                        position.z()
+                );
+    }
+
     private SkillTickResult fail(final String code) {
+        supportMovement = null;
+        supportMovementParameters = null;
+        supportMovementTarget = null;
         core.stop();
         closeCraftingMenuIfOpen();
         failure = SkillFailure.of(code);
@@ -905,6 +1071,143 @@ public final class PrepareBasicCraftingSkill
                 .min(Comparator.comparingDouble(
                         VisibleBlockFace::distance
                 ));
+    }
+
+    private static SupportDiagnostics supportDiagnostics(
+            final CoreSkillFrame frame,
+            final Set<BlockCoordinate> rejected
+    ) {
+        if (frame == null) {
+            return new SupportDiagnostics(0, 0, 0, 0, 0, 0, 0);
+        }
+        final List<VisibleBlockFace> available = frame.visibleBlockFaces()
+                .stream()
+                .filter(face -> !rejected.contains(face.block()))
+                .toList();
+        final List<VisibleBlockFace> up = available.stream()
+                .filter(face -> face.face().equals("up"))
+                .toList();
+        final List<VisibleBlockFace> sturdy = up.stream()
+                .filter(face -> face.topSupportAffordance()
+                        == TopSupportAffordance.STURDY_FULL_TOP)
+                .toList();
+        final List<VisibleBlockFace> reachable = sturdy.stream()
+                .filter(face -> isReachableTableSupport(frame, face))
+                .toList();
+        final List<VisibleBlockFace> entityClear = reachable.stream()
+                .filter(face -> visiblePlacementVolumeIsClear(frame, face))
+                .toList();
+        final List<VisibleBlockFace> rangeClear = entityClear.stream()
+                .filter(face ->
+                        face.distance() >= MINIMUM_PLACEMENT_DISTANCE
+                                && face.distance()
+                                    <= MAXIMUM_PLACEMENT_DISTANCE)
+                .toList();
+        final long selfClear = rangeClear.stream()
+                .filter(face -> {
+                    final double centerX = face.block().x() + 0.5;
+                    final double centerZ = face.block().z() + 0.5;
+                    return Math.hypot(
+                            centerX - frame.position().x(),
+                            centerZ - frame.position().z()
+                    ) >= MINIMUM_PLACEMENT_DISTANCE;
+                })
+                .count();
+        return new SupportDiagnostics(
+                available.size(),
+                up.size(),
+                sturdy.size(),
+                reachable.size(),
+                entityClear.size(),
+                rangeClear.size(),
+                Math.toIntExact(selfClear)
+        );
+    }
+
+    static Optional<GridPos> selectSupportReposition(
+            final CoreSkillFrame frame,
+            final Set<GridPos> rejected,
+            final double maximumDanger
+    ) {
+        Objects.requireNonNull(frame, "frame");
+        Objects.requireNonNull(rejected, "rejected");
+        if (!Double.isFinite(maximumDanger)
+                || maximumDanger < 0.0
+                || maximumDanger > 1.0) {
+            throw new IllegalArgumentException(
+                    "maximumDanger is outside [0,1]"
+            );
+        }
+        final GridPos current = frame.feet();
+        return frame.navigation().observedVoxels().values().stream()
+                .map(ObservedVoxel::position)
+                .filter(candidate -> !rejected.contains(candidate))
+                .filter(candidate ->
+                        Math.abs(candidate.y() - current.y()) <= 1)
+                .filter(candidate -> {
+                    final double distance = current.euclideanDistance(
+                            candidate
+                    );
+                    return distance >= 2.0 && distance <= 5.0;
+                })
+                .filter(candidate -> observedSafeStand(
+                        frame,
+                        candidate,
+                        maximumDanger
+                ))
+                .filter(candidate -> frame.visibleEntities().stream()
+                        .noneMatch(entity ->
+                                VisibleEntityPlacementEnvelope
+                                    .intersectsBlock(
+                                        entity,
+                                        candidate.x(),
+                                        candidate.y(),
+                                        candidate.z()
+                                    )
+                                    || VisibleEntityPlacementEnvelope
+                                        .intersectsBlock(
+                                            entity,
+                                            candidate.x(),
+                                            candidate.y() + 1,
+                                            candidate.z()
+                                        )))
+                .min(Comparator
+                        .comparingDouble(current::euclideanDistance)
+                        .thenComparingInt(GridPos::y)
+                        .thenComparingInt(GridPos::x)
+                        .thenComparingInt(GridPos::z));
+    }
+
+    private static boolean observedSafeStand(
+            final CoreSkillFrame frame,
+            final GridPos stand,
+            final double maximumDanger
+    ) {
+        final Optional<ObservedVoxel> feet =
+                frame.navigation().voxelAt(stand);
+        final Optional<ObservedVoxel> head =
+                frame.navigation().voxelAt(stand.above());
+        final Optional<ObservedVoxel> support =
+                frame.navigation().voxelAt(stand.below());
+        return feet.isPresent()
+                && head.isPresent()
+                && support.isPresent()
+                && NavigationEvidence.hasTraversalClearance(
+                        feet.orElseThrow()
+                )
+                && NavigationEvidence.hasTraversalClearance(
+                        head.orElseThrow()
+                )
+                && support.orElseThrow().kind().supportsWeight()
+                && support.orElseThrow().topSupportAffordance()
+                    == TopSupportAffordance.STURDY_FULL_TOP
+                && Math.max(
+                        feet.orElseThrow().effectiveDanger(),
+                        Math.max(
+                                head.orElseThrow().effectiveDanger(),
+                                support.orElseThrow().effectiveDanger()
+                        )
+                ) <= maximumDanger;
     }
 
     private static Optional<VisibleBlockFace> visibleTable(
@@ -1076,6 +1379,7 @@ public final class PrepareBasicCraftingSkill
         CRAFT_STICKS,
         EQUIP_TABLE,
         FIND_SUPPORT,
+        REPOSITION_FOR_SUPPORT,
         AIM_SUPPORT,
         PLACE_TABLE,
         CONFIRM_TABLE,
@@ -1095,5 +1399,16 @@ public final class PrepareBasicCraftingSkill
                     && this != FAILED
                     && this != CANCELLED;
         }
+    }
+
+    private record SupportDiagnostics(
+            int visibleFaces,
+            int upFaces,
+            int sturdyUpFaces,
+            int reachableUpFaces,
+            int entityClearUpFaces,
+            int rangeClearUpFaces,
+            int selfClearUpFaces
+    ) {
     }
 }

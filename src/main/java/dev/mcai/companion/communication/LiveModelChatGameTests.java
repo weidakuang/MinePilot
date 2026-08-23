@@ -4,6 +4,7 @@ import com.mojang.authlib.GameProfile;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.mcai.companion.control.BehaviorArbiter;
+import dev.mcai.companion.control.GoalExecutionPlan;
 import dev.mcai.companion.control.GoalSnapshot;
 import dev.mcai.companion.control.GoalSource;
 import dev.mcai.companion.control.GoalStatus;
@@ -827,6 +828,37 @@ public final class LiveModelChatGameTests {
                 ));
         final LiveFoundationBootstrapScenario scenario =
                 new LiveFoundationBootstrapScenario(helper, runtime);
+        helper.addCleanup(ignored -> scenario.cleanup());
+        scenario.start();
+        helper.onEachTick(scenario::tick);
+    }
+
+    /**
+     * Sends one ordinary player-chat request and stops only after the body
+     * has physically mined/picked up wood and stone, then crafted and retained
+     * a stone pickaxe through the production foundation route.
+     */
+    public static void realPlayerChatToLiveModelWoodAndStoneTools(
+            final GameTestHelper helper
+    ) {
+        if (!Boolean.getBoolean("mcai.liveModelTest")) {
+            helper.succeed();
+            return;
+        }
+        final ServerRuntime runtime = CompanionRuntime.active()
+                .filter(candidate ->
+                        candidate.server()
+                            == helper.getLevel().getServer())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Companion runtime is unavailable"
+                ));
+        final LiveFoundationBootstrapScenario scenario =
+                new LiveFoundationBootstrapScenario(
+                        helper,
+                        runtime,
+                        false,
+                        true
+                );
         helper.addCleanup(ignored -> scenario.cleanup());
         scenario.start();
         helper.onEachTick(scenario::tick);
@@ -8055,6 +8087,7 @@ public final class LiveModelChatGameTests {
         private final ServerRuntime runtime;
         private final long createdAt;
         private final boolean zeroHumanFromStart;
+        private final boolean completeAfterStoneTools;
 
         private FoundationBootstrapStage stage =
                 FoundationBootstrapStage.BODY;
@@ -8102,7 +8135,7 @@ public final class LiveModelChatGameTests {
                 final GameTestHelper helper,
                 final ServerRuntime runtime
         ) {
-            this(helper, runtime, false);
+            this(helper, runtime, false, false);
         }
 
         private LiveFoundationBootstrapScenario(
@@ -8110,9 +8143,19 @@ public final class LiveModelChatGameTests {
                 final ServerRuntime runtime,
                 final boolean zeroHumanFromStart
         ) {
+            this(helper, runtime, zeroHumanFromStart, false);
+        }
+
+        private LiveFoundationBootstrapScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime,
+                final boolean zeroHumanFromStart,
+                final boolean completeAfterStoneTools
+        ) {
             this.helper = helper;
             this.runtime = runtime;
             this.zeroHumanFromStart = zeroHumanFromStart;
+            this.completeAfterStoneTools = completeAfterStoneTools;
             createdAt = helper.getTick();
             stageStartedNanos = System.nanoTime();
         }
@@ -8344,11 +8387,18 @@ public final class LiveModelChatGameTests {
                     ForgeHooks.onServerChatSubmittedEvent(
                             human,
                             Component.literal(
-                                runtime.worldData().displayName()
-                                    + "，从空背包开始建立安全据点并生存"
-                                    + "到第二天。先把你眼前这组相连的"
-                                    + "橡木原木全部砍下并捡进背包，"
-                                    + "然后继续基础生存；不要使用命令。"
+                                completeAfterStoneTools
+                                    ? runtime.worldData().displayName()
+                                        + "，请先砍下眼前相连的橡木并"
+                                        + "捡进背包，然后制作工作台和"
+                                        + "木镐，采集圆石并制作一把石镐。"
+                                        + "完成后停下；不要使用命令。"
+                                    : runtime.worldData().displayName()
+                                        + "，从空背包开始建立安全据点并"
+                                        + "生存到第二天。先把你眼前这组"
+                                        + "相连的橡木原木全部砍下并捡进"
+                                        + "背包，然后继续基础生存；不要"
+                                        + "使用命令。"
                             )
                     );
             helper.assertTrue(
@@ -8369,13 +8419,30 @@ public final class LiveModelChatGameTests {
             }
             helper.assertTrue(
                     goal.revision() > goalRevisionBefore
-                        && goal.goal().contains("安全据点")
-                        && goal.goal().contains("第二天"),
+                        && (completeAfterStoneTools
+                            ? goal.goal().contains("石镐")
+                            : goal.goal().contains("安全据点")
+                                && goal.goal().contains("第二天")),
                     (zeroHumanFromStart
                             ? "Unattended MCP goal was not preserved "
                             : "Authorized foundation chat was not preserved ")
                         + "as the M1 goal"
             );
+            if (completeAfterStoneTools) {
+                final GoalExecutionPlan plan = GoalExecutionPlan
+                        .fromDetailCode(goal.detailCode())
+                        .orElseThrow(() -> new AssertionError(
+                                "The live model did not encode a route plan"
+                        ));
+                helper.assertTrue(
+                        plan.equals(GoalExecutionPlan.foundation(
+                                GoalExecutionPlan.Target
+                                        .STONE_TOOL_OBTAINED
+                        )),
+                        "The live model encoded the natural-language task "
+                            + "as the wrong route: " + plan
+                );
+            }
             if (zeroHumanFromStart) {
                 helper.assertTrue(
                         goal.source() == GoalSource.MCP,
@@ -8405,6 +8472,8 @@ public final class LiveModelChatGameTests {
             );
             final var skill = runtime.skillSupervisor().snapshot();
             if ("gather_visible_block_cluster".equals(
+                    skill.skillName()
+            ) || "gather_nearby_wood".equals(
                     skill.skillName()
             )) {
                 sawClusterGatherer = true;
@@ -8708,6 +8777,12 @@ public final class LiveModelChatGameTests {
                         "M1 stone pickaxe did not use the production "
                             + "recipe transaction"
                 );
+                if (completeAfterStoneTools) {
+                    finishScenarioGoal(runtime);
+                    stage = FoundationBootstrapStage.DONE;
+                    helper.succeed();
+                    return;
+                }
                 stage = FoundationBootstrapStage.FOOD;
                 stageStartedNanos = System.nanoTime();
                 return;

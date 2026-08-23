@@ -1,5 +1,6 @@
 package dev.mcai.companion.model;
 
+import dev.mcai.companion.control.GoalExecutionPlan;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -108,7 +109,7 @@ public final class DecisionEnvelopeValidator {
                 envelope,
                 context
         );
-        envelope = discardInactiveSkillInvocation(envelope);
+        envelope = discardInactiveSkillInvocation(envelope, context);
         envelope = canonicalizeFoundationCompoundAlias(envelope, context);
         envelope = replanContinueWithoutActiveSkill(envelope, context);
         validateText(
@@ -176,6 +177,18 @@ public final class DecisionEnvelopeValidator {
             final String skillName,
             final Map<String, SkillArgumentValidator> availableSkills
     ) {
+        if (availableSkills.containsKey("gather_nearby_wood")
+                && Set.of(
+                        "gather_visible_block_cluster",
+                        "gather_visible_cluster",
+                        "gather_connected_cluster",
+                        "gather_cluster",
+                        "gather_tree",
+                        "chop_tree",
+                        "collect_wood"
+                ).contains(skillName)) {
+            return "gather_nearby_wood";
+        }
         if ("gather_visible_cluster".equals(skillName)
                 || "collect_visible_item".equals(skillName)
                 || "gather_cluster".equals(skillName)) {
@@ -233,8 +246,13 @@ public final class DecisionEnvelopeValidator {
      * instead of turning a safe replan into a task-ending protocol failure.
      */
     private static DecisionEnvelope discardInactiveSkillInvocation(
-            final DecisionEnvelope envelope
+            final DecisionEnvelope envelope,
+            final DecisionContext context
     ) {
+        if (context.lane() == DecisionLane.CONVERSATION
+                && envelope.decision() == DecisionKind.ASK_PLAYER) {
+            return envelope;
+        }
         if (envelope.decision() == DecisionKind.START_SKILL
                 || envelope.skillName().isEmpty()
                 && envelope.typedArguments().isEmpty()) {
@@ -303,13 +321,17 @@ public final class DecisionEnvelopeValidator {
                 envelope.decision() == DecisionKind.START_SKILL
                         ? DecisionKind.REPLAN
                         : envelope.decision();
+        final java.util.List<SkillArgument> taskPlanArguments =
+                decision == DecisionKind.ASK_PLAYER
+                        ? envelope.typedArguments()
+                        : java.util.List.of();
         return new DecisionEnvelope(
                 envelope.requestId(),
                 envelope.observedWorldRevision(),
                 envelope.goalRevision(),
                 decision,
                 "",
-                java.util.List.of(),
+                taskPlanArguments,
                 RequestedObservation.none(),
                 envelope.optionalSpeech(),
                 envelope.confidence()
@@ -343,6 +365,11 @@ public final class DecisionEnvelopeValidator {
             validateText("argument." + argument.name(), argument.value(), MAX_ARGUMENT_VALUE_CHARS);
         }
 
+        if (context.lane() == DecisionLane.CONVERSATION) {
+            validateConversationTaskPlan(envelope);
+            return;
+        }
+
         if (envelope.decision() != DecisionKind.START_SKILL) {
             if (!envelope.skillName().isEmpty() || !envelope.typedArguments().isEmpty()) {
                 fail("unexpected_skill", "Only START_SKILL may include a skill invocation");
@@ -360,6 +387,55 @@ public final class DecisionEnvelopeValidator {
         Optional<String> validationError = validator.validate(envelope.typedArguments());
         if (validationError.isPresent()) {
             fail("invalid_skill_arguments", validationError.get());
+        }
+    }
+
+    private static void validateConversationTaskPlan(
+            final DecisionEnvelope envelope
+    ) throws DecisionValidationException {
+        if (!envelope.skillName().isEmpty()) {
+            fail(
+                    "conversation_skill_forbidden",
+                    "Conversation output cannot invoke a skill"
+            );
+        }
+        if (envelope.decision() != DecisionKind.ASK_PLAYER) {
+            if (!envelope.typedArguments().isEmpty()) {
+                fail(
+                        "unexpected_task_plan",
+                        "Only an accepted conversation task may include a plan"
+                );
+            }
+            return;
+        }
+        if (envelope.typedArguments().size() != 2) {
+            fail(
+                    "missing_task_plan",
+                    "An accepted conversation task requires two plan fields"
+            );
+        }
+        final Map<String, String> fields = envelope.typedArguments()
+                .stream()
+                .collect(java.util.stream.Collectors.toUnmodifiableMap(
+                        SkillArgument::name,
+                        SkillArgument::value
+                ));
+        if (!fields.keySet().equals(Set.of(
+                "goalRouteProfile",
+                "goalTerminalMilestone"
+        ))) {
+            fail(
+                    "invalid_task_plan_fields",
+                    "Conversation task plan fields are not canonical"
+            );
+        }
+        try {
+            GoalExecutionPlan.fromModelValues(
+                    fields.get("goalRouteProfile"),
+                    fields.get("goalTerminalMilestone")
+            );
+        } catch (IllegalArgumentException invalidPlan) {
+            fail("invalid_task_plan", invalidPlan.getMessage());
         }
     }
 

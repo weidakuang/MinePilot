@@ -1,6 +1,7 @@
 package dev.mcai.companion.model;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
 import java.util.Map;
@@ -86,17 +87,12 @@ final class DecisionEnvelopeValidatorObservationTest {
                 DecisionLane.CONVERSATION
         );
 
-        final DecisionEnvelope accepted =
-                new DecisionEnvelopeValidator().validate(
+        assertThrows(
+                DecisionValidationException.class,
+                () -> new DecisionEnvelopeValidator().validate(
                         polluted,
                         conversation
-                );
-
-        assertEquals("", accepted.skillName());
-        assertEquals(List.of(), accepted.typedArguments());
-        assertEquals(
-                RequestedObservation.none(),
-                accepted.requestedObservation()
+                )
         );
         final DecisionEnvelope gameplay =
                 new DecisionEnvelopeValidator().validate(
@@ -143,6 +139,47 @@ final class DecisionEnvelopeValidatorObservationTest {
         assertEquals("", accepted.skillName());
         assertEquals(List.of(), accepted.typedArguments());
         assertEquals("收到，我来处理。", accepted.optionalSpeech());
+    }
+
+    @Test
+    void conversationRetainsOnlyAValidatedSemanticTaskPlan()
+            throws Exception {
+        final DecisionContext conversation = new DecisionContext(
+                CONTEXT.requestId(),
+                CONTEXT.observedWorldRevision(),
+                CONTEXT.goalRevision(),
+                false,
+                Map.of(),
+                DecisionLane.CONVERSATION
+        );
+        final DecisionEnvelope encodedTask = new DecisionEnvelope(
+                CONTEXT.requestId(),
+                CONTEXT.observedWorldRevision(),
+                CONTEXT.goalRevision(),
+                DecisionKind.ASK_PLAYER,
+                "",
+                List.of(
+                        new SkillArgument(
+                                "goalRouteProfile",
+                                "FOUNDATION"
+                        ),
+                        new SkillArgument(
+                                "goalTerminalMilestone",
+                                "STONE_TOOL_OBTAINED"
+                        )
+                ),
+                RequestedObservation.none(),
+                "收到。",
+                0.9
+        );
+
+        final DecisionEnvelope accepted =
+                new DecisionEnvelopeValidator().validate(
+                        encodedTask,
+                        conversation
+                );
+
+        assertEquals(encodedTask.typedArguments(), accepted.typedArguments());
     }
 
     @Test

@@ -4210,6 +4210,21 @@ public final class EmbodimentGameTests {
     }
 
     @GameTest(
+        name = "real_player_chat_to_live_model_wood_and_stone_tools",
+        environment = "exclusive_live_model_foundation_bootstrap",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 240_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerChatToLiveModelWoodAndStoneTools(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerChatToLiveModelWoodAndStoneTools(helper);
+    }
+
+    @GameTest(
         name =
             "real_player_task_to_live_model_nether_portal_build_and_entry",
         environment =

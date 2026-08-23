@@ -10,6 +10,7 @@ import dev.mcai.companion.brain.BrainEvent;
 import dev.mcai.companion.brain.BrainOrchestrator;
 import dev.mcai.companion.brain.BrainEventSink;
 import dev.mcai.companion.control.GoalCoordinator;
+import dev.mcai.companion.control.GoalExecutionPlan;
 import dev.mcai.companion.control.GoalSnapshot;
 import dev.mcai.companion.control.GoalSource;
 import dev.mcai.companion.model.DecisionContext;
@@ -89,7 +90,31 @@ public final class CompanionConversationCoordinator
         gameplay goal. This includes imperative follow/come/go/run/craft/drop/
         gather/mine/build/fight/use requests and an affirmative answer to your
         immediately preceding concrete proposal. In that case optionalSpeech
-        is a short natural acknowledgement in the player's language.
+        is a short natural acknowledgement in the player's language,
+        skillName is empty, requestedObservation is NONE, and typedArguments
+        contains exactly these two semantic-encoding fields:
+        - goalRouteProfile: NONE, FOUNDATION, or COMPLETION.
+        - goalTerminalMilestone: NONE or one milestone listed below.
+
+        Use NONE/NONE for an ordinary standalone task such as follow, combat,
+        farming, building, item transfer, or travel. Use FOUNDATION for a
+        staged survival request that starts with ordinary resource gathering.
+        Choose the furthest outcome the player actually requested: BODY_ACTIVE,
+        WOOD_OBTAINED, BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED, FOOD_SECURED,
+        IRON_TOOLKIT_OBTAINED, WORKSTATIONS_ESTABLISHED, SUPPLIES_STORED,
+        SHELTER_MATERIALS_PREPARED, SHELTER_COMPLETED, or
+        FIRST_NIGHT_SURVIVED. A request to chop wood and obtain stone tools is
+        FOUNDATION/STONE_TOOL_OBTAINED even if the player uses slang, indirect
+        wording, another supported language, or no fixed product keyword.
+        Use COMPLETION only for a staged route toward beating Minecraft, with
+        the furthest requested outcome: BODY_ACTIVE, WOOD_OBTAINED,
+        BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED, FOOD_SECURED,
+        IRON_TOOLKIT_OBTAINED, NETHER_ENTERED, BLAZE_MATERIAL_OBTAINED,
+        ENDER_PEARL_OBTAINED, EYE_OF_ENDER_CRAFTED,
+        STRONGHOLD_BEARING_MEASURED,
+        STRONGHOLD_SEARCH_AREA_TRIANGULATED, END_LOADOUT_PREPARED, END_ENTERED,
+        END_ISLAND_REACHED, DRAGON_KILLED, or RETURNED_FROM_END. This encoding
+        selects only a server-owned route; it never claims completion.
 
         A REPLAN response MUST NOT promise, claim, or narrate any gameplay
         action. Never say that you are coming, following, moving, looking,
@@ -492,7 +517,10 @@ public final class CompanionConversationCoordinator
             remember(normalized, denial);
             return;
         }
-        if (maySetGoal && taskAddressed && immediateIntent.task()) {
+        if (maySetGoal
+                && taskAddressed
+                && immediateIntent.task()
+                && installsWithoutModelEncoding(immediateIntent)) {
             if (!immediateIntent.replacesGoal()) {
                 acknowledgeExistingTask(
                         normalized,
@@ -1034,8 +1062,10 @@ public final class CompanionConversationCoordinator
                     utterance.message()
                 );
         final boolean task = utterance.maySetGoal()
-                && (localIntent.task() && (utterance.singlePlayer()
-                    || utterance.explicitlyAddressed())
+                && (localIntent.task()
+                    && (utterance.singlePlayer()
+                        || utterance.explicitlyAddressed())
+                    && installsWithoutModelEncoding(localIntent)
                     || modelTaskAccepted);
         if (modelSelectedTask && !modelTaskAccepted && !localIntent.task()) {
             emitNotice(
@@ -1068,7 +1098,10 @@ public final class CompanionConversationCoordinator
                     : utterance.goalText();
             final var accepted = goals.setGoal(
                     installedGoal,
-                    GoalSource.PLAYER_CHAT
+                    GoalSource.PLAYER_CHAT,
+                    modelSelectedTask
+                            ? executionPlan(decision.typedArguments())
+                            : GoalExecutionPlan.none()
             );
             if (!accepted.accepted()) {
                 emitNotice(
@@ -1175,6 +1208,30 @@ public final class CompanionConversationCoordinator
                 && !PlayerTaskIntent.looksLikeConversationalQuestion(
                     message
                 );
+    }
+
+    static boolean installsWithoutModelEncoding(
+            final PlayerTaskIntent.Result intent
+    ) {
+        Objects.requireNonNull(intent, "intent");
+        return !intent.replacesGoal()
+                || intent.reason().equals("immediate_follow_request")
+                || intent.reason().equals("immediate_threat_report");
+    }
+
+    private static GoalExecutionPlan executionPlan(
+            final java.util.List<dev.mcai.companion.model.SkillArgument>
+                    arguments
+    ) {
+        final Map<String, String> values = arguments.stream()
+                .collect(java.util.stream.Collectors.toUnmodifiableMap(
+                        dev.mcai.companion.model.SkillArgument::name,
+                        dev.mcai.companion.model.SkillArgument::value
+                ));
+        return GoalExecutionPlan.fromModelValues(
+                values.get("goalRouteProfile"),
+                values.get("goalTerminalMilestone")
+        );
     }
 
     private void emitNotice(

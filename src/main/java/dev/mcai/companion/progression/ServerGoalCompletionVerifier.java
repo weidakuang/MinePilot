@@ -55,6 +55,15 @@ public final class ServerGoalCompletionVerifier
         final Set<SurvivalMilestone> verified = worldData
                 .verifiedRouteProgress(goal.revision())
                 .milestones();
+        final Optional<Set<SurvivalMilestone>> plannedRequired =
+                SurvivalRouteTracker.explicitlyRequiredMilestones(goal);
+        if (plannedRequired.isPresent()) {
+            return verified.containsAll(plannedRequired.orElseThrow())
+                    ? GoalCompletionVerification.approved()
+                    : GoalCompletionVerification.rejected(
+                            "planned_route_unverified"
+                    );
+        }
         if (SurvivalRouteTracker.isFoundationGoal(goal)) {
             return verified.containsAll(FOUNDATION_REQUIRED)
                     ? GoalCompletionVerification.approved()

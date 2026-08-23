@@ -4,6 +4,7 @@ import dev.mcai.companion.perception.FairPerceptionSampler;
 import dev.mcai.companion.perception.SemanticObservation;
 import dev.mcai.companion.control.GoalSource;
 import dev.mcai.companion.control.GoalStatus;
+import dev.mcai.companion.control.GoalExecutionPlan;
 import dev.mcai.companion.control.PersistedGoalState;
 import dev.mcai.companion.progression.FoundationActionAudit;
 import dev.mcai.companion.progression.FoundationFixtureKind;
@@ -1003,8 +1004,10 @@ public final class MenuGameTests {
                 Optional.of(UUID.randomUUID()),
                 GoalStatus.RUNNING,
                 GoalSource.PLAYER_CHAT,
-                "建立安全据点并生存到第二天",
-                "",
+                "Please handle that useful setup we discussed.",
+                GoalExecutionPlan.foundation(
+                        GoalExecutionPlan.Target.STONE_TOOL_OBTAINED
+                ).detailCode(),
                 Instant.EPOCH,
                 false
         ));

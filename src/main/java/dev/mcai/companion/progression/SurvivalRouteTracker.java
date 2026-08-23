@@ -2,6 +2,7 @@ package dev.mcai.companion.progression;
 
 import dev.mcai.companion.control.GoalSnapshot;
 import dev.mcai.companion.control.GoalSource;
+import dev.mcai.companion.control.GoalExecutionPlan;
 import dev.mcai.companion.skills.building.DynamicShelterPlanner;
 import dev.mcai.companion.skills.core.VanillaFoodItems;
 import dev.mcai.companion.skills.foundation.PrepareBasicCraftingSkill;
@@ -294,10 +295,15 @@ public final class SurvivalRouteTracker {
                 worldData.verifiedRouteProgress(goal.revision());
         final List<SurvivalMilestone> verified =
                 progress.milestones().stream().sorted().toList();
-        final List<SurvivalMilestone> guidanceOrder =
+        final List<SurvivalMilestone> fullGuidanceOrder =
                 profile == SurvivalRouteProfile.FOUNDATION
                         ? FOUNDATION_GUIDANCE_ORDER
                         : COMPLETION_GUIDANCE_ORDER;
+        final List<SurvivalMilestone> guidanceOrder =
+                guidanceThroughTerminal(
+                        goal,
+                        fullGuidanceOrder
+                );
         final Optional<SurvivalMilestone> next =
                 nextMilestone(
                         profile,
@@ -514,6 +520,12 @@ public final class SurvivalRouteTracker {
     }
 
     public static boolean isCompletionGoal(final GoalSnapshot goal) {
+        final Optional<GoalExecutionPlan> plan = GoalExecutionPlan
+                .fromDetailCode(goal.detailCode());
+        if (plan.isPresent()) {
+            return plan.orElseThrow().route()
+                    == GoalExecutionPlan.Route.COMPLETION;
+        }
         if (goal.source() == GoalSource.HARDCORE_EVALUATION) {
             return true;
         }
@@ -526,6 +538,12 @@ public final class SurvivalRouteTracker {
     }
 
     public static boolean isFoundationGoal(final GoalSnapshot goal) {
+        final Optional<GoalExecutionPlan> plan = GoalExecutionPlan
+                .fromDetailCode(goal.detailCode());
+        if (plan.isPresent()) {
+            return plan.orElseThrow().route()
+                    == GoalExecutionPlan.Route.FOUNDATION;
+        }
         return isFoundationGoalText(goal.goal());
     }
 
@@ -552,6 +570,62 @@ public final class SurvivalRouteTracker {
             return Optional.of(SurvivalRouteProfile.COMPLETION);
         }
         return Optional.empty();
+    }
+
+    public static Optional<SurvivalMilestone> terminalMilestone(
+            final GoalSnapshot goal
+    ) {
+        return GoalExecutionPlan.fromDetailCode(goal.detailCode())
+                .filter(plan -> plan.route()
+                        != GoalExecutionPlan.Route.NONE)
+                .map(GoalExecutionPlan::terminalTarget)
+                .filter(target -> target
+                        != GoalExecutionPlan.Target.NONE)
+                .map(target -> SurvivalMilestone.valueOf(
+                        target.name()
+                ));
+    }
+
+    static List<SurvivalMilestone> guidanceThroughTerminal(
+            final GoalSnapshot goal,
+            final List<SurvivalMilestone> guidanceOrder
+    ) {
+        Objects.requireNonNull(goal, "goal");
+        Objects.requireNonNull(guidanceOrder, "guidanceOrder");
+        final Optional<SurvivalMilestone> terminal =
+                terminalMilestone(goal);
+        if (terminal.isEmpty()) {
+            return List.copyOf(guidanceOrder);
+        }
+        final int terminalIndex = guidanceOrder.indexOf(
+                terminal.orElseThrow()
+        );
+        if (terminalIndex < 0) {
+            return List.copyOf(guidanceOrder);
+        }
+        return List.copyOf(
+                guidanceOrder.subList(0, terminalIndex + 1)
+        );
+    }
+
+    static Optional<Set<SurvivalMilestone>> explicitlyRequiredMilestones(
+            final GoalSnapshot goal
+    ) {
+        final Optional<GoalExecutionPlan> plan = GoalExecutionPlan
+                .fromDetailCode(goal.detailCode())
+                .filter(value -> value.route()
+                        != GoalExecutionPlan.Route.NONE);
+        if (plan.isEmpty()) {
+            return Optional.empty();
+        }
+        final List<SurvivalMilestone> fullOrder =
+                plan.orElseThrow().route()
+                        == GoalExecutionPlan.Route.FOUNDATION
+                        ? FOUNDATION_GUIDANCE_ORDER
+                        : COMPLETION_GUIDANCE_ORDER;
+        return Optional.of(Set.copyOf(
+                guidanceThroughTerminal(goal, fullOrder)
+        ));
     }
 
     private static Map<String, Integer> inventory(

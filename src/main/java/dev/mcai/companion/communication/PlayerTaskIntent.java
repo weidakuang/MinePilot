@@ -148,9 +148,11 @@ final class PlayerTaskIntent {
             return new Result(
                     true,
                     goal.isEmpty() ? normalized : goal,
-                    isFollowRequest(normalized)
-                            ? "immediate_follow_request"
-                            : "obvious_gameplay_imperative",
+                    reportedImmediateThreat(normalized)
+                            ? "immediate_threat_report"
+                            : isFollowRequest(normalized)
+                                    ? "immediate_follow_request"
+                                    : "obvious_gameplay_imperative",
                     true
             );
         }

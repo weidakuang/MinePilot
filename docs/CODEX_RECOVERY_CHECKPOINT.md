@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-24T03:33:00+09:00
+Last updated: 2026-08-24T04:55:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,50 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+### 2026-08-24 natural-language goal encoding and stone-tool gate
+
+- Ordinary imperative chat no longer installs staged survival goals through
+  local keyword matching. The configured high-level model must encode an
+  accepted task into a bounded `GoalExecutionPlan`: route `NONE`,
+  `FOUNDATION`, or `COMPLETION`, plus a validated terminal milestone. The
+  original player text remains unchanged, and only server-owned skills may
+  execute the plan or certify progress.
+- The plan is persisted in the goal detail field, survives restart, truncates
+  route guidance and completion requirements at the requested outcome, and is
+  consumed by both route tracking and the foundation interaction audit.
+  Immediate follow, immediate threat response, cancellation, and active-task
+  continuation retain their bounded low-latency local paths.
+- The last failed live gate correctly encoded
+  `FOUNDATION/STONE_TOOL_OBTAINED`, mined and picked up eight oak logs, crafted
+  and placed a crafting table, and crafted a wooden pickaxe. It then stopped
+  because `FoundationActionAudit` still recognized only legacy goal-text
+  keywords, discarded the real crafting-table interaction receipt, and never
+  advanced `BASIC_CRAFTING_READY`.
+- The audit now recognizes the persisted typed Foundation or Completion route
+  before its legacy fallback. A focused unit gate proves arbitrary goal text
+  activates audit only when accompanied by a valid typed route, and that an
+  unrelated goal cannot create foundation evidence. The Foundation wood phase
+  now exposes the continuous `gather_nearby_wood` compound rather than asking
+  the model for one block coordinate at a time.
+- The replacement Forge 65.0.9 live-model GameTest passed in 2.047 minutes.
+  One embedded player sent one ordinary Chinese chat request and then left.
+  Grok 4.5 encoded exactly `FOUNDATION/STONE_TOOL_OBTAINED`; the companion
+  physically mined and picked up six oak logs, crafted and used a crafting
+  table, crafted a wooden pickaxe, mined and picked up three cobblestone, and
+  crafted and retained a stone pickaxe. Vanilla awarded `Stone Age` and
+  `Getting an Upgrade`. Assertions used vanilla statistics, inventory, world
+  state, persisted interaction evidence, and verified milestones rather than
+  model speech or product log claims.
+- `./gradlew check` passes after the fix. This is an exact chat-to-stone-pickaxe
+  controlled gate only. It does not promote M1, random-world survival,
+  professional companion, Nether, End, Hardcore, or the two-hour M4 target.
+- Current changed files are the new `GoalExecutionPlan`, conversation and
+  decision validation, goal persistence, route tracking/completion, foundation
+  audit, phase-owned skill exposure, the live physical GameTest, and focused
+  tests. Next: preserve this gate while extending semantic goal encoding and
+  physical terminal verification to the next ordinary professional-companion
+  task; formal natural-world and M1--M4 gates remain open.
 
 ### 2026-08-24 headless natural-world black-box checkpoint
 

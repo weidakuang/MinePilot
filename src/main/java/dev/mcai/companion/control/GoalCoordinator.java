@@ -51,8 +51,24 @@ public final class GoalCoordinator {
         restore();
     }
 
-    public synchronized MutationResult setGoal(final String requestedGoal, final GoalSource requestedSource) {
+    public synchronized MutationResult setGoal(
+            final String requestedGoal,
+            final GoalSource requestedSource
+    ) {
+        return setGoal(
+                requestedGoal,
+                requestedSource,
+                GoalExecutionPlan.none()
+        );
+    }
+
+    public synchronized MutationResult setGoal(
+            final String requestedGoal,
+            final GoalSource requestedSource,
+            final GoalExecutionPlan executionPlan
+    ) {
         Objects.requireNonNull(requestedSource, "requestedSource");
+        Objects.requireNonNull(executionPlan, "executionPlan");
         if (externalWritesLocked) {
             return MutationResult.rejected("evaluation_locked", snapshot());
         }
@@ -67,7 +83,7 @@ public final class GoalCoordinator {
         goal = normalized;
         source = requestedSource;
         status = GoalStatus.RUNNING;
-        detailCode = "";
+        detailCode = executionPlan.detailCode();
         revisions.advance();
         updatedAt = clock.instant();
         persist();
@@ -100,7 +116,13 @@ public final class GoalCoordinator {
         goal = normalized;
         source = GoalSource.HARDCORE_EVALUATION;
         status = GoalStatus.RUNNING;
-        detailCode = "";
+        detailCode = normalized.equals(HARDCORE_INITIAL_GOAL)
+                ? GoalExecutionPlan.completion(
+                        GoalExecutionPlan.Target.RETURNED_FROM_END
+                ).detailCode()
+                : GoalExecutionPlan.foundation(
+                        GoalExecutionPlan.Target.FIRST_NIGHT_SURVIVED
+                ).detailCode();
         externalWritesLocked = true;
         revisions.advance();
         updatedAt = clock.instant();

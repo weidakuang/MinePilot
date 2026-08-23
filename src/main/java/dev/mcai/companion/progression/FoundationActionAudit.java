@@ -2,6 +2,7 @@ package dev.mcai.companion.progression;
 
 import dev.mcai.companion.action.ActionOutcome;
 import dev.mcai.companion.action.BlockInteractionTarget;
+import dev.mcai.companion.control.GoalExecutionPlan;
 import dev.mcai.companion.world.CompanionWorldData;
 import java.util.Objects;
 import java.util.Optional;
@@ -180,11 +181,28 @@ public final class FoundationActionAudit {
         );
     }
 
-    private boolean activeFoundationGoal() {
-        return "RUNNING".equals(worldData.goalStatus())
-                && SurvivalRouteTracker.isFoundationGoalText(
-                        worldData.activeGoal()
+    /**
+     * Package-visible so the route contract can be verified without
+     * fabricating a block interaction or trusting an action log.
+     */
+    boolean activeFoundationGoal() {
+        if (!"RUNNING".equals(worldData.goalStatus())) {
+            return false;
+        }
+        final Optional<GoalExecutionPlan> executionPlan =
+                GoalExecutionPlan.fromDetailCode(
+                        worldData.goalDetail()
                 );
+        if (executionPlan.isPresent()) {
+            final GoalExecutionPlan.Route route = executionPlan
+                    .orElseThrow()
+                    .route();
+            return route == GoalExecutionPlan.Route.FOUNDATION
+                    || route == GoalExecutionPlan.Route.COMPLETION;
+        }
+        return SurvivalRouteTracker.isFoundationGoalText(
+                worldData.activeGoal()
+        );
     }
 
     private record PendingFixture(

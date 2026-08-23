@@ -702,13 +702,11 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
             default -> Set.of();
         };
         if ("GATHER_VISIBLE_WOOD".equals(currentObjective)) {
-            final Set<String> admitted = new java.util.HashSet<>(
-                    FOUNDATION_EARLY_UTILITY_SKILLS
-            );
-            admitted.addAll(admittedCompounds);
             return allSkills.entrySet().stream()
                     .filter(entry ->
-                            admitted.contains(entry.getKey()))
+                            "gather_nearby_wood".equals(
+                                    entry.getKey()
+                            ))
                     .collect(Collectors.toUnmodifiableMap(
                             Map.Entry::getKey,
                             Map.Entry::getValue
@@ -879,7 +877,7 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
 
         final Set<String> admitted = switch (currentObjective) {
             case "GATHER_VISIBLE_WOOD" ->
-                    FOUNDATION_EARLY_UTILITY_SKILLS;
+                    Set.of("gather_nearby_wood");
             case "PREPARE_BASIC_CRAFTING" ->
                     Set.of("prepare_basic_crafting");
             case "CRAFT_AND_MINE_STONE" ->

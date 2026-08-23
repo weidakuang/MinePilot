@@ -1360,11 +1360,13 @@ seed statistic.
 - Changed production areas: model capability/profile/request construction,
   planner input lifecycle, observation request routing, vision capture service,
   chunk wire protocol, runtime wiring, documentation, and version metadata.
-- Last gate: focused model/profile/vision tests and the authorized real-provider
-  capability test passed. A real PNG rendered from Minecraft has not passed
-  the isolated hidden-renderer gate, so screenshot capture and every M0--M4
-  milestone remain `NOT_RUN`.
-- Next action: run the complete JVM/build/release checks, install the exact
-  `0.1.13-dev-mc26.2` artifact and Grok profile into the XMCL instance without
-  launching a visible client, then perform the hidden-renderer end-to-end test
-  only on an isolated off-screen worker.
+- Last gate: 1,236 JVM tests passed with zero failures and two skips; Forge
+  65.x compatibility metadata, build, and release-JAR verification passed.
+  The installed `0.1.13-dev-mc26.2` JAR has SHA-256
+  `00847412895bafc4c55184caf504a1d3f46755c286b1030e1a5bcbd87a365eaa`.
+  The XMCL profile selects Grok 4.5 and the credential remains in the OS
+  secret store. No visible Minecraft client was launched.
+- A real PNG rendered from Minecraft has not passed the isolated
+  hidden-renderer gate, so screenshot capture and every M0--M4 milestone
+  remain `NOT_RUN`. The next action is that off-screen end-to-end gate on an
+  isolated renderer worker; the normal dedicated-server path remains `nogui`.

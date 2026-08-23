@@ -34,15 +34,15 @@ final class VisionCaptureServerBridge {
         SERVICES.remove(server, service);
     }
 
-    static void accept(
+    static void acceptChunk(
             final ServerPlayer sender,
-            final ServerboundVisionCaptureResult result
+            final ServerboundVisionCaptureChunk chunk
     ) {
         final VisionCaptureService service = SERVICES.get(
                 sender.level().getServer()
         );
         if (service != null) {
-            service.accept(sender, result);
+            service.acceptChunk(sender, chunk);
         }
     }
 

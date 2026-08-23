@@ -8,6 +8,7 @@ import dev.mcai.companion.brain.PlannerInputFactory;
 import dev.mcai.companion.MinecraftAiCompanion;
 import dev.mcai.companion.control.GoalSnapshot;
 import dev.mcai.companion.model.DecisionContext;
+import dev.mcai.companion.model.ModelImageInput;
 import dev.mcai.companion.model.PlannerInput;
 import dev.mcai.companion.model.SkillArgumentValidator;
 import dev.mcai.companion.progression.SurvivalRouteTracker;
@@ -109,6 +110,7 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
     private final String skillGuide;
     private final int maxOutputTokens;
     private final Supplier<AgentPromptSettings> agentSettings;
+    private final Supplier<Optional<ModelImageInput>> imageInput;
 
     public MinecraftPlannerInputFactory(
         final SkillRegistry skills,
@@ -141,6 +143,22 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
         final int maxOutputTokens,
         final Supplier<AgentPromptSettings> agentSettings
     ) {
+        this(
+                skills,
+                skillGuide,
+                maxOutputTokens,
+                agentSettings,
+                Optional::empty
+        );
+    }
+
+    public MinecraftPlannerInputFactory(
+        final SkillRegistry skills,
+        final String skillGuide,
+        final int maxOutputTokens,
+        final Supplier<AgentPromptSettings> agentSettings,
+        final Supplier<Optional<ModelImageInput>> imageInput
+    ) {
         this.skills = Objects.requireNonNull(skills, "skills");
         this.skillGuide = boundedGuide(skillGuide);
         if (maxOutputTokens < 1 || maxOutputTokens > 16_384) {
@@ -150,6 +168,10 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
         this.agentSettings = Objects.requireNonNull(
             agentSettings,
             "agentSettings"
+        );
+        this.imageInput = Objects.requireNonNull(
+                imageInput,
+                "imageInput"
         );
     }
 
@@ -505,7 +527,11 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
             prompt,
             observation.semanticJson(),
             maxOutputTokens,
-            preferences.temperature()
+            preferences.temperature(),
+            Objects.requireNonNull(
+                    imageInput.get(),
+                    "imageInput returned null"
+            )
         );
     }
 

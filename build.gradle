@@ -13,7 +13,7 @@ plugins {
     id 'net.minecraftforge.jarjar' version '0.2.3'
 }
 
-version = '0.1.12-dev-mc26.2'
+version = '0.1.13-dev-mc26.2'
 group = 'dev.mcai.companion'
 base.archivesName = 'mcai_companion'
 

@@ -65,6 +65,18 @@ final class ModelRequestFactory {
         JsonObject message = new JsonObject();
         message.addProperty("role", "user");
         JsonArray content = new JsonArray();
+        if (capabilities.imageInput()) {
+            input.imageInput().ifPresent(image -> {
+                JsonObject imageContent = new JsonObject();
+                imageContent.addProperty("type", "input_image");
+                imageContent.addProperty("image_url", image.dataUrl());
+                imageContent.addProperty(
+                        "detail",
+                        image.detail().wireName()
+                );
+                content.add(imageContent);
+            });
+        }
         JsonObject text = new JsonObject();
         text.addProperty("type", "input_text");
         text.addProperty("text", requestText(input));
@@ -111,7 +123,24 @@ final class ModelRequestFactory {
         messages.add(system);
         JsonObject user = new JsonObject();
         user.addProperty("role", "user");
-        user.addProperty("content", requestText(input));
+        if (capabilities.imageInput() && input.imageInput().isPresent()) {
+            final ModelImageInput image = input.imageInput().orElseThrow();
+            JsonArray content = new JsonArray();
+            JsonObject imageUrl = new JsonObject();
+            imageUrl.addProperty("url", image.dataUrl());
+            imageUrl.addProperty("detail", image.detail().wireName());
+            JsonObject imageContent = new JsonObject();
+            imageContent.addProperty("type", "image_url");
+            imageContent.add("image_url", imageUrl);
+            content.add(imageContent);
+            JsonObject textContent = new JsonObject();
+            textContent.addProperty("type", "text");
+            textContent.addProperty("text", requestText(input));
+            content.add(textContent);
+            user.add("content", content);
+        } else {
+            user.addProperty("content", requestText(input));
+        }
         messages.add(user);
         root.add("messages", messages);
 

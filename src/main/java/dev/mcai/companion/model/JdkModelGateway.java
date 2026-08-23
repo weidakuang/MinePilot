@@ -41,7 +41,7 @@ public final class JdkModelGateway implements ModelGateway {
     public static final int MAX_RESPONSE_BYTES = 4 * 1_048_576;
     public static final int MAX_ERROR_RESPONSE_BYTES = 65_536;
     private static final int MAX_SECRET_CHARS = 8_192;
-    private static final int MAX_REQUEST_BODY_CHARS = 1_048_576;
+    private static final int MAX_REQUEST_BODY_CHARS = 4_500_000;
 
     private final ModelEndpoint endpoint;
     private final SecretSource secretSource;
@@ -311,7 +311,12 @@ public final class JdkModelGateway implements ModelGateway {
     }
 
     private HttpRequest createRequest(PlannerInput input) {
-        String body = requestFactory.build(endpoint, capabilities, input);
+        final String body;
+        try {
+            body = requestFactory.build(endpoint, capabilities, input);
+        } finally {
+            input.imageInput().ifPresent(ModelImageInput::destroy);
+        }
         if (body.length() > MAX_REQUEST_BODY_CHARS) {
             throw new IllegalArgumentException("Model request body exceeds the local limit");
         }

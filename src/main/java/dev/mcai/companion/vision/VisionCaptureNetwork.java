@@ -13,7 +13,7 @@ import net.minecraftforge.network.SimpleChannel;
 public final class VisionCaptureNetwork {
     static final int MAX_PNG_BYTES = 2_500_000;
     private static final int MAX_CODE_CHARACTERS = 64;
-    private static final int PROTOCOL_VERSION = 1;
+    private static final int PROTOCOL_VERSION = 2;
     private static final SimpleChannel CHANNEL = createChannel();
 
     private VisionCaptureNetwork() {
@@ -38,7 +38,14 @@ public final class VisionCaptureNetwork {
     public static void reply(
             final ServerboundVisionCaptureResult result
     ) {
-        CHANNEL.send(result, PacketDistributor.SERVER.noArg());
+        try {
+            for (ServerboundVisionCaptureChunk chunk
+                    : VisionCaptureWireProtocol.chunks(result)) {
+                CHANNEL.send(chunk, PacketDistributor.SERVER.noArg());
+            }
+        } finally {
+            result.destroy();
+        }
     }
 
     public static void registerRenderer(final boolean available) {
@@ -71,16 +78,16 @@ public final class VisionCaptureNetwork {
             }
         }).add();
         channel.messageBuilder(
-                ServerboundVisionCaptureResult.class,
+                ServerboundVisionCaptureChunk.class,
                 1,
                 NetworkDirection.PLAY_TO_SERVER
-        ).encoder(VisionCaptureNetwork::encodeResult)
-        .decoder(VisionCaptureNetwork::decodeResult)
+        ).encoder(VisionCaptureNetwork::encodeChunk)
+        .decoder(VisionCaptureNetwork::decodeChunk)
         .consumerMainThread((message, context) -> {
             try {
                 if (context.isServerSide()
                         && context.getSender() != null) {
-                    VisionCaptureServerBridge.accept(
+                    VisionCaptureServerBridge.acceptChunk(
                             context.getSender(),
                             message
                     );
@@ -108,28 +115,36 @@ public final class VisionCaptureNetwork {
         return channel.build();
     }
 
-    private static void encodeResult(
-            final ServerboundVisionCaptureResult message,
+    private static void encodeChunk(
+            final ServerboundVisionCaptureChunk message,
             final FriendlyByteBuf buffer
     ) {
         try {
             buffer.writeVarLong(message.requestId());
             buffer.writeUUID(message.companionId());
             buffer.writeUtf(message.code(), MAX_CODE_CHARACTERS);
-            buffer.writeByteArray(message.pngUnsafe());
+            buffer.writeVarInt(message.totalLength());
+            buffer.writeUtf(message.sha256(), 64);
+            buffer.writeVarInt(message.chunkIndex());
+            buffer.writeVarInt(message.chunkCount());
+            buffer.writeByteArray(message.bytesUnsafe());
         } finally {
             message.destroy();
         }
     }
 
-    private static ServerboundVisionCaptureResult decodeResult(
+    private static ServerboundVisionCaptureChunk decodeChunk(
             final FriendlyByteBuf buffer
     ) {
-        return new ServerboundVisionCaptureResult(
+        return new ServerboundVisionCaptureChunk(
                 buffer.readVarLong(),
                 buffer.readUUID(),
                 buffer.readUtf(MAX_CODE_CHARACTERS),
-                buffer.readByteArray(MAX_PNG_BYTES)
+                buffer.readVarInt(),
+                buffer.readUtf(64),
+                buffer.readVarInt(),
+                buffer.readVarInt(),
+                buffer.readByteArray(VisionCaptureWireProtocol.CHUNK_BYTES)
         );
     }
 }

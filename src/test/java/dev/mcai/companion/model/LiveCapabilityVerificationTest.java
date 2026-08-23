@@ -4,6 +4,7 @@ import dev.mcai.companion.credential.ApiKeyManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -13,8 +14,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Explicit one-shot verification used during provider bring-up.
  *
  * <p>It is disabled in ordinary builds and intentionally performs only
- * capability negotiation, so a Chat-only endpoint consumes at most two
- * provider requests.</p>
+ * capability negotiation plus one image handshake, so the preferred
+ * Responses path consumes at most three provider requests.</p>
  */
 @EnabledIfEnvironmentVariable(
         named = "MCAI_LIVE_CAPABILITY_TEST",
@@ -34,18 +35,28 @@ final class LiveCapabilityVerificationTest {
                 );
             }
             try (JdkProviderCapabilityProbe probe =
-                         new JdkProviderCapabilityProbe(endpoint, keys)) {
+                         new JdkProviderCapabilityProbe(
+                                 endpoint,
+                                 keys,
+                                 Duration.ofSeconds(5),
+                                 Duration.ofSeconds(90),
+                                 true
+                         )) {
                 CapabilityProbeOutcome outcome = probe.probe()
                         .toCompletableFuture()
-                        .get(60, TimeUnit.SECONDS);
+                        .get(300, TimeUnit.SECONDS);
                 CapabilityProbeOutcome.Supported supported = assertInstanceOf(
                         CapabilityProbeOutcome.Supported.class,
                         outcome,
                         () -> safeFailure(outcome)
                 );
                 assertTrue(
-                        supported.requestsMade() <= 2,
-                        "Verification exceeded its two-request safety budget"
+                        supported.capabilities().imageInput(),
+                        "The configured model did not accept image input"
+                );
+                assertTrue(
+                        supported.requestsMade() <= 3,
+                        "Verification exceeded its three-request safety budget"
                 );
             }
         }

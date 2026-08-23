@@ -42,6 +42,7 @@ import java.util.OptionalLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.LongFunction;
+import java.util.function.Function;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -95,6 +96,20 @@ public final class MinecraftObservationProvider implements ObservationProvider {
     private ObservationRequestStatus lastObservationRequestStatus =
             ObservationRequestStatus.REJECTED;
     private long lastBodySessionGeneration = -1;
+    private Function<RequestedObservation, ObservationRequestStatus>
+            activeVisionRequester = ignored ->
+                    ObservationRequestStatus.UNSUPPORTED;
+
+    public void attachActiveVisionRequester(
+            final Function<RequestedObservation, ObservationRequestStatus>
+                    requester
+    ) {
+        requireServerThread();
+        activeVisionRequester = Objects.requireNonNull(
+                requester,
+                "requester"
+        );
+    }
     public MinecraftObservationProvider(
         final MinecraftServer server,
         final SkillSupervisor skills,
@@ -538,15 +553,17 @@ public final class MinecraftObservationProvider implements ObservationProvider {
                     ObservationRequestStatus.ACCEPTED;
             return ObservationRequestStatus.ACCEPTED;
         }
-        /*
-         * A headless ServerPlayer has no renderer. Until a separately
-         * authenticated client capture path exists, screenshots must remain
-         * explicitly unavailable instead of borrowing an observer camera.
-         */
-        final ObservationRequestStatus status =
-                request.kind() == ObservationKind.NONE
-                ? ObservationRequestStatus.REJECTED
-                : ObservationRequestStatus.UNSUPPORTED;
+        final ObservationRequestStatus status;
+        if (request.kind() == ObservationKind.SCREENSHOT_LOW) {
+            status = Objects.requireNonNull(
+                    activeVisionRequester.apply(request),
+                    "activeVisionRequester returned null"
+            );
+        } else {
+            status = request.kind() == ObservationKind.NONE
+                    ? ObservationRequestStatus.REJECTED
+                    : ObservationRequestStatus.UNSUPPORTED;
+        }
         lastRequestedObservation = request.kind();
         lastObservationRequestStatus = status;
         return status;

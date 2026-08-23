@@ -50,7 +50,8 @@ final class ModelProfileStoreTest {
     void restoresExactPreviouslyVerifiedWireCapabilities()
             throws Exception {
         final ProviderCapabilities capabilities =
-                ProviderCapabilities.chatJsonSchema(false);
+                ProviderCapabilities.chatJsonSchema(false)
+                        .withImageInput(true);
         new ModelProfileStore(directory).save(
                 "https://provider.example/v1",
                 "example-model",

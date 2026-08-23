@@ -1,6 +1,6 @@
 # Controlled Live-Model Runs
 
-This page records bounded development evidence for the `0.1.12-dev-mc26.2`
+This page records bounded development evidence for the `0.1.13-dev-mc26.2`
 line. It is intentionally separate from the formal M0-M4 gates. The tests use
 the real Java model gateway, a real Forge server tick loop, a real
 `ServerPlayer`, and ordinary vanilla actions, but they do not use a random

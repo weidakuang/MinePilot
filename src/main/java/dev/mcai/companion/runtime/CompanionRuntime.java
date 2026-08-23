@@ -18,6 +18,7 @@ import dev.mcai.companion.MinecraftAiCompanion;
 import dev.mcai.companion.CompanionConfig;
 import dev.mcai.companion.brain.BrainOrchestrator;
 import dev.mcai.companion.brain.BrainPolicy;
+import dev.mcai.companion.brain.ObservationRequestStatus;
 import dev.mcai.companion.communication.CompanionConversationCoordinator;
 import dev.mcai.companion.control.BehaviorArbiter;
 import dev.mcai.companion.control.GoalCoordinator;
@@ -772,6 +773,11 @@ public final class CompanionRuntime {
                 12
             )
         );
+        final VisionCaptureService visionCapture =
+            new VisionCaptureService(
+                server,
+                worldData.companionUuid()
+            );
         final MinecraftObservationProvider observations =
             new MinecraftObservationProvider(
                 server,
@@ -806,6 +812,21 @@ public final class CompanionRuntime {
                     );
                 }
             );
+        observations.attachActiveVisionRequester(request -> {
+            if (!CompanionConfig.ACTIVE_VISION_ENABLED.get()) {
+                return ObservationRequestStatus.UNSUPPORTED;
+            }
+            final VisionCaptureService.RequestState capture =
+                    visionCapture.request(request);
+            if (capture.accepted() || capture.pending()) {
+                return ObservationRequestStatus.ACCEPTED;
+            }
+            return capture.code().equals(
+                    "authenticated_renderer_unavailable"
+            ) || capture.code().equals("high_crop_not_implemented")
+                    ? ObservationRequestStatus.UNSUPPORTED
+                    : ObservationRequestStatus.REJECTED;
+        });
         final MinecraftBrainEventSink brainEvents =
             new MinecraftBrainEventSink(
                 server,
@@ -827,7 +848,8 @@ public final class CompanionRuntime {
                     worldData.displayName(),
                     worldData.temperature(),
                     worldData.agentSystemPrompt()
-                )
+                ),
+                visionCapture::takeLatestModelImage
             ),
             brainEvents,
             new BrainPolicy(
@@ -857,11 +879,6 @@ public final class CompanionRuntime {
                 database
             );
         final RuntimeTickMetrics tickMetrics = new RuntimeTickMetrics();
-        final VisionCaptureService visionCapture =
-            new VisionCaptureService(
-                server,
-                worldData.companionUuid()
-            );
         final BehaviorArbiter behaviorArbiter =
             new BehaviorArbiter();
         final Optional<LoopbackMcpServer> mcp = startMcp(

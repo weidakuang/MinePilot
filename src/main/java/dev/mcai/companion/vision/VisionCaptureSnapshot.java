@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.UUID;
+import dev.mcai.companion.model.ObservationKind;
 
 public final class VisionCaptureSnapshot {
     private final long requestId;
@@ -12,6 +13,7 @@ public final class VisionCaptureSnapshot {
     private final Instant capturedAt;
     private final int width;
     private final int height;
+    private final ObservationKind observationKind;
     private final byte[] png;
 
     public VisionCaptureSnapshot(
@@ -21,6 +23,7 @@ public final class VisionCaptureSnapshot {
             final Instant capturedAt,
             final int width,
             final int height,
+            final ObservationKind observationKind,
             final byte[] png
     ) {
         if (requestId < 1 || width < 1 || height < 1) {
@@ -43,6 +46,10 @@ public final class VisionCaptureSnapshot {
         );
         this.width = width;
         this.height = height;
+        this.observationKind = Objects.requireNonNull(
+                observationKind,
+                "observationKind"
+        );
         this.png = Objects.requireNonNull(png, "png").clone();
     }
 
@@ -68,6 +75,10 @@ public final class VisionCaptureSnapshot {
 
     public int height() {
         return height;
+    }
+
+    public ObservationKind observationKind() {
+        return observationKind;
     }
 
     public byte[] png() {

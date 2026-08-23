@@ -12,13 +12,45 @@ public record ProviderCapabilities(
         boolean serverEnforcesSchema,
         boolean streaming,
         ChatTokenField chatTokenField,
-        ReasoningControl reasoningControl
+        ReasoningControl reasoningControl,
+        boolean imageInput
 ) {
     public ProviderCapabilities {
         Objects.requireNonNull(protocol, "protocol");
         Objects.requireNonNull(outputContract, "outputContract");
         Objects.requireNonNull(chatTokenField, "chatTokenField");
         Objects.requireNonNull(reasoningControl, "reasoningControl");
+    }
+
+    public ProviderCapabilities(
+            final Protocol protocol,
+            final OutputContract outputContract,
+            final boolean serverEnforcesSchema,
+            final boolean streaming,
+            final ChatTokenField chatTokenField,
+            final ReasoningControl reasoningControl
+    ) {
+        this(
+                protocol,
+                outputContract,
+                serverEnforcesSchema,
+                streaming,
+                chatTokenField,
+                reasoningControl,
+                false
+        );
+    }
+
+    public ProviderCapabilities withImageInput(final boolean supported) {
+        return new ProviderCapabilities(
+                protocol,
+                outputContract,
+                serverEnforcesSchema,
+                streaming,
+                chatTokenField,
+                reasoningControl,
+                supported
+        );
     }
 
     public static ProviderCapabilities responsesJsonSchema(boolean streaming) {
@@ -28,7 +60,8 @@ public record ProviderCapabilities(
                 true,
                 streaming,
                 ChatTokenField.MAX_COMPLETION_TOKENS,
-                ReasoningControl.DISABLED
+                ReasoningControl.DISABLED,
+                false
         );
     }
 
@@ -39,7 +72,8 @@ public record ProviderCapabilities(
                 true,
                 streaming,
                 ChatTokenField.MAX_COMPLETION_TOKENS,
-                ReasoningControl.DISABLED
+                ReasoningControl.DISABLED,
+                false
         );
     }
 }

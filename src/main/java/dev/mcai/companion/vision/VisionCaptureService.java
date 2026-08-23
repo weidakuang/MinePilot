@@ -8,6 +8,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import dev.mcai.companion.model.ModelImageInput;
+import dev.mcai.companion.model.ObservationKind;
+import dev.mcai.companion.model.RequestedObservation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -21,7 +24,9 @@ public final class VisionCaptureService implements AutoCloseable {
     private long nextRequestId;
     private final Set<UUID> registeredRenderers = new HashSet<>();
     private Pending pending;
+    private VisionCaptureChunkAssembler assembler;
     private VisionCaptureSnapshot latest;
+    private long lastModelDeliveryRequestId;
     private String lastFailureCode = "not_requested";
     private boolean closed;
 
@@ -38,6 +43,28 @@ public final class VisionCaptureService implements AutoCloseable {
     }
 
     public RequestState request() {
+        return request(ObservationKind.SCREENSHOT_LOW);
+    }
+
+    public RequestState request(final RequestedObservation observation) {
+        Objects.requireNonNull(observation, "observation");
+        requireServerThread();
+        if (observation.kind() != ObservationKind.SCREENSHOT_LOW) {
+            lastFailureCode = observation.kind()
+                    == ObservationKind.SCREENSHOT_HIGH_CROP
+                            ? "high_crop_not_implemented"
+                            : "not_a_screenshot_request";
+            return new RequestState(
+                    false,
+                    false,
+                    lastFailureCode,
+                    0L
+            );
+        }
+        return request(observation.kind());
+    }
+
+    private RequestState request(final ObservationKind observationKind) {
         requireServerThread();
         expirePending();
         if (closed) {
@@ -79,7 +106,8 @@ public final class VisionCaptureService implements AutoCloseable {
         pending = new Pending(
                 requestId,
                 selected.getUUID(),
-                Instant.now()
+                Instant.now(),
+                observationKind
         );
         VisionCaptureNetwork.request(
                 selected,
@@ -97,24 +125,74 @@ public final class VisionCaptureService implements AutoCloseable {
         return Optional.ofNullable(latest);
     }
 
+    public Optional<ModelImageInput> takeLatestModelImage() {
+        requireServerThread();
+        expirePending();
+        if (latest == null
+                || latest.requestId() == lastModelDeliveryRequestId
+                || Duration.between(
+                        latest.capturedAt(),
+                        Instant.now()
+                ).compareTo(Duration.ofSeconds(5)) > 0) {
+            return Optional.empty();
+        }
+        lastModelDeliveryRequestId = latest.requestId();
+        return Optional.of(new ModelImageInput(
+                latest.png(),
+                latest.observationKind()
+                        == ObservationKind.SCREENSHOT_HIGH_CROP
+                                ? ModelImageInput.Detail.HIGH
+                                : ModelImageInput.Detail.LOW
+        ));
+    }
+
     public String lastFailureCode() {
         requireServerThread();
         expirePending();
         return lastFailureCode;
     }
 
-    void accept(
+    void acceptChunk(
             final ServerPlayer sender,
-            final ServerboundVisionCaptureResult result
+            final ServerboundVisionCaptureChunk chunk
     ) {
         requireServerThread();
         expirePending();
         if (closed || pending == null
-                || pending.requestId() != result.requestId()
+                || pending.requestId() != chunk.requestId()
                 || !pending.rendererId().equals(sender.getUUID())
-                || !companionId.equals(result.companionId())) {
+                || !companionId.equals(chunk.companionId())) {
             return;
         }
+        try {
+            if (assembler == null) {
+                assembler = new VisionCaptureChunkAssembler(chunk);
+            }
+            final Optional<ServerboundVisionCaptureResult> completed =
+                    assembler.accept(chunk);
+            if (completed.isEmpty()) {
+                return;
+            }
+            final ServerboundVisionCaptureResult result =
+                    completed.orElseThrow();
+            clearAssembler();
+            try {
+                acceptCompleted(sender, result);
+            } finally {
+                result.destroy();
+            }
+        } catch (IllegalArgumentException exception) {
+            clearAssembler();
+            pending = null;
+            lastFailureCode = "invalid_capture_transfer";
+        }
+    }
+
+    private void acceptCompleted(
+            final ServerPlayer sender,
+            final ServerboundVisionCaptureResult result
+    ) {
+        final Pending completed = pending;
         pending = null;
         if (!"ok".equals(result.code())) {
             lastFailureCode = safeCode(result.code());
@@ -142,8 +220,10 @@ public final class VisionCaptureService implements AutoCloseable {
                 Instant.now(),
                 dimensions.width(),
                 dimensions.height(),
+                completed.observationKind(),
                 png
         );
+        lastModelDeliveryRequestId = 0L;
         lastFailureCode = "ok";
     }
 
@@ -171,7 +251,15 @@ public final class VisionCaptureService implements AutoCloseable {
                         Instant.now()
                 ).compareTo(REQUEST_TIMEOUT) > 0) {
             pending = null;
+            clearAssembler();
             lastFailureCode = "capture_timeout";
+        }
+    }
+
+    private void clearAssembler() {
+        if (assembler != null) {
+            assembler.destroy();
+            assembler = null;
         }
     }
 
@@ -199,6 +287,7 @@ public final class VisionCaptureService implements AutoCloseable {
         }
         closed = true;
         pending = null;
+        clearAssembler();
         registeredRenderers.clear();
         if (latest != null) {
             latest.destroy();
@@ -218,7 +307,8 @@ public final class VisionCaptureService implements AutoCloseable {
     private record Pending(
             long requestId,
             UUID rendererId,
-            Instant startedAt
+            Instant startedAt,
+            ObservationKind observationKind
     ) {
     }
 

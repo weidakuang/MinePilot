@@ -1340,3 +1340,31 @@ seed statistic.
   This is evidence only for one chat-to-model-to-physical-wood action and its
   terminal boundary. It is not an M1, M2, M3, M4, Hardcore, combat, shelter,
   or two-hour-completion pass.
+
+## 2026-08-24 demand-driven vision checkpoint
+
+- Root cause: the initial screenshot response used one serverbound custom
+  payload of up to 2.5 MiB, but Minecraft 26.2 limits serverbound custom
+  payloads to 32,767 bytes. The provider probe's fixed 32 by 32 PNG also had
+  an invalid CRC. Either defect could make source-level tests look healthy
+  while the real path failed.
+- The response protocol now uses 24 KiB chunks, bounded total size and chunk
+  count, immutable metadata, duplicate/ordering handling, SHA-256 verification,
+  timeout cleanup, and secret-buffer clearing. The corrected PNG passed the
+  real Grok 4.5 Responses strict-schema plus image-input handshake through the
+  configured gateway within the three-request budget.
+- A fresh authenticated capture is now attached once to the next eligible
+  planner request only when the negotiated model capability includes image
+  input. Responses and Chat Completions use their respective documented image
+  shapes; text-only models retain semantic perception.
+- Changed production areas: model capability/profile/request construction,
+  planner input lifecycle, observation request routing, vision capture service,
+  chunk wire protocol, runtime wiring, documentation, and version metadata.
+- Last gate: focused model/profile/vision tests and the authorized real-provider
+  capability test passed. A real PNG rendered from Minecraft has not passed
+  the isolated hidden-renderer gate, so screenshot capture and every M0--M4
+  milestone remain `NOT_RUN`.
+- Next action: run the complete JVM/build/release checks, install the exact
+  `0.1.13-dev-mc26.2` artifact and Grok profile into the XMCL instance without
+  launching a visible client, then perform the hidden-renderer end-to-end test
+  only on an isolated off-screen worker.

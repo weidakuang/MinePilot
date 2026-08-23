@@ -69,6 +69,11 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
     private static final int PROBE_OUTPUT_TOKENS = 512;
     private static final String PROBE_PROMPT =
             "Return exactly this JSON object and nothing else: {\"probe\":\"ok\"}";
+    private static final String IMAGE_PROBE_DATA_URL =
+            "data:image/png;base64,"
+            + "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAA"
+            + "KklEQVR42mMI6DlBU8QwasGoBaMWjFowasGoBaMWjFowasGo"
+            + "BaMWDBULAIDnkFsPn1rVAAAAAElFTkSuQmCC";
     private static final Gson GSON =
             new GsonBuilder().disableHtmlEscaping().create();
 
@@ -82,6 +87,7 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
     private final ModelEndpoint endpoint;
     private final SecretSource secretSource;
     private final Duration requestTimeout;
+    private final boolean probeImageInput;
     private final ProviderErrorClassifier errorClassifier =
             new ProviderErrorClassifier();
     private final ModelResponseExtractor responseExtractor =
@@ -104,7 +110,8 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
                 endpoint,
                 secretSource,
                 DEFAULT_CONNECT_TIMEOUT,
-                DEFAULT_REQUEST_TIMEOUT
+                DEFAULT_REQUEST_TIMEOUT,
+                false
         );
     }
 
@@ -114,9 +121,26 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
             Duration connectTimeout,
             Duration requestTimeout
     ) {
+        this(
+                endpoint,
+                secretSource,
+                connectTimeout,
+                requestTimeout,
+                false
+        );
+    }
+
+    public JdkProviderCapabilityProbe(
+            ModelEndpoint endpoint,
+            SecretSource secretSource,
+            Duration connectTimeout,
+            Duration requestTimeout,
+            boolean probeImageInput
+    ) {
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
         this.secretSource = Objects.requireNonNull(secretSource, "secretSource");
         this.requestTimeout = requirePositive(requestTimeout, "requestTimeout");
+        this.probeImageInput = probeImageInput;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(requirePositive(connectTimeout, "connectTimeout"))
                 .followRedirects(HttpClient.Redirect.NEVER)
@@ -188,7 +212,9 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
                 ChatTokenField.MAX_COMPLETION_TOKENS
         );
         if (responses.succeeded()) {
-            return supported(responses.capabilities());
+            return supported(withVerifiedImageInput(
+                    responses.capabilities()
+            ));
         }
         if (responses.failure().kind() != ModelFailureKind.ENDPOINT_UNSUPPORTED) {
             return failed(responses.failure());
@@ -199,9 +225,25 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
                 ChatTokenField.MAX_COMPLETION_TOKENS
         );
         if (chat.succeeded()) {
-            return supported(chat.capabilities());
+            return supported(withVerifiedImageInput(chat.capabilities()));
         }
         return failed(chat.failure());
+    }
+
+    private ProviderCapabilities withVerifiedImageInput(
+            final ProviderCapabilities textCapabilities
+    ) {
+        if (!probeImageInput) {
+            return textCapabilities;
+        }
+        final Attempt imageAttempt = execute(
+                textCapabilities.protocol(),
+                textCapabilities.outputContract(),
+                textCapabilities.chatTokenField(),
+                textCapabilities.reasoningControl(),
+                true
+        );
+        return textCapabilities.withImageInput(imageAttempt.succeeded());
     }
 
     private ProtocolAttempt probeProtocol(
@@ -309,6 +351,22 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
             ChatTokenField chatTokenField,
             ReasoningControl reasoningControl
     ) {
+        return execute(
+                protocol,
+                outputContract,
+                chatTokenField,
+                reasoningControl,
+                false
+        );
+    }
+
+    private Attempt execute(
+            Protocol protocol,
+            OutputContract outputContract,
+            ChatTokenField chatTokenField,
+            ReasoningControl reasoningControl,
+            boolean includeImage
+    ) {
         if (closed.get()) {
             return Attempt.failed(localFailure(
                     ModelFailureKind.CANCELLED,
@@ -325,7 +383,8 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
                     outputContract,
                     chatTokenField,
                     reasoningControl,
-                    clientRequestId
+                    clientRequestId,
+                    includeImage
             );
         } catch (RuntimeException exception) {
             return Attempt.failed(localFailure(
@@ -671,14 +730,20 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
             OutputContract outputContract,
             ChatTokenField chatTokenField,
             ReasoningControl reasoningControl,
-            String clientRequestId
+            String clientRequestId,
+            boolean includeImage
     ) {
         String body = protocol == Protocol.RESPONSES
-                ? responsesRequestBody(outputContract, reasoningControl)
+                ? responsesRequestBody(
+                        outputContract,
+                        reasoningControl,
+                        includeImage
+                )
                 : chatRequestBody(
                         outputContract,
                         chatTokenField,
-                        reasoningControl
+                        reasoningControl,
+                        includeImage
                 );
         char[] secret = secretSource.acquire();
         if (secret == null || secret.length == 0 || secret.length > MAX_SECRET_CHARS) {
@@ -718,14 +783,34 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
 
     private String responsesRequestBody(
             OutputContract outputContract,
-            ReasoningControl reasoningControl
+            ReasoningControl reasoningControl,
+            boolean includeImage
     ) {
         JsonObject root = new JsonObject();
         root.addProperty("model", endpoint.modelName());
         root.addProperty("store", false);
         root.addProperty("stream", false);
         root.addProperty("max_output_tokens", PROBE_OUTPUT_TOKENS);
-        root.addProperty("input", PROBE_PROMPT);
+        if (includeImage) {
+            JsonObject image = new JsonObject();
+            image.addProperty("type", "input_image");
+            image.addProperty("image_url", IMAGE_PROBE_DATA_URL);
+            image.addProperty("detail", "low");
+            JsonObject text = new JsonObject();
+            text.addProperty("type", "input_text");
+            text.addProperty("text", PROBE_PROMPT);
+            JsonArray content = new JsonArray();
+            content.add(image);
+            content.add(text);
+            JsonObject message = new JsonObject();
+            message.addProperty("role", "user");
+            message.add("content", content);
+            JsonArray input = new JsonArray();
+            input.add(message);
+            root.add("input", input);
+        } else {
+            root.addProperty("input", PROBE_PROMPT);
+        }
         if (reasoningControl != ReasoningControl.DEFAULT) {
             JsonObject reasoning = new JsonObject();
             reasoning.addProperty(
@@ -743,7 +828,8 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
     private String chatRequestBody(
             OutputContract outputContract,
             ChatTokenField tokenField,
-            ReasoningControl reasoningControl
+            ReasoningControl reasoningControl,
+            boolean includeImage
     ) {
         JsonObject root = new JsonObject();
         root.addProperty("model", endpoint.modelName());
@@ -758,7 +844,23 @@ public final class JdkProviderCapabilityProbe implements ProviderCapabilityProbe
         }
         JsonObject message = new JsonObject();
         message.addProperty("role", "user");
-        message.addProperty("content", PROBE_PROMPT);
+        if (includeImage) {
+            JsonObject imageUrl = new JsonObject();
+            imageUrl.addProperty("url", IMAGE_PROBE_DATA_URL);
+            imageUrl.addProperty("detail", "low");
+            JsonObject image = new JsonObject();
+            image.addProperty("type", "image_url");
+            image.add("image_url", imageUrl);
+            JsonObject text = new JsonObject();
+            text.addProperty("type", "text");
+            text.addProperty("text", PROBE_PROMPT);
+            JsonArray content = new JsonArray();
+            content.add(image);
+            content.add(text);
+            message.add("content", content);
+        } else {
+            message.addProperty("content", PROBE_PROMPT);
+        }
         JsonArray messages = new JsonArray();
         messages.add(message);
         root.add("messages", messages);

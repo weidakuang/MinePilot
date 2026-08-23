@@ -1,6 +1,6 @@
 # MinePilot Usage Guide
 
-This guide covers the `0.1.12-dev-mc26.2` development line: Minecraft Java
+This guide covers the `0.1.13-dev-mc26.2` development line: Minecraft Java
 26.2, Forge 65.x, and Java 25. It is not a two-hour completion guarantee; the
 formal M0–M4 gates remain in progress.
 
@@ -107,6 +107,16 @@ renders one HUD-free companion first-person frame on demand, and keeps its
 window transparent and non-focusing. Normal player clients never register and
 their cameras are never borrowed. Without the renderer, the tool fails closed
 with `authenticated_renderer_unavailable`.
+
+Pixel capture is demand-driven rather than a video stream. The model first
+requests a low-detail screenshot, the hidden renderer returns one bounded PNG
+in 24 KiB serverbound fragments, and the fresh frame is attached once to the
+next planner request. Length, dimensions, fragment shape, and SHA-256 are
+verified before use. The configured provider must also pass a real image-input
+handshake; otherwise semantic perception continues and the PNG is omitted.
+The production server is always launched with `nogui`. A dedicated server has
+no framebuffer, so actual pixels require the separate hidden renderer even
+though neither an operator nor the AI needs a visible game window.
 
 ## Testing without a launcher
 

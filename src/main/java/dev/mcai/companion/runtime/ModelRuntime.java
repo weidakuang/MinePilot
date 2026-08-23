@@ -78,7 +78,8 @@ public final class ModelRuntime implements AutoCloseable {
                     endpoint,
                     keys,
                     connectTimeout,
-                    hardTimeout
+                    hardTimeout,
+                    true
             ),
             JdkModelGateway::new,
             Optional.empty(),
@@ -106,7 +107,8 @@ public final class ModelRuntime implements AutoCloseable {
                 endpoint,
                 keys,
                 connectTimeout,
-                hardTimeout
+                hardTimeout,
+                true
             ),
             JdkModelGateway::new,
             cachedCapabilities,

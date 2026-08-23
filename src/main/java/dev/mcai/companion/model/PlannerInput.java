@@ -1,13 +1,15 @@
 package dev.mcai.companion.model;
 
 import java.util.Objects;
+import java.util.Optional;
 
 public record PlannerInput(
         DecisionContext decisionContext,
         String systemPrompt,
         String observationJson,
         int maxOutputTokens,
-        double temperature
+        double temperature,
+        Optional<ModelImageInput> imageInput
 ) {
     /*
      * The system prompt contains the bounded local skill catalogue plus up
@@ -32,7 +34,25 @@ public record PlannerInput(
             systemPrompt,
             observationJson,
             maxOutputTokens,
-            0.2
+            0.2,
+            Optional.empty()
+        );
+    }
+
+    public PlannerInput(
+            final DecisionContext decisionContext,
+            final String systemPrompt,
+            final String observationJson,
+            final int maxOutputTokens,
+            final double temperature
+    ) {
+        this(
+                decisionContext,
+                systemPrompt,
+                observationJson,
+                maxOutputTokens,
+                temperature,
+                Optional.empty()
         );
     }
 
@@ -40,6 +60,7 @@ public record PlannerInput(
         Objects.requireNonNull(decisionContext, "decisionContext");
         Objects.requireNonNull(systemPrompt, "systemPrompt");
         Objects.requireNonNull(observationJson, "observationJson");
+        Objects.requireNonNull(imageInput, "imageInput");
         if (systemPrompt.length() > MAX_SYSTEM_PROMPT_CHARACTERS
                 || systemPrompt.indexOf('\0') >= 0) {
             throw new IllegalArgumentException(

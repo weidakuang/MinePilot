@@ -13,7 +13,7 @@ bounded crop run is not a complete machine/farm or formal companion result.
 - Repository: `MinePilot`; mod id: `mcai_companion`.
 - Minecraft Java 26.2; Forge 65.0.0 inclusive through 66.0.0 exclusive;
   Java 25.
-- Development version: `0.1.12-dev-mc26.2`.
+- Development version: `0.1.13-dev-mc26.2`.
 - Public repository: `https://github.com/weidakuang/MinePilot`; the latest
   verified source snapshot is public `main` commit
   `600f37051765a578eb2b2bc595bd71b7188ed56f` with tree
@@ -61,8 +61,12 @@ or speedrun claim.
 - Optional PNG capture is isolated from normal player clients: only a client
   launched with the explicit hidden-renderer flag can register as an
   authenticated first-person renderer. The dedicated server remains `nogui`,
-  ordinary player cameras cannot be selected, and the path still needs a live
-  off-screen capture gate before it is considered complete.
+  ordinary player cameras cannot be selected, and successful low-detail
+  capture is delivered once to the next planner request only after the model
+  passes an image-input handshake. Serverbound PNGs use bounded 24 KiB chunks
+  with shape, total-length, dimension, and SHA-256 verification. The provider
+  handshake passed against the configured Grok 4.5 gateway; the path still
+  needs a live off-screen Minecraft capture gate before it is complete.
 - Open-menu observations now include bounded role hints for vanilla input,
   fuel, output, payment, and player-inventory slots. Actions remain bound to
   the exact observed menu revision and still execute through vanilla menus.

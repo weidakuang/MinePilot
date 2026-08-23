@@ -308,9 +308,10 @@ final class ModelRuntimeTest {
                     first.toCompletableFuture().get(3, TimeUnit.SECONDS)
                 );
 
-                assertEquals(1, outcome.requestsMade());
+                assertEquals(2, outcome.requestsMade());
                 assertEquals(Protocol.RESPONSES, outcome.capabilities().protocol());
-                assertEquals(1, requests.get());
+                assertTrue(outcome.capabilities().imageInput());
+                assertEquals(2, requests.get());
                 assertTrue(runtime.snapshot().gatewayReady());
             }
         } finally {

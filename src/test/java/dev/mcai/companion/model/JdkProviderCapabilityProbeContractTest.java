@@ -111,6 +111,57 @@ class JdkProviderCapabilityProbeContractTest {
     }
 
     @Test
+    void enablesImageInputOnlyAfterASecondAcceptedImageRequest()
+            throws Exception {
+        final List<JsonObject> requests = new ArrayList<>();
+        final HttpServer server = startServer(exchange -> {
+            final String body = readRequestBody(exchange);
+            requests.add(GSON.fromJson(body, JsonObject.class));
+            send(
+                    exchange,
+                    200,
+                    successfulResponse(exchange.getRequestURI().getPath())
+            );
+        });
+
+        try (JdkProviderCapabilityProbe probe =
+                new JdkProviderCapabilityProbe(
+                        endpoint(
+                                server.getAddress().getPort(),
+                                "verified-vision-model"
+                        ),
+                        placeholderSecret(),
+                        CONNECT_TIMEOUT,
+                        REQUEST_TIMEOUT,
+                        true
+                )) {
+            final CapabilityProbeOutcome.Supported supported =
+                    assertInstanceOf(
+                            CapabilityProbeOutcome.Supported.class,
+                            await(probe.probe())
+                    );
+
+            assertEquals(2, supported.requestsMade());
+            assertEquals(2, requests.size());
+            assertTrue(supported.capabilities().imageInput());
+            assertTrue(requests.get(0).get("input").isJsonPrimitive());
+            final var imageContent = requests.get(1)
+                    .getAsJsonArray("input")
+                    .get(0).getAsJsonObject()
+                    .getAsJsonArray("content")
+                    .get(0).getAsJsonObject();
+            assertEquals(
+                    "input_image",
+                    imageContent.get("type").getAsString()
+            );
+            assertTrue(imageContent.get("image_url").getAsString()
+                    .startsWith("data:image/png;base64,"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void fallsBackToChatOnlyAfterExplicitResponsesEndpointRejection()
             throws Exception {
         List<String> paths = new ArrayList<>();

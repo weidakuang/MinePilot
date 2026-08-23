@@ -4225,6 +4225,21 @@ public final class EmbodimentGameTests {
     }
 
     @GameTest(
+        name = "real_player_chat_to_live_model_iron_acquisition",
+        environment = "exclusive_live_model_foundation_bootstrap",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 600_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void realPlayerChatToLiveModelIronAcquisition(
+            final GameTestHelper helper
+    ) {
+        LiveModelChatGameTests
+                .realPlayerChatToLiveModelIronAcquisition(helper);
+    }
+
+    @GameTest(
         name =
             "real_player_task_to_live_model_nether_portal_build_and_entry",
         environment =

@@ -34,6 +34,7 @@ public final class SurvivalRouteTracker {
                     SurvivalMilestone.BASIC_CRAFTING_READY,
                     SurvivalMilestone.STONE_TOOL_OBTAINED,
                     SurvivalMilestone.FOOD_SECURED,
+                    SurvivalMilestone.IRON_OBTAINED,
                     SurvivalMilestone.IRON_TOOLKIT_OBTAINED,
                     SurvivalMilestone.WORKSTATIONS_ESTABLISHED,
                     SurvivalMilestone.SUPPLIES_STORED,
@@ -48,6 +49,7 @@ public final class SurvivalRouteTracker {
                     SurvivalMilestone.BASIC_CRAFTING_READY,
                     SurvivalMilestone.STONE_TOOL_OBTAINED,
                     SurvivalMilestone.FOOD_SECURED,
+                    SurvivalMilestone.IRON_OBTAINED,
                     SurvivalMilestone.IRON_TOOLKIT_OBTAINED,
                     SurvivalMilestone.NETHER_ENTERED,
                     SurvivalMilestone.BLAZE_MATERIAL_OBTAINED,
@@ -144,7 +146,7 @@ public final class SurvivalRouteTracker {
                 criticalCounts(inventory);
         final EnumSet<SurvivalMilestone> observed =
                 EnumSet.of(SurvivalMilestone.BODY_ACTIVE);
-        if (hasWood(inventory)) {
+        if (hasWood(inventory, requiredWoodReserve(goal))) {
             observed.add(SurvivalMilestone.WOOD_OBTAINED);
         }
         final boolean basicCraftingReady = hasAny(
@@ -165,6 +167,9 @@ public final class SurvivalRouteTracker {
         }
         if (hasAny(inventory, STONE_OR_BETTER_PICKAXES)) {
             observed.add(SurvivalMilestone.STONE_TOOL_OBTAINED);
+        }
+        if (hasIronMaterialOrProduct(inventory)) {
+            observed.add(SurvivalMilestone.IRON_OBTAINED);
         }
         if (hasAny(inventory, STRONG_PICKAXES)
                 && count(inventory, "minecraft:bucket")
@@ -476,6 +481,8 @@ public final class SurvivalRouteTracker {
                     SurvivalRouteObjective.SECURE_FOOD_RESERVE;
             case STONE_TOOL_OBTAINED ->
                     SurvivalRouteObjective.CRAFT_AND_MINE_STONE;
+            case IRON_OBTAINED ->
+                    SurvivalRouteObjective.ACQUIRE_IRON_TOOLKIT;
             case IRON_TOOLKIT_OBTAINED ->
                     SurvivalRouteObjective.ACQUIRE_IRON_TOOLKIT;
             case WORKSTATIONS_ESTABLISHED ->
@@ -603,9 +610,25 @@ public final class SurvivalRouteTracker {
         if (terminalIndex < 0) {
             return List.copyOf(guidanceOrder);
         }
-        return List.copyOf(
-                guidanceOrder.subList(0, terminalIndex + 1)
+        final List<SurvivalMilestone> bounded = guidanceOrder.subList(
+                0,
+                terminalIndex + 1
         );
+        if (terminal.orElseThrow()
+                == SurvivalMilestone.IRON_OBTAINED) {
+            /*
+             * Food is a survival-route safety reserve, not a physical
+             * prerequisite for mining the first iron ore.  A player's
+             * explicitly bounded iron-material request must not turn into a
+             * full foundation bootstrap or stall behind an unrelated hunt.
+             * Later terminals retain FOOD_SECURED in their dependency chain.
+             */
+            return bounded.stream()
+                    .filter(milestone -> milestone
+                            != SurvivalMilestone.FOOD_SECURED)
+                    .toList();
+        }
+        return List.copyOf(bounded);
     }
 
     static Optional<Set<SurvivalMilestone>> explicitlyRequiredMilestones(
@@ -935,7 +958,8 @@ public final class SurvivalRouteTracker {
     }
 
     private static boolean hasWood(
-            final Map<String, Integer> inventory
+            final Map<String, Integer> inventory,
+            final int requiredReserve
     ) {
         final long rawLogs = inventory.entrySet().stream()
                 .filter(entry -> {
@@ -950,8 +974,26 @@ public final class SurvivalRouteTracker {
                 .filter(entry -> entry.getKey().endsWith("_planks"))
                 .mapToLong(Map.Entry::getValue)
                 .sum();
-        return rawLogs >= FOUNDATION_WOOD_RESERVE
-                || planks >= FOUNDATION_WOOD_RESERVE * 4L;
+        return rawLogs >= requiredReserve
+                || planks >= requiredReserve * 4L;
+    }
+
+    /**
+     * Keeps full-route resource slack without over-gathering for a bounded
+     * early terminal. Three logs cover a crafting table, both pickaxe
+     * recipes, and their sticks. A request that ends at obtaining wood needs
+     * one physically owned log; later survival routes retain the established
+     * five-log reserve.
+     */
+    static int requiredWoodReserve(final GoalSnapshot goal) {
+        return GoalExecutionPlan.fromDetailCode(goal.detailCode())
+                .map(GoalExecutionPlan::terminalTarget)
+                .map(target -> switch (target) {
+                    case WOOD_OBTAINED -> 1;
+                    case BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED -> 3;
+                    default -> FOUNDATION_WOOD_RESERVE;
+                })
+                .orElse(FOUNDATION_WOOD_RESERVE);
     }
 
     private static int chestPlankPotential(
@@ -973,6 +1015,23 @@ public final class SurvivalRouteTracker {
                 MAX_PROJECTED_INVENTORY_COUNT,
                 ownedPlanks + convertibleWood * 4L
         );
+    }
+
+    private static boolean hasIronMaterialOrProduct(
+            final Map<String, Integer> inventory
+    ) {
+        return count(inventory, "minecraft:raw_iron") > 0
+                || count(inventory, "minecraft:iron_ingot") > 0
+                || inventory.entrySet().stream().anyMatch(entry ->
+                        entry.getValue() > 0
+                            && (entry.getKey().startsWith("minecraft:iron_")
+                                || entry.getKey().equals(
+                                    "minecraft:bucket"
+                                )
+                                || entry.getKey().equals(
+                                    "minecraft:shield"
+                                ))
+                );
     }
 
     private static boolean hasAny(

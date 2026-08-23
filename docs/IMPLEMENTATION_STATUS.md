@@ -13,7 +13,7 @@ bounded crop run is not a complete machine/farm or formal companion result.
 - Repository: `MinePilot`; mod id: `mcai_companion`.
 - Minecraft Java 26.2; Forge 65.0.0 inclusive through 66.0.0 exclusive;
   Java 25.
-- Development version: `0.1.13-dev-mc26.2`.
+- Development version: `0.1.14-dev-mc26.2`.
 - Public repository: `https://github.com/weidakuang/MinePilot`; the latest
   verified source snapshot is public `main` commit
   `600f37051765a578eb2b2bc595bd71b7188ed56f` with tree

@@ -2,6 +2,7 @@ package dev.mcai.companion.brain;
 
 import com.google.gson.JsonParser;
 import dev.mcai.companion.control.GoalCoordinator;
+import dev.mcai.companion.control.GoalExecutionPlan;
 import dev.mcai.companion.control.GoalSnapshot;
 import dev.mcai.companion.control.GoalSource;
 import dev.mcai.companion.control.GoalStatus;
@@ -53,6 +54,168 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BrainOrchestratorTest {
+    @Test
+    void encodedSurvivalRouteStartsItsForcedCompoundWithoutAnotherRequest() {
+        try (Fixture fixture = new Fixture()) {
+            fixture.observations.trustedRuntimeJson = """
+                    {
+                      "verifiedCompletionRouteData": {
+                        "profile": "FOUNDATION",
+                        "nextObjectives": ["GATHER_VISIBLE_WOOD"]
+                      }
+                    }
+                    """;
+            assertTrue(fixture.goals.setGoal(
+                    "Please handle the first useful preparation stage.",
+                    GoalSource.PLAYER_CHAT,
+                    GoalExecutionPlan.foundation(
+                            GoalExecutionPlan.Target
+                                    .STONE_TOOL_OBTAINED
+                    )
+            ).accepted());
+
+            fixture.brain.tick();
+
+            assertEquals(0, fixture.gateway.requestCount());
+            assertEquals(1, fixture.gatherWoodSkill.startCalls);
+            assertEquals(
+                    "gather_nearby_wood",
+                    fixture.skills.snapshot().skillName()
+            );
+            assertTrue(fixture.hasNotice(
+                    "encoded_route_skill_started"
+            ));
+        }
+    }
+
+    @Test
+    void verifiedWoodMilestoneRetiresTheContinuousRouteGatherer() {
+        try (Fixture fixture = new Fixture()) {
+            fixture.observations.trustedRuntimeJson = """
+                    {
+                      "verifiedCompletionRouteData": {
+                        "profile": "FOUNDATION",
+                        "nextObjectives": ["GATHER_VISIBLE_WOOD"],
+                        "verifiedMilestones": ["BODY_ACTIVE"]
+                      }
+                    }
+                    """;
+            assertTrue(fixture.goals.setGoal(
+                    "Reach the requested early survival milestone.",
+                    GoalSource.PLAYER_CHAT,
+                    GoalExecutionPlan.foundation(
+                            GoalExecutionPlan.Target
+                                    .STONE_TOOL_OBTAINED
+                    )
+            ).accepted());
+            fixture.brain.tick();
+            assertEquals(
+                    "gather_nearby_wood",
+                    fixture.skills.snapshot().skillName()
+            );
+
+            fixture.observations.trustedRuntimeJson = """
+                    {
+                      "verifiedCompletionRouteData": {
+                        "profile": "FOUNDATION",
+                        "nextObjectives": ["PREPARE_BASIC_CRAFTING"],
+                        "verifiedMilestones": [
+                          "BODY_ACTIVE",
+                          "WOOD_OBTAINED"
+                        ]
+                      }
+                    }
+                    """;
+            fixture.brain.tick();
+
+            assertEquals(1, fixture.gatherWoodSkill.cancelCalls);
+            assertFalse(fixture.skills.snapshot().state()
+                    == SkillSupervisor.State.RUNNING);
+            assertTrue(fixture.hasNotice(
+                    "route_skill_retired_after_verified_milestone"
+            ));
+        }
+    }
+
+    @Test
+    void ironMaterialTerminalRetiresToolkitCompoundAfterRealPickup() {
+        try (Fixture fixture = new Fixture()) {
+            fixture.observations.trustedRuntimeJson = """
+                    {
+                      "verifiedCompletionRouteData": {
+                        "profile": "FOUNDATION",
+                        "nextObjectives": ["ACQUIRE_IRON_TOOLKIT"],
+                        "verifiedMilestones": [
+                          "BODY_ACTIVE",
+                          "WOOD_OBTAINED",
+                          "BASIC_CRAFTING_READY",
+                          "STONE_TOOL_OBTAINED",
+                          "FOOD_SECURED"
+                        ]
+                      }
+                    }
+                    """;
+            assertTrue(fixture.goals.setGoal(
+                    "Reach the first physically owned iron material.",
+                    GoalSource.PLAYER_CHAT,
+                    GoalExecutionPlan.foundation(
+                            GoalExecutionPlan.Target.IRON_OBTAINED
+                    )
+            ).accepted());
+            fixture.brain.tick();
+            assertEquals(
+                    "prepare_iron_toolkit",
+                    fixture.skills.snapshot().skillName()
+            );
+
+            fixture.observations.trustedRuntimeJson = """
+                    {
+                      "verifiedCompletionRouteData": {
+                        "profile": "FOUNDATION",
+                        "nextObjectives": [],
+                        "verifiedMilestones": [
+                          "BODY_ACTIVE",
+                          "WOOD_OBTAINED",
+                          "BASIC_CRAFTING_READY",
+                          "STONE_TOOL_OBTAINED",
+                          "FOOD_SECURED",
+                          "IRON_OBTAINED"
+                        ]
+                      }
+                    }
+                    """;
+            fixture.brain.tick();
+
+            assertEquals(1, fixture.ironToolkitSkill.cancelCalls);
+            assertTrue(fixture.hasNotice(
+                    "route_skill_retired_after_verified_milestone"
+            ));
+        }
+    }
+
+    @Test
+    void unencodedGoalCannotUseTheLocalRouteDispatcher() {
+        try (Fixture fixture = new Fixture()) {
+            fixture.observations.trustedRuntimeJson = """
+                    {
+                      "verifiedCompletionRouteData": {
+                        "profile": "FOUNDATION",
+                        "nextObjectives": ["GATHER_VISIBLE_WOOD"]
+                      }
+                    }
+                    """;
+            assertTrue(fixture.goals.setGoal(
+                    "Please handle something useful.",
+                    GoalSource.PLAYER_CHAT
+            ).accepted());
+
+            fixture.brain.tick();
+
+            assertEquals(1, fixture.gateway.requestCount());
+            assertEquals(0, fixture.gatherWoodSkill.startCalls);
+        }
+    }
+
     @Test
     void addsBoundedModelCorrectionToTrustedPlannerState() {
         final BrainObservation observation = new BrainObservation(
@@ -2594,13 +2757,15 @@ class BrainOrchestratorTest {
         private final TestSkill collectSkill = new TestSkill(true);
         private final TestSkill consumeSkill = new TestSkill(true);
         private final TestSkill gatherWoodSkill = new TestSkill();
+        private final TestSkill ironToolkitSkill = new TestSkill();
         private final SkillRegistry registry = new SkillRegistry()
                 .register("test", skill)
                 .register("follow_entity", followSkill)
                 .register("survey_surroundings", surveySkill)
                 .register("collect_observed_item", collectSkill)
                 .register("consume_owned_food", consumeSkill)
-                .register("gather_nearby_wood", gatherWoodSkill);
+                .register("gather_nearby_wood", gatherWoodSkill)
+                .register("prepare_iron_toolkit", ironToolkitSkill);
         private final SkillSupervisor skills = new SkillSupervisor(
                 registry,
                 SkillCheckpointSink.discard(),
@@ -2700,6 +2865,7 @@ class BrainOrchestratorTest {
         private int requestCount;
         private RequestedObservation lastRequest;
         private String semanticJson = "{\"health\":20}";
+        private String trustedRuntimeJson = "{}";
 
         @Override
         public BrainObservation observe(
@@ -2715,7 +2881,8 @@ class BrainOrchestratorTest {
                             connected,
                             risk
                     ),
-                    semanticJson
+                    semanticJson,
+                    trustedRuntimeJson
             );
         }
 

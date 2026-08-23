@@ -865,6 +865,39 @@ public final class LiveModelChatGameTests {
     }
 
     /**
+     * Sends one abstract player-chat request from a physically empty start
+     * and accepts only a real ore break plus raw-iron pickup within five real
+     * minutes. The language model must encode the exact iron-material
+     * terminal; model speech is never completion evidence.
+     */
+    public static void realPlayerChatToLiveModelIronAcquisition(
+            final GameTestHelper helper
+    ) {
+        if (!Boolean.getBoolean("mcai.liveModelTest")) {
+            helper.succeed();
+            return;
+        }
+        final ServerRuntime runtime = CompanionRuntime.active()
+                .filter(candidate ->
+                        candidate.server()
+                            == helper.getLevel().getServer())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Companion runtime is unavailable"
+                ));
+        final LiveFoundationBootstrapScenario scenario =
+                new LiveFoundationBootstrapScenario(
+                        helper,
+                        runtime,
+                        false,
+                        false,
+                        true
+                );
+        helper.addCleanup(ignored -> scenario.cleanup());
+        scenario.start();
+        helper.onEachTick(scenario::tick);
+    }
+
+    /**
      * Covers the first unverified M2 handoff after the iron toolkit. A real
      * player submits one completion-route chat request and leaves. The live
      * model must bind the ordinary portal builder, that builder must consume
@@ -8082,12 +8115,17 @@ public final class LiveModelChatGameTests {
         private static final int REQUIRED_LOGS = 5;
         private static final int REQUIRED_COBBLESTONE = 3;
         private static final double AUTONOMOUS_WORK_RADIUS = 24.0D;
+        private static final long FAST_STONE_TOOLS_DEADLINE_NANOS =
+                java.time.Duration.ofSeconds(60).toNanos();
+        private static final long FAST_IRON_DEADLINE_NANOS =
+                java.time.Duration.ofMinutes(5).toNanos();
 
         private final GameTestHelper helper;
         private final ServerRuntime runtime;
         private final long createdAt;
         private final boolean zeroHumanFromStart;
         private final boolean completeAfterStoneTools;
+        private final boolean completeAfterIron;
 
         private FoundationBootstrapStage stage =
                 FoundationBootstrapStage.BODY;
@@ -8100,6 +8138,7 @@ public final class LiveModelChatGameTests {
         private List<BlockPos> ironBlocks = List.of();
         private List<Cow> foodAnimals = List.of();
         private long stageStartedNanos;
+        private long taskSubmittedNanos = -1L;
         private long goalRevisionBefore;
         private long foundationGoalRevision;
         private int stableTicks;
@@ -8135,7 +8174,7 @@ public final class LiveModelChatGameTests {
                 final GameTestHelper helper,
                 final ServerRuntime runtime
         ) {
-            this(helper, runtime, false, false);
+            this(helper, runtime, false, false, false);
         }
 
         private LiveFoundationBootstrapScenario(
@@ -8143,7 +8182,7 @@ public final class LiveModelChatGameTests {
                 final ServerRuntime runtime,
                 final boolean zeroHumanFromStart
         ) {
-            this(helper, runtime, zeroHumanFromStart, false);
+            this(helper, runtime, zeroHumanFromStart, false, false);
         }
 
         private LiveFoundationBootstrapScenario(
@@ -8152,10 +8191,32 @@ public final class LiveModelChatGameTests {
                 final boolean zeroHumanFromStart,
                 final boolean completeAfterStoneTools
         ) {
+            this(
+                    helper,
+                    runtime,
+                    zeroHumanFromStart,
+                    completeAfterStoneTools,
+                    false
+            );
+        }
+
+        private LiveFoundationBootstrapScenario(
+                final GameTestHelper helper,
+                final ServerRuntime runtime,
+                final boolean zeroHumanFromStart,
+                final boolean completeAfterStoneTools,
+                final boolean completeAfterIron
+        ) {
             this.helper = helper;
             this.runtime = runtime;
             this.zeroHumanFromStart = zeroHumanFromStart;
             this.completeAfterStoneTools = completeAfterStoneTools;
+            this.completeAfterIron = completeAfterIron;
+            if (completeAfterStoneTools && completeAfterIron) {
+                throw new IllegalArgumentException(
+                        "Only one bounded terminal may be selected"
+                );
+            }
             createdAt = helper.getTick();
             stageStartedNanos = System.nanoTime();
         }
@@ -8185,6 +8246,7 @@ public final class LiveModelChatGameTests {
             if (humanSession != null) {
                 humanSession.tick();
             }
+            assertFastTerminalDeadline();
             switch (stage) {
                 case BODY -> waitForBody();
                 case PROBE -> waitForProbe();
@@ -8383,16 +8445,26 @@ public final class LiveModelChatGameTests {
                     "Logged-in foundation test player lacked task-write "
                         + "permission"
             );
+            if (completeAfterStoneTools || completeAfterIron) {
+                taskSubmittedNanos = System.nanoTime();
+            }
             final Component submitted =
                     ForgeHooks.onServerChatSubmittedEvent(
                             human,
                             Component.literal(
                                 completeAfterStoneTools
                                     ? runtime.worldData().displayName()
-                                        + "，请先砍下眼前相连的橡木并"
-                                        + "捡进背包，然后制作工作台和"
-                                        + "木镐，采集圆石并制作一把石镐。"
-                                        + "完成后停下；不要使用命令。"
+                                        + "，我把你带到了一个陌生地方，"
+                                        + "身上的东西也都清空了。请你自己"
+                                        + "从零发展到石器阶段，真正拥有一"
+                                        + "把石镐后停下；不要使用命令。"
+                                    : completeAfterIron
+                                        ? runtime.worldData().displayName()
+                                            + "，你现在什么都没有。请从空手"
+                                            + "开始，把生存推进到拿到第一份"
+                                            + "真正用于铁器时代的矿物原料，"
+                                            + "东西实际进入背包后就停下；"
+                                            + "不要使用命令。"
                                     : runtime.worldData().displayName()
                                         + "，从空背包开始建立安全据点并"
                                         + "生存到第二天。先把你眼前这组"
@@ -8421,6 +8493,8 @@ public final class LiveModelChatGameTests {
                     goal.revision() > goalRevisionBefore
                         && (completeAfterStoneTools
                             ? goal.goal().contains("石镐")
+                            : completeAfterIron
+                                ? goal.goal().contains("铁器时代")
                             : goal.goal().contains("安全据点")
                                 && goal.goal().contains("第二天")),
                     (zeroHumanFromStart
@@ -8440,6 +8514,19 @@ public final class LiveModelChatGameTests {
                                         .STONE_TOOL_OBTAINED
                         )),
                         "The live model encoded the natural-language task "
+                            + "as the wrong route: " + plan
+                );
+            } else if (completeAfterIron) {
+                final GoalExecutionPlan plan = GoalExecutionPlan
+                        .fromDetailCode(goal.detailCode())
+                        .orElseThrow(() -> new AssertionError(
+                                "The live model did not encode an iron route"
+                        ));
+                helper.assertTrue(
+                        plan.equals(GoalExecutionPlan.foundation(
+                                GoalExecutionPlan.Target.IRON_OBTAINED
+                        )),
+                        "The live model encoded the abstract iron task "
                             + "as the wrong route: " + plan
                 );
             }
@@ -8486,12 +8573,15 @@ public final class LiveModelChatGameTests {
             final int minedLogs = body.getStats().getValue(
                     Stats.BLOCK_MINED.get(Blocks.OAK_LOG)
             ) - initialMinedLogs;
+            final int requiredLogs = completeAfterStoneTools
+                    ? 3
+                    : REQUIRED_LOGS;
             final boolean milestone = runtime.worldData()
                     .verifiedRouteProgress(foundationGoalRevision)
                     .milestones()
                     .contains(SurvivalMilestone.WOOD_OBTAINED);
-            if (pickedUpLogs >= REQUIRED_LOGS
-                    && minedLogs >= REQUIRED_LOGS
+            if (pickedUpLogs >= requiredLogs
+                    && minedLogs >= requiredLogs
                     && milestone) {
                 helper.assertTrue(
                         sawClusterGatherer,
@@ -8499,9 +8589,10 @@ public final class LiveModelChatGameTests {
                             + "instead of the bounded production gatherer"
                 );
                 helper.assertTrue(
-                        minedLogs >= REQUIRED_LOGS,
-                        "M1 bootstrap did not record five vanilla log "
-                            + "mining actions"
+                        minedLogs >= requiredLogs,
+                        "Foundation bootstrap did not record the required "
+                            + "vanilla log mining actions: required="
+                            + requiredLogs + ", actual=" + minedLogs
                 );
                 stage = FoundationBootstrapStage.BASIC_CRAFTING;
                 stageStartedNanos = System.nanoTime();
@@ -8778,12 +8869,20 @@ public final class LiveModelChatGameTests {
                             + "recipe transaction"
                 );
                 if (completeAfterStoneTools) {
+                    helper.assertTrue(
+                            System.nanoTime() - taskSubmittedNanos
+                                <= FAST_STONE_TOOLS_DEADLINE_NANOS,
+                            "The encoded zero-inventory stone-tool route "
+                                + "exceeded 60 seconds"
+                    );
                     finishScenarioGoal(runtime);
                     stage = FoundationBootstrapStage.DONE;
                     helper.succeed();
                     return;
                 }
-                stage = FoundationBootstrapStage.FOOD;
+                stage = completeAfterIron
+                        ? FoundationBootstrapStage.IRON_TOOLKIT
+                        : FoundationBootstrapStage.FOOD;
                 stageStartedNanos = System.nanoTime();
                 return;
             }
@@ -8899,6 +8998,40 @@ public final class LiveModelChatGameTests {
             )) {
                 sawIronToolkit = true;
             }
+            final int minedIron = body.getStats().getValue(
+                    Stats.BLOCK_MINED.get(Blocks.IRON_ORE)
+            ) - initialMinedIron;
+            final int pickedUpRawIron = body.getStats().getValue(
+                    Stats.ITEM_PICKED_UP.get(Items.RAW_IRON)
+            ) - initialPickedUpRawIron;
+            final int ownedIronMaterial = body.getInventory().countItem(
+                    Items.RAW_IRON
+            ) + body.getInventory().countItem(Items.IRON_INGOT);
+            final boolean ironMaterialMilestone = runtime.worldData()
+                    .verifiedRouteProgress(foundationGoalRevision)
+                    .milestones()
+                    .contains(SurvivalMilestone.IRON_OBTAINED);
+            if (completeAfterIron
+                    && minedIron >= 1
+                    && pickedUpRawIron >= 1
+                    && ownedIronMaterial >= 1
+                    && ironMaterialMilestone) {
+                helper.assertTrue(
+                        sawIronToolkit,
+                        "Iron acquisition bypassed the bounded production "
+                            + "iron controller"
+                );
+                helper.assertTrue(
+                        System.nanoTime() - taskSubmittedNanos
+                            <= FAST_IRON_DEADLINE_NANOS,
+                        "The encoded zero-inventory iron route exceeded "
+                            + "five minutes"
+                );
+                finishScenarioGoal(runtime);
+                stage = FoundationBootstrapStage.DONE;
+                helper.succeed();
+                return;
+            }
             final boolean ownsIronPickaxe =
                     body.getInventory().countItem(
                             Items.IRON_PICKAXE
@@ -8997,9 +9130,16 @@ public final class LiveModelChatGameTests {
             final GoalSnapshot goal = runtime.goals().snapshot();
             helper.assertTrue(
                     goal.status() == GoalStatus.RUNNING
-                        || goal.status() == GoalStatus.CANCEL_PENDING,
+                        || goal.status() == GoalStatus.CANCEL_PENDING
+                        || completeAfterIron
+                            && goal.status() == GoalStatus.COMPLETED,
                     "Foundation goal became terminal before iron "
                         + "toolkit readiness: " + goal
+                        + ", minedIron=" + minedIron
+                        + ", pickedUpRawIron=" + pickedUpRawIron
+                        + ", ownedIronMaterial=" + ownedIronMaterial
+                        + ", ironMaterialMilestone="
+                        + ironMaterialMilestone
                         + ", pickaxe=" + ownsIronPickaxe
                         + ", bucket=" + ownsBucket
                         + ", shield=" + ownsShield
@@ -9400,11 +9540,16 @@ public final class LiveModelChatGameTests {
                     Mob.class,
                     body.getBoundingBox().inflate(48.0)
             ).forEach(Mob::discard);
+            final Vec3 positionBeforeRelocation = body.position();
             final BlockPos center;
             if (zeroHumanFromStart) {
                 center = helper.absolutePos(
                         new BlockPos(8, 1, 8)
                 ).offset(640, 0, 0);
+            } else if (completeAfterStoneTools || completeAfterIron) {
+                center = helper.absolutePos(
+                        new BlockPos(8, 1, 8)
+                ).offset(256, 0, 192);
             } else {
                 center = body.blockPosition()
                         .below()
@@ -9529,6 +9674,13 @@ public final class LiveModelChatGameTests {
             foodAnimals = List.copyOf(preparedAnimals);
             body.setGameMode(GameType.SURVIVAL);
             body.getInventory().clearContent();
+            body.getEnderChestInventory().clearContent();
+            body.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.HEAD, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.CHEST, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.LEGS, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.FEET, ItemStack.EMPTY);
             body.getInventory().setSelectedSlot(0);
             body.setHealth(body.getMaxHealth());
             body.getFoodData().setFoodLevel(20);
@@ -9541,6 +9693,53 @@ public final class LiveModelChatGameTests {
             autonomousAnchorChunk = body.chunkPosition();
             body.setDeltaMovement(Vec3.ZERO);
             body.fallDistance = 0.0F;
+            if (completeAfterStoneTools || completeAfterIron) {
+                helper.assertTrue(
+                        positionBeforeRelocation.distanceToSqr(
+                                body.position()
+                        ) >= 64.0D * 64.0D,
+                        "Fast stone-tool fixture did not relocate the "
+                            + "companion to a new area"
+                );
+                helper.assertTrue(
+                        body.getInventory().isEmpty()
+                            && body.getMainHandItem().isEmpty()
+                            && body.getOffhandItem().isEmpty()
+                            && body.getItemBySlot(
+                                EquipmentSlot.HEAD
+                            ).isEmpty()
+                            && body.getItemBySlot(
+                                EquipmentSlot.CHEST
+                            ).isEmpty()
+                            && body.getItemBySlot(
+                                EquipmentSlot.LEGS
+                            ).isEmpty()
+                            && body.getItemBySlot(
+                                EquipmentSlot.FEET
+                            ).isEmpty(),
+                        "Fast stone-tool fixture did not start with an "
+                            + "empty inventory and equipment set"
+                );
+            }
+        }
+
+        private void assertFastTerminalDeadline() {
+            if (!(completeAfterStoneTools || completeAfterIron)
+                    || taskSubmittedNanos < 0L
+                    || stage == FoundationBootstrapStage.DONE) {
+                return;
+            }
+            final long deadline = completeAfterStoneTools
+                    ? FAST_STONE_TOOLS_DEADLINE_NANOS
+                    : FAST_IRON_DEADLINE_NANOS;
+            helper.assertTrue(
+                    System.nanoTime() - taskSubmittedNanos
+                        <= deadline,
+                    "The encoded zero-inventory route did not finish "
+                        + "within its real-time deadline: stage=" + stage
+                        + ", skill="
+                        + runtime.skillSupervisor().snapshot().skillName()
+            );
         }
 
         private void assertAutonomousChunkSimulation(

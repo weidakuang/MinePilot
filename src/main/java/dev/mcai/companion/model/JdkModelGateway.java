@@ -420,10 +420,32 @@ public final class JdkModelGateway implements ModelGateway {
                             + exception.code()
             ));
         }
+        /*
+         * These three fields are transport bindings, not model decisions.
+         * The completion is already owned by this exact InFlight request, so
+         * asking a provider to copy opaque identifiers and numeric revisions
+         * adds no freshness guarantee.  Some otherwise valid providers round
+         * or increment a revision, which used to discard the whole semantic
+         * decision and spend a second model round trip.  Bind the decoded
+         * payload to the local request before validating its authoritative
+         * decision fields.  The consumer still compares the request's goal
+         * revision with live goal state before committing the result.
+         */
+        final DecisionEnvelope requestBoundDecision = new DecisionEnvelope(
+                input.decisionContext().requestId(),
+                input.decisionContext().observedWorldRevision(),
+                input.decisionContext().goalRevision(),
+                decodedDecision.decision(),
+                decodedDecision.skillName(),
+                decodedDecision.typedArguments(),
+                decodedDecision.requestedObservation(),
+                decodedDecision.optionalSpeech(),
+                decodedDecision.confidence()
+        );
         final DecisionEnvelope canonicalDecision =
                 ObservationBindingCanonicalizer.canonicalize(
                         KnownSkillArgumentCanonicalizer.canonicalize(
-                                decodedDecision
+                                requestBoundDecision
                         ),
                         input.observationJson()
                 );

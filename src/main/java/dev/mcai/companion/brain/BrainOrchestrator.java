@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.mcai.companion.MinecraftAiCompanion;
 import dev.mcai.companion.control.GoalCoordinator;
+import dev.mcai.companion.control.GoalExecutionPlan;
 import dev.mcai.companion.control.GoalSnapshot;
 import dev.mcai.companion.control.GoalSource;
 import dev.mcai.companion.control.GoalStatus;
@@ -126,6 +127,14 @@ public final class BrainOrchestrator {
      * target, and every body action remains first-person and vanilla-bound.
      */
     private long immediateWoodHandoffGoalRevision = -1L;
+    /**
+     * A typed route may select one parameterless compound for its current
+     * server-verified phase without another provider round trip. If that
+     * compound rejects its preconditions, remember the exact objective and
+     * yield to the model instead of retrying a local script loop.
+     */
+    private long encodedRouteRejectedGoalRevision = -1L;
+    private String encodedRouteRejectedObjective = "";
     private volatile boolean closed;
 
     public BrainOrchestrator(
@@ -402,6 +411,22 @@ public final class BrainOrchestrator {
         }
 
         /*
+         * The conversation model has already encoded this player request as
+         * a bounded route and terminal milestone. Early survival phases each
+         * admit exactly one parameterless compound controller; asking the
+         * same model to rediscover that forced choice adds several seconds of
+         * idle latency per phase without adding judgment. Start only that
+         * server-owned compound from trusted route state. Physical progress
+         * and completion remain independently verified by the server.
+         */
+        if (inFlight == null
+                && !waitingForPlayer
+                && now >= nextRequestNotBeforeNanos
+                && tryStartEncodedRouteStep(goal, observation, now)) {
+            return snapshot();
+        }
+
+        /*
          * A clear "chop nearby wood" command already names the high-level
          * outcome, and its compound executor needs no target coordinates or
          * model-authored arguments. If the provider misses the configured
@@ -444,6 +469,103 @@ public final class BrainOrchestrator {
             issuePlannerRequest(goal, observation, now);
         }
         return snapshot();
+    }
+
+    private boolean tryStartEncodedRouteStep(
+            final GoalSnapshot goal,
+            final BrainObservation observation,
+            final long now
+    ) {
+        final Optional<EncodedRouteStep> candidate = encodedRouteStep(
+                goal,
+                observation
+        );
+        if (candidate.isEmpty()) {
+            return false;
+        }
+        final EncodedRouteStep step = candidate.orElseThrow();
+        if (encodedRouteRejectedGoalRevision == goal.revision()
+                && encodedRouteRejectedObjective.equals(
+                        step.objective()
+                )) {
+            return false;
+        }
+        final DecisionEnvelope direct = new DecisionEnvelope(
+                "encoded-route-" + goal.revision() + "-"
+                        + observation.epoch(),
+                observation.epoch(),
+                goal.revision(),
+                DecisionKind.START_SKILL,
+                step.skillName(),
+                List.of(),
+                dev.mcai.companion.model.RequestedObservation.none(),
+                "",
+                1.0
+        );
+        applyStartSkill(
+                goal,
+                observation,
+                direct,
+                Optional.empty(),
+                now,
+                "encoded_route_skill_started"
+        );
+        if (isActive(skills.snapshot())) {
+            encodedRouteRejectedGoalRevision = -1L;
+            encodedRouteRejectedObjective = "";
+            return true;
+        }
+        encodedRouteRejectedGoalRevision = goal.revision();
+        encodedRouteRejectedObjective = step.objective();
+        return true;
+    }
+
+    static Optional<EncodedRouteStep> encodedRouteStep(
+            final GoalSnapshot goal,
+            final BrainObservation observation
+    ) {
+        Objects.requireNonNull(goal, "goal");
+        Objects.requireNonNull(observation, "observation");
+        if (goal.externalWritesLocked()
+                || goal.source() != GoalSource.PLAYER_CHAT) {
+            return Optional.empty();
+        }
+        final Optional<GoalExecutionPlan> plan = GoalExecutionPlan
+                .fromDetailCode(goal.detailCode())
+                .filter(value -> value.route()
+                        == GoalExecutionPlan.Route.FOUNDATION
+                        || value.route()
+                            == GoalExecutionPlan.Route.COMPLETION);
+        if (plan.isEmpty()) {
+            return Optional.empty();
+        }
+        final Optional<JsonArray> objectives = trustedRouteArray(
+                observation,
+                "nextObjectives"
+        );
+        if (objectives.isEmpty()
+                || objectives.orElseThrow().isEmpty()) {
+            return Optional.empty();
+        }
+        final String objective = objectives.orElseThrow()
+                .get(0)
+                .getAsString();
+        final String skillName = switch (objective) {
+            case "GATHER_VISIBLE_WOOD" -> "gather_nearby_wood";
+            case "PREPARE_BASIC_CRAFTING" ->
+                    "prepare_basic_crafting";
+            case "CRAFT_AND_MINE_STONE" -> "prepare_stone_tools";
+            case "SECURE_FOOD_RESERVE" ->
+                    "secure_visible_food_reserve";
+            case "ACQUIRE_IRON_TOOLKIT" -> "prepare_iron_toolkit";
+            default -> "";
+        };
+        return skillName.isEmpty()
+                ? Optional.empty()
+                : Optional.of(new EncodedRouteStep(
+                        objective,
+                        skillName
+                ));
     }
 
     private boolean tryStartSoftDeadlineWoodHandoff(
@@ -530,7 +652,8 @@ public final class BrainOrchestrator {
                     + "|verified=" + verifiedMilestones
                     + "|target=" + routeMilestoneForSkill(
                             skillName,
-                            observation
+                            observation,
+                            goal
                     )
                     + "|state=" + active.state()
                     + "|cancelPending=" + active.cancelPending();
@@ -548,7 +671,11 @@ public final class BrainOrchestrator {
                         skillName,
                         routeProfile.orElse(""),
                         verifiedMilestones,
-                        routeMilestoneForSkill(skillName, observation),
+                        routeMilestoneForSkill(
+                                skillName,
+                                observation,
+                                goal
+                        ),
                         active.state(),
                         active.cancelPending(),
                         observation.skillContext().gameTick(),
@@ -574,7 +701,8 @@ public final class BrainOrchestrator {
         );
         final String targetMilestone = routeMilestoneForSkill(
                 skillName,
-                observation
+                observation,
+                goal
         );
         if (targetMilestone.isEmpty()
                 || verified.isEmpty()
@@ -641,7 +769,8 @@ public final class BrainOrchestrator {
 
     private static String routeMilestoneForSkill(final String skillName) {
         return switch (skillName) {
-            case "gather_visible_block_cluster" -> "WOOD_OBTAINED";
+            case "gather_visible_block_cluster", "gather_nearby_wood" ->
+                    "WOOD_OBTAINED";
             case "prepare_basic_crafting" -> "BASIC_CRAFTING_READY";
             case "prepare_stone_tools" -> "STONE_TOOL_OBTAINED";
             case "secure_visible_food_reserve" -> "FOOD_SECURED";
@@ -667,7 +796,8 @@ public final class BrainOrchestrator {
      */
     private static String routeMilestoneForSkill(
             final String skillName,
-            final BrainObservation observation
+            final BrainObservation observation,
+            final GoalSnapshot goal
     ) {
         if ("establish_foundation_workstations".equals(skillName)
                 && trustedRouteArray(observation, "nextObjectives")
@@ -676,6 +806,13 @@ public final class BrainOrchestrator {
                         .filter("STORE_SURPLUS_SUPPLIES"::equals)
                         .isPresent()) {
             return "SUPPLIES_STORED";
+        }
+        if ("prepare_iron_toolkit".equals(skillName)
+                && GoalExecutionPlan.fromDetailCode(goal.detailCode())
+                        .map(GoalExecutionPlan::terminalTarget)
+                        .filter(GoalExecutionPlan.Target.IRON_OBTAINED::equals)
+                        .isPresent()) {
+            return "IRON_OBTAINED";
         }
         return routeMilestoneForSkill(skillName);
     }
@@ -870,6 +1007,8 @@ public final class BrainOrchestrator {
         immediateFollowSearchGoalRevision = -1L;
         immediateItemSurveyGoalRevision = -1L;
         immediateWoodHandoffGoalRevision = -1L;
+        encodedRouteRejectedGoalRevision = -1L;
+        encodedRouteRejectedObjective = "";
         clearRepeatedStartRejection();
         nextRequestNotBeforeNanos = 0L;
     }
@@ -2641,6 +2780,28 @@ public final class BrainOrchestrator {
             Optional<RequestTrace> trace,
             long now
     ) {
+        applyStartSkill(
+                goal,
+                observation,
+                decision,
+                trace,
+                now,
+                "direct_player_skill_started"
+        );
+    }
+
+    private void applyStartSkill(
+            GoalSnapshot goal,
+            BrainObservation observation,
+            DecisionEnvelope decision,
+            Optional<RequestTrace> trace,
+            long now,
+            String untracedStartNotice
+    ) {
+        Objects.requireNonNull(
+                untracedStartNotice,
+                "untracedStartNotice"
+        );
         SkillSupervisor.StartOutcome started =
                 skills.start(decision, observation.skillContext());
         if (!started.accepted()) {
@@ -2696,13 +2857,21 @@ public final class BrainOrchestrator {
             );
         } else {
             /*
-             * Preserve the audit distinction: this was an explicit player
-             * command, not a model decision and therefore must never acquire
-             * a fabricated provider trace.
+             * Preserve the audit distinction: this skill was not selected by
+             * a gameplay-planner response and therefore must never acquire a
+             * fabricated provider trace. The caller supplies the exact local
+             * authority source (direct player binding or encoded route).
              */
-            emitNotice(goal.revision(), "direct_player_skill_started");
+            emitNotice(goal.revision(), untracedStartNotice);
         }
         emitSpeech(goal, decision);
+    }
+
+    record EncodedRouteStep(String objective, String skillName) {
+        EncodedRouteStep {
+            Objects.requireNonNull(objective, "objective");
+            Objects.requireNonNull(skillName, "skillName");
+        }
     }
 
     private void recordStartRejection(

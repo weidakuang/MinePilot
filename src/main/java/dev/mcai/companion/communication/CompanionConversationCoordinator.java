@@ -101,7 +101,8 @@ public final class CompanionConversationCoordinator
         staged survival request that starts with ordinary resource gathering.
         Choose the furthest outcome the player actually requested: BODY_ACTIVE,
         WOOD_OBTAINED, BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED, FOOD_SECURED,
-        IRON_TOOLKIT_OBTAINED, WORKSTATIONS_ESTABLISHED, SUPPLIES_STORED,
+        IRON_OBTAINED, IRON_TOOLKIT_OBTAINED, WORKSTATIONS_ESTABLISHED,
+        SUPPLIES_STORED,
         SHELTER_MATERIALS_PREPARED, SHELTER_COMPLETED, or
         FIRST_NIGHT_SURVIVED. A request to chop wood and obtain stone tools is
         FOUNDATION/STONE_TOOL_OBTAINED even if the player uses slang, indirect
@@ -109,7 +110,8 @@ public final class CompanionConversationCoordinator
         Use COMPLETION only for a staged route toward beating Minecraft, with
         the furthest requested outcome: BODY_ACTIVE, WOOD_OBTAINED,
         BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED, FOOD_SECURED,
-        IRON_TOOLKIT_OBTAINED, NETHER_ENTERED, BLAZE_MATERIAL_OBTAINED,
+        IRON_OBTAINED, IRON_TOOLKIT_OBTAINED, NETHER_ENTERED,
+        BLAZE_MATERIAL_OBTAINED,
         ENDER_PEARL_OBTAINED, EYE_OF_ENDER_CRAFTED,
         STRONGHOLD_BEARING_MEASURED,
         STRONGHOLD_SEARCH_AREA_TRIANGULATED, END_LOADOUT_PREPARED, END_ENTERED,
@@ -141,6 +143,42 @@ public final class CompanionConversationCoordinator
         validator about your immediately preceding response. Correct that
         failure and return exactly the required decision envelope without
         commentary or extra fields.
+        """;
+    private static final String TASK_ENCODING_SYSTEM_PROMPT = """
+        You are the semantic task encoder for one visible Minecraft Java AI
+        companion. The authorized player utterance is already known locally
+        to be an imperative gameplay task. Preserve its meaning across slang,
+        indirect wording, and supported languages. Do not plan Java code,
+        commands, packets, coordinates, or a physical skill.
+
+        Return ASK_PLAYER, an empty skillName, requestedObservation NONE, and
+        exactly two typed arguments: goalRouteProfile and
+        goalTerminalMilestone. Use NONE/NONE for a standalone action such as
+        following, travel, combat, farming, building, or item transfer. Use
+        FOUNDATION for staged survival from ordinary resource gathering and
+        select only the furthest requested outcome: BODY_ACTIVE,
+        WOOD_OBTAINED, BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED,
+        FOOD_SECURED, IRON_OBTAINED, IRON_TOOLKIT_OBTAINED,
+        WORKSTATIONS_ESTABLISHED,
+        SUPPLIES_STORED, SHELTER_MATERIALS_PREPARED, SHELTER_COMPLETED, or
+        FIRST_NIGHT_SURVIVED. Use COMPLETION only for a route toward beating
+        Minecraft; its additional outcomes are NETHER_ENTERED,
+        BLAZE_MATERIAL_OBTAINED, ENDER_PEARL_OBTAINED, EYE_OF_ENDER_CRAFTED,
+        STRONGHOLD_BEARING_MEASURED,
+        STRONGHOLD_SEARCH_AREA_TRIANGULATED, END_LOADOUT_PREPARED,
+        END_ENTERED, END_ISLAND_REACHED, DRAGON_KILLED, and
+        RETURNED_FROM_END. A request to develop from zero until owning a
+        stone pickaxe is FOUNDATION/STONE_TOOL_OBTAINED. This route selection
+        never claims the task is complete. A request to stop after physically
+        obtaining the first iron material is FOUNDATION/IRON_OBTAINED; use
+        IRON_TOOLKIT_OBTAINED only when usable iron tools, shield, and bucket
+        readiness are actually requested.
+
+        optionalSpeech is one short natural acknowledgement in the player's
+        language. Never return START_SKILL, CONTINUE, COMPLETE_GOAL,
+        SAFE_IDLE, or a gameplay-completion claim. Copy no security-sensitive
+        data. responseRepairCode, if present, is trusted local feedback and
+        must be corrected without commentary.
         """;
 
     private final MinecraftServer server;
@@ -819,7 +857,15 @@ public final class CompanionConversationCoordinator
         );
         final String requestId =
                 "conversation-" + (++requestSequence);
-        String observationJson = conversationJson(utterance, goal);
+        final boolean taskEncodingOnly = taskEncodingOnly(
+                utterance,
+                goal
+        );
+        String observationJson = conversationJson(
+                utterance,
+                goal,
+                !taskEncodingOnly
+        );
         if (observationJson.length()
                 > PlannerInput.MAX_OBSERVATION_JSON_CHARACTERS) {
             observationJson = conversationJson(
@@ -837,7 +883,9 @@ public final class CompanionConversationCoordinator
                         Map.of(),
                         DecisionLane.CONVERSATION
                 ),
-                SYSTEM_PROMPT
+                (taskEncodingOnly
+                        ? TASK_ENCODING_SYSTEM_PROMPT
+                        : SYSTEM_PROMPT)
                         + "\nTRUSTED_OWNER_AGENT_PREFERENCES\n"
                         + worldData.agentSystemPrompt()
                         + "\nEND_TRUSTED_OWNER_AGENT_PREFERENCES",
@@ -871,6 +919,28 @@ public final class CompanionConversationCoordinator
                     new Completion(request, null, true)
             );
         }
+    }
+
+    private boolean taskEncodingOnly(
+            final Utterance utterance,
+            final GoalSnapshot goal
+    ) {
+        if (!utterance.maySetGoal()
+                || !(utterance.singlePlayer()
+                    || utterance.explicitlyAddressed())) {
+            return false;
+        }
+        final Optional<String> previousAgentSpeech = history.isEmpty()
+                ? Optional.empty()
+                : Optional.of(history.peekLast().agent());
+        final PlayerTaskIntent.Result intent = PlayerTaskIntent.classify(
+                utterance.message(),
+                utterance.goalText(),
+                previousAgentSpeech,
+                Optional.ofNullable(goal.goal())
+                        .filter(value -> !value.isBlank())
+        );
+        return intent.task() && intent.replacesGoal();
     }
 
     private void apply(final Completion completion) {
@@ -1007,6 +1077,20 @@ public final class CompanionConversationCoordinator
                 completion.request().requestId(),
                 success.usage()
         );
+        if (goals.snapshot().revision()
+                != completion.request().goalRevision()) {
+            /*
+             * Provider-returned revision fields are rebound locally by the
+             * gateway, but the actual live goal can still be replaced while
+             * a conversation request is in flight.  In that case this older
+             * utterance must not overwrite the newer player instruction.
+             */
+            emitNotice(
+                    goals.snapshot().revision(),
+                    "conversation_superseded_response"
+            );
+            return;
+        }
         final var decision = success.decision();
         if (!decision.requestId().equals(
                     completion.request().requestId()

@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-24T04:55:00+09:00
+Last updated: 2026-08-24T05:45:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,76 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+### 2026-08-24 bounded stone and iron acquisition gates
+
+- The relocated, empty-inventory, abstract-player-chat stone gate passed on
+  Forge 65.0.9 with the real configured Grok 4.5 model in 36.04 seconds. The
+  body physically picked up three oak logs and three cobblestone, used normal
+  crafting, and retained a stone pickaxe. Vanilla awarded `Stone Age` and
+  `Getting an Upgrade`. Speech and product audit text were not accepted as
+  completion evidence.
+- A distinct `IRON_OBTAINED` terminal now represents the first physical raw
+  iron, ingot, or iron product. The live gate starts after clearing every
+  inventory, armor, offhand, and ender-chest slot, accepts one abstract Chinese
+  player message, and requires an iron-ore mining statistic, raw-iron pickup
+  statistic, verified route milestone, physical raw iron or ingot in inventory,
+  and the production iron-acquisition skill before five real minutes expire.
+- The first iron run was a valid failure. The model encoded exactly
+  `FOUNDATION/IRON_OBTAINED`; the body acquired four logs, crafted a stone
+  pickaxe, then stalled in the unrelated food-reserve phase with six food
+  items. An explicitly bounded first-iron route now omits `FOOD_SECURED` while
+  later foundation and completion terminals retain that safety phase.
+- Two replacement runs were also valid failures before action: the provider's
+  generation endpoint returned no bytes and the conversation request hit its
+  90-second hard timeout. A separate non-content health check returned HTTP
+  200 from `/v1/models` in 0.83 seconds, while a minimal Grok 4.5 chat request
+  received zero bytes and timed out after 20 seconds. No iron pass is claimed.
+- `./gradlew check build --no-configuration-cache` passes after the route
+  and observer-stage changes (1,247 tests, two skipped). The development line
+  is now `0.1.14-dev-mc26.2`; its local product JAR SHA-256 is
+  `4554b2f6787b3be82ff75b1931bfaed01e9439a532baa260017d8e985400f29f`.
+  The changed files include `BrainOrchestrator`,
+  `CompanionConversationCoordinator`, `JdkModelGateway`,
+  `GoalExecutionPlan`, `SurvivalMilestone`, `SurvivalRouteTracker`, the live
+  chat GameTest and Forge fixture registration/resource, completion verification,
+  and focused tests. The last failed gate is the five-minute live iron test,
+  blocked at task encoding by provider generation timeout. Next: rerun the
+  exact gate when generation responds, then preserve both bounded gates as
+  regressions. The dedicated GameTest server has no renderer, so it cannot
+  produce a genuine video without adding a real rendering client.
+
+### 2026-08-24 relocated 60-second stone-tool gate
+
+- The active requirement is one abstract player chat after inventory and all
+  equipment are cleared and the companion is moved more than 64 blocks to a
+  new controlled area. Physical acquisition of a retained stone pickaxe must
+  finish within 60 real seconds; model speech and product audit claims are not
+  completion evidence.
+- The first replacement run failed honestly. The first Grok 4.5 response took
+  about 23 seconds and correctly selected
+  `FOUNDATION/STONE_TOOL_OBTAINED`, but its non-authoritative revision echo was
+  rejected as `stale_goal`. A second paid response was accepted after about 48
+  seconds. The local typed-route dispatcher then started physical gathering
+  without another gameplay-model request and acquired two oak logs before the
+  60-second deadline expired.
+- Root cause: request ID and revision values were being treated as if the
+  provider's copied JSON fields established freshness. They do not; the local
+  `InFlight` object already owns the HTTP completion. `JdkModelGateway` now
+  binds those transport fields from the local request before validating the
+  semantic payload. `CompanionConversationCoordinator` separately rejects a
+  completed response if the live goal revision has actually changed, so a
+  newer player task cannot be overwritten.
+- Current changed files are `BrainOrchestrator`,
+  `CompanionConversationCoordinator`, `JdkModelGateway`,
+  `LiveModelChatGameTests`, `BrainOrchestratorTest`, and
+  `JdkModelGatewayContractTest`. Focused gateway and orchestrator tests pass.
+- Last failed gate: relocated abstract-chat stone tools in 60 seconds, due to
+  the discarded first response and resulting timeout during physical wood
+  gathering. Next: rerun that exact gate, then add and run a distinct
+  zero-equipment abstract-chat iron-acquisition gate with a five-minute real
+  deadline. A dedicated GameTest server has no registered hidden renderer, so
+  no video can be produced from this path unless a genuine renderer is added.
 
 ### 2026-08-24 natural-language goal encoding and stone-tool gate
 

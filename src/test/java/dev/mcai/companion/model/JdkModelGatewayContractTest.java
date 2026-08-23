@@ -126,6 +126,46 @@ class JdkModelGatewayContractTest {
     }
 
     @Test
+    void bindsProviderEchoFieldsToTheOwningLocalRequest() throws Exception {
+        final DecisionEnvelope expectedDecision = safeIdle(
+                "req-local-binding",
+                41,
+                7
+        );
+        final DecisionEnvelope providerDecision = safeIdle(
+                "provider-invented-request",
+                999,
+                8
+        );
+        final HttpServer server = startServer(exchange -> {
+            exchange.getResponseHeaders().set(
+                    "Content-Type",
+                    "application/json"
+            );
+            send(
+                    exchange,
+                    200,
+                    responsesBody(providerDecision, 10, 5, 15)
+            );
+        });
+
+        try (JdkModelGateway gateway = gateway(
+                server,
+                () -> "placeholder-only".toCharArray(),
+                ProviderCapabilities.responsesJsonSchema(false)
+        )) {
+            final ModelOutcome.Success success = assertInstanceOf(
+                    ModelOutcome.Success.class,
+                    await(gateway.decide(input(expectedDecision)))
+            );
+
+            assertEquals(expectedDecision, success.decision());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void assemblesAStreamingChatToolCallWithoutUsingARealCredential() throws Exception {
         AtomicReference<String> requestPath = new AtomicReference<>();
         AtomicReference<String> requestBody = new AtomicReference<>();

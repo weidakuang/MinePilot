@@ -24,6 +24,7 @@ public final class ServerGoalCompletionVerifier
                     SurvivalMilestone.BASIC_CRAFTING_READY,
                     SurvivalMilestone.FOOD_SECURED,
                     SurvivalMilestone.STONE_TOOL_OBTAINED,
+                    SurvivalMilestone.IRON_OBTAINED,
                     SurvivalMilestone.IRON_TOOLKIT_OBTAINED,
                     SurvivalMilestone.WORKSTATIONS_ESTABLISHED,
                     SurvivalMilestone.SUPPLIES_STORED,

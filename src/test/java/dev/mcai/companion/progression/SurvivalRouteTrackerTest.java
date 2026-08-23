@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.mcai.companion.control.GoalExecutionPlan;
 import dev.mcai.companion.control.GoalSnapshot;
 import dev.mcai.companion.control.GoalSource;
 import dev.mcai.companion.control.GoalStatus;
@@ -15,6 +16,79 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 final class SurvivalRouteTrackerTest {
+    @Test
+    void sizesWoodReserveToTheEncodedTerminalMilestone() {
+        assertEquals(
+                1,
+                SurvivalRouteTracker.requiredWoodReserve(plannedGoal(
+                        GoalExecutionPlan.Target.WOOD_OBTAINED
+                ))
+        );
+        assertEquals(
+                3,
+                SurvivalRouteTracker.requiredWoodReserve(plannedGoal(
+                        GoalExecutionPlan.Target.BASIC_CRAFTING_READY
+                ))
+        );
+        assertEquals(
+                3,
+                SurvivalRouteTracker.requiredWoodReserve(plannedGoal(
+                        GoalExecutionPlan.Target.STONE_TOOL_OBTAINED
+                ))
+        );
+        assertEquals(
+                5,
+                SurvivalRouteTracker.requiredWoodReserve(plannedGoal(
+                        GoalExecutionPlan.Target.IRON_OBTAINED
+                ))
+        );
+        assertEquals(
+                5,
+                SurvivalRouteTracker.requiredWoodReserve(plannedGoal(
+                        GoalExecutionPlan.Target.IRON_TOOLKIT_OBTAINED
+                ))
+        );
+        assertEquals(
+                5,
+                SurvivalRouteTracker.requiredWoodReserve(goal(
+                        GoalSource.PLAYER_CHAT,
+                        "legacy foundation request"
+                ))
+        );
+    }
+
+    @Test
+    void ironMaterialTerminalDoesNotRequireTheFullToolkit() {
+        final Optional<Set<SurvivalMilestone>> required =
+                SurvivalRouteTracker.explicitlyRequiredMilestones(
+                        plannedGoal(
+                                GoalExecutionPlan.Target.IRON_OBTAINED
+                        )
+                );
+
+        assertTrue(required.isPresent());
+        assertTrue(required.orElseThrow().contains(
+                SurvivalMilestone.IRON_OBTAINED
+        ));
+        assertFalse(required.orElseThrow().contains(
+                SurvivalMilestone.FOOD_SECURED
+        ));
+        assertFalse(required.orElseThrow().contains(
+                SurvivalMilestone.IRON_TOOLKIT_OBTAINED
+        ));
+
+        final Set<SurvivalMilestone> toolkitRequired =
+                SurvivalRouteTracker.explicitlyRequiredMilestones(
+                        plannedGoal(
+                                GoalExecutionPlan.Target
+                                        .IRON_TOOLKIT_OBTAINED
+                        )
+                ).orElseThrow();
+        assertTrue(toolkitRequired.contains(
+                SurvivalMilestone.FOOD_SECURED
+        ));
+    }
+
     @Test
     void activatesOnlyForExplicitCompletionGoalsOrLockedEvaluation() {
         assertTrue(SurvivalRouteTracker.isCompletionGoal(goal(
@@ -308,6 +382,21 @@ final class SurvivalRouteTrackerTest {
                 "",
                 Instant.EPOCH,
                 source == GoalSource.HARDCORE_EVALUATION
+        );
+    }
+
+    private static GoalSnapshot plannedGoal(
+            final GoalExecutionPlan.Target target
+    ) {
+        return new GoalSnapshot(
+                Optional.empty(),
+                1,
+                GoalStatus.RUNNING,
+                GoalSource.PLAYER_CHAT,
+                "abstract bounded survival request",
+                GoalExecutionPlan.foundation(target).detailCode(),
+                Instant.EPOCH,
+                false
         );
     }
 }

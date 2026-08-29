@@ -32,6 +32,8 @@ public final class FoundationCraftingSkills {
             PrepareFoundationShelterMaterialsSkill.NAME;
     public static final String PREPARE_DISTRIBUTED_LOG_STORAGE =
             PrepareDistributedLogStorageSkill.NAME;
+    public static final String PREPARE_CONTAINER_WOOD_DOOR =
+            PrepareContainerWoodDoorSkill.NAME;
 
     private FoundationCraftingSkills() {
     }
@@ -53,7 +55,8 @@ public final class FoundationCraftingSkills {
                     knownFurnace,
             final LongFunction<Optional<VerifiedFixtureLocation>>
                     knownStorage,
-            final LongConsumer distributedStorageEvidence
+            final LongConsumer distributedStorageEvidence,
+            final LongConsumer containerWoodDoorEvidence
     ) {
         Objects.requireNonNull(registry, "registry");
         registry.register(
@@ -131,6 +134,24 @@ public final class FoundationCraftingSkills {
                         distributedStorageEvidence
                 )
         );
+        registry.register(
+                PREPARE_CONTAINER_WOOD_DOOR,
+                new PrepareContainerWoodDoorSkill(
+                        playerId,
+                        core,
+                        coreFrames,
+                        interactions,
+                        interactionFrames,
+                        inventory,
+                        resourceInventory,
+                        menus,
+                        menuFrames,
+                        knownCraftingTable,
+                        knownFurnace,
+                        knownStorage,
+                        containerWoodDoorEvidence
+                )
+        );
         return registry.register(
                 PREPARE_FOUNDATION_SHELTER_MATERIALS,
                 new PrepareFoundationShelterMaterialsSkill(
@@ -155,6 +176,7 @@ public final class FoundationCraftingSkills {
             prepare_stone_tools, prepare_iron_toolkit,
             establish_foundation_workstations,
             prepare_distributed_log_storage,
+            prepare_container_wood_door,
             prepare_foundation_shelter_materials. They use bounded legal
             actions. Iron toolkit performs furnace smelting and crafts the
             iron pickaxe/bucket/shield.

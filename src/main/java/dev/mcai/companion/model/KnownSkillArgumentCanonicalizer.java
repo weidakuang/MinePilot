@@ -1,5 +1,6 @@
 package dev.mcai.companion.model;
 
+import dev.mcai.companion.control.GoalExecutionPlan;
 import java.util.Objects;
 
 /**
@@ -16,6 +17,7 @@ final class KnownSkillArgumentCanonicalizer {
                     "prepare_basic_crafting",
                     "prepare_stone_tools",
                     "prepare_iron_toolkit",
+                    "prepare_container_wood_door",
                     "establish_foundation_workstations",
                     "prepare_foundation_shelter_materials",
                     "secure_visible_food_reserve",
@@ -42,6 +44,9 @@ final class KnownSkillArgumentCanonicalizer {
             final DecisionEnvelope decision
     ) {
         Objects.requireNonNull(decision, "decision");
+        if (decision.decision() == DecisionKind.ASK_PLAYER) {
+            return canonicalizeConversationPlan(decision);
+        }
         if (decision.decision() != DecisionKind.START_SKILL) {
             return decision;
         }
@@ -78,6 +83,56 @@ final class KnownSkillArgumentCanonicalizer {
             return decision;
         }
         return withArguments(decision, canonicalArguments);
+    }
+
+    private static DecisionEnvelope canonicalizeConversationPlan(
+            final DecisionEnvelope decision
+    ) {
+        if (decision.typedArguments().size() != 2) {
+            return decision;
+        }
+        final SkillArgument route = decision.typedArguments().stream()
+                .filter(argument -> argument.name().equals(
+                        "goalRouteProfile"
+                ))
+                .findFirst()
+                .orElse(null);
+        final SkillArgument target = decision.typedArguments().stream()
+                .filter(argument -> argument.name().equals(
+                        "goalTerminalMilestone"
+                ))
+                .findFirst()
+                .orElse(null);
+        if (route == null || target == null
+                || !target.value().strip().equalsIgnoreCase("NONE")) {
+            return decision;
+        }
+        final String[] combined = route.value().split("/", -1);
+        if (combined.length != 2) {
+            return decision;
+        }
+        final GoalExecutionPlan plan;
+        try {
+            plan = GoalExecutionPlan.fromModelValues(
+                    combined[0],
+                    combined[1]
+            );
+        } catch (IllegalArgumentException malformed) {
+            return decision;
+        }
+        return withArguments(
+                decision,
+                java.util.List.of(
+                        new SkillArgument(
+                                "goalRouteProfile",
+                                plan.route().name()
+                        ),
+                        new SkillArgument(
+                                "goalTerminalMilestone",
+                                plan.terminalTarget().name()
+                        )
+                )
+        );
     }
 
     private static DecisionEnvelope withArguments(

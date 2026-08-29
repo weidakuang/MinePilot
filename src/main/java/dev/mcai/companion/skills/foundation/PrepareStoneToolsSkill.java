@@ -67,8 +67,8 @@ public final class PrepareStoneToolsSkill implements Skill<NoParameters> {
             "minecraft:stone_pickaxe";
     private static final int REQUIRED_COBBLESTONE = 3;
     private static final int MAXIMUM_TICKS = 2_400;
-    private static final int MAXIMUM_SCAN_TURNS = 36;
-    private static final int SCAN_INTERVAL_TICKS = 4;
+    private static final int MAXIMUM_SCAN_TURNS = 24;
+    private static final int SCAN_INTERVAL_TICKS = 2;
     private static final int MAXIMUM_AIM_TICKS = 80;
     private static final int MAXIMUM_MENU_WAIT_TICKS = 40;
     private static final int MAXIMUM_RECIPE_WAIT_TICKS = 80;
@@ -117,6 +117,8 @@ public final class PrepareStoneToolsSkill implements Skill<NoParameters> {
     private long nextScanTick = -1;
     private float scanBaseYaw;
     private int scanTurns;
+    private long scanObservationRevision = -1L;
+    private boolean awaitingScanObservation;
     private VisibleBlockFace selectedTable;
     private GatherVisibleBlockClusterParameters gatheringParameters;
     private MoveToSkill tableMovement;
@@ -774,6 +776,14 @@ public final class PrepareStoneToolsSkill implements Skill<NoParameters> {
                     ? NAME + ".visible_stone_not_found"
                     : NAME + ".visible_table_not_found");
         }
+        if (awaitingScanObservation
+                && frame.observationRevision()
+                    <= scanObservationRevision) {
+            return SkillTickResult.running(false, true);
+        }
+        if (awaitingScanObservation) {
+            awaitingScanObservation = false;
+        }
         if (context.gameTick() < nextScanTick) {
             return SkillTickResult.running(false, true);
         }
@@ -784,12 +794,14 @@ public final class PrepareStoneToolsSkill implements Skill<NoParameters> {
             case 2 -> 25.0F;
             default -> 0.0F;
         };
-        final float yaw = wrapDegrees(scanBaseYaw + yawIndex * 30.0F);
+        final float yaw = wrapDegrees(scanBaseYaw + yawIndex * 45.0F);
         if (!core.stop().accepted()
                 || !core.look(new LookIntent(yaw, pitch)).accepted()) {
             return fail(NAME + ".scan_rejected");
         }
         scanTurns++;
+        scanObservationRevision = frame.observationRevision();
+        awaitingScanObservation = true;
         nextScanTick = context.gameTick() + SCAN_INTERVAL_TICKS;
         return SkillTickResult.running(true, true);
     }
@@ -803,6 +815,8 @@ public final class PrepareStoneToolsSkill implements Skill<NoParameters> {
         phaseStartedAtTick = context.gameTick();
         nextScanTick = context.gameTick();
         scanTurns = 0;
+        scanObservationRevision = frame.observationRevision();
+        awaitingScanObservation = false;
         scanBaseYaw = yaw(frame.lookDirection());
         selectedTable = null;
     }

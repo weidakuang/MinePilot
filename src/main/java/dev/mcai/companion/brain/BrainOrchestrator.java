@@ -557,6 +557,8 @@ public final class BrainOrchestrator {
             case "CRAFT_AND_MINE_STONE" -> "prepare_stone_tools";
             case "DISTRIBUTE_LOG_STORAGE" ->
                     "prepare_distributed_log_storage";
+            case "RETRIEVE_CONTAINER_WOOD_AND_PLACE_DOOR" ->
+                    "prepare_container_wood_door";
             case "SECURE_FOOD_RESERVE" ->
                     "secure_visible_food_reserve";
             case "ACQUIRE_IRON_TOOLKIT" -> "prepare_iron_toolkit";
@@ -777,6 +779,8 @@ public final class BrainOrchestrator {
             case "prepare_stone_tools" -> "STONE_TOOL_OBTAINED";
             case "prepare_distributed_log_storage" ->
                     "LOG_STORAGE_DISTRIBUTED";
+            case "prepare_container_wood_door" ->
+                    "CONTAINER_WOOD_DOOR_PLACED";
             case "secure_visible_food_reserve" -> "FOOD_SECURED";
             case "prepare_iron_toolkit" -> "IRON_TOOLKIT_OBTAINED";
             case "establish_foundation_workstations" ->

@@ -1,6 +1,6 @@
 # MinePilot Usage Guide
 
-This guide covers the `0.1.14-dev-mc26.2` development line: Minecraft Java
+This guide covers the `0.1.15-dev-mc26.2` development line: Minecraft Java
 26.2, Forge 65.x, and Java 25. It is not a two-hour completion guarantee; the
 formal M0–M4 gates remain in progress.
 

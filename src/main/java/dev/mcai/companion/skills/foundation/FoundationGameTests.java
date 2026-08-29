@@ -3,6 +3,7 @@ package dev.mcai.companion.skills.foundation;
 import dev.mcai.companion.embodiment.AiPlayerManager;
 import dev.mcai.companion.embodiment.GameTestCompanionSpawn;
 import dev.mcai.companion.embodiment.SessionState;
+import dev.mcai.companion.navigation.GridPos;
 import dev.mcai.companion.perception.FairPerceptionSampler;
 import dev.mcai.companion.progression.VerifiedFixtureLocation;
 import dev.mcai.companion.skill.SkillContext;
@@ -22,6 +23,7 @@ import dev.mcai.companion.skills.menu.ServerMenuSkillActuator;
 import dev.mcai.companion.skills.menu.ServerMenuSkillFrameSource;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -34,10 +36,13 @@ import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.animal.cow.Cow;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -184,6 +189,584 @@ public final class FoundationGameTests {
                     helper.absolutePos(TEST_ORIGIN)
             ));
         });
+    }
+
+    public static void containerWoodDoorSpruce(
+            final GameTestHelper helper
+    ) {
+        containerWoodDoor(
+                helper,
+                Items.SPRUCE_LOG,
+                Items.SPRUCE_PLANKS,
+                Items.SPRUCE_DOOR,
+                Blocks.SPRUCE_DOOR,
+                true,
+                1
+        );
+    }
+
+    public static void containerWoodDoorWarped(
+            final GameTestHelper helper
+    ) {
+        containerWoodDoor(
+                helper,
+                Items.WARPED_STEM,
+                Items.WARPED_PLANKS,
+                Items.WARPED_DOOR,
+                Blocks.WARPED_DOOR,
+                false,
+                9
+        );
+    }
+
+    public static void containerWoodDoorOak(final GameTestHelper helper) {
+        containerWoodDoor(
+                helper,
+                Items.OAK_LOG,
+                Items.OAK_PLANKS,
+                Items.OAK_DOOR,
+                Blocks.OAK_DOOR,
+                false,
+                0
+        );
+    }
+
+    public static void containerWoodDoorBirch(final GameTestHelper helper) {
+        containerWoodDoor(
+                helper,
+                Items.BIRCH_LOG,
+                Items.BIRCH_PLANKS,
+                Items.BIRCH_DOOR,
+                Blocks.BIRCH_DOOR,
+                false,
+                2
+        );
+    }
+
+    public static void containerWoodDoorJungle(final GameTestHelper helper) {
+        containerWoodDoor(
+                helper,
+                Items.JUNGLE_LOG,
+                Items.JUNGLE_PLANKS,
+                Items.JUNGLE_DOOR,
+                Blocks.JUNGLE_DOOR,
+                true,
+                3
+        );
+    }
+
+    public static void containerWoodDoorAcacia(final GameTestHelper helper) {
+        containerWoodDoor(
+                helper,
+                Items.ACACIA_LOG,
+                Items.ACACIA_PLANKS,
+                Items.ACACIA_DOOR,
+                Blocks.ACACIA_DOOR,
+                false,
+                4
+        );
+    }
+
+    public static void containerWoodDoorDarkOak(
+            final GameTestHelper helper
+    ) {
+        containerWoodDoor(
+                helper,
+                Items.DARK_OAK_LOG,
+                Items.DARK_OAK_PLANKS,
+                Items.DARK_OAK_DOOR,
+                Blocks.DARK_OAK_DOOR,
+                true,
+                5
+        );
+    }
+
+    public static void containerWoodDoorMangrove(
+            final GameTestHelper helper
+    ) {
+        containerWoodDoor(
+                helper,
+                Items.MANGROVE_LOG,
+                Items.MANGROVE_PLANKS,
+                Items.MANGROVE_DOOR,
+                Blocks.MANGROVE_DOOR,
+                false,
+                6
+        );
+    }
+
+    public static void containerWoodDoorCherry(final GameTestHelper helper) {
+        containerWoodDoor(
+                helper,
+                Items.CHERRY_LOG,
+                Items.CHERRY_PLANKS,
+                Items.CHERRY_DOOR,
+                Blocks.CHERRY_DOOR,
+                true,
+                7
+        );
+    }
+
+    public static void containerWoodDoorCrimson(
+            final GameTestHelper helper
+    ) {
+        containerWoodDoor(
+                helper,
+                Items.CRIMSON_STEM,
+                Items.CRIMSON_PLANKS,
+                Items.CRIMSON_DOOR,
+                Blocks.CRIMSON_DOOR,
+                false,
+                8
+        );
+    }
+
+    private static void containerWoodDoor(
+            final GameTestHelper helper,
+            final Item wood,
+            final Item planks,
+            final Item door,
+            final Block doorBlock,
+            final boolean startWithChestMenuOpen,
+            final int geometryVariant
+    ) {
+        final var server = helper.getLevel().getServer();
+        final AtomicReference<ContainerWoodDoorScenario> scenario =
+                new AtomicReference<>();
+        final long startedAt = helper.getTick();
+        helper.addCleanup(ignored -> {
+            final ContainerWoodDoorScenario current = scenario.get();
+            if (current != null) {
+                current.cleanup();
+            }
+            if (AiPlayerManager.status(server).state()
+                    != SessionState.ABSENT) {
+                AiPlayerManager.requestRemove(server);
+            }
+        });
+        GameTestCompanionSpawn.resetForIsolatedFixture(server);
+        helper.assertTrue(
+                GameTestCompanionSpawn.request(
+                        helper,
+                        TEST_ORIGIN
+                ).accepted(),
+                "Container woodwork companion spawn was rejected"
+        );
+        helper.onEachTick(() -> {
+            final ContainerWoodDoorScenario current = scenario.get();
+            if (current != null) {
+                current.tick();
+                return;
+            }
+            final var status = AiPlayerManager.status(server);
+            helper.assertTrue(
+                    status.state() != SessionState.FAILED,
+                    "Container woodwork companion body failed"
+            );
+            if (status.state() != SessionState.ACTIVE
+                    || !status.online()) {
+                helper.assertTrue(
+                        helper.getTick() - startedAt
+                                <= BODY_START_TIMEOUT_TICKS,
+                        "Container woodwork companion did not become active"
+                );
+                return;
+            }
+            scenario.set(new ContainerWoodDoorScenario(
+                    helper,
+                    AiPlayerManager.onlinePlayer(server).orElseThrow(),
+                    helper.absolutePos(TEST_ORIGIN),
+                    wood,
+                    planks,
+                    door,
+                    doorBlock,
+                    startWithChestMenuOpen,
+                    geometryVariant
+            ));
+        });
+    }
+
+    private static final class ContainerWoodDoorScenario {
+        private static final int EXECUTION_TIMEOUT_TICKS = 4_000;
+        private static final int CHEST_START_COUNT = 5;
+
+        private final GameTestHelper helper;
+        private final ServerPlayer player;
+        private final BlockPos origin;
+        private final Item wood;
+        private final Item planks;
+        private final Item door;
+        private final Block doorBlock;
+        private final List<BlockPos> chests;
+        private final BlockPos table;
+        private final BlockPos expectedDoor;
+        private final FairPerceptionSampler sampler =
+                new FairPerceptionSampler();
+        private final ServerCoreSkillFrameSource coreFrames;
+        private final ServerInteractionSkillFrameSource interactionFrames;
+        private final ServerMenuSkillFrameSource menuFrames;
+        private final ServerOwnedCoreSkillActuator core;
+        private final PrepareContainerWoodDoorSkill skill;
+        private final AtomicBoolean completionEvidence =
+                new AtomicBoolean();
+        private final long createdAt;
+        private final int initialPlanksCrafted;
+        private final int initialDoorsCrafted;
+
+        private boolean started;
+        private boolean finished;
+        private boolean cleaned;
+
+        private ContainerWoodDoorScenario(
+                final GameTestHelper helper,
+                final ServerPlayer player,
+                final BlockPos origin,
+                final Item wood,
+                final Item planks,
+                final Item door,
+                final Block doorBlock,
+                final boolean startWithChestMenuOpen,
+                final int geometryVariant
+        ) {
+            this.helper = helper;
+            this.player = player;
+            this.origin = origin.immutable();
+            this.wood = wood;
+            this.planks = planks;
+            this.door = door;
+            this.doorBlock = doorBlock;
+            final boolean northSouthGroup = geometryVariant % 2 != 0;
+            chests = northSouthGroup
+                    ? List.of(
+                            this.origin.north(3),
+                            this.origin.north(),
+                            this.origin.south(),
+                            this.origin.south(3)
+                    )
+                    : List.of(
+                            this.origin.west(3),
+                            this.origin.west(),
+                            this.origin.east(),
+                            this.origin.east(3)
+                    );
+            table = northSouthGroup
+                    ? this.origin.west(3)
+                    : this.origin.north(3);
+            expectedDoor = northSouthGroup
+                    ? this.origin.east(3)
+                    : this.origin.south(3);
+            createdAt = helper.getTick();
+            prepareFixture(northSouthGroup, geometryVariant);
+            if (startWithChestMenuOpen) {
+                final BlockPos openChest = chests.getFirst();
+                player.openMenu(
+                        helper.getLevel()
+                                .getBlockState(openChest)
+                                .getMenuProvider(
+                                        helper.getLevel(),
+                                        openChest
+                                )
+                );
+                helper.assertTrue(
+                        player.containerMenu != player.inventoryMenu,
+                        "Source chest menu did not open before handoff"
+                );
+            }
+            initialPlanksCrafted = crafted(planks);
+            initialDoorsCrafted = crafted(door);
+            final var server = helper.getLevel().getServer();
+            coreFrames = new ServerCoreSkillFrameSource(
+                    server,
+                    player.getUUID()
+            );
+            interactionFrames =
+                    new ServerInteractionSkillFrameSource(
+                            server,
+                            player.getUUID()
+                    );
+            menuFrames = new ServerMenuSkillFrameSource(
+                    server,
+                    player.getUUID()
+            );
+            core = new ServerOwnedCoreSkillActuator(
+                    server,
+                    player.getUUID()
+            );
+            final var interactions =
+                    new ServerOwnedInteractionSkillActuator(
+                            server,
+                            player.getUUID()
+                    );
+            final var inventory = new ServerInventorySkillActuator(
+                    server,
+                    player.getUUID()
+            );
+            skill = new PrepareContainerWoodDoorSkill(
+                    player.getUUID(),
+                    core,
+                    coreFrames,
+                    interactions,
+                    interactionFrames,
+                    inventory,
+                    new ServerResourceInventorySource(
+                            server,
+                            player.getUUID()
+                    ),
+                    new ServerMenuSkillActuator(
+                            server,
+                            player.getUUID(),
+                            menuFrames
+                    ),
+                    menuFrames,
+                    ignored -> Optional.of(location(table)),
+                    ignored -> Optional.empty(),
+                    ignored -> Optional.of(location(chests.getFirst())),
+                    ignored -> completionEvidence.set(true)
+            );
+        }
+
+        private void prepareFixture(
+                final boolean northSouthGroup,
+                final int geometryVariant
+        ) {
+            final var level = helper.getLevel();
+            for (int x = -10; x <= 10; x++) {
+                for (int z = -10; z <= 10; z++) {
+                    final boolean raisedApproach = geometryVariant > 0
+                            && (northSouthGroup ? x >= 5 : z >= 5);
+                    final int floorY = raisedApproach ? 0 : -1;
+                    level.setBlockAndUpdate(
+                            origin.offset(x, floorY, z),
+                            Blocks.DIRT.defaultBlockState()
+                    );
+                    for (int y = floorY + 1; y <= 4; y++) {
+                        level.setBlockAndUpdate(
+                                origin.offset(x, y, z),
+                                Blocks.AIR.defaultBlockState()
+                        );
+                    }
+                }
+            }
+            level.setBlockAndUpdate(
+                    table,
+                    Blocks.CRAFTING_TABLE.defaultBlockState()
+            );
+            for (BlockPos chestPos : chests) {
+                level.setBlockAndUpdate(
+                        chestPos,
+                        Blocks.CHEST.defaultBlockState()
+                );
+                final var entity = level.getBlockEntity(chestPos);
+                helper.assertTrue(
+                        entity instanceof ChestBlockEntity,
+                        "Container fixture lacked a chest block entity"
+                );
+                final ChestBlockEntity chest = (ChestBlockEntity) entity;
+                chest.setItem(
+                        0,
+                        new ItemStack(wood, CHEST_START_COUNT)
+                );
+                chest.setChanged();
+            }
+            player.setGameMode(GameType.SURVIVAL);
+            player.getInventory().clearContent();
+            player.getEnderChestInventory().clearContent();
+            player.getInventory().setSelectedSlot(0);
+            player.inventoryMenu.broadcastChanges();
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.setDeltaMovement(Vec3.ZERO);
+            player.teleportTo(
+                    northSouthGroup
+                        ? origin.getX() + 6.5
+                        : origin.getX() + 0.5,
+                    origin.getY() + (geometryVariant > 0 ? 1.0 : 0.0),
+                    northSouthGroup
+                        ? origin.getZ() + 0.5
+                        : origin.getZ() + 6.5
+            );
+            player.setYRot(northSouthGroup ? 90.0F : 180.0F);
+            player.setYHeadRot(northSouthGroup ? 90.0F : 180.0F);
+            player.setXRot(20.0F);
+        }
+
+        private void tick() {
+            if (finished) {
+                return;
+            }
+            helper.assertTrue(
+                    helper.getTick() - createdAt
+                            <= EXECUTION_TIMEOUT_TICKS,
+                    "Container woodwork skill timed out: " + checkpoint()
+                        + ", fixtureEvidence=" + fixtureEvidence()
+            );
+            try {
+                final var observation = sampler.sample(player);
+                coreFrames.publish(observation);
+                interactionFrames.publish(observation);
+                menuFrames.publish(observation);
+                final SkillContext context = new SkillContext(
+                        1,
+                        observation.sequence(),
+                        helper.getTick(),
+                        false,
+                        true,
+                        0.0
+                );
+                if (!started) {
+                    final var rejected = skill.preconditions(
+                            context,
+                            NoParameters.INSTANCE
+                    );
+                    helper.assertTrue(
+                            rejected.isEmpty(),
+                            "Container woodwork start rejected: " + rejected
+                    );
+                    skill.start(context, NoParameters.INSTANCE);
+                    started = true;
+                }
+                final SkillTickResult result = skill.tick(
+                        context,
+                        NoParameters.INSTANCE
+                );
+                if (result.status() == SkillTickResult.Status.FAILED) {
+                    finished = true;
+                    helper.assertTrue(
+                            false,
+                            "Container woodwork skill failed: "
+                                    + result.failure()
+                                    + ", checkpoint=" + checkpoint()
+                                    + ", doorEvidence=" + doorEvidence()
+                    );
+                } else if (result.status()
+                        == SkillTickResult.Status.COMPLETED) {
+                    verifyCompletion();
+                }
+            } finally {
+                if (!finished) {
+                    core.postServerTick();
+                }
+            }
+        }
+
+        private void verifyCompletion() {
+            for (BlockPos chestPos : chests) {
+                final ChestBlockEntity chest =
+                        (ChestBlockEntity) helper.getLevel()
+                                .getBlockEntity(chestPos);
+                helper.assertTrue(
+                        chest.getItem(0).is(wood)
+                                && chest.getItem(0).getCount()
+                                    == CHEST_START_COUNT - 1,
+                        "A chest did not lose exactly one wood item: "
+                                + chestPos + "=" + chest.getItem(0)
+                );
+            }
+            helper.assertTrue(
+                    player.getInventory().countItem(wood) == 0,
+                    "Withdrawn wood was not fully crafted into planks"
+            );
+            helper.assertTrue(
+                    crafted(planks) >= initialPlanksCrafted + 4,
+                    "Four ordinary plank recipes were not completed"
+            );
+            helper.assertTrue(
+                    crafted(door) > initialDoorsCrafted,
+                    "The door did not come from an ordinary recipe"
+            );
+            helper.assertTrue(
+                    helper.getLevel().getBlockState(expectedDoor)
+                            .is(doorBlock),
+                    "The matching door was not placed three blocks in front: "
+                            + expectedDoor
+            );
+            helper.assertTrue(
+                    completionEvidence.get(),
+                    "Door placement completed without route evidence"
+            );
+            finished = true;
+            helper.succeed();
+        }
+
+        private int crafted(final Item item) {
+            return player.getStats().getValue(
+                    net.minecraft.stats.Stats.ITEM_CRAFTED.get(item)
+            );
+        }
+
+        private VerifiedFixtureLocation location(
+                final BlockPos position
+        ) {
+            return new VerifiedFixtureLocation(
+                    helper.getLevel().dimension()
+                            .identifier().toString(),
+                    position.getX(),
+                    position.getY(),
+                    position.getZ()
+            );
+        }
+
+        private String checkpoint() {
+            return skill.checkpoint(
+                    new SkillContext(
+                            1,
+                            0,
+                            helper.getTick(),
+                            false,
+                            true,
+                            0.0
+                    ),
+                    NoParameters.INSTANCE
+            ).payload();
+        }
+
+        private String doorEvidence() {
+            final var frame = coreFrames.current().orElse(null);
+            if (frame == null) {
+                return "missing-frame";
+            }
+            final GridPos lower = new GridPos(
+                    expectedDoor.getX(),
+                    expectedDoor.getY(),
+                    expectedDoor.getZ()
+            );
+            return "expected=" + expectedDoor
+                    + ",body=" + frame.position()
+                    + ",navRevision=" + frame.navigation().revision()
+                    + ",lower=" + frame.navigation().voxelAt(lower)
+                    + ",upper="
+                    + frame.navigation().voxelAt(lower.above());
+        }
+
+        private String fixtureEvidence() {
+            final var frame = coreFrames.current();
+            if (frame.isEmpty()) {
+                return "frame=missing,body=" + player.position();
+            }
+            final var current = frame.orElseThrow();
+            return "body=" + current.position()
+                    + ",look=" + current.lookDirection()
+                    + ",navRevision=" + current.navigation().revision()
+                    + ",visibleChests=" + current.visibleBlockFaces()
+                        .stream()
+                        .filter(face -> face.blockTypeId()
+                                .equals("minecraft:chest"))
+                        .map(face -> face.block() + "/" + face.face()
+                                + "/" + face.distance())
+                        .toList()
+                    + ",expectedChests=" + chests;
+        }
+
+        private void cleanup() {
+            if (cleaned) {
+                return;
+            }
+            cleaned = true;
+            core.quiesceNow();
+            if (player.containerMenu != player.inventoryMenu) {
+                player.closeContainer();
+            }
+        }
     }
 
     private static final class Scenario {

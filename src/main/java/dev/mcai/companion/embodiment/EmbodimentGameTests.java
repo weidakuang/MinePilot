@@ -3516,6 +3516,136 @@ public final class EmbodimentGameTests {
     }
 
     @GameTest(
+        name = "container_wood_door_spruce",
+        environment = "exclusive_container_wood_door_spruce",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 6_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void containerWoodDoorSpruce(
+            final GameTestHelper helper
+    ) {
+        FoundationGameTests.containerWoodDoorSpruce(helper);
+    }
+
+    @GameTest(
+        name = "container_wood_door_warped",
+        environment = "exclusive_container_wood_door_warped",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 6_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void containerWoodDoorWarped(
+            final GameTestHelper helper
+    ) {
+        FoundationGameTests.containerWoodDoorWarped(helper);
+    }
+
+    @GameTest(
+        name = "container_wood_door_oak",
+        environment = "exclusive_container_wood_door_oak",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 6_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void containerWoodDoorOak(final GameTestHelper helper) {
+        FoundationGameTests.containerWoodDoorOak(helper);
+    }
+
+    @GameTest(
+        name = "container_wood_door_birch",
+        environment = "exclusive_container_wood_door_birch",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 6_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void containerWoodDoorBirch(final GameTestHelper helper) {
+        FoundationGameTests.containerWoodDoorBirch(helper);
+    }
+
+    @GameTest(
+        name = "container_wood_door_jungle",
+        environment = "exclusive_container_wood_door_jungle",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 6_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void containerWoodDoorJungle(final GameTestHelper helper) {
+        FoundationGameTests.containerWoodDoorJungle(helper);
+    }
+
+    @GameTest(
+        name = "container_wood_door_acacia",
+        environment = "exclusive_container_wood_door_acacia",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 6_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void containerWoodDoorAcacia(final GameTestHelper helper) {
+        FoundationGameTests.containerWoodDoorAcacia(helper);
+    }
+
+    @GameTest(
+        name = "container_wood_door_dark_oak",
+        environment = "exclusive_container_wood_door_dark_oak",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 6_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void containerWoodDoorDarkOak(
+            final GameTestHelper helper
+    ) {
+        FoundationGameTests.containerWoodDoorDarkOak(helper);
+    }
+
+    @GameTest(
+        name = "container_wood_door_mangrove",
+        environment = "exclusive_container_wood_door_mangrove",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 6_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void containerWoodDoorMangrove(
+            final GameTestHelper helper
+    ) {
+        FoundationGameTests.containerWoodDoorMangrove(helper);
+    }
+
+    @GameTest(
+        name = "container_wood_door_cherry",
+        environment = "exclusive_container_wood_door_cherry",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 6_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void containerWoodDoorCherry(final GameTestHelper helper) {
+        FoundationGameTests.containerWoodDoorCherry(helper);
+    }
+
+    @GameTest(
+        name = "container_wood_door_crimson",
+        environment = "exclusive_container_wood_door_crimson",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 6_000,
+        skyAccess = true,
+        padding = 8
+    )
+    public static void containerWoodDoorCrimson(
+            final GameTestHelper helper
+    ) {
+        FoundationGameTests.containerWoodDoorCrimson(helper);
+    }
+
+    @GameTest(
         name = "shelter_material_wood_exploration",
         environment = "exclusive_shelter_material_wood_exploration",
         structure = FOCUSED_TEST_STRUCTURE,
@@ -4252,6 +4382,25 @@ public final class EmbodimentGameTests {
     ) {
         LiveModelChatGameTests
                 .realPlayerChatToLiveModelDistributedLogStorage(helper);
+    }
+
+    @GameTest(
+        name =
+            "real_player_chat_to_live_model_distributed_storage_and_door",
+        environment = "exclusive_live_model_foundation_bootstrap",
+        structure = FOCUSED_TEST_STRUCTURE,
+        maxTicks = 900_000,
+        skyAccess = true,
+        padding = 12
+    )
+    public static void
+            realPlayerChatToLiveModelDistributedStorageAndDoor(
+                    final GameTestHelper helper
+            ) {
+        LiveModelChatGameTests
+                .realPlayerChatToLiveModelDistributedStorageAndDoor(
+                        helper
+                );
     }
 
     @GameTest(

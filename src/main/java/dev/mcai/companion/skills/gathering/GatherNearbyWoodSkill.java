@@ -468,7 +468,7 @@ public final class GatherNearbyWoodSkill implements Skill<NoParameters> {
         exploreParameters = new ExploreForTargetParameters(
                 frame.dimension(),
                 SearchTargetKind.BLOCK,
-                "minecraft:oak_log",
+                "mcai_companion:convertible_wood",
                 SEARCH_RADIUS,
                 SEARCH_STEP
         );

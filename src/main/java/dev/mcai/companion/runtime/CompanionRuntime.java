@@ -557,6 +557,12 @@ public final class CompanionRuntime {
                     java.util.EnumSet.of(
                             SurvivalMilestone.LOG_STORAGE_DISTRIBUTED
                     )
+            ),
+            revision -> worldData.markVerifiedRouteMilestones(
+                    revision,
+                    java.util.EnumSet.of(
+                            SurvivalMilestone.CONTAINER_WOOD_DOOR_PLACED
+                    )
             )
         );
         BridgeSkills.registerAll(

@@ -61,6 +61,7 @@ public final class CompanionConversationCoordinator
     private static final int MAX_HISTORY_TURNS = 16;
     private static final int MAX_MESSAGE_CODE_POINTS = 512;
     private static final int MAX_OUTPUT_TOKENS = 384;
+    private static final int TASK_ENCODING_MAX_OUTPUT_TOKENS = 1_024;
     private static final int MAX_REPAIR_ATTEMPTS = 2;
     private static final int MAX_RATE_LIMIT_ATTEMPTS = 5;
     private static final long SCHEMA_RETRY_TICKS = 20L;
@@ -96,13 +97,18 @@ public final class CompanionConversationCoordinator
         - goalRouteProfile: NONE, FOUNDATION, or COMPLETION.
         - goalTerminalMilestone: NONE or one milestone listed below.
 
-        Use NONE/NONE for an ordinary standalone task such as follow, combat,
-        farming, building, item transfer, or travel. Use FOUNDATION for a
-        staged survival request that starts with ordinary resource gathering.
-        Choose the furthest outcome the player actually requested: BODY_ACTIVE,
+        First compare the requested physical outcome with every listed route
+        outcome below. If one matches, encode that route outcome even when the
+        task begins from existing blocks or containers. Use NONE/NONE only when
+        no listed route outcome matches, for example an ordinary standalone
+        follow, combat, farming, unrelated building, simple item transfer, or
+        travel action. Use FOUNDATION for a staged survival request or one of
+        the explicitly listed foundation compounds. Choose the furthest
+        outcome the player actually requested: BODY_ACTIVE,
         WOOD_OBTAINED, BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED, FOOD_SECURED,
         IRON_OBTAINED, IRON_TOOLKIT_OBTAINED, WORKSTATIONS_ESTABLISHED,
         SUPPLIES_STORED, LOG_STORAGE_DISTRIBUTED,
+        CONTAINER_WOOD_DOOR_PLACED,
         SHELTER_MATERIALS_PREPARED, SHELTER_COMPLETED, or
         FIRST_NIGHT_SURVIVED. A request to chop wood and obtain stone tools is
         FOUNDATION/STONE_TOOL_OBTAINED even if the player uses slang, indirect
@@ -110,6 +116,11 @@ public final class CompanionConversationCoordinator
         A request to gather thirty logs, craft four chests, and divide the
         remaining logs evenly among them is
         FOUNDATION/LOG_STORAGE_DISTRIBUTED.
+        CONTAINER_WOOD_DOOR_PLACED is a route-owned compound, not a simple item
+        transfer: a request to take one convertible wood item from each of four
+        chests, craft planks and a matching door, and place the door three
+        blocks in front of that observed chest group is
+        FOUNDATION/CONTAINER_WOOD_DOOR_PLACED.
         Use COMPLETION only for a staged route toward beating Minecraft, with
         the furthest requested outcome: BODY_ACTIVE, WOOD_OBTAINED,
         BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED, FOOD_SECURED,
@@ -156,14 +167,19 @@ public final class CompanionConversationCoordinator
 
         Return ASK_PLAYER, an empty skillName, requestedObservation NONE, and
         exactly two typed arguments: goalRouteProfile and
-        goalTerminalMilestone. Use NONE/NONE for a standalone action such as
-        following, travel, combat, farming, building, or item transfer. Use
-        FOUNDATION for staged survival from ordinary resource gathering and
-        select only the furthest requested outcome: BODY_ACTIVE,
+        goalTerminalMilestone. First compare the requested physical outcome
+        with every listed route outcome. If one matches, encode it even when
+        the task begins from existing blocks or containers. Use NONE/NONE only
+        when no listed outcome matches, for example an ordinary standalone
+        following, travel, combat, farming, unrelated building, or simple item
+        transfer action. Use FOUNDATION for staged survival from ordinary
+        resource gathering and for the listed foundation compounds; select
+        only the furthest requested outcome: BODY_ACTIVE,
         WOOD_OBTAINED, BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED,
         FOOD_SECURED, IRON_OBTAINED, IRON_TOOLKIT_OBTAINED,
         WORKSTATIONS_ESTABLISHED,
         SUPPLIES_STORED, LOG_STORAGE_DISTRIBUTED,
+        CONTAINER_WOOD_DOOR_PLACED,
         SHELTER_MATERIALS_PREPARED, SHELTER_COMPLETED, or
         FIRST_NIGHT_SURVIVED. Use COMPLETION only for a route toward beating
         Minecraft; its additional outcomes are NETHER_ENTERED,
@@ -180,6 +196,11 @@ public final class CompanionConversationCoordinator
         A request to gather thirty logs, make four chests, and evenly divide
         the remaining logs among those chests is
         FOUNDATION/LOG_STORAGE_DISTRIBUTED.
+        CONTAINER_WOOD_DOOR_PLACED is a route-owned compound rather than a
+        simple item transfer. A request to withdraw one convertible wood item
+        from each of four observed chests, craft matching planks and a matching
+        door, and place it three blocks in front of that observed group is
+        FOUNDATION/CONTAINER_WOOD_DOOR_PLACED.
 
         optionalSpeech is one short natural acknowledgement in the player's
         language. Never return START_SKILL, CONTINUE, COMPLETE_GOAL,
@@ -897,7 +918,9 @@ public final class CompanionConversationCoordinator
                         + worldData.agentSystemPrompt()
                         + "\nEND_TRUSTED_OWNER_AGENT_PREFERENCES",
                 observationJson,
-                MAX_OUTPUT_TOKENS,
+                taskEncodingOnly
+                        ? TASK_ENCODING_MAX_OUTPUT_TOKENS
+                        : MAX_OUTPUT_TOKENS,
                 worldData.temperature()
         );
         final InFlight request = new InFlight(

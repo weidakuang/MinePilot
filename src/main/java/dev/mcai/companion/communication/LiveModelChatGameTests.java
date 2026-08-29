@@ -63,6 +63,7 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.ReferenceCountUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -84,6 +85,7 @@ import net.minecraft.server.permissions.Permissions;
 import net.minecraft.server.players.NameAndId;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.NetherPortalBlock;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
@@ -101,6 +103,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.animal.cow.Cow;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.phys.Vec3;
@@ -852,6 +855,7 @@ public final class LiveModelChatGameTests {
                 .orElseThrow(() -> new IllegalStateException(
                         "Companion runtime is unavailable"
                 ));
+        resetIsolatedScenario(runtime);
         final LiveFoundationBootstrapScenario scenario =
                 new LiveFoundationBootstrapScenario(
                         helper,
@@ -884,6 +888,7 @@ public final class LiveModelChatGameTests {
                 .orElseThrow(() -> new IllegalStateException(
                         "Companion runtime is unavailable"
                 ));
+        resetIsolatedScenario(runtime);
         final LiveFoundationBootstrapScenario scenario =
                 new LiveFoundationBootstrapScenario(
                         helper,
@@ -916,10 +921,48 @@ public final class LiveModelChatGameTests {
                 .orElseThrow(() -> new IllegalStateException(
                         "Companion runtime is unavailable"
                 ));
+        resetIsolatedScenario(runtime);
         final LiveFoundationBootstrapScenario scenario =
                 new LiveFoundationBootstrapScenario(
                         helper,
                         runtime,
+                        false,
+                        false,
+                        false,
+                        true
+                );
+        helper.addCleanup(ignored -> scenario.cleanup());
+        scenario.start();
+        helper.onEachTick(scenario::tick);
+    }
+
+    /**
+     * Continues the physical distributed-storage task with a second ordinary
+     * player-chat request. The body must remove one convertible wood item
+     * from each of the four real chests, craft the resulting plank family and
+     * matching door through vanilla recipes, and place the door three blocks
+     * in front of the observed chest group.
+     */
+    public static void
+            realPlayerChatToLiveModelDistributedStorageAndDoor(
+                    final GameTestHelper helper
+            ) {
+        if (!Boolean.getBoolean("mcai.liveModelTest")) {
+            helper.succeed();
+            return;
+        }
+        final ServerRuntime runtime = CompanionRuntime.active()
+                .filter(candidate -> candidate.server()
+                        == helper.getLevel().getServer())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Companion runtime is unavailable"
+                ));
+        resetIsolatedScenario(runtime);
+        final LiveFoundationBootstrapScenario scenario =
+                new LiveFoundationBootstrapScenario(
+                        helper,
+                        runtime,
+                        false,
                         false,
                         false,
                         false,
@@ -8154,6 +8197,10 @@ public final class LiveModelChatGameTests {
                 java.time.Duration.ofMinutes(5).toNanos();
         private static final long DISTRIBUTED_STORAGE_DEADLINE_NANOS =
                 java.time.Duration.ofMinutes(8).toNanos();
+        private static final long STORAGE_AND_DOOR_DEADLINE_NANOS =
+                java.time.Duration.ofMinutes(11).toNanos();
+        private static final long CONTAINER_DOOR_DEADLINE_NANOS =
+                java.time.Duration.ofMinutes(3).toNanos();
 
         private final GameTestHelper helper;
         private final ServerRuntime runtime;
@@ -8162,6 +8209,7 @@ public final class LiveModelChatGameTests {
         private final boolean completeAfterStoneTools;
         private final boolean completeAfterIron;
         private final boolean completeAfterDistributedStorage;
+        private final boolean completeAfterContainerWoodDoor;
 
         private FoundationBootstrapStage stage =
                 FoundationBootstrapStage.BODY;
@@ -8173,6 +8221,13 @@ public final class LiveModelChatGameTests {
         private List<BlockPos> coalBlocks = List.of();
         private List<BlockPos> ironBlocks = List.of();
         private List<Cow> foodAnimals = List.of();
+        private NonOceanFixtureVariant fixtureVariant =
+                NonOceanFixtureVariant.OAK_FLAT;
+        private Block fixtureWoodBlock = Blocks.OAK_LOG;
+        private Item fixtureWoodItem = Items.OAK_LOG;
+        private Item fixturePlanksItem = Items.OAK_PLANKS;
+        private Block fixtureDoorBlock = Blocks.OAK_DOOR;
+        private Item fixtureDoorItem = Items.OAK_DOOR;
         private long stageStartedNanos;
         private long taskSubmittedNanos = -1L;
         private long goalRevisionBefore;
@@ -8203,8 +8258,15 @@ public final class LiveModelChatGameTests {
         private boolean sawStoneCraftRecipe;
         private boolean sawFoodHunt;
         private boolean sawIronToolkit;
+        private boolean sawContainerWoodDoor;
         private BlockPos autonomousWorkCenter;
         private ChunkPos autonomousAnchorChunk;
+        private List<BlockPos> containerDoorChests = List.of();
+        private Map<BlockPos, Integer> containerDoorCounts = Map.of();
+        private BlockPos expectedContainerDoor;
+        private int containerDoorInitialPlanks;
+        private int containerDoorInitialDoors;
+        private long containerDoorTaskSubmittedNanos = -1L;
 
         private LiveFoundationBootstrapScenario(
                 final GameTestHelper helper,
@@ -8269,6 +8331,26 @@ public final class LiveModelChatGameTests {
             final boolean completeAfterIron,
             final boolean completeAfterDistributedStorage
     ) {
+        this(
+                helper,
+                runtime,
+                zeroHumanFromStart,
+                completeAfterStoneTools,
+                completeAfterIron,
+                completeAfterDistributedStorage,
+                false
+        );
+    }
+
+    private LiveFoundationBootstrapScenario(
+            final GameTestHelper helper,
+            final ServerRuntime runtime,
+            final boolean zeroHumanFromStart,
+            final boolean completeAfterStoneTools,
+            final boolean completeAfterIron,
+            final boolean completeAfterDistributedStorage,
+            final boolean completeAfterContainerWoodDoor
+    ) {
             this.helper = helper;
             this.runtime = runtime;
             this.zeroHumanFromStart = zeroHumanFromStart;
@@ -8276,9 +8358,11 @@ public final class LiveModelChatGameTests {
             this.completeAfterIron = completeAfterIron;
             this.completeAfterDistributedStorage =
                     completeAfterDistributedStorage;
+            this.completeAfterContainerWoodDoor =
+                    completeAfterContainerWoodDoor;
             if ((completeAfterStoneTools ? 1 : 0)
                     + (completeAfterIron ? 1 : 0)
-                    + (completeAfterDistributedStorage ? 1 : 0) > 1) {
+                    + (storageTask() ? 1 : 0) > 1) {
                 throw new IllegalArgumentException(
                         "Only one bounded terminal may be selected"
                 );
@@ -8303,6 +8387,11 @@ public final class LiveModelChatGameTests {
             }
         }
 
+        private boolean storageTask() {
+            return completeAfterDistributedStorage
+                    || completeAfterContainerWoodDoor;
+        }
+
         private void tick() {
             if (zeroHumanFromStart) {
                 assertNoHumanPlayers(
@@ -8324,6 +8413,9 @@ public final class LiveModelChatGameTests {
                 case STONE_CRAFTING -> waitForStoneCrafting();
                 case DISTRIBUTED_STORAGE ->
                         waitForDistributedStorage();
+                case CONTAINER_DOOR_GOAL ->
+                        waitForContainerDoorGoal();
+                case CONTAINER_DOOR -> waitForContainerDoor();
                 case FOOD -> waitForFood();
                 case IRON_TOOLKIT -> waitForIronToolkit();
                 case WORKSTATIONS -> waitForWorkstations();
@@ -8399,21 +8491,21 @@ public final class LiveModelChatGameTests {
                 return;
             }
             if (++stableTicks < 8
-                    || !latestObservationSeesOakLog()) {
+                    || !latestObservationSeesFixtureWood()) {
                 helper.assertTrue(
                         System.nanoTime() - stageStartedNanos
                             <= java.time.Duration.ofSeconds(15)
                                 .toNanos(),
                         "Live-foundation semantic view never exposed "
-                            + "the oak cluster"
+                            + "the configured wood cluster"
                 );
                 return;
             }
             initialMinedLogs = body.getStats().getValue(
-                    Stats.BLOCK_MINED.get(Blocks.OAK_LOG)
+                    Stats.BLOCK_MINED.get(fixtureWoodBlock)
             );
             initialPickedUpLogs = body.getStats().getValue(
-                    Stats.ITEM_PICKED_UP.get(Items.OAK_LOG)
+                    Stats.ITEM_PICKED_UP.get(fixtureWoodItem)
             );
             initialCraftedTables = body.getStats().getValue(
                     Stats.ITEM_CRAFTED.get(Items.CRAFTING_TABLE)
@@ -8461,7 +8553,7 @@ public final class LiveModelChatGameTests {
                     Stats.ITEM_CRAFTED.get(Items.CHEST)
             );
             initialCraftedDoors = body.getStats().getValue(
-                    Stats.ITEM_CRAFTED.get(Items.OAK_DOOR)
+                    Stats.ITEM_CRAFTED.get(fixtureDoorItem)
             );
             initialCraftedTorches = body.getStats().getValue(
                     Stats.ITEM_CRAFTED.get(Items.TORCH)
@@ -8501,7 +8593,9 @@ public final class LiveModelChatGameTests {
                     runtime,
                     new Vec3(
                             autonomousWorkCenter.getX() + 0.5,
-                            autonomousWorkCenter.getY() + 1.0,
+                            autonomousWorkCenter.getY()
+                                + fixtureVariant.surfaceHeight(0, -4)
+                                + 1.0,
                             autonomousWorkCenter.getZ() - 3.5
                     )
             );
@@ -8515,7 +8609,7 @@ public final class LiveModelChatGameTests {
             );
             if (completeAfterStoneTools
                     || completeAfterIron
-                    || completeAfterDistributedStorage) {
+                    || storageTask()) {
                 taskSubmittedNanos = System.nanoTime();
             }
             final Component submitted =
@@ -8535,11 +8629,12 @@ public final class LiveModelChatGameTests {
                                             + "真正用于铁器时代的矿物原料，"
                                             + "东西实际进入背包后就停下；"
                                             + "不要使用命令。"
-                                    : completeAfterDistributedStorage
+                                    : storageTask()
                                         ? runtime.worldData().displayName()
                                             + "，请从空背包自己制作需要的"
-                                            + "工具，亲手砍下并捡起30个橡木"
-                                            + "原木；随后制作并放置4个彼此"
+                                            + "工具，亲手砍下并捡起30个眼前"
+                                            + "能制成木板的树干或菌柄；随后"
+                                            + "制作并放置4个彼此"
                                             + "独立的箱子，把剩余原木尽量"
                                             + "平均地放进这4个箱子里。完成"
                                             + "实体操作后停下，不要使用命令。"
@@ -8573,8 +8668,8 @@ public final class LiveModelChatGameTests {
                             ? goal.goal().contains("石镐")
                             : completeAfterIron
                                 ? goal.goal().contains("铁器时代")
-                            : completeAfterDistributedStorage
-                                ? goal.goal().contains("30个橡木")
+                            : storageTask()
+                                ? goal.goal().contains("30个眼前")
                                     && goal.goal().contains("4个")
                             : goal.goal().contains("安全据点")
                                 && goal.goal().contains("第二天")),
@@ -8610,7 +8705,7 @@ public final class LiveModelChatGameTests {
                         "The live model encoded the abstract iron task "
                             + "as the wrong route: " + plan
                 );
-            } else if (completeAfterDistributedStorage) {
+            } else if (storageTask()) {
                 final GoalExecutionPlan plan = GoalExecutionPlan
                         .fromDetailCode(goal.detailCode())
                         .orElseThrow(() -> new AssertionError(
@@ -8661,16 +8756,16 @@ public final class LiveModelChatGameTests {
                 sawClusterGatherer = true;
             }
             final int ownedLogs = body.getInventory()
-                    .countItem(Items.OAK_LOG);
+                    .countItem(fixtureWoodItem);
             final int pickedUpLogs = body.getStats().getValue(
-                    Stats.ITEM_PICKED_UP.get(Items.OAK_LOG)
+                    Stats.ITEM_PICKED_UP.get(fixtureWoodItem)
             ) - initialPickedUpLogs;
             final int minedLogs = body.getStats().getValue(
-                    Stats.BLOCK_MINED.get(Blocks.OAK_LOG)
+                    Stats.BLOCK_MINED.get(fixtureWoodBlock)
             ) - initialMinedLogs;
             final int requiredLogs = completeAfterStoneTools
                     ? 3
-                    : completeAfterDistributedStorage
+                    : storageTask()
                         ? 30
                     : REQUIRED_LOGS;
             final boolean milestone = runtime.worldData()
@@ -8713,7 +8808,7 @@ public final class LiveModelChatGameTests {
             }
             helper.assertTrue(
                     System.nanoTime() - stageStartedNanos
-                        <= (completeAfterDistributedStorage
+                        <= (storageTask()
                                 ? DISTRIBUTED_STORAGE_DEADLINE_NANOS
                                 : MODEL_TIMEOUT_NANOS),
                     "Live foundation bootstrap did not gather the "
@@ -8981,7 +9076,7 @@ public final class LiveModelChatGameTests {
                     helper.succeed();
                     return;
                 }
-                if (completeAfterDistributedStorage) {
+                if (storageTask()) {
                     stage = FoundationBootstrapStage.DISTRIBUTED_STORAGE;
                     stageStartedNanos = System.nanoTime();
                     return;
@@ -9099,10 +9194,10 @@ public final class LiveModelChatGameTests {
                     "Companion died during quantified log storage"
             );
             final int minedLogs = body.getStats().getValue(
-                    Stats.BLOCK_MINED.get(Blocks.OAK_LOG)
+                    Stats.BLOCK_MINED.get(fixtureWoodBlock)
             ) - initialMinedLogs;
             final int pickedLogs = body.getStats().getValue(
-                    Stats.ITEM_PICKED_UP.get(Items.OAK_LOG)
+                    Stats.ITEM_PICKED_UP.get(fixtureWoodItem)
             ) - initialPickedUpLogs;
             final int craftedChests = body.getStats().getValue(
                     Stats.ITEM_CRAFTED.get(Items.CHEST)
@@ -9166,7 +9261,7 @@ public final class LiveModelChatGameTests {
                             for (int slot = 0;
                                     slot < chest.getContainerSize(); slot++) {
                                 final ItemStack stack = chest.getItem(slot);
-                                if (stack.is(Items.OAK_LOG)) {
+                                if (stack.is(fixtureWoodItem)) {
                                     count += stack.getCount();
                                 }
                             }
@@ -9185,15 +9280,19 @@ public final class LiveModelChatGameTests {
                             + stored
                 );
                 helper.assertTrue(
-                        body.getInventory().countItem(Items.OAK_LOG) == 0
-                            && !body.getMainHandItem().is(Items.OAK_LOG)
-                            && !body.getOffhandItem().is(Items.OAK_LOG),
+                        body.getInventory().countItem(fixtureWoodItem) == 0
+                            && !body.getMainHandItem().is(fixtureWoodItem)
+                            && !body.getOffhandItem().is(fixtureWoodItem),
                         "Raw logs remained on the companion after the "
                             + "four-way transfer"
                 );
-                finishScenarioGoal(runtime);
-                stage = FoundationBootstrapStage.DONE;
-                helper.succeed();
+                if (completeAfterContainerWoodDoor) {
+                    beginContainerDoorFollowup(body, chestPositions);
+                } else {
+                    finishScenarioGoal(runtime);
+                    stage = FoundationBootstrapStage.DONE;
+                    helper.succeed();
+                }
                 return;
             }
             final GoalSnapshot goal = runtime.goals().snapshot();
@@ -9224,6 +9323,240 @@ public final class LiveModelChatGameTests {
                         + ", rejection=" + skill.lastStartRejection()
                         + ", checkpoint=" + runtime.skillSupervisor()
                             .lastCheckpointPayload().orElse("<none>")
+            );
+        }
+
+        private void beginContainerDoorFollowup(
+                final ServerPlayer body,
+                final List<BlockPos> chestPositions
+        ) {
+            finishScenarioGoal(runtime);
+            containerDoorChests = chestPositions.stream()
+                    .sorted(java.util.Comparator
+                            .<BlockPos>comparingInt(BlockPos::getY)
+                            .thenComparingInt(BlockPos::getX)
+                            .thenComparingInt(BlockPos::getZ))
+                    .toList();
+            final Map<BlockPos, Integer> counts = new HashMap<>();
+            for (BlockPos position : containerDoorChests) {
+                counts.put(position, fixtureWoodInChest(position));
+            }
+            containerDoorCounts = Map.copyOf(counts);
+            containerDoorInitialPlanks = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(fixturePlanksItem)
+            );
+            containerDoorInitialDoors = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(fixtureDoorItem)
+            );
+            expectedContainerDoor = expectedDoorFor(
+                    body,
+                    containerDoorChests
+            );
+            goalRevisionBefore = runtime.goals().snapshot().revision();
+            humanSession = PlacedHuman.create(
+                    helper,
+                    runtime,
+                    new Vec3(
+                            autonomousWorkCenter.getX() + 0.5,
+                            autonomousWorkCenter.getY()
+                                + fixtureVariant.surfaceHeight(0, -8)
+                                + 1.0,
+                            autonomousWorkCenter.getZ() - 7.5
+                    )
+            );
+            final Component submitted = ForgeHooks
+                    .onServerChatSubmittedEvent(
+                            humanSession.player(),
+                            Component.literal(
+                                    runtime.worldData().displayName()
+                                        + "，现在从刚才那4个独立箱子里"
+                                        + "每个各取出1个能制成木板的木材，"
+                                        + "用实际取出的木材合成木板和匹配"
+                                        + "的木门，再把木门放在这组箱子"
+                                        + "正前方3格处。做完实体操作后"
+                                        + "停下，不要使用命令。"
+                            )
+                    );
+            helper.assertTrue(
+                    submitted != null,
+                    "Companion cancelled the container-door chat command"
+            );
+            containerDoorTaskSubmittedNanos = System.nanoTime();
+            stage = FoundationBootstrapStage.CONTAINER_DOOR_GOAL;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForContainerDoorGoal() {
+            assertWithinModelDeadline(
+                    "Live model did not classify the container-door task"
+            );
+            final GoalSnapshot goal = runtime.goals().snapshot();
+            if (goal.revision() == goalRevisionBefore) {
+                return;
+            }
+            final GoalExecutionPlan plan = GoalExecutionPlan
+                    .fromDetailCode(goal.detailCode())
+                    .orElseThrow(() -> new AssertionError(
+                            "The live model did not encode the door route"
+                    ));
+            helper.assertTrue(
+                    plan.equals(GoalExecutionPlan.foundation(
+                            GoalExecutionPlan.Target
+                                    .CONTAINER_WOOD_DOOR_PLACED
+                    )),
+                    "The live model encoded the container-door request as "
+                        + "the wrong route: " + plan
+            );
+            helper.assertTrue(
+                    goal.goal().contains("每个各取出1个")
+                        && goal.goal().contains("正前方3格"),
+                    "The natural container-door request was not preserved"
+            );
+            if (humanSession != null) {
+                humanSession.close();
+                humanSession = null;
+            }
+            foundationGoalRevision = goal.revision();
+            stage = FoundationBootstrapStage.CONTAINER_DOOR;
+            stageStartedNanos = System.nanoTime();
+        }
+
+        private void waitForContainerDoor() {
+            assertNoHumanPlayersDuringAutonomy();
+            final Optional<ServerPlayer> bodyCandidate = AiPlayerManager
+                    .onlinePlayer(runtime.server());
+            if (bodyCandidate.isEmpty()) {
+                return;
+            }
+            final ServerPlayer body = bodyCandidate.orElseThrow();
+            helper.assertTrue(
+                    body.isAlive(),
+                    "Companion died during the container-door follow-up"
+            );
+            final var skill = runtime.skillSupervisor().snapshot();
+            if ("prepare_container_wood_door".equals(
+                    skill.skillName()
+            )) {
+                sawContainerWoodDoor = true;
+            }
+            final boolean eachChestLostOne = containerDoorChests.stream()
+                    .allMatch(position -> fixtureWoodInChest(position)
+                            == containerDoorCounts.get(position) - 1);
+            final boolean planksCrafted = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(fixturePlanksItem)
+            ) >= containerDoorInitialPlanks + 4;
+            final boolean doorCrafted = body.getStats().getValue(
+                    Stats.ITEM_CRAFTED.get(fixtureDoorItem)
+            ) >= containerDoorInitialDoors + 1;
+            final boolean doorPlaced = expectedContainerDoor != null
+                    && helper.getLevel()
+                        .getBlockState(expectedContainerDoor)
+                        .is(fixtureDoorBlock);
+            final boolean milestone = runtime.worldData()
+                    .verifiedRouteProgress(foundationGoalRevision)
+                    .milestones()
+                    .contains(
+                            SurvivalMilestone
+                                    .CONTAINER_WOOD_DOOR_PLACED
+                    );
+            if (eachChestLostOne
+                    && planksCrafted
+                    && doorCrafted
+                    && doorPlaced
+                    && milestone) {
+                helper.assertTrue(
+                        sawContainerWoodDoor,
+                        "The follow-up bypassed the production container "
+                            + "wood-door compound"
+                );
+                helper.assertTrue(
+                        body.getInventory().countItem(fixtureWoodItem) == 0
+                            && !body.getMainHandItem().is(fixtureWoodItem)
+                            && !body.getOffhandItem().is(fixtureWoodItem),
+                        "Withdrawn raw logs remained after door crafting"
+                );
+                finishScenarioGoal(runtime);
+                stage = FoundationBootstrapStage.DONE;
+                helper.succeed();
+                return;
+            }
+            helper.assertTrue(
+                    System.nanoTime() - containerDoorTaskSubmittedNanos
+                        <= CONTAINER_DOOR_DEADLINE_NANOS,
+                    "Container-door follow-up timed out: chestCounts="
+                        + containerDoorChests.stream()
+                            .map(position -> position + "="
+                                    + fixtureWoodInChest(position))
+                            .toList()
+                        + ", expectedDoor=" + expectedContainerDoor
+                        + ", doorState="
+                        + (expectedContainerDoor == null
+                            ? "missing"
+                            : helper.getLevel().getBlockState(
+                                    expectedContainerDoor
+                            ))
+                        + ", planksCrafted=" + planksCrafted
+                        + ", doorCrafted=" + doorCrafted
+                        + ", milestone=" + milestone
+                        + ", skill=" + skill.skillName()
+                        + ", rejection=" + skill.lastStartRejection()
+                        + ", checkpoint=" + runtime.skillSupervisor()
+                            .lastCheckpointPayload().orElse("<none>")
+            );
+        }
+
+        private int fixtureWoodInChest(final BlockPos position) {
+            final var entity = helper.getLevel().getBlockEntity(position);
+            helper.assertTrue(
+                    entity instanceof ChestBlockEntity,
+                    "Expected chest block entity is missing at " + position
+            );
+            final ChestBlockEntity chest = (ChestBlockEntity) entity;
+            int count = 0;
+            for (int slot = 0; slot < chest.getContainerSize(); slot++) {
+                final ItemStack stack = chest.getItem(slot);
+                if (stack.is(fixtureWoodItem)) {
+                    count += stack.getCount();
+                }
+            }
+            return count;
+        }
+
+        private static BlockPos expectedDoorFor(
+                final ServerPlayer body,
+                final List<BlockPos> chests
+        ) {
+            final double averageX = chests.stream()
+                    .mapToInt(BlockPos::getX).average().orElseThrow();
+            final double averageY = chests.stream()
+                    .mapToInt(BlockPos::getY).average().orElseThrow();
+            final double averageZ = chests.stream()
+                    .mapToInt(BlockPos::getZ).average().orElseThrow();
+            final double towardBodyX = body.getX() - (averageX + 0.5);
+            final double towardBodyZ = body.getZ() - (averageZ + 0.5);
+            final int outwardX;
+            final int outwardZ;
+            if (Math.abs(towardBodyX) >= Math.abs(towardBodyZ)
+                    && Math.abs(towardBodyX) > 0.25) {
+                outwardX = towardBodyX > 0.0 ? 1 : -1;
+                outwardZ = 0;
+            } else if (Math.abs(towardBodyZ) > 0.25) {
+                outwardX = 0;
+                outwardZ = towardBodyZ > 0.0 ? 1 : -1;
+            } else {
+                final Vec3 look = body.getLookAngle();
+                if (Math.abs(look.x()) >= Math.abs(look.z())) {
+                    outwardX = look.x() > 0.0 ? -1 : 1;
+                    outwardZ = 0;
+                } else {
+                    outwardX = 0;
+                    outwardZ = look.z() > 0.0 ? -1 : 1;
+                }
+            }
+            return new BlockPos(
+                    (int) Math.round(averageX) + outwardX * 3,
+                    (int) Math.round(averageY),
+                    (int) Math.round(averageZ) + outwardZ * 3
             );
         }
 
@@ -9578,9 +9911,9 @@ public final class LiveModelChatGameTests {
                     "Companion died while preparing shelter materials"
             );
             final int structural = body.getInventory()
-                    .countItem(Items.OAK_PLANKS);
+                    .countItem(fixturePlanksItem);
             final int doors = body.getInventory()
-                    .countItem(Items.OAK_DOOR);
+                    .countItem(fixtureDoorItem);
             final int lights = body.getInventory()
                     .countItem(Items.TORCH);
             final var skill = runtime.skillSupervisor().snapshot();
@@ -9595,7 +9928,7 @@ public final class LiveModelChatGameTests {
                         .count();
                 helper.assertTrue(
                         body.getStats().getValue(
-                            Stats.BLOCK_MINED.get(Blocks.OAK_LOG)
+                            Stats.BLOCK_MINED.get(fixtureWoodBlock)
                         ) - initialMinedLogs
                             >= REQUIRED_LOGS + minedReserveLogs,
                         "Shelter material preparation did not physically "
@@ -9608,7 +9941,7 @@ public final class LiveModelChatGameTests {
                 );
                 helper.assertTrue(
                         body.getStats().getValue(
-                            Stats.ITEM_CRAFTED.get(Items.OAK_DOOR)
+                            Stats.ITEM_CRAFTED.get(fixtureDoorItem)
                         ) - initialCraftedDoors >= 3,
                         "Shelter door did not come from its vanilla recipe"
                 );
@@ -9788,17 +10121,36 @@ public final class LiveModelChatGameTests {
                     body.getBoundingBox().inflate(48.0)
             ).forEach(Mob::discard);
             final Vec3 positionBeforeRelocation = body.position();
+            final boolean boundedRelocation = completeAfterStoneTools
+                    || completeAfterIron
+                    || storageTask();
+            final int iteration = Integer.getInteger(
+                    "mcai.testIteration",
+                    1
+            );
+            if (boundedRelocation) {
+                helper.assertTrue(
+                        iteration >= 1 && iteration <= 100,
+                        "Test iteration must be between 1 and 100"
+                );
+            }
+            fixtureVariant = boundedRelocation
+                    ? NonOceanFixtureVariant.forIteration(iteration)
+                    : NonOceanFixtureVariant.OAK_FLAT;
+            fixtureWoodBlock = fixtureVariant.woodBlock();
+            fixtureWoodItem = fixtureVariant.woodItem();
+            fixturePlanksItem = fixtureVariant.planksItem();
+            fixtureDoorBlock = fixtureVariant.doorBlock();
+            fixtureDoorItem = fixtureVariant.doorItem();
             final BlockPos center;
             if (zeroHumanFromStart) {
                 center = helper.absolutePos(
                         new BlockPos(8, 1, 8)
                 ).offset(640, 0, 0);
-            } else if (completeAfterStoneTools
-                    || completeAfterIron
-                    || completeAfterDistributedStorage) {
+            } else if (boundedRelocation) {
                 center = helper.absolutePos(
                         new BlockPos(8, 1, 8)
-                ).offset(256, 0, 192);
+                ).offset(256 + (iteration - 1) * 128, 0, 192);
             } else {
                 center = body.blockPosition()
                         .below()
@@ -9806,20 +10158,23 @@ public final class LiveModelChatGameTests {
             }
             for (int x = -10; x <= 10; x++) {
                 for (int z = -10; z <= 10; z++) {
-                    final BlockPos floor = center.offset(x, 0, z);
-                    level.setBlockAndUpdate(
-                            floor,
-                            Blocks.DIRT.defaultBlockState()
-                    );
-                    for (int y = 1; y <= 6; y++) {
+                    final int height = fixtureVariant.surfaceHeight(x, z);
+                    for (int y = -2; y <= height; y++) {
                         level.setBlockAndUpdate(
-                                floor.above(y),
+                                center.offset(x, y, z),
+                                Blocks.DIRT.defaultBlockState()
+                        );
+                    }
+                    for (int y = height + 1; y <= 8; y++) {
+                        level.setBlockAndUpdate(
+                                center.offset(x, y, z),
                                 Blocks.AIR.defaultBlockState()
                         );
                     }
                 }
             }
-            final BlockPos base = center.above();
+            fixtureVariant.placeObstacles(level, center);
+            final BlockPos base = fixtureVariant.surfaceAbove(center, 0, 0);
             logs = List.of(
                     base,
                     base.above(),
@@ -9832,7 +10187,7 @@ public final class LiveModelChatGameTests {
             );
             logs.forEach(pos -> level.setBlockAndUpdate(
                     pos,
-                    Blocks.OAK_LOG.defaultBlockState()
+                    fixtureWoodBlock.defaultBlockState()
             ));
             final List<BlockPos> preparedReserveLogs =
                     new ArrayList<>();
@@ -9852,24 +10207,31 @@ public final class LiveModelChatGameTests {
             for (int x = -9; x <= -5; x++) {
                 for (int z = -2; z <= 1; z++) {
                     preparedReserveLogs.add(
-                            base.offset(x, 0, z)
+                            fixtureVariant.surfaceAbove(center, x, z)
                     );
                 }
             }
-            if (completeAfterDistributedStorage) {
-                preparedReserveLogs.add(base.offset(-4, 0, -2));
-                preparedReserveLogs.add(base.offset(-4, 0, -1));
+            if (storageTask()) {
+                preparedReserveLogs.add(
+                        fixtureVariant.surfaceAbove(center, -4, -2)
+                );
+                preparedReserveLogs.add(
+                        fixtureVariant.surfaceAbove(center, -4, -1)
+                );
             }
             reserveLogs = List.copyOf(preparedReserveLogs);
             reserveLogs.forEach(pos -> level.setBlockAndUpdate(
                     pos,
-                    Blocks.OAK_LOG.defaultBlockState()
+                    fixtureWoodBlock.defaultBlockState()
             ));
             final List<BlockPos> preparedStone =
                     new ArrayList<>();
             for (int x = -3; x <= 0; x++) {
                 for (int y = 0; y <= 2; y++) {
-                    preparedStone.add(base.offset(x, y, 4));
+                    preparedStone.add(
+                            fixtureVariant.surfaceAbove(center, x, 4)
+                                    .above(y)
+                    );
                 }
             }
             stoneBlocks = List.copyOf(preparedStone);
@@ -9878,28 +10240,32 @@ public final class LiveModelChatGameTests {
                     Blocks.STONE.defaultBlockState()
             ));
             coalBlocks = List.of(
-                    base.offset(1, 0, 4),
-                    base.offset(1, 1, 4)
+                    fixtureVariant.surfaceAbove(center, 1, 4),
+                    fixtureVariant.surfaceAbove(center, 1, 4).above()
             );
             coalBlocks.forEach(pos -> level.setBlockAndUpdate(
                     pos,
                     Blocks.COAL_ORE.defaultBlockState()
             ));
             ironBlocks = List.of(
-                    base.offset(2, 0, 4),
-                    base.offset(2, 1, 4),
-                    base.offset(2, 2, 4),
-                    base.offset(3, 0, 4),
-                    base.offset(3, 1, 4),
-                    base.offset(3, 2, 4),
-                    base.offset(4, 0, 4)
+                    fixtureVariant.surfaceAbove(center, 2, 4),
+                    fixtureVariant.surfaceAbove(center, 2, 4).above(),
+                    fixtureVariant.surfaceAbove(center, 2, 4).above(2),
+                    fixtureVariant.surfaceAbove(center, 3, 4),
+                    fixtureVariant.surfaceAbove(center, 3, 4).above(),
+                    fixtureVariant.surfaceAbove(center, 3, 4).above(2),
+                    fixtureVariant.surfaceAbove(center, 4, 4)
             );
             ironBlocks.forEach(pos -> level.setBlockAndUpdate(
                     pos,
                     Blocks.IRON_ORE.defaultBlockState()
             ));
             final List<Cow> preparedAnimals = new ArrayList<>();
-            for (int index = 0; index < 8; index++) {
+            final int animalCount = completeAfterStoneTools
+                    || completeAfterIron
+                    || storageTask()
+                            ? 0 : 8;
+            for (int index = 0; index < animalCount; index++) {
                 final Cow cow = EntityTypes.COW.create(
                         level,
                         EntitySpawnReason.COMMAND
@@ -9939,7 +10305,9 @@ public final class LiveModelChatGameTests {
             body.getFoodData().setFoodLevel(20);
             body.teleportTo(
                     center.getX() + 0.5,
-                    center.getY() + 1.0,
+                    center.getY()
+                        + fixtureVariant.surfaceHeight(0, -4)
+                        + 1.0,
                     center.getZ() - 3.5
             );
             autonomousWorkCenter = center.immutable();
@@ -9948,7 +10316,7 @@ public final class LiveModelChatGameTests {
             body.fallDistance = 0.0F;
             if (completeAfterStoneTools
                     || completeAfterIron
-                    || completeAfterDistributedStorage) {
+                    || storageTask()) {
                 helper.assertTrue(
                         positionBeforeRelocation.distanceToSqr(
                                 body.position()
@@ -9981,7 +10349,7 @@ public final class LiveModelChatGameTests {
         private void assertFastTerminalDeadline() {
             if (!(completeAfterStoneTools
                     || completeAfterIron
-                    || completeAfterDistributedStorage)
+                    || storageTask())
                     || taskSubmittedNanos < 0L
                     || stage == FoundationBootstrapStage.DONE) {
                 return;
@@ -9990,7 +10358,9 @@ public final class LiveModelChatGameTests {
                     ? FAST_STONE_TOOLS_DEADLINE_NANOS
                     : completeAfterIron
                         ? FAST_IRON_DEADLINE_NANOS
-                        : DISTRIBUTED_STORAGE_DEADLINE_NANOS;
+                        : completeAfterContainerWoodDoor
+                            ? STORAGE_AND_DOOR_DEADLINE_NANOS
+                            : DISTRIBUTED_STORAGE_DEADLINE_NANOS;
             helper.assertTrue(
                     System.nanoTime() - taskSubmittedNanos
                         <= deadline,
@@ -10078,7 +10448,7 @@ public final class LiveModelChatGameTests {
             );
         }
 
-        private boolean latestObservationSeesOakLog() {
+        private boolean latestObservationSeesFixtureWood() {
             final Optional<String> semantic =
                     runtime.observations().latestSemanticJson();
             if (semantic.isEmpty()) {
@@ -10088,9 +10458,12 @@ public final class LiveModelChatGameTests {
                 final var root = JsonParser
                         .parseString(semantic.orElseThrow())
                         .getAsJsonObject();
+                final String expectedId = BuiltInRegistries.BLOCK
+                        .getKey(fixtureWoodBlock)
+                        .toString();
                 for (var element
                         : root.getAsJsonArray("visibleBlockFaces")) {
-                    if ("minecraft:oak_log".equals(
+                    if (expectedId.equals(
                             element.getAsJsonObject()
                                 .get("type").getAsString()
                     )) {
@@ -10191,6 +10564,238 @@ public final class LiveModelChatGameTests {
         }
     }
 
+    /**
+     * Ten deterministic land fixtures used by the repeated black-box gates.
+     * Only the test world builder knows these variants. Production skills see
+     * the same first-person semantic frames they receive in an ordinary world
+     * and must discover the wood family, terrain, and route at runtime.
+     */
+    private enum NonOceanFixtureVariant {
+        OAK_FLAT(
+                Blocks.OAK_LOG,
+                Items.OAK_LOG,
+                Items.OAK_PLANKS,
+                Blocks.OAK_DOOR,
+                Items.OAK_DOOR,
+                Blocks.OAK_LEAVES,
+                TerrainShape.FLAT
+        ),
+        SPRUCE_CROSS_SLOPE(
+                Blocks.SPRUCE_LOG,
+                Items.SPRUCE_LOG,
+                Items.SPRUCE_PLANKS,
+                Blocks.SPRUCE_DOOR,
+                Items.SPRUCE_DOOR,
+                Blocks.SPRUCE_LEAVES,
+                TerrainShape.CROSS_SLOPE
+        ),
+        BIRCH_SHALLOW_BASIN(
+                Blocks.BIRCH_LOG,
+                Items.BIRCH_LOG,
+                Items.BIRCH_PLANKS,
+                Blocks.BIRCH_DOOR,
+                Items.BIRCH_DOOR,
+                Blocks.BIRCH_LEAVES,
+                TerrainShape.SHALLOW_BASIN
+        ),
+        JUNGLE_LONG_SLOPE(
+                Blocks.JUNGLE_LOG,
+                Items.JUNGLE_LOG,
+                Items.JUNGLE_PLANKS,
+                Blocks.JUNGLE_DOOR,
+                Items.JUNGLE_DOOR,
+                Blocks.JUNGLE_LEAVES,
+                TerrainShape.LONG_SLOPE
+        ),
+        ACACIA_LOW_RIDGE(
+                Blocks.ACACIA_LOG,
+                Items.ACACIA_LOG,
+                Items.ACACIA_PLANKS,
+                Blocks.ACACIA_DOOR,
+                Items.ACACIA_DOOR,
+                Blocks.ACACIA_LEAVES,
+                TerrainShape.LOW_RIDGE
+        ),
+        DARK_OAK_TERRACES(
+                Blocks.DARK_OAK_LOG,
+                Items.DARK_OAK_LOG,
+                Items.DARK_OAK_PLANKS,
+                Blocks.DARK_OAK_DOOR,
+                Items.DARK_OAK_DOOR,
+                Blocks.DARK_OAK_LEAVES,
+                TerrainShape.TERRACES
+        ),
+        MANGROVE_BROKEN_GROUND(
+                Blocks.MANGROVE_LOG,
+                Items.MANGROVE_LOG,
+                Items.MANGROVE_PLANKS,
+                Blocks.MANGROVE_DOOR,
+                Items.MANGROVE_DOOR,
+                Blocks.MANGROVE_LEAVES,
+                TerrainShape.BROKEN_GROUND
+        ),
+        CHERRY_ROLLING_GROUND(
+                Blocks.CHERRY_LOG,
+                Items.CHERRY_LOG,
+                Items.CHERRY_PLANKS,
+                Blocks.CHERRY_DOOR,
+                Items.CHERRY_DOOR,
+                Blocks.CHERRY_LEAVES,
+                TerrainShape.ROLLING_GROUND
+        ),
+        CRIMSON_STEPPED_GROUND(
+                Blocks.CRIMSON_STEM,
+                Items.CRIMSON_STEM,
+                Items.CRIMSON_PLANKS,
+                Blocks.CRIMSON_DOOR,
+                Items.CRIMSON_DOOR,
+                Blocks.NETHER_WART_BLOCK,
+                TerrainShape.STEPPED_GROUND
+        ),
+        WARPED_OFFSET_RIDGE(
+                Blocks.WARPED_STEM,
+                Items.WARPED_STEM,
+                Items.WARPED_PLANKS,
+                Blocks.WARPED_DOOR,
+                Items.WARPED_DOOR,
+                Blocks.WARPED_WART_BLOCK,
+                TerrainShape.OFFSET_RIDGE
+        );
+
+        private final Block woodBlock;
+        private final Item woodItem;
+        private final Item planksItem;
+        private final Block doorBlock;
+        private final Item doorItem;
+        private final Block canopyBlock;
+        private final TerrainShape terrainShape;
+
+        NonOceanFixtureVariant(
+                final Block woodBlock,
+                final Item woodItem,
+                final Item planksItem,
+                final Block doorBlock,
+                final Item doorItem,
+                final Block canopyBlock,
+                final TerrainShape terrainShape
+        ) {
+            this.woodBlock = woodBlock;
+            this.woodItem = woodItem;
+            this.planksItem = planksItem;
+            this.doorBlock = doorBlock;
+            this.doorItem = doorItem;
+            this.canopyBlock = canopyBlock;
+            this.terrainShape = terrainShape;
+        }
+
+        static NonOceanFixtureVariant forIteration(final int iteration) {
+            final NonOceanFixtureVariant[] variants = values();
+            return variants[Math.floorMod(iteration - 1, variants.length)];
+        }
+
+        Block woodBlock() {
+            return woodBlock;
+        }
+
+        Item woodItem() {
+            return woodItem;
+        }
+
+        Item planksItem() {
+            return planksItem;
+        }
+
+        Block doorBlock() {
+            return doorBlock;
+        }
+
+        Item doorItem() {
+            return doorItem;
+        }
+
+        int surfaceHeight(final int x, final int z) {
+            return terrainShape.surfaceHeight(x, z);
+        }
+
+        BlockPos surfaceAbove(
+                final BlockPos center,
+                final int x,
+                final int z
+        ) {
+            return center.offset(x, surfaceHeight(x, z) + 1, z);
+        }
+
+        void placeObstacles(
+                final net.minecraft.server.level.ServerLevel level,
+                final BlockPos center
+        ) {
+            final BlockPos trunkTop = surfaceAbove(center, 0, 0).above(3);
+            level.setBlockAndUpdate(
+                    trunkTop.east(2),
+                    canopyBlock.defaultBlockState()
+            );
+            level.setBlockAndUpdate(
+                    trunkTop.west(2),
+                    canopyBlock.defaultBlockState()
+            );
+            level.setBlockAndUpdate(
+                    trunkTop.north(2),
+                    canopyBlock.defaultBlockState()
+            );
+            if (this != OAK_FLAT) {
+                final BlockPos boulder = surfaceAbove(center, 6, -1);
+                level.setBlockAndUpdate(
+                        boulder,
+                        Blocks.COBBLESTONE.defaultBlockState()
+                );
+                if (ordinal() % 2 == 0) {
+                    level.setBlockAndUpdate(
+                            boulder.above(),
+                            Blocks.COBBLESTONE.defaultBlockState()
+                    );
+                }
+            }
+        }
+    }
+
+    private enum TerrainShape {
+        FLAT,
+        CROSS_SLOPE,
+        SHALLOW_BASIN,
+        LONG_SLOPE,
+        LOW_RIDGE,
+        TERRACES,
+        BROKEN_GROUND,
+        ROLLING_GROUND,
+        STEPPED_GROUND,
+        OFFSET_RIDGE;
+
+        int surfaceHeight(final int x, final int z) {
+            return switch (this) {
+                case FLAT -> 0;
+                case CROSS_SLOPE -> x >= 5 ? 1 : x <= -5 ? -1 : 0;
+                case SHALLOW_BASIN ->
+                        Math.abs(x) <= 2 && Math.abs(z) <= 2 ? -1 : 0;
+                case LONG_SLOPE -> z >= 5 ? 1 : z <= -6 ? -1 : 0;
+                case LOW_RIDGE ->
+                        Math.abs(z - 1) <= 1 && Math.abs(x) >= 3 ? 1 : 0;
+                case TERRACES -> x >= 6 ? 2 : x >= 2 ? 1
+                        : x <= -7 ? -1 : 0;
+                case BROKEN_GROUND ->
+                        Math.abs(x) >= 7 && (x + z) % 3 == 0 ? -1 : 0;
+                case ROLLING_GROUND ->
+                        Math.abs(x - 5) + Math.abs(z + 3) <= 3 ? 1
+                                : Math.abs(x + 5) + Math.abs(z - 3) <= 2
+                                    ? -1 : 0;
+                case STEPPED_GROUND -> z >= 6 ? 2 : z >= 2 ? 1
+                        : z <= -7 ? -1 : 0;
+                case OFFSET_RIDGE ->
+                        Math.abs(x + z - 3) <= 1 && Math.abs(x) >= 3
+                                ? 1 : 0;
+            };
+        }
+    }
+
     private enum FoundationBootstrapStage {
         BODY,
         PROBE,
@@ -10201,6 +10806,8 @@ public final class LiveModelChatGameTests {
         STONE_GATHERING,
         STONE_CRAFTING,
         DISTRIBUTED_STORAGE,
+        CONTAINER_DOOR_GOAL,
+        CONTAINER_DOOR,
         FOOD,
         IRON_TOOLKIT,
         WORKSTATIONS,

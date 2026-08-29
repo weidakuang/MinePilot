@@ -40,6 +40,7 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
             "prepare_basic_crafting",
             "prepare_stone_tools",
             "prepare_distributed_log_storage",
+            "prepare_container_wood_door",
             "prepare_iron_toolkit",
             "establish_foundation_workstations",
             "prepare_foundation_shelter_materials",
@@ -688,6 +689,8 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                     Set.of("prepare_stone_tools");
             case "DISTRIBUTE_LOG_STORAGE" ->
                     Set.of("prepare_distributed_log_storage");
+            case "RETRIEVE_CONTAINER_WOOD_AND_PLACE_DOOR" ->
+                    Set.of("prepare_container_wood_door");
             case "SECURE_FOOD_RESERVE" ->
                     Set.of("secure_visible_food_reserve");
             case "ACQUIRE_IRON_TOOLKIT" ->
@@ -719,6 +722,7 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                 "PREPARE_BASIC_CRAFTING",
                 "CRAFT_AND_MINE_STONE",
                 "DISTRIBUTE_LOG_STORAGE",
+                "RETRIEVE_CONTAINER_WOOD_AND_PLACE_DOOR",
                 "SECURE_FOOD_RESERVE",
                 "ACQUIRE_IRON_TOOLKIT"
         ).contains(currentObjective)) {
@@ -888,6 +892,8 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                     Set.of("prepare_stone_tools");
             case "DISTRIBUTE_LOG_STORAGE" ->
                     Set.of("prepare_distributed_log_storage");
+            case "RETRIEVE_CONTAINER_WOOD_AND_PLACE_DOOR" ->
+                    Set.of("prepare_container_wood_door");
             case "SECURE_FOOD_RESERVE" ->
                     Set.of("secure_visible_food_reserve");
             case "ACQUIRE_IRON_TOOLKIT" ->
@@ -3188,6 +3194,18 @@ public final class MinecraftPlannerInputFactory implements PlannerInputFactory {
                     divides every remaining owned raw log through exact
                     vanilla chest-menu transfers. Do not claim completion
                     from speech or inventory estimates.
+                    """;
+                case "RETRIEVE_CONTAINER_WOOD_AND_PLACE_DOOR" -> """
+                    Current verified teammate phase:
+                    RETRIEVE_CONTAINER_WOOD_AND_PLACE_DOOR. Choose
+                    prepare_container_wood_door with no arguments now. The
+                    local transaction discovers four independent chests only
+                    through current first-person evidence, withdraws exactly
+                    one convertible wood item from each ordinary chest menu,
+                    resolves the actual wood-family recipes, and places the
+                    matching door three blocks toward the observed front side
+                    of the chest group. Do not invent coordinates or assume
+                    oak, an Overworld biome, or a fixed layout.
                     """;
                 case "SECURE_FOOD_RESERVE" -> """
                     Current verified M1 phase: SECURE_FOOD_RESERVE.

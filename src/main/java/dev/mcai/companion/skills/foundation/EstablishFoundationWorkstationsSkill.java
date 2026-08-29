@@ -89,6 +89,7 @@ public final class EstablishFoundationWorkstationsSkill
     private static final int MAXIMUM_FIXTURE_NO_PROGRESS_TICKS = 100;
     private static final double RELIABLE_INTERACTION_DISTANCE = 3.75;
     private static final double APPROACH_RADIUS = 3.0;
+    private static final double FIXTURE_MOVE_ARRIVAL_RADIUS = 0.75;
     private static final int SCAN_INTERVAL_TICKS = 4;
     private static final int MAXIMUM_SCAN_TURNS = 48;
     private static final double MINIMUM_PLACEMENT_DISTANCE = 1.35;
@@ -128,6 +129,7 @@ public final class EstablishFoundationWorkstationsSkill
             knownStorage;
     private final int requiredChestCount;
     private final boolean distributeOwnedLogs;
+    private final boolean retrieveContainerLogsAndPlaceDoor;
     private final LongConsumer completionEvidence;
 
     private Phase phase = Phase.IDLE;
@@ -162,6 +164,24 @@ public final class EstablishFoundationWorkstationsSkill
     private int remainingLogDeposit;
     private long distributionTransferSampleSequence = -1L;
     private boolean completionEvidenceRecorded;
+    private final List<BlockCoordinate> observedChestPositions =
+            new ArrayList<>();
+    private final List<BlockCoordinate> withdrawalChestPositions =
+            new ArrayList<>();
+    private final List<String> withdrawnWoodItems = new ArrayList<>();
+    private PerceptionVec3 taskStartPosition;
+    private int withdrawalChestIndex;
+    private int withdrawalSourceSlot = -1;
+    private int withdrawalSourceCount = -1;
+    private long withdrawalSampleSequence = -1L;
+    private String pendingWithdrawnWoodItem = "";
+    private int withdrawnPlankCraftIndex;
+    private String selectedPlankItemId = "";
+    private String selectedDoorItemId = "";
+    private int initialDoorCount;
+    private BlockCoordinate expectedDoorPosition;
+    private int doorOutwardX;
+    private int doorOutwardZ;
 
     public EstablishFoundationWorkstationsSkill(
             final UUID expectedPlayerId,
@@ -194,6 +214,7 @@ public final class EstablishFoundationWorkstationsSkill
                 knownFurnace,
                 knownStorage,
                 1,
+                false,
                 false,
                 ignored -> { }
         );
@@ -232,6 +253,45 @@ public final class EstablishFoundationWorkstationsSkill
                 knownStorage,
                 DISTRIBUTED_STORAGE_CHESTS,
                 true,
+                false,
+                completionEvidence
+        );
+    }
+
+    static EstablishFoundationWorkstationsSkill containerWoodDoor(
+            final UUID expectedPlayerId,
+            final CoreSkillActuator core,
+            final CoreSkillFrameSource coreFrames,
+            final InteractionSkillActuator interactions,
+            final InteractionSkillFrameSource interactionFrames,
+            final InventorySkillActuator inventory,
+            final ResourceInventorySource resourceInventory,
+            final MenuSkillActuator menus,
+            final MenuSkillFrameSource menuFrames,
+            final LongFunction<Optional<VerifiedFixtureLocation>>
+                    knownCraftingTable,
+            final LongFunction<Optional<VerifiedFixtureLocation>>
+                    knownFurnace,
+            final LongFunction<Optional<VerifiedFixtureLocation>>
+                    knownStorage,
+            final LongConsumer completionEvidence
+    ) {
+        return new EstablishFoundationWorkstationsSkill(
+                expectedPlayerId,
+                core,
+                coreFrames,
+                interactions,
+                interactionFrames,
+                inventory,
+                resourceInventory,
+                menus,
+                menuFrames,
+                knownCraftingTable,
+                knownFurnace,
+                knownStorage,
+                DISTRIBUTED_STORAGE_CHESTS,
+                false,
+                true,
                 completionEvidence
         );
     }
@@ -254,6 +314,7 @@ public final class EstablishFoundationWorkstationsSkill
                     knownStorage,
             final int requiredChestCount,
             final boolean distributeOwnedLogs,
+            final boolean retrieveContainerLogsAndPlaceDoor,
             final LongConsumer completionEvidence
     ) {
         this.expectedPlayerId = Objects.requireNonNull(
@@ -297,6 +358,13 @@ public final class EstablishFoundationWorkstationsSkill
         }
         this.requiredChestCount = requiredChestCount;
         this.distributeOwnedLogs = distributeOwnedLogs;
+        this.retrieveContainerLogsAndPlaceDoor =
+                retrieveContainerLogsAndPlaceDoor;
+        if (distributeOwnedLogs && retrieveContainerLogsAndPlaceDoor) {
+            throw new IllegalArgumentException(
+                    "Storage modes are mutually exclusive"
+            );
+        }
         this.completionEvidence = Objects.requireNonNull(
                 completionEvidence,
                 "completionEvidence"
@@ -349,6 +417,18 @@ public final class EstablishFoundationWorkstationsSkill
         );
         if (unsafe.isPresent()) {
             return unsafe;
+        }
+        if (retrieveContainerLogsAndPlaceDoor) {
+            /*
+             * This compound starts by discovering and opening the four
+             * observed containers. Requiring the crafting table to already
+             * be visible or remembered makes a perfectly valid continuation
+             * impossible whenever the preceding use-block action has left a
+             * chest menu open. The compound has its own fair FIND_TABLE scan
+             * after withdrawal, so absence of table evidence at admission is
+             * not a valid precondition failure.
+             */
+            return Optional.empty();
         }
         if (!distributeOwnedLogs
                 && hasStorageEvidence(context, frame)) {
@@ -407,7 +487,32 @@ public final class EstablishFoundationWorkstationsSkill
         remainingLogDeposit = 0;
         distributionTransferSampleSequence = -1L;
         completionEvidenceRecorded = false;
-        if (!distributeOwnedLogs
+        observedChestPositions.clear();
+        withdrawalChestPositions.clear();
+        withdrawnWoodItems.clear();
+        taskStartPosition = frame.position();
+        withdrawalChestIndex = 0;
+        withdrawalSourceSlot = -1;
+        withdrawalSourceCount = -1;
+        withdrawalSampleSequence = -1L;
+        pendingWithdrawnWoodItem = "";
+        withdrawnPlankCraftIndex = 0;
+        selectedPlankItemId = "";
+        selectedDoorItemId = "";
+        initialDoorCount = 0;
+        expectedDoorPosition = null;
+        doorOutwardX = 0;
+        doorOutwardZ = 0;
+        if (retrieveContainerLogsAndPlaceDoor) {
+            /*
+             * A player can issue the compound while looking inside one of
+             * the source chests. Return to an ordinary first-person world
+             * view before sampling the group; the close still goes through
+             * the normal bound menu transaction.
+             */
+            closeOpenMenuBestEffort();
+            beginScan(context, frame, Phase.DISCOVER_CHESTS);
+        } else if (!distributeOwnedLogs
                 && hasStorageEvidence(context, frame)) {
             beginScan(context, frame, Phase.FIND_CHEST);
         } else if (!distributeOwnedLogs && ownsChest(frame)) {
@@ -546,9 +651,15 @@ public final class EstablishFoundationWorkstationsSkill
             return fail(unsafe.orElseThrow());
         }
         return switch (phase) {
+            case DISCOVER_CHESTS -> discoverWithdrawalChests(
+                    context,
+                    frame
+            );
             case PREPARE_MATERIALS ->
                     prepareMaterials(context);
             case PREPARE_PLANKS -> preparePlanks(context, frame);
+            case PREPARE_WITHDRAWN_PLANKS ->
+                    prepareWithdrawnPlanks(context, frame);
             case FIND_TABLE -> findTarget(
                     context,
                     frame,
@@ -564,6 +675,11 @@ public final class EstablishFoundationWorkstationsSkill
             case CONFIRM_TABLE_MENU ->
                     confirmTableMenu(context);
             case CRAFT_CHEST -> craftChest(context);
+            case CRAFT_DOOR -> craftDoor(context);
+            case CONFIRM_DOOR_ITEM -> confirmDoorItem(
+                    context,
+                    frame
+            );
             case CONFIRM_CHEST_ITEM ->
                     confirmChestItem(context, frame);
             case CLOSE_TABLE -> closeTable(context);
@@ -593,7 +709,22 @@ public final class EstablishFoundationWorkstationsSkill
             case RECLAIM_CHEST ->
                     reclaimChest(context, frame);
             case DEPOSIT_SURPLUS -> depositSurplus(context);
+            case WITHDRAW_LOG -> withdrawOneLog(context);
+            case CONFIRM_WITHDRAW_LOG -> confirmWithdrawnLog(
+                    context
+            );
             case CLOSE_CHEST -> closeChest(context);
+            case FIND_DOOR_SUPPORT -> findDoorSupport(
+                    context,
+                    frame
+            );
+            case EQUIP_DOOR -> equipDoor(context, frame);
+            case AIM_DOOR_SUPPORT -> aimDoorSupport(
+                    context,
+                    frame
+            );
+            case PLACE_DOOR -> placeDoor(context);
+            case CONFIRM_DOOR -> confirmDoor(context, frame);
             case FINISH -> complete(context);
             default -> fail(NAME + ".invalid_state");
         };
@@ -664,7 +795,12 @@ public final class EstablishFoundationWorkstationsSkill
     ) {
         if (fixture == Fixture.TABLE
                 && inventory.hasThreeByThreeCraftingMenu()) {
-            return transition(context, Phase.CRAFT_CHEST);
+            return transition(
+                    context,
+                    retrieveContainerLogsAndPlaceDoor
+                            ? Phase.CRAFT_DOOR
+                            : Phase.CRAFT_CHEST
+            );
         }
         final Optional<VisibleBlockFace> crosshair =
                 interactionFrames.currentCrosshairBlock()
@@ -705,6 +841,22 @@ public final class EstablishFoundationWorkstationsSkill
                             ? Phase.AIM_TABLE
                             : Phase.AIM_CHEST
             );
+        }
+        if (fixture == Fixture.CHEST
+                && expectedChestPosition != null) {
+            final double distance = center(expectedChestPosition)
+                    .subtract(frame.position())
+                    .length();
+            if (distance > APPROACH_RADIUS) {
+                return beginFixtureApproach(
+                        context,
+                        frame,
+                        fixture,
+                        expectedChestPosition.x(),
+                        expectedChestPosition.y(),
+                        expectedChestPosition.z()
+                );
+            }
         }
         final Optional<VerifiedFixtureLocation> remembered =
                 fixture == Fixture.TABLE
@@ -755,12 +907,15 @@ public final class EstablishFoundationWorkstationsSkill
             final int z
     ) {
         cancelFixtureMovement(context);
+        final PerceptionVec3 target = fixture == Fixture.DOOR_SUPPORT
+                ? new PerceptionVec3(x + 0.5, y + 1.0, z + 0.5)
+                : adjacentFixtureStand(frame, x, y, z);
         fixtureMovementParameters = new MoveToParameters(
                 frame.dimension(),
-                x + 0.5,
-                y + 1.0,
-                z + 0.5,
-                APPROACH_RADIUS
+                target.x(),
+                target.y(),
+                target.z(),
+                FIXTURE_MOVE_ARRIVAL_RADIUS
         );
         fixtureMovement = new MoveToSkill(
                 expectedPlayerId,
@@ -785,6 +940,37 @@ public final class EstablishFoundationWorkstationsSkill
         phase = Phase.MOVE_TO_FIXTURE;
         phaseStartedAtTick = context.gameTick();
         return SkillTickResult.running(true, true);
+    }
+
+    /**
+     * A workstation occupies the block at its recorded coordinates; walking
+     * to {@code y + 1} targets the top of that block, not an interaction
+     * position. Select the cardinal side nearest the current body and keep
+     * the target at ordinary feet height. Fresh first-person scanning after
+     * arrival still decides whether the fixture can actually be opened.
+     */
+    private static PerceptionVec3 adjacentFixtureStand(
+            final CoreSkillFrame frame,
+            final int x,
+            final int y,
+            final int z
+    ) {
+        final double deltaX = frame.position().x() - (x + 0.5);
+        final double deltaZ = frame.position().z() - (z + 0.5);
+        final int standX;
+        final int standZ;
+        if (Math.abs(deltaX) >= Math.abs(deltaZ)) {
+            standX = x + (deltaX >= 0.0 ? 1 : -1);
+            standZ = z;
+        } else {
+            standX = x;
+            standZ = z + (deltaZ >= 0.0 ? 1 : -1);
+        }
+        return new PerceptionVec3(
+                standX + 0.5,
+                y,
+                standZ + 0.5
+        );
     }
 
     private SkillTickResult moveToFixture(
@@ -812,9 +998,7 @@ public final class EstablishFoundationWorkstationsSkill
             beginScan(
                     context,
                     frame,
-                    failedTarget == Fixture.TABLE
-                            ? Phase.FIND_TABLE
-                            : Phase.FIND_CHEST
+                    findPhase(failedTarget)
             );
             return SkillTickResult.running(true, true);
         }
@@ -828,9 +1012,7 @@ public final class EstablishFoundationWorkstationsSkill
             beginScan(
                     context,
                     frame,
-                    failedTarget == Fixture.TABLE
-                            ? Phase.FIND_TABLE
-                            : Phase.FIND_CHEST
+                    findPhase(failedTarget)
             );
             return SkillTickResult.running(true, true);
         }
@@ -840,9 +1022,7 @@ public final class EstablishFoundationWorkstationsSkill
             beginScan(
                     context,
                     frame,
-                    arrived == Fixture.TABLE
-                            ? Phase.FIND_TABLE
-                            : Phase.FIND_CHEST
+                    findPhase(arrived)
             );
             return SkillTickResult.running(true, true);
         }
@@ -894,7 +1074,12 @@ public final class EstablishFoundationWorkstationsSkill
             final SkillContext context
     ) {
         if (inventory.hasThreeByThreeCraftingMenu()) {
-            return transition(context, Phase.CRAFT_CHEST);
+            return transition(
+                    context,
+                    retrieveContainerLogsAndPlaceDoor
+                            ? Phase.CRAFT_DOOR
+                            : Phase.CRAFT_CHEST
+            );
         }
         final Optional<VisibleBlockFace> crosshair =
                 interactionFrames.currentCrosshairBlock()
@@ -918,7 +1103,12 @@ public final class EstablishFoundationWorkstationsSkill
             final SkillContext context
     ) {
         if (inventory.hasThreeByThreeCraftingMenu()) {
-            return transition(context, Phase.CRAFT_CHEST);
+            return transition(
+                    context,
+                    retrieveContainerLogsAndPlaceDoor
+                            ? Phase.CRAFT_DOOR
+                            : Phase.CRAFT_CHEST
+            );
         }
         if (context.gameTick() - phaseStartedAtTick
                 >= MAXIMUM_CONFIRM_TICKS) {
@@ -990,12 +1180,22 @@ public final class EstablishFoundationWorkstationsSkill
             final SkillContext context
     ) {
         if (!inventory.hasThreeByThreeCraftingMenu()) {
-            return transition(context, Phase.EQUIP_CHEST);
+            return transition(
+                    context,
+                    retrieveContainerLogsAndPlaceDoor
+                            ? Phase.FIND_DOOR_SUPPORT
+                            : Phase.EQUIP_CHEST
+            );
         }
         final InventoryOperationResult closed =
                 inventory.closeThreeByThreeCraftingMenu();
         return closed.succeeded()
-                ? transition(context, Phase.EQUIP_CHEST)
+                ? transition(
+                        context,
+                        retrieveContainerLogsAndPlaceDoor
+                                ? Phase.FIND_DOOR_SUPPORT
+                                : Phase.EQUIP_CHEST
+                )
                 : fail(NAME + ".table_close_failed");
     }
 
@@ -1214,7 +1414,12 @@ public final class EstablishFoundationWorkstationsSkill
             final CoreSkillFrame frame
     ) {
         if (currentChestMenu().isPresent()) {
-            return transition(context, Phase.DEPOSIT_SURPLUS);
+            return transition(
+                    context,
+                    retrieveContainerLogsAndPlaceDoor
+                            ? Phase.WITHDRAW_LOG
+                            : Phase.DEPOSIT_SURPLUS
+            );
         }
         if (context.gameTick() - phaseStartedAtTick
                 >= MAXIMUM_CONFIRM_TICKS) {
@@ -1469,6 +1674,9 @@ public final class EstablishFoundationWorkstationsSkill
         final Optional<MenuSkillFrame> maybeMenu =
                 currentChestMenu();
         if (maybeMenu.isEmpty()) {
+            if (retrieveContainerLogsAndPlaceDoor) {
+                return advanceWithdrawalChest(context);
+            }
             return distributeOwnedLogs
                     ? advanceDistributedChest(context)
                     : transition(context, Phase.FINISH);
@@ -1488,6 +1696,9 @@ public final class EstablishFoundationWorkstationsSkill
         );
         if (!closed.succeeded()) {
             return fail(NAME + ".chest_close_failed");
+        }
+        if (retrieveContainerLogsAndPlaceDoor) {
+            return advanceWithdrawalChest(context);
         }
         return distributeOwnedLogs
                 ? advanceDistributedChest(context)
@@ -1516,6 +1727,532 @@ public final class EstablishFoundationWorkstationsSkill
         chestOpenAttempts = 0;
         beginScan(context, frame, Phase.FIND_CHEST);
         return SkillTickResult.running(true, true);
+    }
+
+    private SkillTickResult discoverWithdrawalChests(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        recordObservedChests(frame);
+        final List<BlockCoordinate> selected =
+                selectIndependentChestGroup(
+                        observedChestPositions,
+                        taskStartPosition,
+                        requiredChestCount
+                );
+        if (selected.size() == requiredChestCount) {
+            withdrawalChestPositions.clear();
+            withdrawalChestPositions.addAll(selected);
+            configureDoorGeometry();
+            withdrawalChestIndex = 0;
+            expectedChestPosition =
+                    withdrawalChestPositions.getFirst();
+            beginScan(context, frame, Phase.FIND_CHEST);
+            return SkillTickResult.running(true, true);
+        }
+        return scan(
+                context,
+                frame,
+                Phase.DISCOVER_CHESTS,
+                "four_independent_chests"
+        );
+    }
+
+    private void recordObservedChests(final CoreSkillFrame frame) {
+        frame.visibleBlockFaces().stream()
+                .filter(face -> isFixture(face, Fixture.CHEST))
+                .map(VisibleBlockFace::block)
+                .filter(position ->
+                        !observedChestPositions.contains(position))
+                .forEach(observedChestPositions::add);
+    }
+
+    static List<BlockCoordinate> selectIndependentChestGroup(
+            final List<BlockCoordinate> observed,
+            final PerceptionVec3 origin,
+            final int required
+    ) {
+        Objects.requireNonNull(observed, "observed");
+        Objects.requireNonNull(origin, "origin");
+        if (required < 1) {
+            throw new IllegalArgumentException("required must be positive");
+        }
+        final List<BlockCoordinate> ordered = observed.stream()
+                .distinct()
+                .sorted(Comparator
+                        .comparingDouble((BlockCoordinate position) ->
+                                center(position).subtract(origin).length())
+                        .thenComparingInt(BlockCoordinate::y)
+                        .thenComparingInt(BlockCoordinate::x)
+                        .thenComparingInt(BlockCoordinate::z))
+                .toList();
+        final List<BlockCoordinate> selected = new ArrayList<>();
+        for (BlockCoordinate candidate : ordered) {
+            final boolean independent = selected.stream().noneMatch(
+                    existing -> existing.y() == candidate.y()
+                            && Math.abs(existing.x() - candidate.x())
+                                + Math.abs(existing.z() - candidate.z())
+                                <= 1
+            );
+            if (independent) {
+                selected.add(candidate);
+                if (selected.size() == required) {
+                    return List.copyOf(selected);
+                }
+            }
+        }
+        return List.of();
+    }
+
+    private void configureDoorGeometry() {
+        final double averageX = withdrawalChestPositions.stream()
+                .mapToInt(BlockCoordinate::x)
+                .average()
+                .orElseThrow();
+        final double averageY = withdrawalChestPositions.stream()
+                .mapToInt(BlockCoordinate::y)
+                .average()
+                .orElseThrow();
+        final double averageZ = withdrawalChestPositions.stream()
+                .mapToInt(BlockCoordinate::z)
+                .average()
+                .orElseThrow();
+        final double towardBodyX = taskStartPosition.x()
+                - (averageX + 0.5);
+        final double towardBodyZ = taskStartPosition.z()
+                - (averageZ + 0.5);
+        if (Math.abs(towardBodyX) >= Math.abs(towardBodyZ)
+                && Math.abs(towardBodyX) > 0.25) {
+            doorOutwardX = towardBodyX > 0.0 ? 1 : -1;
+            doorOutwardZ = 0;
+        } else if (Math.abs(towardBodyZ) > 0.25) {
+            doorOutwardX = 0;
+            doorOutwardZ = towardBodyZ > 0.0 ? 1 : -1;
+        } else {
+            final PerceptionVec3 look = ownedFrame().orElseThrow()
+                    .lookDirection();
+            if (Math.abs(look.x()) >= Math.abs(look.z())) {
+                doorOutwardX = look.x() > 0.0 ? -1 : 1;
+                doorOutwardZ = 0;
+            } else {
+                doorOutwardX = 0;
+                doorOutwardZ = look.z() > 0.0 ? -1 : 1;
+            }
+        }
+        expectedDoorPosition = new BlockCoordinate(
+                (int) Math.round(averageX) + doorOutwardX * 3,
+                (int) Math.round(averageY),
+                (int) Math.round(averageZ) + doorOutwardZ * 3
+        );
+    }
+
+    private SkillTickResult withdrawOneLog(
+            final SkillContext context
+    ) {
+        final Optional<MenuSkillFrame> maybeMenu = currentChestMenu();
+        if (maybeMenu.isEmpty()) {
+            return fail(NAME + ".chest_menu_lost");
+        }
+        final MenuSkillFrame frame = maybeMenu.orElseThrow();
+        final Optional<MenuSlotSummary> source = frame.menu().slots()
+                .stream()
+                .filter(slot -> !slot.playerInventory())
+                .filter(MenuSlotSummary::mayPickup)
+                .filter(slot -> slot.count() > 0)
+                .filter(slot -> PrepareBasicCraftingSkill.plankRecipeFor(
+                        slot.itemId()
+                ).isPresent())
+                .min(Comparator.comparingInt(MenuSlotSummary::slot));
+        if (source.isEmpty()) {
+            return fail(NAME + ".container_has_no_convertible_wood");
+        }
+        final MenuSlotSummary sourceSlot = source.orElseThrow();
+        final List<MenuSlotSummary> destinations = frame.menu().slots()
+                .stream()
+                .filter(MenuSlotSummary::playerInventory)
+                .filter(MenuSlotSummary::mayPickup)
+                .filter(slot -> slot.count() == 0
+                        || slot.itemId().equals(sourceSlot.itemId()))
+                .sorted(Comparator
+                        .comparingInt((MenuSlotSummary slot) ->
+                                slot.itemId().equals(sourceSlot.itemId())
+                                        ? 0 : 1)
+                        .thenComparingInt(MenuSlotSummary::slot))
+                .toList();
+        for (MenuSlotSummary destination : destinations) {
+            final TransferMenuItemParameters transfer =
+                    new TransferMenuItemParameters(
+                            binding(frame),
+                            sourceSlot.slot(),
+                            destination.slot(),
+                            1
+                    );
+            if (!menus.checkTransfer(transfer).succeeded()) {
+                continue;
+            }
+            final MenuOperationResult moved = menus.transfer(transfer);
+            if (!moved.succeeded()) {
+                continue;
+            }
+            withdrawalSourceSlot = sourceSlot.slot();
+            withdrawalSourceCount = sourceSlot.count();
+            withdrawalSampleSequence = frame.sampleSequence();
+            depositSampleSequence = frame.sampleSequence();
+            pendingWithdrawnWoodItem = sourceSlot.itemId();
+            return transition(context, Phase.CONFIRM_WITHDRAW_LOG);
+        }
+        return fail(NAME + ".no_inventory_capacity_for_withdrawal");
+    }
+
+    private SkillTickResult confirmWithdrawnLog(
+            final SkillContext context
+    ) {
+        final Optional<MenuSkillFrame> maybeMenu = currentChestMenu();
+        if (maybeMenu.isEmpty()) {
+            return fail(NAME + ".withdrawal_menu_lost");
+        }
+        final MenuSkillFrame frame = maybeMenu.orElseThrow();
+        if (frame.sampleSequence() <= withdrawalSampleSequence) {
+            if (context.gameTick() - phaseStartedAtTick
+                    >= MAXIMUM_CONFIRM_TICKS) {
+                return fail(NAME + ".withdrawal_unconfirmed");
+            }
+            return SkillTickResult.running(false, true);
+        }
+        final Optional<MenuSlotSummary> sourceAfter = frame.menu().slots()
+                .stream()
+                .filter(slot -> slot.slot() == withdrawalSourceSlot)
+                .findFirst();
+        if (sourceAfter.isPresent()
+                && sourceAfter.orElseThrow().count()
+                    != withdrawalSourceCount - 1) {
+            return fail(NAME + ".withdrawal_count_mismatch");
+        }
+        withdrawnWoodItems.add(pendingWithdrawnWoodItem);
+        pendingWithdrawnWoodItem = "";
+        return transition(context, Phase.CLOSE_CHEST);
+    }
+
+    private SkillTickResult advanceWithdrawalChest(
+            final SkillContext context
+    ) {
+        withdrawalChestIndex++;
+        withdrawalSourceSlot = -1;
+        withdrawalSourceCount = -1;
+        withdrawalSampleSequence = -1L;
+        depositSampleSequence = -1L;
+        chestOpenAttempts = 0;
+        final CoreSkillFrame frame = ownedFrame().orElse(null);
+        if (frame == null) {
+            return fail(NAME + ".body_unavailable");
+        }
+        if (withdrawalChestIndex < requiredChestCount) {
+            expectedChestPosition = withdrawalChestPositions.get(
+                    withdrawalChestIndex
+            );
+            beginScan(context, frame, Phase.FIND_CHEST);
+            return SkillTickResult.running(true, true);
+        }
+        final Optional<String> family = withdrawnWoodItems.stream()
+                .map(PrepareBasicCraftingSkill::plankRecipeFor)
+                .flatMap(Optional::stream)
+                .distinct()
+                .filter(candidate -> withdrawnWoodItems.stream()
+                        .map(PrepareBasicCraftingSkill::plankRecipeFor)
+                        .flatMap(Optional::stream)
+                        .filter(candidate::equals)
+                        .count() >= 2L)
+                .sorted()
+                .findFirst();
+        if (family.isEmpty()) {
+            return fail(NAME + ".incompatible_withdrawn_wood_mix");
+        }
+        selectedPlankItemId = family.orElseThrow();
+        selectedDoorItemId = doorRecipeFor(selectedPlankItemId);
+        initialDoorCount = itemCount(frame, selectedDoorItemId);
+        expectedChestPosition = null;
+        return transition(context, Phase.PREPARE_WITHDRAWN_PLANKS);
+    }
+
+    private SkillTickResult prepareWithdrawnPlanks(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        if (withdrawnPlankCraftIndex >= withdrawnWoodItems.size()) {
+            beginScan(context, frame, Phase.FIND_TABLE);
+            return SkillTickResult.running(true, true);
+        }
+        if (context.gameTick() < nextScanTick) {
+            return SkillTickResult.running(false, true);
+        }
+        final String source = withdrawnWoodItems.get(
+                withdrawnPlankCraftIndex
+        );
+        final String recipeId = PrepareBasicCraftingSkill.plankRecipeFor(
+                source
+        ).orElseThrow();
+        final CraftRecipeParameters recipe =
+                new CraftRecipeParameters(recipeId, 1);
+        if (!inventory.checkCraft(recipe).succeeded()) {
+            if (context.gameTick() - phaseStartedAtTick
+                    >= MAXIMUM_RECIPE_WAIT_TICKS) {
+                return fail(NAME + ".withdrawn_plank_recipe_unavailable");
+            }
+            return SkillTickResult.running(false, true);
+        }
+        final InventoryOperationResult crafted = inventory.craftOnce(recipe);
+        if (!crafted.succeeded()) {
+            return fail(NAME + ".withdrawn_plank_craft_failed");
+        }
+        withdrawnPlankCraftIndex++;
+        nextScanTick = context.gameTick() + 3L;
+        return SkillTickResult.running(true, true);
+    }
+
+    private SkillTickResult craftDoor(final SkillContext context) {
+        final CraftRecipeParameters recipe = new CraftRecipeParameters(
+                selectedDoorItemId,
+                1
+        );
+        if (inventory.checkCraft(recipe).succeeded()
+                && inventory.craftOnce(recipe).succeeded()) {
+            return transition(context, Phase.CONFIRM_DOOR_ITEM);
+        }
+        if (context.gameTick() - phaseStartedAtTick
+                >= MAXIMUM_RECIPE_WAIT_TICKS) {
+            return fail(NAME + ".door_recipe_unavailable");
+        }
+        return SkillTickResult.running(false, true);
+    }
+
+    private SkillTickResult confirmDoorItem(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        if (itemCount(frame, selectedDoorItemId) > initialDoorCount
+                || frame.mainHand().itemId().equals(selectedDoorItemId)
+                    && frame.mainHand().count() > initialDoorCount) {
+            return transition(context, Phase.CLOSE_TABLE);
+        }
+        if (context.gameTick() - phaseStartedAtTick
+                >= MAXIMUM_CONFIRM_TICKS) {
+            return fail(NAME + ".door_craft_unconfirmed");
+        }
+        return SkillTickResult.running(false, true);
+    }
+
+    private SkillTickResult findDoorSupport(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        if (expectedDoorPosition == null) {
+            return fail(NAME + ".door_target_missing");
+        }
+        final BlockCoordinate supportPosition = new BlockCoordinate(
+                expectedDoorPosition.x(),
+                expectedDoorPosition.y() - 1,
+                expectedDoorPosition.z()
+        );
+        final Optional<VisibleBlockFace> support = frame.visibleBlockFaces()
+                .stream()
+                .filter(face -> face.block().equals(supportPosition))
+                .filter(face -> face.face().equals("up"))
+                .filter(face -> face.topSupportAffordance()
+                        == TopSupportAffordance.STURDY_FULL_TOP)
+                .filter(face -> doorClearanceObserved(frame))
+                .min(Comparator.comparingDouble(
+                        VisibleBlockFace::distance
+                ));
+        if (support.isPresent()
+                && support.orElseThrow().distance()
+                    <= MAXIMUM_PLACEMENT_DISTANCE) {
+            selectedSupport = support.orElseThrow();
+            return transition(context, Phase.EQUIP_DOOR);
+        }
+        /*
+         * The cardinally adjacent cell is the ordinary player position for
+         * using a door support.  Two cells outward needlessly crosses a
+         * nearby one-block terrace and can put the exact target inside its
+         * raised floor even though the adjacent low cell is both safer and
+         * comfortably within vanilla reach.
+         */
+        final int standX = expectedDoorPosition.x()
+                + doorOutwardX;
+        final int standZ = expectedDoorPosition.z()
+                + doorOutwardZ;
+        final PerceptionVec3 stand = new PerceptionVec3(
+                standX + 0.5,
+                expectedDoorPosition.y(),
+                standZ + 0.5
+        );
+        /*
+         * Reach alone is not evidence that the top face is observable.  A
+         * body 3-4 blocks from the support can legally reach it while the
+         * first-person ray fan still sees only the two air cells above it.
+         * Always take the explicit two-block-out stand until close to that
+         * stand, then require a fresh top-face observation before placing.
+         */
+        if (stand.subtract(frame.position()).length()
+                > FIXTURE_MOVE_ARRIVAL_RADIUS + 0.25) {
+            return beginFixtureApproach(
+                    context,
+                    frame,
+                    Fixture.DOOR_SUPPORT,
+                    standX,
+                    expectedDoorPosition.y() - 1,
+                    standZ
+            );
+        }
+        if (context.gameTick() - phaseStartedAtTick
+                >= MAXIMUM_AIM_TICKS) {
+            return fail(NAME + ".door_support_not_observed_clear");
+        }
+        return aimAt(
+                frame,
+                new PerceptionVec3(
+                        supportPosition.x() + 0.5,
+                        supportPosition.y() + 0.95,
+                        supportPosition.z() + 0.5
+                )
+        );
+    }
+
+    private boolean doorClearanceObserved(final CoreSkillFrame frame) {
+        if (expectedDoorPosition == null) {
+            return false;
+        }
+        final GridPos lower = new GridPos(
+                expectedDoorPosition.x(),
+                expectedDoorPosition.y(),
+                expectedDoorPosition.z()
+        );
+        /*
+         * Door placement needs fresh proof that both occupied cells are air,
+         * but it does not need the stronger multi-ray body-traversal proof
+         * used by pathfinding. Requiring traversal clearance for the upper
+         * door cell made a visibly empty two-block opening impossible to use:
+         * an upper air cell commonly has no player-sized occupancy fan of its
+         * own. The ordinary use-on-block transaction remains authoritative
+         * and will reject a changed or occupied target.
+         */
+        return observedFreshAir(frame, lower)
+                && observedFreshAir(frame, lower.above());
+    }
+
+    private static boolean observedFreshAir(
+            final CoreSkillFrame frame,
+            final GridPos position
+    ) {
+        return frame.navigation().voxelAt(position)
+                .filter(voxel -> voxel.kind() == VoxelKind.AIR)
+                .filter(voxel -> voxel.observationRevision()
+                        == frame.navigation().revision())
+                .isPresent();
+    }
+
+    private SkillTickResult equipDoor(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        if (frame.mainHand().itemId().equals(selectedDoorItemId)
+                && frame.mainHand().count() > 0) {
+            return transition(context, Phase.AIM_DOOR_SUPPORT);
+        }
+        if (itemCount(frame, selectedDoorItemId) <= 0) {
+            return fail(NAME + ".door_item_missing");
+        }
+        final InventoryOperationResult equipped = inventory.equip(
+                new EquipItemParameters(
+                        selectedDoorItemId,
+                        EquipmentTarget.MAINHAND
+                )
+        );
+        return equipped.succeeded()
+                ? SkillTickResult.running(true, true)
+                : fail(NAME + ".door_equip_failed");
+    }
+
+    private SkillTickResult aimDoorSupport(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        final Optional<VisibleBlockFace> crosshair =
+                interactionFrames.currentCrosshairBlock();
+        if (crosshair.isPresent()
+                && selectedSupport != null
+                && sameBlockAndFace(
+                        crosshair.orElseThrow(),
+                        selectedSupport
+                )) {
+            selectedSupport = crosshair.orElseThrow();
+            return transition(context, Phase.PLACE_DOOR);
+        }
+        if (selectedSupport == null
+                || context.gameTick() - phaseStartedAtTick
+                    >= MAXIMUM_AIM_TICKS) {
+            return transition(context, Phase.FIND_DOOR_SUPPORT);
+        }
+        return aimAt(frame, selectedSupport.hitPosition());
+    }
+
+    private SkillTickResult placeDoor(final SkillContext context) {
+        final Optional<VisibleBlockFace> crosshair =
+                interactionFrames.currentCrosshairBlock();
+        if (crosshair.isEmpty()
+                || selectedSupport == null
+                || !sameBlockAndFace(
+                        crosshair.orElseThrow(),
+                        selectedSupport
+                )) {
+            return transition(context, Phase.AIM_DOOR_SUPPORT);
+        }
+        final ActionOutcome placed = interactions.useOnBlock(
+                ActionHand.MAIN_HAND,
+                target(crosshair.orElseThrow())
+        );
+        return placed.accepted()
+                ? transition(context, Phase.CONFIRM_DOOR)
+                : fail(NAME + ".door_placement_rejected");
+    }
+
+    private SkillTickResult confirmDoor(
+            final SkillContext context,
+            final CoreSkillFrame frame
+    ) {
+        if (expectedDoorPosition == null) {
+            return fail(NAME + ".door_target_missing");
+        }
+        final BlockCoordinate upperDoor = new BlockCoordinate(
+                expectedDoorPosition.x(),
+                expectedDoorPosition.y() + 1,
+                expectedDoorPosition.z()
+        );
+        final boolean visible = frame.visibleBlockFaces().stream()
+                .filter(face -> face.block().equals(expectedDoorPosition)
+                        || face.block().equals(upperDoor))
+                .anyMatch(face -> face.blockTypeId().equals(
+                        selectedDoorItemId
+                ));
+        if (visible) {
+            return transition(context, Phase.FINISH);
+        }
+        if (context.gameTick() - phaseStartedAtTick
+                >= MAXIMUM_CONFIRM_TICKS) {
+            return fail(NAME + ".door_placement_unconfirmed");
+        }
+        return aimAt(frame, center(expectedDoorPosition));
+    }
+
+    private static String doorRecipeFor(final String plankItemId) {
+        if (!plankItemId.endsWith("_planks")) {
+            throw new IllegalArgumentException(
+                    "Plank item cannot identify a door family"
+            );
+        }
+        return plankItemId.substring(
+                0,
+                plankItemId.length() - "_planks".length()
+        ) + "_door";
     }
 
     private SkillTickResult scan(
@@ -1612,7 +2349,11 @@ public final class EstablishFoundationWorkstationsSkill
     }
 
     private SkillTickResult fail(final String code) {
-        return fail(SkillFailure.of(code));
+        final String stableCode = code.startsWith(NAME + ".")
+                ? "foundation_workstations."
+                        + code.substring(NAME.length() + 1)
+                : code;
+        return fail(SkillFailure.of(stableCode));
     }
 
     private SkillTickResult fail(
@@ -2108,6 +2849,15 @@ public final class EstablishFoundationWorkstationsSkill
                     || face.blockTypeId().equals(
                             "minecraft:trapped_chest"
                     );
+            case DOOR_SUPPORT -> false;
+        };
+    }
+
+    private static Phase findPhase(final Fixture fixture) {
+        return switch (fixture) {
+            case TABLE -> Phase.FIND_TABLE;
+            case CHEST -> Phase.FIND_CHEST;
+            case DOOR_SUPPORT -> Phase.FIND_DOOR_SUPPORT;
         };
     }
 
@@ -2186,7 +2936,8 @@ public final class EstablishFoundationWorkstationsSkill
 
     private enum Fixture {
         TABLE("table"),
-        CHEST("chest");
+        CHEST("chest"),
+        DOOR_SUPPORT("door_support");
 
         private final String failureStem;
 
@@ -2201,14 +2952,18 @@ public final class EstablishFoundationWorkstationsSkill
 
     private enum Phase {
         IDLE,
+        DISCOVER_CHESTS,
         PREPARE_MATERIALS,
         PREPARE_PLANKS,
+        PREPARE_WITHDRAWN_PLANKS,
         FIND_TABLE,
         MOVE_TO_FIXTURE,
         AIM_TABLE,
         OPEN_TABLE,
         CONFIRM_TABLE_MENU,
         CRAFT_CHEST,
+        CRAFT_DOOR,
+        CONFIRM_DOOR_ITEM,
         CONFIRM_CHEST_ITEM,
         CLOSE_TABLE,
         EQUIP_CHEST,
@@ -2224,7 +2979,14 @@ public final class EstablishFoundationWorkstationsSkill
         START_RECLAIM_CHEST,
         RECLAIM_CHEST,
         DEPOSIT_SURPLUS,
+        WITHDRAW_LOG,
+        CONFIRM_WITHDRAW_LOG,
         CLOSE_CHEST,
+        FIND_DOOR_SUPPORT,
+        EQUIP_DOOR,
+        AIM_DOOR_SUPPORT,
+        PLACE_DOOR,
+        CONFIRM_DOOR,
         FINISH,
         COMPLETED,
         FAILED,

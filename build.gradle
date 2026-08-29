@@ -13,7 +13,7 @@ plugins {
     id 'net.minecraftforge.jarjar' version '0.2.3'
 }
 
-version = '0.1.14-dev-mc26.2'
+version = '0.1.15-dev-mc26.2'
 group = 'dev.mcai.companion'
 base.archivesName = 'mcai_companion'
 
@@ -202,6 +202,10 @@ minecraft {
                     .getOrElse('false')
                     .toBoolean()) {
                 systemProperty 'mcai.realtimeGameTest', 'true'
+            }
+            if (providers.gradleProperty('test_iteration').isPresent()) {
+                systemProperty 'mcai.testIteration', providers
+                    .gradleProperty('test_iteration').get()
             }
         }
 

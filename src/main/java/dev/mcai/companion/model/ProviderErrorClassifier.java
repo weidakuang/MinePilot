@@ -109,7 +109,14 @@ public final class ProviderErrorClassifier {
                 || message.contains("context length")) {
             return ModelFailureKind.CONTEXT_LIMIT;
         }
-        if (status == 404 && isModelError(code, param, message)) {
+        /*
+         * Some OpenAI-compatible relays wrap an unavailable or unauthorized
+         * model id in HTTP 5xx even though the structured provider code is
+         * model_not_found. Preserve the semantic error instead of presenting
+         * it as a retryable server outage and repeatedly spending requests.
+         */
+        if ((status == 404 && isModelError(code, param, message))
+                || isModelError(code, "", message)) {
             return ModelFailureKind.MODEL_NOT_FOUND;
         }
         if ((status == 400 || status == 422)

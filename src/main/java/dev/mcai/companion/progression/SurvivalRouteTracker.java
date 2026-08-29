@@ -483,6 +483,9 @@ public final class SurvivalRouteTracker {
                     SurvivalRouteObjective.CRAFT_AND_MINE_STONE;
             case LOG_STORAGE_DISTRIBUTED ->
                     SurvivalRouteObjective.DISTRIBUTE_LOG_STORAGE;
+            case CONTAINER_WOOD_DOOR_PLACED ->
+                    SurvivalRouteObjective
+                            .RETRIEVE_CONTAINER_WOOD_AND_PLACE_DOOR;
             case IRON_OBTAINED ->
                     SurvivalRouteObjective.ACQUIRE_IRON_TOOLKIT;
             case IRON_TOOLKIT_OBTAINED ->
@@ -605,6 +608,13 @@ public final class SurvivalRouteTracker {
                 terminalMilestone(goal);
         if (terminal.isEmpty()) {
             return List.copyOf(guidanceOrder);
+        }
+        if (terminal.orElseThrow()
+                == SurvivalMilestone.CONTAINER_WOOD_DOOR_PLACED) {
+            return List.of(
+                    SurvivalMilestone.BODY_ACTIVE,
+                    SurvivalMilestone.CONTAINER_WOOD_DOOR_PLACED
+            );
         }
         if (terminal.orElseThrow()
                 == SurvivalMilestone.LOG_STORAGE_DISTRIBUTED) {
@@ -1011,6 +1021,7 @@ public final class SurvivalRouteTracker {
                     case WOOD_OBTAINED -> 1;
                     case BASIC_CRAFTING_READY, STONE_TOOL_OBTAINED -> 3;
                     case LOG_STORAGE_DISTRIBUTED -> 30;
+                    case CONTAINER_WOOD_DOOR_PLACED -> 0;
                     default -> FOUNDATION_WOOD_RESERVE;
                 })
                 .orElse(FOUNDATION_WOOD_RESERVE);

@@ -49,6 +49,16 @@ class ProviderErrorClassifierTest {
                         Map.of()
                 ).kind()
         );
+        assertEquals(
+                ModelFailureKind.MODEL_NOT_FOUND,
+                classify(
+                        503,
+                        "{\"error\":{\"message\":\"model unavailable\","
+                                + "\"code\":\"model_not_found\"}}",
+                        Set.of(),
+                        Map.of()
+                ).kind()
+        );
         ModelFailure endpoint = classify(
                 404,
                 "{\"error\":{\"message\":\"route not found\"}}",

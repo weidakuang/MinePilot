@@ -168,6 +168,69 @@ final class KnownSkillArgumentCanonicalizerTest {
         );
     }
 
+    @Test
+    void splitsKnownCombinedConversationPlanEnums() {
+        final DecisionEnvelope combined = conversationDecision(List.of(
+                new SkillArgument(
+                        "goalRouteProfile",
+                        "FOUNDATION/LOG_STORAGE_DISTRIBUTED"
+                ),
+                new SkillArgument(
+                        "goalTerminalMilestone",
+                        "NONE"
+                )
+        ));
+
+        assertEquals(
+                List.of(
+                        new SkillArgument(
+                                "goalRouteProfile",
+                                "FOUNDATION"
+                        ),
+                        new SkillArgument(
+                                "goalTerminalMilestone",
+                                "LOG_STORAGE_DISTRIBUTED"
+                        )
+                ),
+                KnownSkillArgumentCanonicalizer
+                        .canonicalize(combined)
+                        .typedArguments()
+        );
+    }
+
+    @Test
+    void rejectsAmbiguousOrUnknownCombinedConversationPlanEnums() {
+        final DecisionEnvelope conflicting = conversationDecision(List.of(
+                new SkillArgument(
+                        "goalRouteProfile",
+                        "FOUNDATION/LOG_STORAGE_DISTRIBUTED"
+                ),
+                new SkillArgument(
+                        "goalTerminalMilestone",
+                        "IRON_OBTAINED"
+                )
+        ));
+        final DecisionEnvelope unknown = conversationDecision(List.of(
+                new SkillArgument(
+                        "goalRouteProfile",
+                        "FOUNDATION/INVENTED"
+                ),
+                new SkillArgument(
+                        "goalTerminalMilestone",
+                        "NONE"
+                )
+        ));
+
+        assertEquals(
+                conflicting,
+                KnownSkillArgumentCanonicalizer.canonicalize(conflicting)
+        );
+        assertEquals(
+                unknown,
+                KnownSkillArgumentCanonicalizer.canonicalize(unknown)
+        );
+    }
+
     private static DecisionEnvelope decision(
             final String skillName,
             final List<SkillArgument> arguments
@@ -178,6 +241,22 @@ final class KnownSkillArgumentCanonicalizerTest {
                 1,
                 DecisionKind.START_SKILL,
                 skillName,
+                arguments,
+                RequestedObservation.none(),
+                "",
+                0.8
+        );
+    }
+
+    private static DecisionEnvelope conversationDecision(
+            final List<SkillArgument> arguments
+    ) {
+        return new DecisionEnvelope(
+                "conversation-1",
+                1,
+                1,
+                DecisionKind.ASK_PLAYER,
+                "",
                 arguments,
                 RequestedObservation.none(),
                 "",

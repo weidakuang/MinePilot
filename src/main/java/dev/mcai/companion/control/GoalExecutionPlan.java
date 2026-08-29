@@ -21,6 +21,7 @@ public record GoalExecutionPlan(Route route, Target terminalTarget) {
             Target.BASIC_CRAFTING_READY,
             Target.STONE_TOOL_OBTAINED,
             Target.LOG_STORAGE_DISTRIBUTED,
+            Target.CONTAINER_WOOD_DOOR_PLACED,
             Target.FOOD_SECURED,
             Target.IRON_OBTAINED,
             Target.IRON_TOOLKIT_OBTAINED,
@@ -90,7 +91,7 @@ public record GoalExecutionPlan(Route route, Target terminalTarget) {
             final String routeValue,
             final String targetValue
     ) {
-        final Route route = parseEnum(
+        Route route = parseEnum(
                 Route.class,
                 routeValue,
                 "goalRouteProfile"
@@ -100,6 +101,21 @@ public record GoalExecutionPlan(Route route, Target terminalTarget) {
                 targetValue,
                 "goalTerminalMilestone"
         );
+        /*
+         * Some compatible providers correctly select the typed terminal but
+         * leave the route at NONE. The terminal remains the model-authored
+         * semantic decision; this normalization only repairs the impossible
+         * type pair. Foundation-exclusive and shared early-survival targets
+         * use FOUNDATION. Completion-only targets use COMPLETION. NONE/NONE
+         * remains the only standalone-action encoding.
+         */
+        if (route == Route.NONE && target != Target.NONE) {
+            route = FOUNDATION_TARGETS.contains(target)
+                    ? Route.FOUNDATION
+                    : COMPLETION_TARGETS.contains(target)
+                            ? Route.COMPLETION
+                            : route;
+        }
         return new GoalExecutionPlan(route, target);
     }
 
@@ -162,6 +178,7 @@ public record GoalExecutionPlan(Route route, Target terminalTarget) {
         BASIC_CRAFTING_READY,
         STONE_TOOL_OBTAINED,
         LOG_STORAGE_DISTRIBUTED,
+        CONTAINER_WOOD_DOOR_PLACED,
         FOOD_SECURED,
         IRON_OBTAINED,
         IRON_TOOLKIT_OBTAINED,

@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-24T07:38:00+09:00
+Last updated: 2026-08-30T16:18:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -16,6 +16,87 @@ pass.
 ## Current recovery state
 
 This section supersedes older chronological notes below when they conflict.
+
+### 2026-08-30 non-ocean matrix and composite live gate
+
+- The previous formal batches remain failures and are not release evidence:
+  stone tools passed 7/10, iron acquisition passed 8/10, and the composite
+  storage-to-door batch has not produced a pass. M0--M4 remain `NOT_RUN`.
+- Composite diagnostics 26--28 exposed three separate production defects:
+  inherited open menus and stale crafting-table perception prevented the
+  compound from starting; door placement aimed at the support block side
+  while requiring its top face; and Grok 4.5 occasionally combined the two
+  route enums as `FOUNDATION/LOG_STORAGE_DISTRIBUTED`. The menu lifecycle,
+  fresh-air placement proof, top-face aim, and a strictly bounded known-enum
+  canonicalizer are now implemented.
+- The physical container-to-door matrix now passes 10/10 from a clean GameTest
+  directory on Forge 65.0.9. It covers oak, spruce, birch, jungle, acacia,
+  dark oak, mangrove, cherry, crimson, and warped families; both chest-group
+  orientations; inherited open menus; an occluded fourth chest; and a nearby
+  one-block terrace. Every oracle checks real chest-menu withdrawal, vanilla
+  recipe statistics, item consumption, and the matching door block in the
+  world. This is physical executor evidence, not live-model evidence.
+- The matrix exposed three approach defects before reaching 10/10: a remembered
+  fixture target incorrectly occupied the fixture block, the 3.0-block move
+  arrival radius could immediately accept a still-occluded chest, and the door
+  support route selected a two-block-out terrace cell rather than the ordinary
+  adjacent interaction cell. Fixture navigation now selects an adjacent stand,
+  uses a 0.75-block docking radius, and approaches the door from its cardinally
+  adjacent cell before requiring fresh top-face and air-clearance evidence.
+  The clean final run reported all 10 required tests passed in 13.34 seconds.
+- Diagnostic 29 stopped before player chat. Both the production capability
+  probe and independent minimal Responses/Chat Completions probes returned
+  HTTP 503 with provider code `model_not_found`. The authenticated `/models`
+  endpoint returned HTTP 200 with an empty model array. The official model id
+  and its `grok-4.5-latest` alias both failed. This is not a gameplay pass or
+  failure. The classifier now preserves structured `model_not_found` even
+  when a relay wraps it in HTTP 5xx, preventing misleading retry loops.
+- The relocated live fixture now selects one of ten deterministic non-ocean
+  variants by test iteration: oak, spruce, birch, jungle, acacia, dark oak,
+  mangrove, cherry, crimson, and warped wood families over flat, sloped,
+  basin, ridge, terraced, broken, rolling, and stepped land. Mining, pickup,
+  chest contents, plank recipes, door recipes, and placed-door oracles bind
+  dynamically to the selected family. The natural player request is no
+  longer oak-specific. Production skills remain free of fixture coordinates
+  and biome names; generic wood exploration also no longer labels its target
+  as oak.
+- Targeted unit gates and a fresh full Gradle `check` pass on Forge 65.0.9
+  after the final matrix. The coherent development version is now
+  `0.1.15-dev-mc26.2`. The formal ten-run live batches cannot start until the
+  configured relay key exposes a working Grok 4.5 channel.
+- The last attempted unit command accidentally selected Forge 65.0.0 and was
+  manually stopped while Mavenizer was downloading. All subsequent gates must
+  explicitly use `-Pforge_compile_version=65.0.9`.
+
+### 2026-08-24 thirty-run relocated companion gate
+
+- The active request is three black-box task suites repeated ten times each.
+  Every repetition must retain the companion's stable identity while clearing
+  inventory, selected slot, armor, offhand, ender chest, active goal, and
+  controller state, then moving the body to a newly isolated area.
+- Suite one requires a retained stone tool within 60 real seconds. Suite two
+  requires physically obtained iron within five real minutes. Suite three
+  requires thirty gathered logs, four independent chests with the remaining
+  logs balanced across them, then exactly one convertible wood item withdrawn
+  through each real chest menu, normal plank and door recipes, and a matching
+  door placed three blocks in front of the chest group.
+- Production work in progress adds the generic
+  `prepare_container_wood_door` compound. It discovers independent chests from
+  current fair perception, transfers real items through vanilla menus, derives
+  planks and the door from the withdrawn wood family, and computes placement
+  relative to observed chest geometry. It contains no fixture coordinate,
+  biome, or oak-only route.
+- Changed files include the goal/route/brain/planner mappings,
+  `FoundationCraftingSkills`, `EstablishFoundationWorkstationsSkill`, the new
+  `PrepareContainerWoodDoorSkill`, runtime completion evidence, and focused
+  physical GameTest scaffolding. The last passed gate was `compileJava` before
+  the new GameTest scenario was added; the scenario has not yet compiled or
+  run and no repetition is currently counted.
+- Next: compile the new scenario, register and run spruce and warped physical
+  gates, add iteration-isolation and exact physical oracles, then run the real
+  Grok 4.5 chat suites sequentially for ten distinct locations each. Provider
+  timeouts are infrastructure failures, never passes. Formal M0--M4 remain
+  `NOT_RUN`.
 
 ### 2026-08-24 distributed-storage post-pass audit
 

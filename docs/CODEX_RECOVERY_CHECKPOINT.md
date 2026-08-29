@@ -84,9 +84,9 @@ This section supersedes older chronological notes below when they conflict.
   development JAR SHA-256 is
   `635662b79e6093265112e68841b868a8e6fbefd944a244115e5ca8735f23b707`.
   The verified implementation commit is public on `main` as
-  `060c5863895c6d620ea2d5aa59b0072657b0296b`, tree
-  `30f63a80dc510aeaaa7c38ade166626bbee088d5`. The same JAR is installed in the
-  user's Forge 65.0.9 XMCL instance; the prior 0.1.14 JAR is retained outside
+  `a12b2b84be7f8a1a1bca0acb8db036bb52fb065b`, tree
+  `bcdf716db2af253bc5c0c8486da47bf4f56ee871`. The same JAR is installed in the
+  user's Forge 65.0.9 XMCL instance; the prior 0.1.15 JAR is retained outside
   `mods` in the instance backup directory.
 - The last attempted unit command accidentally selected Forge 65.0.0 and was
   manually stopped while Mavenizer was downloading. All subsequent gates must

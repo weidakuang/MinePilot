@@ -1,6 +1,6 @@
 # Codex Recovery Checkpoint
 
-Last updated: 2026-08-30T16:18:00+09:00
+Last updated: 2026-08-30T02:40:00+09:00
 
 This checkpoint is intentionally concise and English-only. Runtime chat and
 multilingual test fixtures may contain other languages; public repository
@@ -18,6 +18,22 @@ pass.
 This section supersedes older chronological notes below when they conflict.
 
 ### 2026-08-30 non-ocean matrix and composite live gate
+
+- A stricter clean physical matrix now passes 10/10 on Forge 65.0.9 in
+  `run-container-door-ten-terrain-v2`. The body starts eight blocks from the
+  work area and the ten cases cover flat ground, a raised approach, a
+  depression, a cross slope, a two-level terrace, a shallow basin, an offset
+  ridge, broken ground, a two-obstacle detour, and rolling ground. The same
+  cases cover all ten convertible wood families listed below.
+- The stricter matrix first failed 4/10 because four-container discovery only
+  rotated in place and discarded legitimate observations made while walking.
+  Production now approaches a remembered storage location through ordinary
+  `MoveToSkill`, resumes the discovery phase after arrival or bounded failure,
+  and accumulates first-person chest observations throughout the approach.
+  No fixture coordinate, terrain variant, or wood-family coordinate appears
+  in production logic. The clean final run reported all ten tests passed in
+  16.40 seconds. This remains physical executor evidence, not a live-model or
+  formal randomized-world result.
 
 - The previous formal batches remain failures and are not release evidence:
   stone tools passed 7/10, iron acquisition passed 8/10, and the composite
@@ -60,13 +76,13 @@ This section supersedes older chronological notes below when they conflict.
   longer oak-specific. Production skills remain free of fixture coordinates
   and biome names; generic wood exploration also no longer labels its target
   as oak.
-- Targeted unit gates and a fresh full Gradle `check` pass on Forge 65.0.9
-  after the final matrix. The coherent development version is now
-  `0.1.15-dev-mc26.2`. The formal ten-run live batches cannot start until the
+- Targeted unit gates and a fresh full Gradle `build` pass on Forge 65.0.9
+  after the stricter matrix. The coherent development version is now
+  `0.1.16-dev-mc26.2`. The formal ten-run live batches cannot start until the
   configured relay key exposes a working Grok 4.5 channel.
 - `./gradlew build` passes with 1,254 tests, zero failures, and two skips. The
   development JAR SHA-256 is
-  `bc6b8cd0b943a24b1f7d5e1129d7b09f9df4145a4708035f8b7c826b6a3d2676`.
+  `635662b79e6093265112e68841b868a8e6fbefd944a244115e5ca8735f23b707`.
   The verified implementation commit is public on `main` as
   `060c5863895c6d620ea2d5aa59b0072657b0296b`, tree
   `30f63a80dc510aeaaa7c38ade166626bbee088d5`. The same JAR is installed in the

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-08-29T17:30:14Z",
-  "sourceState": "PUBLIC_CONTAINER_DOOR_PHYSICAL_MATRIX",
+  "updatedAtUtc": "2026-08-29T17:40:00Z",
+  "sourceState": "NON_OCEAN_CONTAINER_DOOR_TERRAIN_MATRIX",
   "publicMainHead": "060c5863895c6d620ea2d5aa59b0072657b0296b",
   "localHead": "CURRENT_BRANCH_HEAD",
   "publicBackupStatus": "PUSHED",
   "releaseStatus": "NON_RELEASE",
   "objective": "Complete MinePilot M1-M4 with fair real-model and black-box evidence.",
-  "version": "0.1.15-dev-mc26.2",
+  "version": "0.1.16-dev-mc26.2",
   "compatibility": {
     "minecraft": "26.2",
     "forgeRange": "[65.0.0,66.0.0)",
@@ -39,6 +39,15 @@
     "delayedFirstHumanAnchorClient": "NOT_RUN_XVFB_MISSING"
   },
   "developmentEvidence": {
+    "containerDoorTerrainMatrix": {
+      "status": "PASS_CONTROLLED_NO_MODEL_10_OF_10",
+      "forge": "65.0.9",
+      "artifactVersion": "0.1.16-dev-mc26.2",
+      "details": "Ten convertible wood families across flat, raised, depressed, cross-slope, terraced, basin, ridge, broken, detour, and rolling non-ocean land approaches. The oracle requires actual movement, four independent chest-menu withdrawals, vanilla recipes, physical item consumption, and a matching door block.",
+      "runRoot": "run-container-door-ten-terrain-v2",
+      "runtimeSeconds": 16.40,
+      "formalGate": "NOT_RUN"
+    },
     "latestDistributedLogStorage": {
       "status": "BLOCKED_INFRA_CURRENT_SOURCE_RERUN",
       "providerModel": "grok-4.5",

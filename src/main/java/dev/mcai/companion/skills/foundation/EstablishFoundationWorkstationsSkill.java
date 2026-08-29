@@ -148,6 +148,7 @@ public final class EstablishFoundationWorkstationsSkill
     private MoveToSkill fixtureMovement;
     private MoveToParameters fixtureMovementParameters;
     private Fixture movementTarget;
+    private Phase movementResumePhase;
     private double fixtureMovementBestDistance = Double.POSITIVE_INFINITY;
     private long fixtureMovementLastProgressTick = -1L;
     private final Set<BlockCoordinate> rejectedSupports =
@@ -168,6 +169,7 @@ public final class EstablishFoundationWorkstationsSkill
             new ArrayList<>();
     private final List<BlockCoordinate> withdrawalChestPositions =
             new ArrayList<>();
+    private boolean withdrawalAnchorApproachAttempted;
     private final List<String> withdrawnWoodItems = new ArrayList<>();
     private PerceptionVec3 taskStartPosition;
     private int withdrawalChestIndex;
@@ -474,6 +476,7 @@ public final class EstablishFoundationWorkstationsSkill
         fixtureMovement = null;
         fixtureMovementParameters = null;
         movementTarget = null;
+        movementResumePhase = null;
         fixtureMovementBestDistance = Double.POSITIVE_INFINITY;
         fixtureMovementLastProgressTick = -1L;
         rejectedSupports.clear();
@@ -489,6 +492,7 @@ public final class EstablishFoundationWorkstationsSkill
         completionEvidenceRecorded = false;
         observedChestPositions.clear();
         withdrawalChestPositions.clear();
+        withdrawalAnchorApproachAttempted = false;
         withdrawnWoodItems.clear();
         taskStartPosition = frame.position();
         withdrawalChestIndex = 0;
@@ -906,6 +910,26 @@ public final class EstablishFoundationWorkstationsSkill
             final int y,
             final int z
     ) {
+        return beginFixtureApproach(
+                context,
+                frame,
+                fixture,
+                x,
+                y,
+                z,
+                findPhase(fixture)
+        );
+    }
+
+    private SkillTickResult beginFixtureApproach(
+            final SkillContext context,
+            final CoreSkillFrame frame,
+            final Fixture fixture,
+            final int x,
+            final int y,
+            final int z,
+            final Phase resumePhase
+    ) {
         cancelFixtureMovement(context);
         final PerceptionVec3 target = fixture == Fixture.DOOR_SUPPORT
                 ? new PerceptionVec3(x + 0.5, y + 1.0, z + 0.5)
@@ -933,6 +957,10 @@ public final class EstablishFoundationWorkstationsSkill
         }
         fixtureMovement.start(context, fixtureMovementParameters);
         movementTarget = fixture;
+        movementResumePhase = Objects.requireNonNull(
+                resumePhase,
+                "resumePhase"
+        );
         fixtureMovementBestDistance = frame.position()
                 .subtract(fixtureMovementParameters.target())
                 .length();
@@ -979,8 +1007,20 @@ public final class EstablishFoundationWorkstationsSkill
     ) {
         if (fixtureMovement == null
                 || fixtureMovementParameters == null
-                || movementTarget == null) {
+                || movementTarget == null
+                || movementResumePhase == null) {
             return fail(NAME + ".fixture_approach_binding_missing");
+        }
+        /*
+         * Discovery is an observation process, not a stationary camera
+         * sweep. Preserve every chest face that the body legitimately sees
+         * while walking toward the remembered storage anchor. Otherwise a
+         * line of independent chests can occlude itself once the body stops
+         * beside the end chest, even though the other containers were in
+         * clear first-person view during the approach.
+         */
+        if (movementResumePhase == Phase.DISCOVER_CHESTS) {
+            recordObservedChests(frame);
         }
         final double distance = frame.position()
                 .subtract(fixtureMovementParameters.target())
@@ -993,12 +1033,12 @@ public final class EstablishFoundationWorkstationsSkill
                         >= MAXIMUM_FIXTURE_MOVE_TICKS
                 || context.gameTick() - fixtureMovementLastProgressTick
                         >= MAXIMUM_FIXTURE_NO_PROGRESS_TICKS) {
-            final Fixture failedTarget = movementTarget;
+            final Phase resumePhase = movementResumePhase;
             cancelFixtureMovement(context);
             beginScan(
                     context,
                     frame,
-                    findPhase(failedTarget)
+                    resumePhase
             );
             return SkillTickResult.running(true, true);
         }
@@ -1007,22 +1047,22 @@ public final class EstablishFoundationWorkstationsSkill
                 fixtureMovementParameters
         );
         if (result.status() == SkillTickResult.Status.FAILED) {
-            final Fixture failedTarget = movementTarget;
+            final Phase resumePhase = movementResumePhase;
             cancelFixtureMovement(context);
             beginScan(
                     context,
                     frame,
-                    findPhase(failedTarget)
+                    resumePhase
             );
             return SkillTickResult.running(true, true);
         }
         if (result.status() == SkillTickResult.Status.COMPLETED) {
-            final Fixture arrived = movementTarget;
+            final Phase resumePhase = movementResumePhase;
             cancelFixtureMovement(context);
             beginScan(
                     context,
                     frame,
-                    findPhase(arrived)
+                    resumePhase
             );
             return SkillTickResult.running(true, true);
         }
@@ -1750,6 +1790,33 @@ public final class EstablishFoundationWorkstationsSkill
             beginScan(context, frame, Phase.FIND_CHEST);
             return SkillTickResult.running(true, true);
         }
+        if (!withdrawalAnchorApproachAttempted) {
+            final Optional<VerifiedFixtureLocation> remembered =
+                    knownStorage(context, frame);
+            if (remembered.isPresent()) {
+                final VerifiedFixtureLocation anchor =
+                        remembered.orElseThrow();
+                final double distance = center(new BlockCoordinate(
+                                anchor.x(),
+                                anchor.y(),
+                                anchor.z()
+                        ))
+                        .subtract(frame.position())
+                        .length();
+                if (distance > APPROACH_RADIUS) {
+                    withdrawalAnchorApproachAttempted = true;
+                    return beginFixtureApproach(
+                            context,
+                            frame,
+                            Fixture.CHEST,
+                            anchor.x(),
+                            anchor.y(),
+                            anchor.z(),
+                            Phase.DISCOVER_CHESTS
+                    );
+                }
+            }
+        }
         return scan(
                 context,
                 frame,
@@ -2404,6 +2471,7 @@ public final class EstablishFoundationWorkstationsSkill
         fixtureMovement = null;
         fixtureMovementParameters = null;
         movementTarget = null;
+        movementResumePhase = null;
         fixtureMovementBestDistance = Double.POSITIVE_INFINITY;
         fixtureMovementLastProgressTick = -1L;
     }

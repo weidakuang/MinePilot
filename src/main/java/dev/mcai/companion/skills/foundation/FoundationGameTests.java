@@ -532,9 +532,12 @@ public final class FoundationGameTests {
             final var level = helper.getLevel();
             for (int x = -10; x <= 10; x++) {
                 for (int z = -10; z <= 10; z++) {
-                    final boolean raisedApproach = geometryVariant > 0
-                            && (northSouthGroup ? x >= 5 : z >= 5);
-                    final int floorY = raisedApproach ? 0 : -1;
+                    final int floorY = terrainFloorOffset(
+                            geometryVariant,
+                            northSouthGroup,
+                            x,
+                            z
+                    );
                     level.setBlockAndUpdate(
                             origin.offset(x, floorY, z),
                             Blocks.DIRT.defaultBlockState()
@@ -547,6 +550,11 @@ public final class FoundationGameTests {
                     }
                 }
             }
+            placeTerrainObstacles(
+                    level,
+                    northSouthGroup,
+                    geometryVariant
+            );
             level.setBlockAndUpdate(
                     table,
                     Blocks.CRAFTING_TABLE.defaultBlockState()
@@ -576,18 +584,91 @@ public final class FoundationGameTests {
             player.setHealth(player.getMaxHealth());
             player.getFoodData().setFoodLevel(20);
             player.setDeltaMovement(Vec3.ZERO);
+            final int spawnOffset = 8;
+            final int spawnFloor = terrainFloorOffset(
+                    geometryVariant,
+                    northSouthGroup,
+                    northSouthGroup ? spawnOffset : 0,
+                    northSouthGroup ? 0 : spawnOffset
+            );
             player.teleportTo(
                     northSouthGroup
-                        ? origin.getX() + 6.5
+                        ? origin.getX() + spawnOffset + 0.5
                         : origin.getX() + 0.5,
-                    origin.getY() + (geometryVariant > 0 ? 1.0 : 0.0),
+                    origin.getY() + spawnFloor + 1.0,
                     northSouthGroup
                         ? origin.getZ() + 0.5
-                        : origin.getZ() + 6.5
+                        : origin.getZ() + spawnOffset + 0.5
             );
             player.setYRot(northSouthGroup ? 90.0F : 180.0F);
             player.setYHeadRot(northSouthGroup ? 90.0F : 180.0F);
             player.setXRot(20.0F);
+        }
+
+        /**
+         * Ten deterministic land approaches. The workstation area itself
+         * remains a legal vanilla work site; only the route from the body to
+         * that site changes. This avoids testing an impossible request (for
+         * example a chest buried inside terrain) while exercising ordinary
+         * step-up, drop, detour and rolling-ground navigation.
+         */
+        private static int terrainFloorOffset(
+                final int variant,
+                final boolean northSouth,
+                final int x,
+                final int z
+        ) {
+            final int forward = northSouth ? x : z;
+            final int lateral = northSouth ? z : x;
+            if (forward <= 4) {
+                return -1;
+            }
+            return switch (variant) {
+                case 0 -> -1;
+                case 1 -> 0;
+                case 2 -> -2;
+                case 3 -> lateral >= 0 ? 0 : -1;
+                case 4 -> forward >= 7 ? 1 : 0;
+                case 5 -> forward <= 6 ? -2 : -1;
+                case 6 -> forward == 5 && Math.abs(lateral) <= 2
+                        ? 0 : -1;
+                case 7 -> Math.floorMod(forward + lateral, 3) == 0
+                        ? -2 : -1;
+                case 8 -> -1;
+                case 9 -> forward >= 7 ? 0
+                        : forward == 6 && Math.abs(lateral) <= 1
+                            ? -2 : -1;
+                default -> throw new IllegalArgumentException(
+                        "Unknown terrain variant: " + variant
+                );
+            };
+        }
+
+        private void placeTerrainObstacles(
+                final net.minecraft.server.level.ServerLevel level,
+                final boolean northSouth,
+                final int variant
+        ) {
+            if (variant != 8) {
+                return;
+            }
+            for (int[] coordinate : List.of(
+                    new int[]{6, 0},
+                    new int[]{5, 1}
+            )) {
+                final int x = northSouth
+                        ? coordinate[0] : coordinate[1];
+                final int z = northSouth
+                        ? coordinate[1] : coordinate[0];
+                level.setBlockAndUpdate(
+                        origin.offset(x, 0, z),
+                        Blocks.COBBLESTONE.defaultBlockState()
+                );
+                level.setBlockAndUpdate(
+                        origin.offset(x, 1, z),
+                        Blocks.COBBLESTONE.defaultBlockState()
+                );
+            }
         }
 
         private void tick() {

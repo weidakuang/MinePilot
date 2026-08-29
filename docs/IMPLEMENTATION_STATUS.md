@@ -13,7 +13,7 @@ bounded crop run is not a complete machine/farm or formal companion result.
 - Repository: `MinePilot`; mod id: `mcai_companion`.
 - Minecraft Java 26.2; Forge 65.0.0 inclusive through 66.0.0 exclusive;
   Java 25.
-- Development version: `0.1.15-dev-mc26.2`.
+- Development version: `0.1.16-dev-mc26.2`.
 - Public repository: `https://github.com/weidakuang/MinePilot`; the latest
   verified source snapshot is public `main` commit
   `060c5863895c6d620ea2d5aa59b0072657b0296b` with tree
@@ -26,8 +26,8 @@ bounded crop run is not a complete machine/farm or formal companion result.
   for the exact local and published snapshot identifiers.
 - Forge 65.x major-line backup branch: `mc26.2-forge65`.
 - Artifact status: `NON_RELEASE` until all formal gates pass. The current
-  development JAR is `mcai_companion-0.1.15-dev-mc26.2.jar`, SHA-256
-  `bc6b8cd0b943a24b1f7d5e1129d7b09f9df4145a4708035f8b7c826b6a3d2676`.
+  development JAR is `mcai_companion-0.1.16-dev-mc26.2.jar`, SHA-256
+  `635662b79e6093265112e68841b868a8e6fbefd944a244115e5ca8735f23b707`.
 
 The official Forge 26.2 index now reports 65.1.2 as Latest and 65.1.0 as
 Recommended. The compatibility lock includes the published 65.1.2 patch, but
@@ -40,6 +40,14 @@ The project reports implementation, controlled no-model physical checks,
 authorized live-model/client slices, and formal release gates separately. The
 first two levels cannot be promoted to a professional-companion, random-seed,
 or speedrun claim.
+
+The latest stricter container-to-door physical matrix passes 10/10 on Forge
+65.0.9 across ten convertible wood families and ten non-ocean land approaches:
+flat, raised, depressed, cross-slope, terraced, basin, ridge, broken, detour,
+and rolling ground. It validates actual movement, four independent vanilla
+chest withdrawals, ordinary recipes, physical item consumption, and the
+matching placed door. This is controlled physical evidence only; it does not
+claim every generated terrain state or replace the blocked live-model batch.
 
 ## Implemented foundations
 

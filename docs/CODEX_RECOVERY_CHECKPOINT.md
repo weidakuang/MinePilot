@@ -64,6 +64,14 @@ This section supersedes older chronological notes below when they conflict.
   after the final matrix. The coherent development version is now
   `0.1.15-dev-mc26.2`. The formal ten-run live batches cannot start until the
   configured relay key exposes a working Grok 4.5 channel.
+- `./gradlew build` passes with 1,254 tests, zero failures, and two skips. The
+  development JAR SHA-256 is
+  `bc6b8cd0b943a24b1f7d5e1129d7b09f9df4145a4708035f8b7c826b6a3d2676`.
+  The verified implementation commit is public on `main` as
+  `060c5863895c6d620ea2d5aa59b0072657b0296b`, tree
+  `30f63a80dc510aeaaa7c38ade166626bbee088d5`. The same JAR is installed in the
+  user's Forge 65.0.9 XMCL instance; the prior 0.1.14 JAR is retained outside
+  `mods` in the instance backup directory.
 - The last attempted unit command accidentally selected Forge 65.0.0 and was
   manually stopped while Mavenizer was downloading. All subsequent gates must
   explicitly use `-Pforge_compile_version=65.0.9`.

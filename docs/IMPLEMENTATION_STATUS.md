@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last reviewed: 2026-08-23
+Last reviewed: 2026-08-30
 
 The detailed 15.1--15.4 professional-companion, workstation/transport, farm,
 and machine audit is maintained in
@@ -16,8 +16,8 @@ bounded crop run is not a complete machine/farm or formal companion result.
 - Development version: `0.1.15-dev-mc26.2`.
 - Public repository: `https://github.com/weidakuang/MinePilot`; the latest
   verified source snapshot is public `main` commit
-  `600f37051765a578eb2b2bc595bd71b7188ed56f` with tree
-  `4ce45565ae2996f063b3e205a25cd96d23f42c62`. The changed source, test, and
+  `060c5863895c6d620ea2d5aa59b0072657b0296b` with tree
+  `30f63a80dc510aeaaa7c38ade166626bbee088d5`. The changed source, test, and
   evidence files match local Git blob hashes; the public tree remains English-
   only for documentation.
 - Local development branch: `main`.
@@ -25,7 +25,9 @@ bounded crop run is not a complete machine/farm or formal companion result.
   dragon melee-cycle corrections described below. Git remains the authority
   for the exact local and published snapshot identifiers.
 - Forge 65.x major-line backup branch: `mc26.2-forge65`.
-- Artifact status: `NON_RELEASE` until all formal gates pass.
+- Artifact status: `NON_RELEASE` until all formal gates pass. The current
+  development JAR is `mcai_companion-0.1.15-dev-mc26.2.jar`, SHA-256
+  `bc6b8cd0b943a24b1f7d5e1129d7b09f9df4145a4708035f8b7c826b6a3d2676`.
 
 The official Forge 26.2 index now reports 65.1.2 as Latest and 65.1.0 as
 Recommended. The compatibility lock includes the published 65.1.2 patch, but

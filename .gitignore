@@ -25,6 +25,7 @@ run-data
 /logs
 run-e2e
 e2e/results
+/run-*/
 run-debug*/
 run-debug*.log
 run-live-*/
@@ -40,7 +41,6 @@ installer.log
 # Local credentials and generated companion state
 .env
 .env.*
-!.env.example
 *.db
 *.db-shm
 *.db-wal

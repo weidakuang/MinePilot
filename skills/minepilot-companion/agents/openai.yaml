@@ -1,0 +1,4 @@
+interface:
+  display_name: "MinePilot Companion"
+  short_description: "Play Minecraft through a local MinePilot Agent"
+  default_prompt: "Use $minepilot-companion to connect to my running Minecraft world, speak in chat, and move MinePilot."

@@ -1,0 +1,703 @@
+{
+  "auditAuthorizedAfterTrial": true,
+  "trialTurnDurationMs": 376122,
+  "requests": 11,
+  "plans": 11,
+  "failedStatusResponses": 11,
+  "chooseCalls": 0,
+  "sayCalls": 13,
+  "readChatCalls": 2,
+  "explicitSleepSeconds": 22.451,
+  "firstGreetingSecondsAfterStart": 22.913134,
+  "firstAcknowledgementSecondsAfterStart": 36.445728,
+  "commands": [
+    {
+      "command": "observe",
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '你好，我是Luna，开始进行跑酷测试。'"
+    },
+    {
+      "command": "request --target-kind coordinates --x 93.5 --y -48.0 --z -36.5 --pace auto --intent '请在真实世界中自主完成包含门、跳远和攀爬的跑酷，抵达目标坐标；接受半径严格为0.5格。' --acceptance-radius 0.5",
+      "phase": "ACKNOWLEDGEMENT_REQUIRED",
+      "requestId": "35437b98-2780-4e40-ac34-4bfab1703f1b",
+      "serverTick": 4100,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '已确认导航请求，开始规划。' --navigation-request-id 35437b98-2780-4e40-ac34-4bfab1703f1b"
+    },
+    {
+      "command": "plan --request-id 35437b98-2780-4e40-ac34-4bfab1703f1b",
+      "phase": "PLANNING",
+      "requestId": "35437b98-2780-4e40-ac34-4bfab1703f1b",
+      "serverTick": 4310,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 93.5,
+        "y": -48,
+        "z": -36.5,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "read-chat --after 0 --limit 20"
+    },
+    {
+      "command": "status",
+      "phase": "FAILED",
+      "requestId": "35437b98-2780-4e40-ac34-4bfab1703f1b",
+      "serverTick": 4589,
+      "message": "No immediately executable route was found within the planning budget",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 93.5,
+        "y": -48,
+        "z": -36.5,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "request --target-kind coordinates --x 91.0 --y -56.0 --z -36.0 --pace auto --intent '自主尝试先到达较近的中间高度标点，保持冒险模式和空背包。' --acceptance-radius 0.5",
+      "phase": "ACKNOWLEDGEMENT_REQUIRED",
+      "requestId": "1234abc8-ed21-47a5-8dac-b628312368f9",
+      "serverTick": 4845,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '已确认中间标点导航请求。' --navigation-request-id 1234abc8-ed21-47a5-8dac-b628312368f9"
+    },
+    {
+      "command": "plan --request-id 1234abc8-ed21-47a5-8dac-b628312368f9",
+      "phase": "PLANNING",
+      "requestId": "1234abc8-ed21-47a5-8dac-b628312368f9",
+      "serverTick": 5097,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 91,
+        "y": -56,
+        "z": -36,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "status",
+      "phase": "FAILED",
+      "requestId": "1234abc8-ed21-47a5-8dac-b628312368f9",
+      "serverTick": 5338,
+      "message": "No immediately executable route was found within the planning budget",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 91,
+        "y": -56,
+        "z": -36,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "request --target-kind coordinates --x 92.0 --y -59.0 --z -36.0 --pace auto --intent '自主尝试到达相邻安全中间标点，继续完成跑酷。' --acceptance-radius 0.5",
+      "phase": "ACKNOWLEDGEMENT_REQUIRED",
+      "requestId": "7447d4db-d8c3-4f67-a2f2-4320264814d5",
+      "serverTick": 5518,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '已确认相邻标点导航请求。' --navigation-request-id 7447d4db-d8c3-4f67-a2f2-4320264814d5"
+    },
+    {
+      "command": "plan --request-id 7447d4db-d8c3-4f67-a2f2-4320264814d5",
+      "phase": "PLANNING",
+      "requestId": "7447d4db-d8c3-4f67-a2f2-4320264814d5",
+      "serverTick": 5730,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 92,
+        "y": -59,
+        "z": -36,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "status",
+      "phase": "FAILED",
+      "requestId": "7447d4db-d8c3-4f67-a2f2-4320264814d5",
+      "serverTick": 5942,
+      "message": "No immediately executable route was found within the planning budget",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 92,
+        "y": -59,
+        "z": -36,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "request --target-kind coordinates --x 90.0 --y -59.0 --z -36.0 --pace auto --intent '自主探测另一侧的近距离合法中间标点，继续跑酷。' --acceptance-radius 0.5",
+      "phase": "ACKNOWLEDGEMENT_REQUIRED",
+      "requestId": "81556683-9dd5-4887-9238-775c7a93ee95",
+      "serverTick": 6113,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '已确认另一侧中间标点请求。' --navigation-request-id 81556683-9dd5-4887-9238-775c7a93ee95"
+    },
+    {
+      "command": "plan --request-id 81556683-9dd5-4887-9238-775c7a93ee95",
+      "phase": "PLANNING",
+      "requestId": "81556683-9dd5-4887-9238-775c7a93ee95",
+      "serverTick": 6412,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 90,
+        "y": -59,
+        "z": -36,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "status",
+      "phase": "FAILED",
+      "requestId": "81556683-9dd5-4887-9238-775c7a93ee95",
+      "serverTick": 6585,
+      "message": "No immediately executable route was found within the planning budget",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 90,
+        "y": -59,
+        "z": -36,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "request --target-kind coordinates --x 93.5 --y -48.0 --z -36.5 --pace sprint --intent '自主完成目标跑酷，使用适合跳远和攀爬的节奏抵达终点。' --acceptance-radius 0.5",
+      "phase": "ACKNOWLEDGEMENT_REQUIRED",
+      "requestId": "ebd4e80a-529c-4214-87d8-e8fb377d70a1",
+      "serverTick": 6715,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '已确认目标跑酷请求，开始规划。' --navigation-request-id ebd4e80a-529c-4214-87d8-e8fb377d70a1"
+    },
+    {
+      "command": "plan --request-id ebd4e80a-529c-4214-87d8-e8fb377d70a1",
+      "phase": "PLANNING",
+      "requestId": "ebd4e80a-529c-4214-87d8-e8fb377d70a1",
+      "serverTick": 6907,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 93.5,
+        "y": -48,
+        "z": -36.5,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "status",
+      "phase": "FAILED",
+      "requestId": "ebd4e80a-529c-4214-87d8-e8fb377d70a1",
+      "serverTick": 7111,
+      "message": "No immediately executable route was found within the planning budget",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 93.5,
+        "y": -48,
+        "z": -36.5,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "request --target-kind coordinates --x 91.0 --y -59.0 --z -35.0 --pace auto --intent '自主寻找可执行的侧向落脚标点，继续合法跑酷。' --acceptance-radius 0.5",
+      "phase": "ACKNOWLEDGEMENT_REQUIRED",
+      "requestId": "a8dc9094-0470-4071-95fa-f50fa0fa23c5",
+      "serverTick": 7261,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '已确认侧向落脚标点请求。' --navigation-request-id a8dc9094-0470-4071-95fa-f50fa0fa23c5"
+    },
+    {
+      "command": "plan --request-id a8dc9094-0470-4071-95fa-f50fa0fa23c5",
+      "phase": "PLANNING",
+      "requestId": "a8dc9094-0470-4071-95fa-f50fa0fa23c5",
+      "serverTick": 7483,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 91,
+        "y": -59,
+        "z": -35,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "status",
+      "phase": "FAILED",
+      "requestId": "a8dc9094-0470-4071-95fa-f50fa0fa23c5",
+      "serverTick": 7683,
+      "message": "No immediately executable route was found within the planning budget",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 91,
+        "y": -59,
+        "z": -35,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "request --target-kind coordinates --x 93.5 --y -48.0 --z -36.5 --pace sprint_jump --intent '请自主完成包含门、跳远和攀爬的真实跑酷，抵达目标坐标；接受半径严格为0.5格。' --acceptance-radius 0.5",
+      "phase": "ACKNOWLEDGEMENT_REQUIRED",
+      "requestId": "4f904d43-f8f9-473c-a5ce-d9e68a72a49b",
+      "serverTick": 7962,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '已确认跑酷请求，开始规划。' --navigation-request-id 4f904d43-f8f9-473c-a5ce-d9e68a72a49b"
+    },
+    {
+      "command": "plan --request-id 4f904d43-f8f9-473c-a5ce-d9e68a72a49b",
+      "phase": "PLANNING",
+      "requestId": "4f904d43-f8f9-473c-a5ce-d9e68a72a49b",
+      "serverTick": 8147,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 93.5,
+        "y": -48,
+        "z": -36.5,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "read-chat --after 0 --limit 20"
+    },
+    {
+      "command": "status",
+      "phase": "FAILED",
+      "requestId": "4f904d43-f8f9-473c-a5ce-d9e68a72a49b",
+      "serverTick": 8409,
+      "message": "No immediately executable route was found within the planning budget",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 93.5,
+        "y": -48,
+        "z": -36.5,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "request --target-kind coordinates --x 91.0 --y -58.0 --z -36.0 --pace sprint_jump --intent '自主尝试第一个上升落脚点，执行跳跃跑酷。' --acceptance-radius 0.5",
+      "phase": "ACKNOWLEDGEMENT_REQUIRED",
+      "requestId": "30929224-5744-4851-bcac-9c74614a3d43",
+      "serverTick": 8556,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '已确认上升落脚点请求。' --navigation-request-id 30929224-5744-4851-bcac-9c74614a3d43"
+    },
+    {
+      "command": "plan --request-id 30929224-5744-4851-bcac-9c74614a3d43",
+      "phase": "PLANNING",
+      "requestId": "30929224-5744-4851-bcac-9c74614a3d43",
+      "serverTick": 8729,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 91,
+        "y": -58,
+        "z": -36,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "status",
+      "phase": "FAILED",
+      "requestId": "30929224-5744-4851-bcac-9c74614a3d43",
+      "serverTick": 8899,
+      "message": "No immediately executable route was found within the planning budget",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 91,
+        "y": -58,
+        "z": -36,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "request --target-kind coordinates --x 91.0 --y -59.0 --z -37.0 --pace sprint_jump --intent '自主尝试后侧近距离落脚点，继续跑酷。' --acceptance-radius 0.5",
+      "phase": "ACKNOWLEDGEMENT_REQUIRED",
+      "requestId": "261559c1-92e9-4fce-8c56-05589cd41b2d",
+      "serverTick": 9056,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '已确认后侧落脚点请求。' --navigation-request-id 261559c1-92e9-4fce-8c56-05589cd41b2d"
+    },
+    {
+      "command": "plan --request-id 261559c1-92e9-4fce-8c56-05589cd41b2d",
+      "phase": "PLANNING",
+      "requestId": "261559c1-92e9-4fce-8c56-05589cd41b2d",
+      "serverTick": 9265,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 91,
+        "y": -59,
+        "z": -37,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "status",
+      "phase": "FAILED",
+      "requestId": "261559c1-92e9-4fce-8c56-05589cd41b2d",
+      "serverTick": 9460,
+      "message": "No immediately executable route was found within the planning budget",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 91,
+        "y": -59,
+        "z": -37,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "request --target-kind coordinates --x 93.5 --y -58.0 --z -36.5 --pace sprint_jump --intent '自主尝试靠近目标的第一段跳跃，保持合法跑酷。' --acceptance-radius 0.5",
+      "phase": "ACKNOWLEDGEMENT_REQUIRED",
+      "requestId": "a1bb88d1-52db-4bc1-a3b1-8ee129bf2eba",
+      "serverTick": 9623,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '已确认第一段跳跃请求。' --navigation-request-id a1bb88d1-52db-4bc1-a3b1-8ee129bf2eba"
+    },
+    {
+      "command": "plan --request-id a1bb88d1-52db-4bc1-a3b1-8ee129bf2eba",
+      "phase": "PLANNING",
+      "requestId": "a1bb88d1-52db-4bc1-a3b1-8ee129bf2eba",
+      "serverTick": 9816,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 93.5,
+        "y": -58,
+        "z": -36.5,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "status",
+      "phase": "FAILED",
+      "requestId": "a1bb88d1-52db-4bc1-a3b1-8ee129bf2eba",
+      "serverTick": 10006,
+      "message": "No immediately executable route was found within the planning budget",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 93.5,
+        "y": -58,
+        "z": -36.5,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "request --target-kind coordinates --x 93.5 --y -48.0 --z -36.5 --pace walk --intent '自主导航到目标，处理门、跳远和攀爬，严格使用真实世界移动。' --acceptance-radius 0.5",
+      "phase": "ACKNOWLEDGEMENT_REQUIRED",
+      "requestId": "5ebf48b3-127f-403d-a0b4-4f37aab33a9e",
+      "serverTick": 10180,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '已确认步行导航请求。' --navigation-request-id 5ebf48b3-127f-403d-a0b4-4f37aab33a9e"
+    },
+    {
+      "command": "plan --request-id 5ebf48b3-127f-403d-a0b4-4f37aab33a9e",
+      "phase": "PLANNING",
+      "requestId": "5ebf48b3-127f-403d-a0b4-4f37aab33a9e",
+      "serverTick": 10393,
+      "message": "Navigation intent accepted; emit one acknowledgement before planning",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 93.5,
+        "y": -48,
+        "z": -36.5,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "status",
+      "phase": "FAILED",
+      "requestId": "5ebf48b3-127f-403d-a0b4-4f37aab33a9e",
+      "serverTick": 10581,
+      "message": "No immediately executable route was found within the planning budget",
+      "routeOptionCount": 0,
+      "position": [
+        91,
+        -59,
+        -36
+      ],
+      "destination": {
+        "dimension": "minecraft:overworld",
+        "x": 93.5,
+        "y": -48,
+        "z": -36.5,
+        "acceptanceRadius": 0.5,
+        "dynamic": false,
+        "targetIdentity": "coordinates"
+      }
+    },
+    {
+      "command": "observe",
+      "position": [
+        91,
+        -59,
+        -36
+      ]
+    },
+    {
+      "command": "say --message '测试结束：未到达；最终维度：minecraft:overworld；坐标：(91.0,-59.0,-36.0)；背包为空。'"
+    }
+  ]
+}

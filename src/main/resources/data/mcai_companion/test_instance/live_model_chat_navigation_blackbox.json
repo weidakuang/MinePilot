@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:function",
+  "environment": "mcai_companion:exclusive_live_navigation_blackbox",
+  "function": "mcai_companion:live_model_chat_navigation_blackbox",
+  "max_ticks": 600000,
+  "structure": "forge:empty48x32x48",
+  "sky_access": true,
+  "padding": 8
+}

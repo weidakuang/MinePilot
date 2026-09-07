@@ -1,37 +1,21 @@
-# Security policy
+# Security Policy
 
 ## Scope
 
-This policy covers the `mcai_companion` source tree, the installable Forge JAR,
-the loopback MCP endpoint, world `SavedData`, and the SQLite memory database.
-The current branch is a development build (`0.1.11-dev-mc26.2`), not a security
-or gameplay release.
+This policy covers the MinePilot source tree and Forge development JAR. The
+current `0.2.0-dev-mc26.2` branch is a clean baseline and contains no Agent,
+model, credential, MCP, memory, or gameplay subsystem.
 
-## Report a vulnerability
+## Reporting
 
-Do not put API keys, access tokens, world saves, player IPs, or private logs in a
-public issue. Send a minimal reproduction and the affected commit through the
-repository's private security channel. If no private channel is configured,
-open an issue containing only a redacted description and request a private
-contact; never attach credentials.
+Do not include API keys, access tokens, world saves, player addresses, private
+logs, or personal data in a public issue. Use the repository's private
+security channel, or publish only a redacted description and request private
+contact.
 
-## Security boundaries
+## Rebuild requirements
 
-- Credentials are process configuration or OS credential-store data only; they
-  must not enter `SavedData`, SQLite, JARs, logs, crash reports, screenshots,
-  or evidence manifests.
-- MCP binds to loopback and requires a bearer token plus Host/Origin checks.
-- Remote model URLs must use HTTPS; plain HTTP is limited to loopback.
-- Model output is a typed high-level decision. It cannot issue Java, packets,
-  commands, teleport requests, direct block writes, or item creation.
-- Chat, books, item names, signs, and shared waypoints are untrusted content;
-  they cannot alter the system prompt or safety policy.
-- Hardcore and fair-play configurations permanently reject cheats, hidden-world
-  reads, seed/structure APIs, observer-camera input, and direct world mutation.
-
-## Supported versions
-
-The current source targets Minecraft 26.2 / Forge 65.x / Java 25. The declared
-loader range is `[65.0.0,66.0.0)`, but the full 65.x runtime matrix is still
-`NOT_RUN`; see [compatibility](compat/forge-lines.toml) and
-[GOAL_STATE](docs/progress/GOAL_STATE.json).
+Any future credential or network feature must keep secrets out of Git, worlds,
+databases, logs, crash reports, screenshots, and evidence. Any future gameplay
+feature must use normal server rules and must not introduce hidden-world reads,
+teleports, direct inventory edits, or synthetic success evidence.

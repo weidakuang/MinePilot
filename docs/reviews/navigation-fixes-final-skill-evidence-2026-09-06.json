@@ -1,0 +1,860 @@
+{
+  "date": "2026-09-06",
+  "operator": "Scripted regression authored by the implementation assistant, invoking the bundled public Skill CLI; not an independent blind AI operator",
+  "environment": "Forge 65.0.9 dedicated GameTest on loopback port 25767, prepared flat arena, natural mob spawning disabled; not a real-client session",
+  "jarSha256": "f7d74820cf616b3532b825f5d6929343a20aab7445470790f153385479bd5e40",
+  "calculatedDistance": 0.9869670946551465,
+  "physicalDisplacement": 9.013032905802605,
+  "trace": [
+    {
+      "command": [
+        "observe"
+      ],
+      "result": {
+        "absorption": 0.0,
+        "agentName": "MinePilot",
+        "dimension": "minecraft:overworld",
+        "externalControlAvailable": true,
+        "food": 20,
+        "heading": 180.0,
+        "health": 20.0,
+        "hotbar": [
+          {
+            "empty": true,
+            "slot": 0
+          },
+          {
+            "empty": true,
+            "slot": 1
+          },
+          {
+            "empty": true,
+            "slot": 2
+          },
+          {
+            "empty": true,
+            "slot": 3
+          },
+          {
+            "empty": true,
+            "slot": 4
+          },
+          {
+            "empty": true,
+            "slot": 5
+          },
+          {
+            "empty": true,
+            "slot": 6
+          },
+          {
+            "empty": true,
+            "slot": 7
+          },
+          {
+            "empty": true,
+            "slot": 8
+          }
+        ],
+        "inventory": [],
+        "latestChatSequence": 0,
+        "navigation": {
+          "absorption": 0.0,
+          "agentName": "MinePilot",
+          "dimension": "minecraft:overworld",
+          "food": 20,
+          "heading": 180.0,
+          "health": 20.0,
+          "hotbar": [
+            {
+              "empty": true,
+              "slot": 0
+            },
+            {
+              "empty": true,
+              "slot": 1
+            },
+            {
+              "empty": true,
+              "slot": 2
+            },
+            {
+              "empty": true,
+              "slot": 3
+            },
+            {
+              "empty": true,
+              "slot": 4
+            },
+            {
+              "empty": true,
+              "slot": 5
+            },
+            {
+              "empty": true,
+              "slot": 6
+            },
+            {
+              "empty": true,
+              "slot": 7
+            },
+            {
+              "empty": true,
+              "slot": 8
+            }
+          ],
+          "inventory": [],
+          "onGround": true,
+          "phase": "IDLE",
+          "routeOptions": [],
+          "saturation": 5.0,
+          "selectedHotbarSlot": 0,
+          "serverTick": 12384,
+          "validActions": [
+            "request_navigation",
+            "say"
+          ],
+          "velocityX": 0.0,
+          "velocityY": -0.0784000015258789,
+          "velocityZ": 0.0,
+          "worldRevision": 0,
+          "x": -4378120.5,
+          "y": -48.0,
+          "z": -11966413.5
+        },
+        "onGround": true,
+        "online": true,
+        "onlinePlayerCount": 1,
+        "onlinePlayers": [
+          {
+            "alive": true,
+            "dimension": "minecraft:overworld",
+            "name": "TestHuman",
+            "uuid": "5815d267-8acc-4e0a-b30a-7ffb055a728c",
+            "x": -4378110.5,
+            "y": -48.0,
+            "z": -11966413.5
+          }
+        ],
+        "onlinePlayersTruncated": false,
+        "recentPlayerChat": [],
+        "saturation": 5.0,
+        "selectedHotbarSlot": 0,
+        "serverTick": 12384,
+        "velocityX": 0.0,
+        "velocityY": -0.0784000015258789,
+        "velocityZ": 0.0,
+        "x": -4378120.5,
+        "y": -48.0,
+        "z": -11966413.5
+      }
+    },
+    {
+      "command": [
+        "request",
+        "--target-kind",
+        "player",
+        "--target-name",
+        "5815d267-8acc-4e0a-b30a-7ffb055a728c",
+        "--pace",
+        "walk",
+        "--acceptance-radius",
+        "2",
+        "--intent",
+        "用中文打招呼并走到玩家旁边，停稳后以最终坐标核对到达。"
+      ],
+      "result": {
+        "absorption": 0.0,
+        "agentName": "MinePilot",
+        "dimension": "minecraft:overworld",
+        "food": 20,
+        "heading": 180.0,
+        "health": 20.0,
+        "hotbar": [
+          {
+            "empty": true,
+            "slot": 0
+          },
+          {
+            "empty": true,
+            "slot": 1
+          },
+          {
+            "empty": true,
+            "slot": 2
+          },
+          {
+            "empty": true,
+            "slot": 3
+          },
+          {
+            "empty": true,
+            "slot": 4
+          },
+          {
+            "empty": true,
+            "slot": 5
+          },
+          {
+            "empty": true,
+            "slot": 6
+          },
+          {
+            "empty": true,
+            "slot": 7
+          },
+          {
+            "empty": true,
+            "slot": 8
+          }
+        ],
+        "inventory": [],
+        "lastEventMessage": "Navigation intent accepted; emit one acknowledgement before planning",
+        "onGround": true,
+        "phase": "ACKNOWLEDGEMENT_REQUIRED",
+        "requestId": "e433e73a-43a4-4681-8fe5-8268dd075339",
+        "routeOptions": [],
+        "saturation": 5.0,
+        "selectedHotbarSlot": 0,
+        "serverTick": 12400,
+        "status": "NAVIGATION_ACCEPTED",
+        "validActions": [
+          "say",
+          "cancel_navigation"
+        ],
+        "velocityX": 0.0,
+        "velocityY": -0.0784000015258789,
+        "velocityZ": 0.0,
+        "worldRevision": 0,
+        "x": -4378120.5,
+        "y": -48.0,
+        "z": -11966413.5
+      }
+    },
+    {
+      "command": [
+        "say",
+        "--navigation-request-id",
+        "e433e73a-43a4-4681-8fe5-8268dd075339",
+        "--message",
+        "你好，我是 MinePilot。我现在走到你旁边，停稳后再确认到达。"
+      ],
+      "result": {
+        "message": "你好，我是 MinePilot。我现在走到你旁边，停稳后再确认到达。",
+        "status": "SAY_SENT"
+      }
+    },
+    {
+      "command": [
+        "plan",
+        "--request-id",
+        "e433e73a-43a4-4681-8fe5-8268dd075339"
+      ],
+      "result": {
+        "absorption": 0.0,
+        "agentName": "MinePilot",
+        "destination": {
+          "acceptanceRadius": 2.0,
+          "dimension": "minecraft:overworld",
+          "dynamic": true,
+          "targetIdentity": "5815d267-8acc-4e0a-b30a-7ffb055a728c",
+          "x": -4378110.5,
+          "y": -48.0,
+          "z": -11966413.5
+        },
+        "dimension": "minecraft:overworld",
+        "distanceToDestination": 10.0,
+        "food": 20,
+        "heading": 180.0,
+        "health": 20.0,
+        "hotbar": [
+          {
+            "empty": true,
+            "slot": 0
+          },
+          {
+            "empty": true,
+            "slot": 1
+          },
+          {
+            "empty": true,
+            "slot": 2
+          },
+          {
+            "empty": true,
+            "slot": 3
+          },
+          {
+            "empty": true,
+            "slot": 4
+          },
+          {
+            "empty": true,
+            "slot": 5
+          },
+          {
+            "empty": true,
+            "slot": 6
+          },
+          {
+            "empty": true,
+            "slot": 7
+          },
+          {
+            "empty": true,
+            "slot": 8
+          }
+        ],
+        "inventory": [],
+        "lastEventMessage": "Navigation intent accepted; emit one acknowledgement before planning",
+        "onGround": true,
+        "phase": "PLANNING",
+        "requestId": "e433e73a-43a4-4681-8fe5-8268dd075339",
+        "routeOptions": [],
+        "saturation": 5.0,
+        "selectedHotbarSlot": 0,
+        "serverTick": 12428,
+        "validActions": [
+          "cancel_navigation",
+          "say"
+        ],
+        "velocityX": 0.0,
+        "velocityY": -0.0784000015258789,
+        "velocityZ": 0.0,
+        "worldRevision": 0,
+        "x": -4378120.5,
+        "y": -48.0,
+        "z": -11966413.5
+      }
+    },
+    {
+      "command": [
+        "status"
+      ],
+      "result": {
+        "absorption": 0.0,
+        "agentName": "MinePilot",
+        "destination": {
+          "acceptanceRadius": 2.0,
+          "dimension": "minecraft:overworld",
+          "dynamic": true,
+          "targetIdentity": "5815d267-8acc-4e0a-b30a-7ffb055a728c",
+          "x": -4378110.5,
+          "y": -48.0,
+          "z": -11966413.5
+        },
+        "dimension": "minecraft:overworld",
+        "distanceToDestination": 10.0,
+        "food": 20,
+        "heading": 180.0,
+        "health": 20.0,
+        "hotbar": [
+          {
+            "empty": true,
+            "slot": 0
+          },
+          {
+            "empty": true,
+            "slot": 1
+          },
+          {
+            "empty": true,
+            "slot": 2
+          },
+          {
+            "empty": true,
+            "slot": 3
+          },
+          {
+            "empty": true,
+            "slot": 4
+          },
+          {
+            "empty": true,
+            "slot": 5
+          },
+          {
+            "empty": true,
+            "slot": 6
+          },
+          {
+            "empty": true,
+            "slot": 7
+          },
+          {
+            "empty": true,
+            "slot": 8
+          }
+        ],
+        "inventory": [],
+        "lastEventMessage": "Choose one of the physically evaluated route options",
+        "onGround": true,
+        "phase": "PLAN_READY",
+        "requestId": "e433e73a-43a4-4681-8fe5-8268dd075339",
+        "routeOptions": [
+          {
+            "distanceBlocks": 9.0,
+            "estimatedExhaustion": 1.35,
+            "estimatedFoodPointsLost": 0.0,
+            "estimatedHealthLost": 0.0,
+            "estimatedSeconds": 1.2628034236003929,
+            "feasibleNow": true,
+            "hazards": [],
+            "label": "fastest by estimated traversal time",
+            "optionId": "A",
+            "pathSteps": [
+              [
+                -4378119.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378118.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378117.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378116.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378115.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378114.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378113.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378112.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378111.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ]
+            ],
+            "requiredActions": [],
+            "riskScore": 0.0,
+            "suggestedPace": "sprint_jump",
+            "supportBlocksRequired": 0,
+            "supportedPaces": [
+              "sneak",
+              "sprint",
+              "sprint_jump",
+              "walk"
+            ]
+          }
+        ],
+        "saturation": 5.0,
+        "selectedHotbarSlot": 0,
+        "serverTick": 12538,
+        "validActions": [
+          "choose_navigation",
+          "cancel_navigation",
+          "say"
+        ],
+        "velocityX": 0.0,
+        "velocityY": -0.0784000015258789,
+        "velocityZ": 0.0,
+        "worldRevision": 0,
+        "x": -4378120.5,
+        "y": -48.0,
+        "z": -11966413.5
+      }
+    },
+    {
+      "command": [
+        "choose",
+        "--request-id",
+        "e433e73a-43a4-4681-8fe5-8268dd075339",
+        "--option-id",
+        "A",
+        "--pace",
+        "walk"
+      ],
+      "result": {
+        "absorption": 0.0,
+        "agentName": "MinePilot",
+        "destination": {
+          "acceptanceRadius": 2.0,
+          "dimension": "minecraft:overworld",
+          "dynamic": true,
+          "targetIdentity": "5815d267-8acc-4e0a-b30a-7ffb055a728c",
+          "x": -4378110.5,
+          "y": -48.0,
+          "z": -11966413.5
+        },
+        "dimension": "minecraft:overworld",
+        "distanceToDestination": 10.0,
+        "food": 20,
+        "heading": 180.0,
+        "health": 20.0,
+        "hotbar": [
+          {
+            "empty": true,
+            "slot": 0
+          },
+          {
+            "empty": true,
+            "slot": 1
+          },
+          {
+            "empty": true,
+            "slot": 2
+          },
+          {
+            "empty": true,
+            "slot": 3
+          },
+          {
+            "empty": true,
+            "slot": 4
+          },
+          {
+            "empty": true,
+            "slot": 5
+          },
+          {
+            "empty": true,
+            "slot": 6
+          },
+          {
+            "empty": true,
+            "slot": 7
+          },
+          {
+            "empty": true,
+            "slot": 8
+          }
+        ],
+        "inventory": [],
+        "lastEventMessage": "Selected route A started",
+        "onGround": true,
+        "phase": "EXECUTING",
+        "requestId": "e433e73a-43a4-4681-8fe5-8268dd075339",
+        "routeOptions": [
+          {
+            "distanceBlocks": 9.0,
+            "estimatedExhaustion": 1.35,
+            "estimatedFoodPointsLost": 0.0,
+            "estimatedHealthLost": 0.0,
+            "estimatedSeconds": 1.2628034236003929,
+            "feasibleNow": true,
+            "hazards": [],
+            "label": "fastest by estimated traversal time",
+            "optionId": "A",
+            "pathSteps": [
+              [
+                -4378119.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378118.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378117.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378116.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378115.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378114.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378113.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378112.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378111.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ]
+            ],
+            "requiredActions": [],
+            "riskScore": 0.0,
+            "suggestedPace": "sprint_jump",
+            "supportBlocksRequired": 0,
+            "supportedPaces": [
+              "sneak",
+              "sprint",
+              "sprint_jump",
+              "walk"
+            ]
+          }
+        ],
+        "saturation": 5.0,
+        "selectedHotbarSlot": 0,
+        "selectedOption": "A",
+        "selectedPace": "walk",
+        "serverTick": 12554,
+        "started": true,
+        "validActions": [
+          "cancel_navigation",
+          "say"
+        ],
+        "velocityX": 0.0,
+        "velocityY": -0.0784000015258789,
+        "velocityZ": 0.0,
+        "worldRevision": 0,
+        "x": -4378120.5,
+        "y": -48.0,
+        "z": -11966413.5
+      }
+    },
+    {
+      "command": [
+        "read-chat",
+        "--after",
+        "0",
+        "--limit",
+        "20"
+      ],
+      "result": {
+        "latestSequence": 0,
+        "messages": []
+      }
+    },
+    {
+      "command": [
+        "status"
+      ],
+      "result": {
+        "absorption": 0.0,
+        "agentName": "MinePilot",
+        "destination": {
+          "acceptanceRadius": 2.0,
+          "dimension": "minecraft:overworld",
+          "dynamic": true,
+          "targetIdentity": "5815d267-8acc-4e0a-b30a-7ffb055a728c",
+          "x": -4378110.5,
+          "y": -48.0,
+          "z": -11966413.5
+        },
+        "dimension": "minecraft:overworld",
+        "distanceToDestination": 0.9869670946551468,
+        "food": 20,
+        "heading": 89.99613189697266,
+        "health": 20.0,
+        "hotbar": [
+          {
+            "empty": true,
+            "slot": 0
+          },
+          {
+            "empty": true,
+            "slot": 1
+          },
+          {
+            "empty": true,
+            "slot": 2
+          },
+          {
+            "empty": true,
+            "slot": 3
+          },
+          {
+            "empty": true,
+            "slot": 4
+          },
+          {
+            "empty": true,
+            "slot": 5
+          },
+          {
+            "empty": true,
+            "slot": 6
+          },
+          {
+            "empty": true,
+            "slot": 7
+          },
+          {
+            "empty": true,
+            "slot": 8
+          }
+        ],
+        "inventory": [],
+        "lastEventMessage": "Destination reached",
+        "onGround": true,
+        "phase": "COMPLETED",
+        "requestId": "e433e73a-43a4-4681-8fe5-8268dd075339",
+        "routeOptions": [
+          {
+            "distanceBlocks": 9.0,
+            "estimatedExhaustion": 1.35,
+            "estimatedFoodPointsLost": 0.0,
+            "estimatedHealthLost": 0.0,
+            "estimatedSeconds": 1.2628034236003929,
+            "feasibleNow": true,
+            "hazards": [],
+            "label": "fastest by estimated traversal time",
+            "optionId": "A",
+            "pathSteps": [
+              [
+                -4378119.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378118.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378117.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378116.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378115.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378114.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378113.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378112.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ],
+              [
+                -4378111.5,
+                -48.0,
+                -11966413.5,
+                "walk",
+                "sprint_jump"
+              ]
+            ],
+            "requiredActions": [],
+            "riskScore": 0.0,
+            "suggestedPace": "sprint_jump",
+            "supportBlocksRequired": 0,
+            "supportedPaces": [
+              "sneak",
+              "sprint",
+              "sprint_jump",
+              "walk"
+            ]
+          }
+        ],
+        "saturation": 5.0,
+        "selectedHotbarSlot": 0,
+        "selectedOption": "A",
+        "selectedPace": "walk",
+        "serverTick": 12666,
+        "validActions": [
+          "request_navigation",
+          "say"
+        ],
+        "velocityX": 0.0,
+        "velocityY": -0.0784000015258789,
+        "velocityZ": 0.0,
+        "worldRevision": 0,
+        "x": -4378111.486967094,
+        "y": -48.0,
+        "z": -11966413.499971462
+      }
+    }
+  ]
+}

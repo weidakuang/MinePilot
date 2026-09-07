@@ -9,14 +9,14 @@ license="Apache-2.0"
 
 [[mods]]
 modId="mcai_companion"
-version="0.1.16-dev-mc26.2"
-displayName="Minecraft AI Companion"
+version="0.2.0-dev-mc26.2"
+displayName="MinePilot"
 authors="weida"
 #displayTest="MATCH_VERSION" #optional, default=MATCH_VERSION when not clientSideOnly, else IGNORE_ALL_VERSION
 
-description='''A fair-play, accountless AI companion embodied as a headless
-ServerPlayer. The language model chooses validated high-level skills while
-deterministic local controllers handle real-time safety and legal game actions.'''
+description='''MinePilot is an AI companion for Minecraft Java Edition.
+This development build contains the rebuilt headless player body, natural-chat
+model encoder, and the first physically executed navigation tool.'''
 
 [[dependencies.mcai_companion]]
     modId="forge"

@@ -1,15 +1,9 @@
 # Third-party notices
 
-The distributable JAR embeds:
-
-- Xerial SQLite JDBC, Apache License 2.0.
-
-Development and runtime APIs include:
+The clean MinePilot baseline builds against:
 
 - Minecraft Forge, LGPL-2.1-only;
-- Minecraft and Mojang libraries, governed by their respective terms;
-- Gson, Apache License 2.0.
+- Minecraft and Mojang libraries, governed by their respective terms.
 
-Xaero's Minimap is an optional compile-only compatibility target and is not redistributed in this project's JAR.
-
-No code or assets from Baritone, Mineflayer, cheat clients, Xaero's Minimap, or other autonomous-player projects are copied into this repository.
+The current development JAR does not embed SQLite JDBC, autonomous-player
+projects, cheat-client code, third-party textures, or third-party Agent assets.

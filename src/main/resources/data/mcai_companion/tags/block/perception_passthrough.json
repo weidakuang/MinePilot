@@ -1,0 +1,10 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:sculk_sensor", "minecraft:calibrated_sculk_sensor", "minecraft:sculk_shrieker",
+    "minecraft:lightning_rod", "minecraft:note_block", "minecraft:jukebox", "minecraft:crafter",
+    "minecraft:tnt", "minecraft:trapped_chest", "minecraft:lectern", "minecraft:comparator",
+    "minecraft:copper_bulb", "minecraft:exposed_copper_bulb", "minecraft:weathered_copper_bulb", "minecraft:oxidized_copper_bulb",
+    "minecraft:waxed_copper_bulb", "minecraft:waxed_exposed_copper_bulb", "minecraft:waxed_weathered_copper_bulb", "minecraft:waxed_oxidized_copper_bulb"
+  ]
+}

@@ -118,6 +118,8 @@ public final class KnowledgeGameTests {
                 }
                 h.getLevel().setBlockAndUpdate(origin.offset(1,-1,0),Blocks.AIR.defaultBlockState());
                 p.setGameMode(GameType.SURVIVAL);
+                // The route must now select its declared material from storage, not only the hotbar.
+                p.getInventory().setItem(20,p.getInventory().getItem(0));p.getInventory().setItem(0,net.minecraft.world.item.ItemStack.EMPTY);
                 var reserved=call("request_navigation","{\"target_kind\":\"coordinates\",\"x\":"+(p.getX()+2)+",\"y\":"+p.getY()+",\"z\":"+p.getZ()+",\"acceptance_radius\":0.5,\"preferred_pace\":\"walk\",\"player_intent\":\"test declared support\"}");
                 routeRequest=reserved.get("requestId").getAsString();call("say","{\"message\":\"测试垫脚清单\",\"navigation_request_id\":\""+routeRequest+"\"}");
                 call("plan_navigation","{\"request_id\":\""+routeRequest+"\"}");phase=3;return;
@@ -179,6 +181,16 @@ public final class KnowledgeGameTests {
                     h.assertTrue(rejected && !p.inventoryLedger.expendable(p.getInventory().getItem(7)),"Failed protection save left materials spendable");
                 } catch(java.io.IOException failure){throw new IllegalStateException("Could not construct storage failure fixture",failure);}
                 finally {try {java.nio.file.Files.deleteIfExists(temp);}catch(java.io.IOException ignored){}}
+                var marker=p.blockPosition().east(2);h.getLevel().setBlock(marker,Blocks.BELL.defaultBlockState(),2);
+                String scanCursor="";int scanPages=0,examined=0;boolean complete=false,found=false;long scanNanos=System.nanoTime();
+                while(scanPages++<20) {
+                    var scan=AgentRuntime.active(h.getLevel().getServer()).perception.blocks(96,"village","structures",scanCursor,64);
+                    examined+=scan.get("scannedCells").getAsInt();
+                    for(var value:scan.getAsJsonArray("results"))if(value.getAsJsonObject().get("block").getAsString().equals("minecraft:bell"))found=true;
+                    if(scan.get("complete").getAsBoolean()){complete=true;break;}scanCursor=scan.get("cursor").getAsString();
+                }
+                h.assertTrue(complete && found && examined<50000,"Sparse structure search still scanned a full 96-block cube or missed a sensed marker: "+scanPages+" pages, "+examined+" cells");
+                dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("96-block loaded-only village-marker scan: pages={}, cells={}, milliseconds={}",scanPages,examined,(System.nanoTime()-scanNanos)/1e6);
                 phase=10;h.succeed();
             }
         }

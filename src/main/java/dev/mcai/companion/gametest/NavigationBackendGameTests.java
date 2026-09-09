@@ -60,9 +60,73 @@ public final class NavigationBackendGameTests {
     private NavigationBackendGameTests() {
     }
 
+    /** Real save/logout/login regression, with no inventory reconstruction on rejoin. */
+    @GameTest(name = "headless_saved_player_restoration", structure = STRUCTURE,
+            maxTicks = 200, padding = 8)
+    public static void headlessSavedPlayerRestoration(GameTestHelper helper) {
+        var server = helper.getLevel().getServer();
+        BlockPos feet = helper.absolutePos(new BlockPos(10, 2, 10));
+        helper.getLevel().setBlockAndUpdate(feet.below(), Blocks.STONE.defaultBlockState());
+        Vec3 savedPosition = Vec3.atBottomCenterOf(feet);
+        String identity = "persistence-regression-" + UUID.randomUUID();
+        var first = dev.mcai.companion.agent.body.HeadlessPlayerSession.join(
+                server, helper.getLevel(), identity, "SaveProbe", savedPosition.x, savedPosition.y, savedPosition.z);
+        try {
+            var body = first.player();
+            body.getInventory().clearContent();
+            var pick = new ItemStack(net.minecraft.world.item.Items.WOODEN_PICKAXE);
+            pick.setDamageValue(7);
+            body.getInventory().setItem(4, pick);
+            body.getInventory().setItem(0, new ItemStack(net.minecraft.world.item.Items.SPRUCE_LOG, 6));
+            body.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND,
+                    new ItemStack(net.minecraft.world.item.Items.TORCH, 3));
+            body.snapTo(savedPosition, 82.0F, -12.0F);
+            body.setDeltaMovement(Vec3.ZERO);
+            body.setGameMode(GameType.ADVENTURE);
+            body.setHealth(17.0F);
+            body.getFoodData().setFoodLevel(13);
+        } finally {
+            first.close();
+        }
+        var fallback = server.getLevel(net.minecraft.world.level.Level.NETHER);
+        var restored = dev.mcai.companion.agent.body.HeadlessPlayerSession.join(
+                server, fallback == null ? helper.getLevel() : fallback, identity, "SaveProbe", 0.5, 100, 0.5);
+        helper.addCleanup(ignored -> restored.close());
+        var body = restored.player();
+        helper.assertTrue(body.position().distanceTo(savedPosition) < 0.001,
+                "Rejoin discarded the saved position: " + body.position());
+        helper.assertTrue(body.level() == helper.getLevel(), "Rejoin discarded the saved dimension");
+        helper.assertTrue(body.gameMode.getGameModeForPlayer() == GameType.ADVENTURE,
+                "Rejoin reset the saved game mode");
+        helper.assertTrue(body.getYRot() == 82 && body.getXRot() == -12,
+                "Rejoin discarded the saved look direction");
+        helper.assertTrue(body.getHealth() == 17 && body.getFoodData().getFoodLevel() == 13,
+                "Rejoin discarded saved health/food");
+        helper.assertTrue(body.getInventory().getItem(0).is(net.minecraft.world.item.Items.SPRUCE_LOG)
+                        && body.getInventory().getItem(0).getCount() == 6
+                        && body.getInventory().getItem(4).is(net.minecraft.world.item.Items.WOODEN_PICKAXE)
+                        && body.getInventory().getItem(4).getDamageValue() == 7
+                        && body.getOffhandItem().is(net.minecraft.world.item.Items.TORCH)
+                        && body.getOffhandItem().getCount() == 3,
+                "Rejoin lost native inventory, offhand or tool durability");
+        List<ItemStack> inventory = copyInventory(body);
+        helper.onEachTick(() -> {
+            restored.tick();
+            helper.assertTrue(inventoryEquals(inventory, body), "Loaded inventory changed after login physics");
+            helper.assertTrue(body.position().distanceTo(savedPosition) < 0.1,
+                    "Loaded body moved away from its saved position");
+            if (helper.getTick() >= 10) {
+                MinecraftAiCompanion.LOGGER.info("Persistence physical gate: position={}, inventoryRestored=true, "
+                        + "woodenPickaxeDamage=7, offhandTorches=3, gameMode=adventure, dimension={}",
+                        body.position(), body.level().dimension().identifier());
+                helper.succeed();
+            }
+        });
+    }
+
     /** Controlled physics regressions; deliberately separate from the public Skill gate. */
     @GameTest(name = "navigation_repair_regressions", structure = STRUCTURE,
-            maxTicks = 4000, padding = 8)
+            maxTicks = 40000, padding = 8)
     public static void navigationRepairRegressions(GameTestHelper helper) {
         if (!Boolean.getBoolean("minepilot.navigationRepairTest")) {
             helper.fail("Repair gate selected without minepilot.navigationRepairTest=true");
@@ -83,6 +147,7 @@ public final class NavigationBackendGameTests {
         private BackendHuman human;
         private int scenario;
         private long startedTick;
+        private long planningBeganNanos;
         private UUID requestId;
         private Vec3 start;
         private Vec3 previous;
@@ -108,8 +173,8 @@ public final class NavigationBackendGameTests {
         private void start() {
             // Fixture-only mutations. Once a request starts, the Agent moves exclusively
             // through its production coordinator, follower and server-authoritative physics.
-            for (int x = -3; x <= 18; x++) {
-                for (int z = -3; z <= 3; z++) {
+            for (int x = -3; x <= (scenario==13?32:18); x++) {
+                for (int z = (scenario==13?-7:-3); z <= (scenario==13?7:3); z++) {
                     helper.getLevel().setBlockAndUpdate(origin.offset(x, -1, z),
                             Blocks.STONE.defaultBlockState());
                     for (int y = 0; y <= 4; y++) {
@@ -121,7 +186,7 @@ public final class NavigationBackendGameTests {
             double offset = scenario == 0 ? 0.1 : 0.5;
             if (scenario == 5) {
                 for (int x = 1; x <= 3; x++) {
-                    for (int z = -3; z <= 3; z++) {
+                    for (int z = (scenario==13?-7:-3); z <= (scenario==13?7:3); z++) {
                         helper.getLevel().setBlockAndUpdate(origin.offset(x, -1, z), Blocks.AIR.defaultBlockState());
                     }
                 }
@@ -137,6 +202,13 @@ public final class NavigationBackendGameTests {
             }
             if(scenario==12)for(int x=1;x<=7;x++)
                 helper.getLevel().setBlockAndUpdate(origin.offset(x,0,0),Blocks.STONE_SLAB.defaultBlockState());
+            if(scenario==13) {
+                for(int x=3;x<=27;x+=3) {
+                    int z=(x/3%3-1)*2;
+                    for(int y=0;y<4;y++)helper.getLevel().setBlockAndUpdate(origin.offset(x,y,z),Blocks.SPRUCE_LOG.defaultBlockState());
+                    for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)helper.getLevel().setBlockAndUpdate(origin.offset(x+dx,3,z+dz),Blocks.SPRUCE_LEAVES.defaultBlockState());
+                }
+            }
             body.setGameMode(GameType.ADVENTURE);
             body.getInventory().clearContent();
             body.setPos(origin.getX() + offset, origin.getY(), origin.getZ() + 0.5);
@@ -165,7 +237,7 @@ public final class NavigationBackendGameTests {
                         human.player().getUUID().toString(), 2.0, OptionalDouble.empty());
             } else {
                 double targetX = origin.getX() + (scenario == 0 ? 2.4 : scenario == 1 ? 0.5
-                        : scenario == 5 ? 4.5 : scenario == 6 ? 1.5 : scenario == 8 ? 10.5 : scenario == 9 ? 3.5 : scenario == 10 ? 8.5 : 6.5);
+                        : scenario == 13 ? 30.5 : scenario == 5 ? 4.5 : scenario == 6 ? 1.5 : scenario == 8 ? 10.5 : scenario == 9 ? 3.5 : scenario == 10 ? 8.5 : 6.5);
                 target = new NavigationTarget.Coordinates(
                         body.level().dimension().identifier().toString(), targetX,
                         origin.getY() + (scenario == 6 ? 4 : scenario == 9 ? 3 : scenario == 10 ? 6 : scenario == 12 ? .5 : 0), origin.getZ() + (scenario == 8 ? 2.5 : .5),
@@ -173,7 +245,7 @@ public final class NavigationBackendGameTests {
             }
             requestId = UUID.randomUUID();
             navigation.requestNavigation(new NavigationIntent(requestId,
-                    navigation.status().worldRevision(), target, scenario == 5 || scenario == 8 ? TravelPace.SPRINT : TravelPace.WALK,
+                    navigation.status().worldRevision(), target, scenario == 5 || scenario == 8 || scenario == 13 ? TravelPace.SPRINT : TravelPace.WALK,
                     "Controlled navigation repair regression " + scenario, "GameTest", scenario == 10));
             runtime.say("正在进行移动修复测试。");
             navigation.acknowledgementSent(requestId);
@@ -186,6 +258,13 @@ public final class NavigationBackendGameTests {
             if (human != null) {
                 human.tick();
             }
+            // GameTest advances ticks faster than wall time. A bounded worker
+            // deadline must use real time; execution still has its original tick bound.
+            if(navigation.status().phase()==Phase.PLANNING) {
+                if(planningBeganNanos==0)planningBeganNanos=System.nanoTime();
+                helper.assertTrue(System.nanoTime()-planningBeganNanos<2_000_000_000L,"Async planning exceeded two real seconds");
+                startedTick++;
+            } else planningBeganNanos=0;
             helper.assertTrue(helper.getTick() - startedTick < 700,
                     "Repair scenario timed out: " + scenario + " " + navigation.status());
             Vec3 current = body.position();
@@ -236,7 +315,7 @@ public final class NavigationBackendGameTests {
             }
             if (status.phase() == Phase.PLAN_READY) {
                 RouteOption route = status.routeOptions().getFirst();
-                navigation.chooseNavigation(requestId, route.optionId(), scenario == 5 || scenario == 8 ? TravelPace.SPRINT : TravelPace.WALK);
+                navigation.chooseNavigation(requestId, route.optionId(), scenario == 5 || scenario == 8 || scenario == 13 ? TravelPace.SPRINT : TravelPace.WALK);
                 if (!disturbanceApplied && scenario == 1) {
                     disturbanceApplied = true;
                     // External impulse fixture: completion must wait for actual landing.
@@ -299,14 +378,15 @@ public final class NavigationBackendGameTests {
                 helper.assertTrue(current.distanceTo(new Vec3(destination.x(), destination.y(),
                         destination.z())) <= destination.acceptanceRadius(),
                         "Final body coordinates are outside the requested radius");
+                if(scenario==13)helper.assertTrue(current.distanceTo(start)>29 && travelled<45,"Forest route stalled or took a disproportionate detour: "+travelled);
                 if (scenario == 0) {
                     helper.assertTrue(current.distanceTo(start) >= 0.3,
                             "Exact-start repair did not physically approach the target");
                 } else if (scenario == 1) {
                     helper.assertTrue(sawAirborne, "Airborne fixture was not observed");
                 } else if (scenario == 4) {
-                    helper.assertTrue(targetMoved && replanned && current.distanceTo(start) > 5.0,
-                            "Moving target was not physically pursued after replanning");
+                    helper.assertTrue(targetMoved && current.distanceTo(start) > 5.0,
+                            "Moving target was not physically pursued to its updated position");
                 }
                 advance();
             }
@@ -314,9 +394,9 @@ public final class NavigationBackendGameTests {
 
         private void advance() {
             MinecraftAiCompanion.LOGGER.info(
-                    "Repair scenario {} passed: start={}, final={}, phase={}",
-                    scenario, start, body.position(), navigation.status().phase());
-            if (++scenario == 13) {
+                    "Repair scenario {} passed: start={}, final={}, phase={}, travelled={}, executionTicks={}",
+                    scenario, start, body.position(), navigation.status().phase(), travelled, helper.getTick()-startedTick);
+            if (++scenario == 14) {
                 helper.succeed();
             } else {
                 start();

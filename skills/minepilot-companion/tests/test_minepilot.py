@@ -19,6 +19,40 @@ SPEC.loader.exec_module(minepilot)
 
 
 class MinePilotClientTest(unittest.TestCase):
+    def test_loopback_ignores_system_proxy_and_survives_closed_response(self) -> None:
+        requests = []
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                requests.append(self.path)
+                if len(requests) == 1:
+                    self.close_connection = True
+                    return
+                body = b'{"jsonrpc":"2.0","id":2,"result":{"alive":true}}'
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            def log_message(self, *_): pass
+
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            # A configured system proxy must not receive even local bearer traffic.
+            with mock.patch('urllib.request.getproxies', return_value={'http':'http://127.0.0.1:1'}):
+                isolated = importlib.util.module_from_spec(SPEC)
+                SPEC.loader.exec_module(isolated)
+                client = isolated.McpClient(f'http://127.0.0.1:{server.server_port}/mcp', 'TEST_SECRET')
+                with self.assertRaisesRegex(isolated.ClientError, 'RemoteDisconnected'):
+                    client.request('ping', {})
+                self.assertEqual(['/mcp'], requests, 'A failed response must not replay a POST')
+                self.assertEqual({'alive':True}, client.request('ping', {}))
+                self.assertEqual(['/mcp','/mcp'], requests)
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_bearer_is_not_forwarded_through_redirect(self) -> None:
         requests = {"original": 0, "redirected": 0}
 

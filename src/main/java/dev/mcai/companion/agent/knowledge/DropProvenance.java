@@ -20,6 +20,12 @@ public final class DropProvenance {
         out.addProperty("mergedStackLineageKnown",false);
         out.addProperty("attributionNote","The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.");
         if(!actor.isEmpty()){out.addProperty("actorId",actor);out.addProperty("actorName",data.getString("minepilot.actor").orElse(""));}
+        if(category.equals("mined_block")) {
+            out.addProperty("requestId",data.getString("minepilot.miningRequest").orElse(""));
+            out.addProperty("block",data.getString("minepilot.sourceBlock").orElse(""));
+            out.addProperty("dimension",data.getString("minepilot.sourceDimension").orElse(""));
+            for(String axis:java.util.List.of("X","Y","Z"))out.addProperty(axis.toLowerCase(java.util.Locale.ROOT),data.getInt("minepilot.source"+axis).orElse(0));
+        }
         return out;
     }
 }

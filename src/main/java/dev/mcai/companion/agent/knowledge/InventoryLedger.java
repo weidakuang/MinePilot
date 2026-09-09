@@ -20,9 +20,12 @@ public final class InventoryLedger {
     private final Map<String, Integer> previous = new HashMap<>();
     private final List<JsonObject> pickups = new ArrayList<>();
     private final Deque<JsonObject> events = new ArrayDeque<>();
+    private final LinkedHashMap<String, ItemStack> observedVariants = new LinkedHashMap<>();
+    private final Map<String,String> variantKeys = new HashMap<>();
     private final LinkedHashMap<String, ItemStack> identities = new LinkedHashMap<>();
     private long sequence;
     private long revision;
+    private String lastEquipmentState = "";
     private boolean writable = true;
 
     public InventoryLedger(MinePilotServerPlayer player) {
@@ -35,23 +38,57 @@ public final class InventoryLedger {
             }
             if (!memory.has("policies")) memory.add("policies", new JsonObject());
             if (!memory.has("waypoints")) memory.add("waypoints", new JsonObject());
+            if(memory.has("treeFarms") && !memory.get("treeFarms").isJsonObject())throw new IllegalStateException("Invalid farm memory");
             if (!memory.get("policies").isJsonObject() || !memory.get("waypoints").isJsonObject()) throw new IllegalStateException("Invalid memory schema");
         } catch (Exception failure) {
             // Preserve the invalid file and fail closed: nothing becomes expendable.
             writable = false; memory = new JsonObject();
             memory.add("policies", new JsonObject()); memory.add("waypoints", new JsonObject());
         }
+        String beforeMigration=memory.toString();
         previous.putAll(counts());
+        if(writable && !beforeMigration.equals(memory.toString())) {
+            try {save(memory.deepCopy());}catch(IllegalStateException unavailable){writable=false;}
+        }
     }
 
     public String key(ItemStack stack) {
+        for(var variant:observedVariants.entrySet())
+            if(ItemStack.isSameItemSameComponents(variant.getValue(),stack)) {
+                String found=variantKeys.get(variant.getKey());
+                if(!identities.containsKey(found)){
+                    var normalized=stack.copyWithCount(1);if(normalized.isDamageableItem())normalized.setDamageValue(0);
+                    if(identities.size()>=256)identities.remove(identities.keySet().iterator().next());
+                    identities.put(found,normalized);
+                }
+                return found;
+            }
+        ItemStack normalized = stack.copyWithCount(1);
+        if (normalized.isDamageableItem()) normalized.setDamageValue(0);
+        String legacy = digest(stack.copyWithCount(1));
+        String stable = digest(normalized);
+        // Preserve older damage-specific policies; identical tools share the most protective grade.
+        var policies = memory.getAsJsonObject("policies");
+        if (!legacy.equals(stable) && policies.has(legacy)) {
+            try {
+                var old = policies.getAsJsonObject(legacy);
+                var current = policies.has(stable) ? policies.getAsJsonObject(stable) : null;
+                int grade=old.get("importance").getAsInt();
+                if(grade<0 || grade>5)throw new IllegalArgumentException("Invalid legacy policy grade");
+                if (current == null || grade < current.get("importance").getAsInt())policies.add(stable, old.deepCopy());
+            } catch(RuntimeException invalidPolicy){writable=false;}
+        }
+        if(observedVariants.size()>=256){String oldest=observedVariants.keySet().iterator().next();observedVariants.remove(oldest);variantKeys.remove(oldest);}
+        observedVariants.put(legacy,stack.copyWithCount(1));variantKeys.put(legacy,stable);
+        stack = normalized;
         for (var entry : identities.entrySet()) if (ItemStack.isSameItemSameComponents(entry.getValue(), stack)) return entry.getKey();
-        var value = ItemStack.CODEC.encodeStart(player.registryAccess().createSerializationContext(JsonOps.INSTANCE), stack.copyWithCount(1)).getOrThrow();
-        try {
-            String key = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical(value).getBytes(StandardCharsets.UTF_8)));
-            if (identities.size() >= 256) identities.remove(identities.keySet().iterator().next());
-            identities.put(key, stack.copyWithCount(1)); return key;
-        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+        if (identities.size() >= 256) identities.remove(identities.keySet().iterator().next());
+        identities.put(stable, stack.copyWithCount(1)); return stable;
+    }
+    private String digest(ItemStack stack) {
+        var value = ItemStack.CODEC.encodeStart(player.registryAccess().createSerializationContext(JsonOps.INSTANCE), stack).getOrThrow();
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical(value).getBytes(StandardCharsets.UTF_8))); }
+        catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
 
     private static String canonical(JsonElement value) {
@@ -108,6 +145,24 @@ public final class InventoryLedger {
         if (p==null) throw new IllegalArgumentException("No remembered waypoint in this dimension: "+name);
         return p.getAsJsonObject().deepCopy();
     }
+    /** Explicit controller-declared farm bounds, not an ownership inference from appearance. */
+    public JsonObject treeFarms() {
+        var out=new JsonObject();out.addProperty("memoryWritable",writable);
+        out.add("farms",memory.has("treeFarms")?memory.getAsJsonObject("treeFarms").deepCopy():new JsonObject());return out;
+    }
+    public JsonObject treeFarm(String operation,String name,JsonObject farm) {
+        if(operation.equals("list"))return treeFarms();
+        if(name.isBlank() || name.length()>64)throw new IllegalArgumentException("Invalid farm name");
+        var next=memory.deepCopy();if(!next.has("treeFarms"))next.add("treeFarms",new JsonObject());
+        var farms=next.getAsJsonObject("treeFarms");String key=player.level().dimension().identifier()+"|"+name;
+        if(operation.equals("remove"))farms.remove(key);
+        else if(operation.equals("save")) {
+            if(farms.size()>=32 && !farms.has(key))throw new IllegalArgumentException("Farm memory capacity reached");
+            var row=farm.deepCopy();row.addProperty("name",name);row.addProperty("dimension",player.level().dimension().identifier().toString());
+            row.addProperty("source","controller_declared_area");farms.add(key,row);
+        }else throw new IllegalArgumentException("Unknown farm operation");
+        save(next);return treeFarms();
+    }
     public JsonObject waypoints(int offset,int limit) {
         if(offset<0 || limit<1 || limit>32)throw new IllegalArgumentException("Invalid waypoint page");
         var all=memory.getAsJsonObject("waypoints");var selected=new JsonObject();int i=0;
@@ -134,7 +189,9 @@ public final class InventoryLedger {
             if(gained>0) { var row=describe(identities.get(e.getKey())); row.addProperty("count",gained);
                 JsonObject source=new JsonObject();source.addProperty("category","unknown");source.addProperty("confidence","unknown");row.add("source",source);changes.add(row); }
         }
-        if(!now.equals(previous))revision++;
+        String equipment = equipment().toString();
+        if(!now.equals(previous) || !equipment.equals(lastEquipmentState))revision++;
+        lastEquipmentState = equipment;
         previous.clear();previous.putAll(now);
         if (!changes.isEmpty()) {
             JsonObject event=new JsonObject();event.addProperty("sequence",++sequence);event.addProperty("gameTick",player.level().getGameTime());
@@ -159,7 +216,21 @@ public final class InventoryLedger {
             if(row==null){row=describe(stack);row.addProperty("count",0);row.add("slots",new JsonArray());rows.put(id,row);}
             row.addProperty("count",row.get("count").getAsInt()+stack.getCount());row.getAsJsonArray("slots").add(i);
         }
-        rows.values().forEach(entries::add);out.add("entries",entries);out.addProperty("revision",revision);out.addProperty("latestEventSequence",sequence);out.addProperty("memoryWritable",writable);return out;
+        rows.values().forEach(entries::add);out.add("entries",entries);out.add("equipment",equipment());out.addProperty("revision",revision);out.addProperty("latestEventSequence",sequence);out.addProperty("memoryWritable",writable);return out;
+    }
+    /** Exact slot observations remain distinct even when policy identity ignores wear. */
+    public JsonArray equipment() {
+        var result = new JsonArray();
+        for (int slot=0;slot<player.getInventory().getContainerSize();slot++) {
+            var stack=player.getInventory().getItem(slot);
+            if (stack.isEmpty() || !stack.isDamageableItem()) continue;
+            var row=new JsonObject();row.addProperty("slot",slot);row.addProperty("entryId",key(stack));
+            row.addProperty("item",BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+            row.addProperty("damage",stack.getDamageValue());row.addProperty("maxDurability",stack.getMaxDamage());
+            row.addProperty("remainingDurability",Math.max(0,stack.getMaxDamage()-stack.getDamageValue()));
+            result.add(row);
+        }
+        return result;
     }
     public JsonObject events(long after,int limit) {
         if(after<0 || limit<1 || limit>32)throw new IllegalArgumentException("Invalid event cursor/limit");

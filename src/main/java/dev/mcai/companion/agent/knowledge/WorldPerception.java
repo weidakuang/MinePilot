@@ -24,6 +24,7 @@ public final class WorldPerception {
     private static final net.minecraft.tags.TagKey<net.minecraft.world.level.block.Block> PASS_THROUGH =
             net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.BLOCK,net.minecraft.resources.Identifier.fromNamespaceAndPath("mcai_companion","perception_passthrough"));
     private final MinePilotServerPlayer player;
+    public final StructurePerception structures;
     private final List<net.minecraft.core.component.DataComponentType<?>> variantTypes=new ArrayList<>();
     private final Set<UUID> observedEntities=new HashSet<>();
     private long lastEntityTick=-100;
@@ -31,6 +32,7 @@ public final class WorldPerception {
     private final LinkedHashMap<String,ScanPage> scans=new LinkedHashMap<>();
     public WorldPerception(MinePilotServerPlayer player){
         this.player=player;
+        this.structures=new StructurePerception(player);
         for(var type:BuiltInRegistries.DATA_COMPONENT_TYPE){String id=BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(type).getPath();
             if(id.endsWith("/variant") || id.endsWith("_variant"))variantTypes.add(type);}
     }
@@ -47,6 +49,16 @@ public final class WorldPerception {
         double pitch=-Math.toDegrees(Math.atan2(delta.y,Math.hypot(delta.x,delta.z)));
         return difference(bearing(player.getEyePosition(),point),NavigationFollower.minecraftYawToHeading(player.getYRot()))<=60
                 && Math.abs(pitch-player.getXRot())<=60;
+    }
+    public static boolean insideProximity(Vec3 origin, Vec3 point, double requestedRadius) {
+        double radius = Math.min(10, requestedRadius);
+        return point.distanceToSqr(origin) <= radius * radius;
+    }
+    public boolean observableBlock(BlockPos position) {
+        if (!player.level().isLoaded(position)) return false;
+        Vec3 point = Vec3.atCenterOf(position);
+        return insideProximity(player.position(), point, 10)
+                || inCone(point,96) && rayClear(player.getEyePosition(),point,position);
     }
     public boolean visible(Entity entity) {
         if(entity.isInvisible() || entity instanceof Player p && p.isSpectator())return false;
@@ -178,18 +190,26 @@ public final class WorldPerception {
             scan=new ScanPage(UUID.randomUUID().toString(),player.blockPosition(),player.level().dimension().identifier().toString(),radius,filter,kind,player.level().getGameTime());scans.put(scan.id,scan);
         } else {scan=scans.get(cursor);if(scan==null)throw new IllegalArgumentException("Unknown or expired scan cursor");}
         if(player.level().getGameTime()-scan.tick>1200 || !player.level().dimension().identifier().toString().equals(scan.dimension)) {scans.remove(scan.id);throw new IllegalArgumentException("Scan expired or dimension changed");}
-        JsonArray found=new JsonArray();int width=2*scan.radius+1;long total=(long)width*width*width;int checked=0,unloaded=0;
+        JsonArray found=new JsonArray();long total=(long)scan.sections.size()*4096;int checked=0,unloaded=0;
         long deadline=System.nanoTime()+5_000_000L;
         while(scan.index<total && checked<4096 && found.size()<limit && System.nanoTime()<deadline) {
-            BlockPos offset=shellOffset(scan.index++);
-            BlockPos p=scan.origin.offset(offset);checked++;
+            BlockPos section=scan.sections.get((int)(scan.index/4096));
+            var chunk=player.level().getChunkSource().getChunkNow(section.getX(),section.getZ());
+            if(chunk==null || section.getY()*16<player.level().getMinY() || section.getY()*16>=player.level().getMaxY()) {
+                int skipped=4096-(int)(scan.index%4096);scan.index+=skipped;unloaded+=skipped;continue;
+            }
+            var nativeSection=chunk.getSection(chunk.getSectionIndex(section.getY()*16));
+            if(scan.index%4096==0 && !nativeSection.maybeHas(state->matchesBlockQuery(state,scan.filter,scan.kind))) {
+                scan.index+=4096;continue;
+            }
+            int local=(int)(scan.index++%4096);
+            BlockPos p=new BlockPos(section.getX()*16+(local&15),section.getY()*16+(local>>8),section.getZ()*16+((local>>4)&15));checked++;
+            if(p.distToCenterSqr(scan.origin.getX()+.5,scan.origin.getY()+.5,scan.origin.getZ()+.5)>(scan.radius+2)*(scan.radius+2))continue;
             if(!player.level().isLoaded(p) || p.getY()<player.level().getMinY() || p.getY()>=player.level().getMaxY()){unloaded++;continue;}
             var state=player.level().getBlockState(p);if(state.isAir())continue;
             String id=BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
-            if(!id.contains(scan.filter))continue;
-            if(scan.kind.equals("trees") && !state.is(BlockTags.LOGS))continue;
-            if(scan.kind.equals("structures") && !Set.of("minecraft:nether_portal","minecraft:end_portal_frame","minecraft:spawner","minecraft:bell").contains(id))continue;
-            Vec3 point=Vec3.atCenterOf(p);Vec3 d=point.subtract(player.position());boolean proximity=Math.abs(d.x)<=10.5 && Math.abs(d.y)<=10.5 && Math.abs(d.z)<=10.5;
+            if(!matchesBlockQuery(state,scan.filter,scan.kind))continue;
+            Vec3 point=Vec3.atCenterOf(p);boolean proximity=insideProximity(player.position(),point,scan.radius);
             boolean visible=inCone(point,scan.radius) && rayClear(player.getEyePosition(),point,p);
             if(!proximity && !visible)continue;
             JsonObject row=new JsonObject();row.addProperty("block",id);position(row,point);row.addProperty("state",state.toString());row.addProperty("sense",visible?"vision":"proximity_occlusion_bypass");row.addProperty("rayPassThrough",transparent(state,p));
@@ -200,6 +220,17 @@ public final class WorldPerception {
         scan.unloaded+=unloaded;out.addProperty("unloadedCellsSoFar",scan.unloaded);
         if(scan.index>=total)scans.remove(scan.id);return out;
     }
+    private static boolean matchesBlockQuery(BlockState state,String filter,String kind) {
+        if(state.isAir())return false;
+        String id=BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+        // User-facing structure names describe marker classes, not block IDs.
+        if(kind.equals("structures")) {
+            if(filter.equals("village") || filter.equals("村庄"))return state.is(net.minecraft.world.level.block.Blocks.BELL);
+            return id.contains(filter) && Set.of("minecraft:nether_portal","minecraft:end_portal_frame","minecraft:spawner","minecraft:bell").contains(id);
+        }
+        return id.contains(filter) && (!kind.equals("trees") || state.is(BlockTags.LOGS));
+    }
+
     /** Enumerate each voxel once, in expanding Chebyshev shells, so early pages inspect nearby space first. */
     public static BlockPos shellOffset(long index) {
         if(index==0)return BlockPos.ZERO;
@@ -221,6 +252,12 @@ public final class WorldPerception {
     private static void position(JsonObject row,Vec3 p){row.addProperty("x",p.x);row.addProperty("y",p.y);row.addProperty("z",p.z);}
     private static final class ScanPage {
         final String id,dimension,filter,kind;final BlockPos origin;final int radius;final long tick;long index,unloaded;
-        ScanPage(String id,BlockPos origin,String dimension,int radius,String filter,String kind,long tick){this.id=id;this.origin=origin;this.dimension=dimension;this.radius=radius;this.filter=filter;this.kind=kind;this.tick=tick;}
+        final java.util.List<BlockPos> sections=new java.util.ArrayList<>();
+        ScanPage(String id,BlockPos origin,String dimension,int radius,String filter,String kind,long tick){this.id=id;this.origin=origin;this.dimension=dimension;this.radius=radius;this.filter=filter;this.kind=kind;this.tick=tick;
+            for(int x=(origin.getX()-radius)>>4;x<=(origin.getX()+radius)>>4;x++)
+                for(int y=(origin.getY()-radius)>>4;y<=(origin.getY()+radius)>>4;y++)
+                    for(int z=(origin.getZ()-radius)>>4;z<=(origin.getZ()+radius)>>4;z++)sections.add(new BlockPos(x,y,z));
+            sections.sort(java.util.Comparator.comparingDouble(p->new BlockPos(p.getX()*16+8,p.getY()*16+8,p.getZ()*16+8).distSqr(origin)));
+        }
     }
 }

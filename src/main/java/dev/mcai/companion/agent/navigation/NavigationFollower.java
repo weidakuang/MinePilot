@@ -83,6 +83,41 @@ public final class NavigationFollower {
                 "Selected route " + option.optionId() + " started"));
     }
 
+    /** Repair only a verified level, dry corridor. Never spend new materials or add a jump. */
+    public boolean retargetLevel(NavigationPlan.ResolvedDestination destination) {
+        if (active == null || !player.onGround() || active.option.supportBlocksRequired() != 0
+                || active.option.estimatedHealthLost() != 0 || !active.option.hazards().isEmpty()
+                || active.stepIndex < active.steps.size()
+                    && active.steps.get(active.stepIndex).action() != RouteOption.Action.WALK) return false;
+        double dx=destination.x()-player.getX(), dz=destination.z()-player.getZ();
+        double length=Math.hypot(dx,dz);
+        if(length>32 || Math.abs(destination.y()-player.getY())>.05) return false;
+        var corridor=new AABB(player.position(),new Vec3(destination.x(),destination.y(),destination.z())).inflate(3);
+        if(!player.level().getEntities(player,corridor,e->e instanceof net.minecraft.world.entity.monster.Enemy && e.isAlive()).isEmpty())return false;
+        var points=new java.util.ArrayList<RouteOption.PathStep>();
+        double travel=Math.max(0, length-Math.min(1.0,destination.acceptanceRadius()*.5));
+        int samples=Math.max(1,(int)Math.ceil(travel*4));
+        for(int i=1;i<=samples;i++) {
+            double t=length<.001?0:travel/length*i/samples;
+            var point=new RouteOption.PathStep(player.getX()+dx*t,player.getY(),player.getZ()+dz*t,
+                    RouteOption.Action.WALK,active.pace,30);
+            if(liveStepProblem(point)!=null) return false;
+            var box=new AABB(point.x()-.3,point.y()+.001,point.z()-.3,point.x()+.3,point.y()+1.8,point.z()+.3);
+            if(player.level().getBlockCollisions(player,box).iterator().hasNext())return false;
+            if(i%4==0 || i==samples)points.add(point);
+        }
+        active.steps=java.util.List.copyOf(points); active.stepIndex=0;
+        active.progressStep=-1; active.stableTicks=0; active.settlingTicks=0;
+        // Keep input, momentum, request identity, distance and elapsed time.
+        return true;
+    }
+
+    public double distanceToRouteEnd() {
+        if(active==null || active.steps.isEmpty())return 0;
+        var end=active.steps.getLast();
+        return player.position().distanceTo(new Vec3(end.x(),end.y(),end.z()));
+    }
+
     public void cancel(String reason) {
         if (active == null) {
             return;
@@ -113,8 +148,8 @@ public final class NavigationFollower {
             requireDecision(active,"SUPPORT_MATERIAL_CHANGED: The declared material quantities are missing or protected; no substitution is allowed");
             return;
         }
-        if (active != null && active.stepIndex < active.option.steps().size()) {
-            String problem = liveStepProblem(active.option.steps().get(active.stepIndex));
+        if (active != null && active.stepIndex < active.steps.size()) {
+            String problem = liveStepProblem(active.steps.get(active.stepIndex));
             if (problem != null) {
                 corridorInvalidated.accept(problem);
                 brakeForUnsafeCorridor();
@@ -159,17 +194,17 @@ public final class NavigationFollower {
         route.lastY = player.getY();
         route.lastZ = player.getZ();
 
-        if (route.stepIndex >= route.option.steps().size()) {
+        if (route.stepIndex >= route.steps.size()) {
             finish(route);
             return;
         }
 
-        RouteOption.PathStep step = route.option.steps().get(route.stepIndex);
+        RouteOption.PathStep step = route.steps.get(route.stepIndex);
         double dx = step.x() - player.getX();
         double dz = step.z() - player.getZ();
         double horizontalSquared = dx * dx + dz * dz;
         double dy = step.y() - player.getY();
-        boolean lastStep = route.stepIndex == route.option.steps().size() - 1;
+        boolean lastStep = route.stepIndex == route.steps.size() - 1;
         double waypointTolerance = step.action() == RouteOption.Action.OPEN_DOOR ? 0.0144 : STEP_REACHED_DISTANCE_SQUARED;
         boolean waypointReached=(horizontalSquared <= waypointTolerance || passedWalkWaypoint(route,step,dx,dz))
                 && Math.abs(dy)<.22 && (player.onGround() || player.onClimbable() || player.isInWater());
@@ -180,11 +215,11 @@ public final class NavigationFollower {
         if(waypointReached && finalProblem==null) {
             route.stepIndex++;
             route.actionAttempts = 0;
-            if (route.stepIndex >= route.option.steps().size()) {
+            if (route.stepIndex >= route.steps.size()) {
                 finish(route);
                 return;
             }
-            step = route.option.steps().get(route.stepIndex);
+            step = route.steps.get(route.stepIndex);
             dx = step.x() - player.getX();
             dz = step.z() - player.getZ();
             dy = step.y() - player.getY();
@@ -227,7 +262,7 @@ public final class NavigationFollower {
         TravelPace stepPace = effectivePace(route.pace, step);
         boolean climbing = step.action() == RouteOption.Action.CLIMB;
         boolean gapJump = step.action() == RouteOption.Action.GAP_JUMP;
-        boolean finalApproach = !gapJump && !climbing && route.stepIndex == route.option.steps().size() - 1
+        boolean finalApproach = !gapJump && !climbing && route.stepIndex == route.steps.size() - 1
                 && horizontalSquared < 2.25;
         if (finalApproach && stepPace != TravelPace.SNEAK) {
             stepPace = TravelPace.WALK;
@@ -239,7 +274,7 @@ public final class NavigationFollower {
                 && !edgeAction && yawError < 45.0F;
         float forward = yawError > step.yawTolerance() || horizontalSquared < 0.0025 ? 0.0F : 1.0F;
         if (climbing) forward *= (float) Math.min(1.0, Math.sqrt(horizontalSquared) * 3.0);
-        if (horizontalSquared < 0.36 && !climbing) {
+        if (horizontalSquared < 0.36 && !climbing && (finalApproach || step.action() != RouteOption.Action.WALK)) {
             double toward = horizontalSquared < 0.0001 ? 0.0
                     : (player.getDeltaMovement().x * dx + player.getDeltaMovement().z * dz)
                     / Math.sqrt(horizontalSquared);
@@ -311,8 +346,8 @@ public final class NavigationFollower {
 
     /** A small overshoot along a straight walk must not make the body turn back. */
     private boolean passedWalkWaypoint(ActiveRoute route, RouteOption.PathStep step, double dx, double dz) {
-        if (step.action() != RouteOption.Action.WALK || route.stepIndex + 1 >= route.option.steps().size()) return false;
-        var next = route.option.steps().get(route.stepIndex + 1);
+        if (step.action() != RouteOption.Action.WALK || route.stepIndex + 1 >= route.steps.size()) return false;
+        var next = route.steps.get(route.stepIndex + 1);
         if (next.action() != RouteOption.Action.WALK || next.y() != step.y()) return false;
         double nx = next.x() - step.x(), nz = next.z() - step.z();
         double length = Math.hypot(nx, nz);
@@ -326,8 +361,8 @@ public final class NavigationFollower {
             route.gapStepIndex = route.stepIndex;
             route.gapLaunched = false;
             route.gapPreparationTicks = 0;
-            double sourceX = route.stepIndex == 0 ? player.getX() : route.option.steps().get(route.stepIndex - 1).x();
-            double sourceZ = route.stepIndex == 0 ? player.getZ() : route.option.steps().get(route.stepIndex - 1).z();
+            double sourceX = route.stepIndex == 0 ? player.getX() : route.steps.get(route.stepIndex - 1).x();
+            double sourceZ = route.stepIndex == 0 ? player.getZ() : route.steps.get(route.stepIndex - 1).z();
             route.gapCenterX = Math.floor(sourceX) + .5;
             route.gapCenterZ = Math.floor(sourceZ) + .5;
             double dx = step.x() - route.gapCenterX;
@@ -428,16 +463,14 @@ public final class NavigationFollower {
                 route.actionAttempts = 0;
                 return true;
             }
-            player.applyControlFrame(new AgentControlFrame(
-                    player.getYRot(), 72.0F, 0.0F, 0.0F, false, false, true));
             if (player.tickCount - route.lastActionTick < ACTION_RETRY_TICKS) {
                 return false;
             }
             route.lastActionTick = player.tickCount;
-            route.actionAttempts++;
             if (tryPlaceSupport(floor)) {
                 return false;
             }
+            route.actionAttempts++;
             if (route.actionAttempts >= MAX_ACTION_ATTEMPTS) {
                 requireDecision(route, "Unable to place the planned support block");
             }
@@ -496,48 +529,37 @@ public final class NavigationFollower {
         return true;
     }
 
+    /** True means aiming or a verified use; route progress still requires the actual floor next tick. */
     private boolean tryPlaceSupport(BlockPos target) {
         if (!materialsAvailable(active)) return false;
-        int previousSlot = player.getInventory().getSelectedSlot();
-        int supportSlot = findHotbarBlock();
-        if (supportSlot < 0) {
-            return false;
-        }
-        player.getInventory().setSelectedSlot(supportSlot);
+        int previousSlot=player.getInventory().getSelectedSlot(),supportSlot=findSupportBlock();
+        if(supportSlot<0 || player.gameMode.getGameModeForPlayer()!=net.minecraft.world.level.GameType.SURVIVAL)return false;
+        boolean equipped=false;
         try {
-            for (Direction direction : Direction.values()) {
-                BlockPos anchor = target.relative(direction);
-                BlockState anchorState = player.level().getBlockState(anchor);
-                if (anchorState.getCollisionShape(player.level(), anchor).isEmpty()) {
-                    continue;
-                }
-                Direction clickedFace = direction.getOpposite();
-                Vec3 hit = Vec3.atCenterOf(anchor).add(
-                        clickedFace.getStepX() * 0.5,
-                        clickedFace.getStepY() * 0.5,
-                        clickedFace.getStepZ() * 0.5
-                );
-                InteractionResult result = player.gameMode.useItemOn(
-                        player,
-                        player.level(),
-                        player.getMainHandItem(),
-                        InteractionHand.MAIN_HAND,
-                        new BlockHitResult(hit, clickedFace, anchor, false)
-                );
-                if (result.consumesAction()) {
-                    var material = active.option.supportMaterials().stream().filter(m -> m.entryId().equals(active.materialBeingPlaced)).findFirst().orElseThrow();
-                    active.usedMaterials.merge(material.entryId(),1,Integer::sum);
-                    return true;
-                }
-            }
+            dev.mcai.companion.agent.placement.HandController.equipSlot(player,supportSlot,InteractionHand.MAIN_HAND);equipped=true;
+            var candidates=dev.mcai.companion.agent.placement.PlacementGeometry.aims(player,target,player.getMainHandItem(),InteractionHand.MAIN_HAND,java.util.Map.of(),player.position());
+            if(candidates.isEmpty())return false;
+            var aim=candidates.getFirst();
+            player.applyControlFrame(new AgentControlFrame(aim.yaw(),aim.pitch(),0,0,false,false,true));
+            if(!player.isShiftKeyDown() || !dev.mcai.companion.agent.placement.PlacementGeometry.clearActualRay(player,aim))return true;
+            if(!player.level().mayInteract(player,target) || player.blockActionRestricted(player.level(),target,player.gameMode.getGameModeForPlayer()) || player.level().getServer().isUnderSpawnProtection(player.level(),target,player))return false;
+            var stack=player.getMainHandItem();int before=stack.getCount();
+            player.swing(InteractionHand.MAIN_HAND);
+            player.gameMode.useItemOn(player,player.level(),stack,InteractionHand.MAIN_HAND,aim.hit());
+            if(before-player.getMainHandItem().getCount()!=1 || !player.level().getBlockState(target).equals(aim.state()) || !aim.state().isCollisionShapeFullBlock(player.level(),target))return false;
+            active.usedMaterials.merge(active.materialBeingPlaced,1,Integer::sum);
+            return true;
+        } catch(RuntimeException rejected) {
             return false;
         } finally {
-            player.getInventory().setSelectedSlot(previousSlot);
+            // Restore the prior real hand. Storage swaps conserve all remaining items.
+            if(equipped && supportSlot>=9)dev.mcai.companion.agent.placement.HandController.equipSlot(player,supportSlot,InteractionHand.MAIN_HAND);
+            else if(equipped)player.connection.handleSetCarriedItem(new net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket(previousSlot));
         }
     }
 
-    private int findHotbarBlock() {
-        for (int slot = 0; slot < player.getInventory().getSelectionSize(); slot++) {
+    private int findSupportBlock() {
+        for (int slot = 0; slot < 36; slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
             if (!stack.isEmpty() && player.inventoryLedger != null && player.inventoryLedger.expendable(stack)
                     && active.option.supportMaterials().stream().anyMatch(m -> m.entryId().equals(player.inventoryLedger.key(stack))
@@ -554,7 +576,7 @@ public final class NavigationFollower {
         if(route==null)return false;
         for(var material:route.option.supportMaterials()) {
             int available=0;
-            for(int slot=0;slot<player.getInventory().getSelectionSize();slot++) {
+            for(int slot=0;slot<36;slot++) {
                 var s=player.getInventory().getItem(slot);
                 if(!s.isEmpty() && player.inventoryLedger!=null && player.inventoryLedger.expendable(s)
                         && player.inventoryLedger.key(s).equals(material.entryId()))available+=s.getCount();
@@ -590,10 +612,11 @@ public final class NavigationFollower {
     }
 
     private float pitchToward(RouteOption.PathStep step) {
-        double eyeY = player.getEyeY();
+        // Locomotion looks along the route at eye height. Interaction aiming
+        // still uses the exact face elsewhere; nearby feet must not drag the gaze down.
         double horizontal = Math.hypot(step.x() - player.getX(), step.z() - player.getZ());
-        return (float) -Math.toDegrees(Math.atan2(step.y() + 0.5 - eyeY,
-                Math.max(0.01, horizontal)));
+        return Mth.clamp((float) -Math.toDegrees(Math.atan2(step.y() - player.getY(),
+                Math.max(3.0, horizontal))), -25.0F, 15.0F);
     }
 
     private void finish(ActiveRoute route) {
@@ -702,6 +725,7 @@ public final class NavigationFollower {
         private final UUID requestId;
         private final NavigationPlan plan;
         private final RouteOption option;
+        private java.util.List<RouteOption.PathStep> steps;
         private final TravelPace pace;
         private final OptionalDouble arrivalHeading;
         private int stepIndex;
@@ -751,6 +775,7 @@ public final class NavigationFollower {
             this.requestId = requestId;
             this.plan = plan;
             this.option = option;
+            this.steps = option.steps();
             this.pace = pace;
             this.arrivalHeading = arrivalHeading;
             this.stepIndex = stepIndex;

@@ -1,0 +1,10 @@
+{
+  "built": "/Users/weida/Documents/minecraft-ai-companion-forge/build/libs/mcai_companion-0.2.0-dev-mc26.2.jar",
+  "installed": "/Users/weida/Library/Application Support/xmcl/instances/26.2-forge65.0.9/mods/mcai_companion-0.2.0-dev-mc26.2.jar",
+  "sha256": "e11bc0a043aadd98e443613274dba24ef85ebd8f9989fb3cfa7c9725608a8a6d",
+  "previousSha256": "910e6a84cbdc82e66433d89a3f180727e962661d76a9b2d3709d5c66bd05ca17",
+  "backup": "/Users/weida/Library/Application Support/xmcl/instances/26.2-forge65.0.9/mods/.minepilot-backup/mcai_companion-0.2.0-dev-mc26.2-pre-mining-20260908-910e6a84cbdc.jar",
+  "compileAndBackendForge": "65.0.9",
+  "xmclPreviouslyReportedForge": "65.0.8",
+  "clientWorldEntryVerified": false
+}

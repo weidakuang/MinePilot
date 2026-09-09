@@ -17,6 +17,8 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 
 minecraft {
     useDefaultAccessTransformer()
+    // ForgeGradle 7 does not forward Gradle's offline flag to Mavenizer.
+    if (gradle.startParameter.offline) mavenizerArguments.addAll('--offline', '--cache-only')
 
     runs {
         configureEach {
@@ -47,11 +49,16 @@ minecraft {
             def knowledgeGate = Boolean.parseBoolean(System.getProperty('minepilot.knowledgeTest', 'false'))
             def soundGate = Boolean.parseBoolean(System.getProperty('minepilot.soundTest', 'false'))
             def followGate = Boolean.parseBoolean(System.getProperty('minepilot.followTest', 'false'))
-            if ([liveModelGate, codexSkillGate, repairGate, knowledgeGate, soundGate, followGate].count { it } > 1) {
+            def placementGate = Boolean.parseBoolean(System.getProperty('minepilot.placementTest', 'false'))
+            def collectionGate = Boolean.parseBoolean(System.getProperty('minepilot.collectionTest', 'false'))
+            def miningGate = Boolean.parseBoolean(System.getProperty('minepilot.miningTest', 'false'))
+            def persistenceGate = Boolean.parseBoolean(System.getProperty('minepilot.persistenceTest', 'false'))
+            def structureGate = Boolean.parseBoolean(System.getProperty('minepilot.structureTest', 'false'))
+            if ([liveModelGate, codexSkillGate, repairGate, knowledgeGate, soundGate, followGate, miningGate, collectionGate, placementGate, persistenceGate, structureGate].count { it } > 1) {
                 throw new GradleException(
                     'Enable only one MinePilot external black-box gate per run')
             }
-            def selectedTest = followGate ? 'mcai_companion:continuous_follow_regressions' : soundGate ? 'mcai_companion:sound_tool_regressions' : knowledgeGate ? 'mcai_companion:knowledge_tool_regressions' : repairGate
+            def selectedTest = persistenceGate ? 'mcai_companion:headless_saved_player_restoration' : placementGate ? 'mcai_companion:placement_tool_regressions' : collectionGate ? 'mcai_companion:collection_tool_regressions' : miningGate ? 'mcai_companion:mining_tool_regressions' : followGate ? 'mcai_companion:continuous_follow_regressions' : soundGate ? 'mcai_companion:sound_tool_regressions' : knowledgeGate ? 'mcai_companion:knowledge_tool_regressions' : repairGate
                 ? 'mcai_companion:navigation_repair_regressions'
                 : codexSkillGate
                 ? 'mcai_companion:codex_skill_chat_navigation_blackbox'
@@ -59,6 +66,8 @@ minecraft {
                     ? 'mcai_companion:live_model_chat_navigation_blackbox'
                     : 'mcai_companion:headless_control_frame_displacement'
             systemProperty 'forge.enabledGameTestNamespaces', 'mcai_companion'
+            if (structureGate) selectedTest = 'mcai_companion:structure_record_regressions'
+            systemProperty 'minepilot.structureTest', Boolean.toString(structureGate)
             systemProperty 'minepilot.liveNavigationTest',
                 Boolean.toString(liveModelGate)
             systemProperty 'minepilot.codexSkillTest',
@@ -67,6 +76,9 @@ minecraft {
             systemProperty 'minepilot.knowledgeTest', Boolean.toString(knowledgeGate)
             systemProperty 'minepilot.soundTest', Boolean.toString(soundGate)
             systemProperty 'minepilot.followTest', Boolean.toString(followGate)
+            systemProperty 'minepilot.miningTest', Boolean.toString(miningGate)
+            systemProperty 'minepilot.collectionTest', Boolean.toString(collectionGate)
+            systemProperty 'minepilot.placementTest', Boolean.toString(placementGate)
             args '--tests', selectedTest
         }
     }

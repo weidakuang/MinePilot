@@ -22,7 +22,7 @@ public final class FollowGameTests {
     private static final class Gate {
         final GameTestHelper h;final AgentRuntime runtime;final CodexToolService tools;
         HeadlessPlayerSession human;String request;int phase;long began;Vec3 held;double humanStart;
-        boolean replaced;long resumed=-1;final JsonArray evidence=new JsonArray();
+        boolean replaced;int restCycles;long restingSince=-1;int movingTicks,stoppedWhileTargetMoved;long resumed=-1;final JsonArray evidence=new JsonArray();
         Gate(GameTestHelper h){this.h=h;runtime=AgentRuntime.active(h.getLevel().getServer());tools=new CodexToolService(runtime);}
         JsonObject call(String name,String args){
             var params=new JsonObject();params.addProperty("name",name);params.add("arguments",JsonParser.parseString(args));
@@ -31,7 +31,7 @@ public final class FollowGameTests {
         }
         void start(){
             var origin=h.absolutePos(new BlockPos(4,2,20));
-            for(int x=-2;x<=38;x++)for(int z=-3;z<=3;z++){
+            for(int x=-2;x<=38;x++)for(int z=-8;z<=8;z++){
                 h.getLevel().setBlockAndUpdate(origin.offset(x,-1,z),Blocks.STONE.defaultBlockState());
                 for(int y=0;y<=3;y++)h.getLevel().setBlockAndUpdate(origin.offset(x,y,z),Blocks.AIR.defaultBlockState());
             }
@@ -52,8 +52,10 @@ public final class FollowGameTests {
         }
         void tick(){
             if(phase<5)human.tick();var p=runtime.player();var status=call("poll_events","{}").getAsJsonObject("navigation");var state=status.get("phase").getAsString();
+            if(h.getTick()%100==0)dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Follow gate stage={} state={} distance={} body={} target={}",phase,state,p.distanceTo(human.player()),p.position(),human.player().position());
             h.assertTrue(p.getInventory().isEmpty() && p.gameMode.getGameModeForPlayer()==GameType.ADVENTURE,"Follow changed adventure inventory/mode");
             var row=new JsonObject();row.addProperty("tick",h.getTick());row.addProperty("phase",state);row.addProperty("x",p.getX());row.addProperty("y",p.getY());row.addProperty("z",p.getZ());row.addProperty("targetX",human.player().getX());row.addProperty("requestId",request);evidence.add(row);
+            if(phase>=2 && phase<4)h.assertTrue(!state.equals("PLAN_READY"),"Safe follow unexpectedly needs a new choice: "+status);
             if(phase<4)h.assertTrue(!state.equals("FAILED") && !state.equals("REPLAN_REQUIRED"),"Safe follow failed or required model repair: "+status);
             if(phase==0 && state.equals("PLAN_READY")){choose(status);phase=1;return;}
             if(phase==1 && state.equals("FOLLOWING") && !replaced){
@@ -80,6 +82,10 @@ public final class FollowGameTests {
                 human.player().applyControlFrame(new AgentControlFrame(NavigationFollower.headingToMinecraftYaw(90),0,1,0,false,false,false));return;
             }
             if(phase==2){
+                if(p.tickCount%10==0)h.assertTrue(Math.abs(p.getXRot())<=25,"Walking gaze points steeply at the feet: "+p.getXRot());
+                if(resumed>=0 && human.player().getX()-humanStart>4) {
+                    movingTicks++;if(p.getDeltaMovement().horizontalDistanceSqr()<.0004)stoppedWhileTargetMoved++;
+                }
                 if(resumed<0 && p.position().distanceTo(held)>.1)resumed=h.getTick()-began;
                 if(h.getTick()-began==12){runtime.onPlayerChat(human.player(),"跟着的时候也能说话吗？");call("say","{\"message\":\"可以，我还在跟着。\"}");}
                 h.assertTrue(status.get("requestId").getAsString().equals(request),"Following silently created a new request");
@@ -94,6 +100,14 @@ public final class FollowGameTests {
                 h.assertTrue(ownReply,"Public chat failed to expose actual delivered Agent reply");
                 h.assertTrue(p.distanceTo(human.player())<=2 && p.position().distanceTo(held)>7,"Follow did not physically reacquire moving player");
                 h.assertTrue(resumed>0 && resumed<=35,"Follow resume exceeded 35 ticks: "+resumed);
+                h.assertTrue(stoppedWhileTargetMoved<=Math.max(2,movingTicks/10),"Follow repeatedly stopped while target walked: "+stoppedWhileTargetMoved+"/"+movingTicks);
+                if(restCycles==0) {
+                    if(restingSince<0)restingSince=h.getTick();
+                    if(h.getTick()-restingSince<80)return;
+                    h.assertTrue(status.get("requestId").getAsString().equals(request),"Rest discarded the follow subscription");
+                    restCycles++;held=p.position();humanStart=human.player().getX();began=h.getTick();resumed=-1;phase=2;
+                    human.player().applyControlFrame(new AgentControlFrame(-90,0,1,0,false,false,false));return;
+                }
                 call("cancel_navigation","{\"request_id\":\""+request+"\",\"reason\":\"test stop\"}");
                 held=p.position();began=h.getTick();phase=4;human.player().applyControlFrame(new AgentControlFrame(-90,0,1,0,false,false,false));return;
             }
@@ -106,7 +120,16 @@ public final class FollowGameTests {
                 h.assertTrue(status.get("lastEventMessage").getAsString().contains("No online player"),"Lost target reason missing");
                 try {java.nio.file.Files.writeString(runtime.server().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("follow-physical-evidence.json"),new GsonBuilder().setPrettyPrinting().create().toJson(evidence));}catch(java.io.IOException e){throw new IllegalStateException(e);}
                 dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Continuous follow physically verified: resume={} ticks, same request, chat during movement, stable stop, lost-player failure",resumed);
-                phase=7;h.succeed();
+                human=HeadlessPlayerSession.join(runtime.server(),h.getLevel(),"knockback-gate","AttackHuman",p.getX()+1,p.getY(),p.getZ());
+                human.player().setPos(p.getX()+1,p.getY(),p.getZ());human.player().setYRot(90);human.player().setGameMode(GameType.SURVIVAL);human.player().setSprinting(true);
+                p.setInvulnerable(false);p.invulnerableTime=0;p.setHealth(20);held=p.position();
+                dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Attack prerequisites: pvp={} loaded={} changingDimension={} invulnerable={} abilities={} attackDamage={}",p.level().isPvpAllowed(),p.connection.hasClientLoaded(),p.isChangingDimension(),p.isInvulnerableTo(p.level(),p.damageSources().playerAttack(human.player())),p.getAbilities().invulnerable,human.player().getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE));
+                human.player().attack(p);h.assertTrue(p.getHealth()<20,"Native player attack did not damage body at impact");began=h.getTick();phase=7;return;
+            }
+            if(phase==7 && h.getTick()-began>=12){
+                h.assertTrue(p.position().distanceTo(held)>.3,"Native player attack failed to knock body back: "+p.position().distanceTo(held));
+                dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Native player attack physically displaced MinePilot {} blocks",p.position().distanceTo(held));
+                human.close();phase=8;h.succeed();
             }
         }
     }

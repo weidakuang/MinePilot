@@ -1,0 +1,170 @@
+{
+  "durationSeconds": 130.25,
+  "listenerPid": 93640,
+  "samples": [
+    {
+      "elapsedSeconds": 0.0,
+      "mcpMs": 3.94,
+      "modelConnectionReady": true,
+      "serverTick": 12195
+    },
+    {
+      "elapsedSeconds": 5.02,
+      "mcpMs": 8.76,
+      "modelConnectionReady": true,
+      "serverTick": 12296
+    },
+    {
+      "elapsedSeconds": 10.03,
+      "mcpMs": 3.02,
+      "modelConnectionReady": true,
+      "serverTick": 12396
+    },
+    {
+      "elapsedSeconds": 15.04,
+      "mcpMs": 5.93,
+      "modelConnectionReady": true,
+      "serverTick": 12496
+    },
+    {
+      "elapsedSeconds": 20.05,
+      "mcpMs": 5.2,
+      "modelConnectionReady": true,
+      "serverTick": 12596
+    },
+    {
+      "elapsedSeconds": 25.06,
+      "mcpMs": 4.48,
+      "modelConnectionReady": true,
+      "serverTick": 12696
+    },
+    {
+      "elapsedSeconds": 30.07,
+      "mcpMs": 9.8,
+      "modelConnectionReady": true,
+      "serverTick": 12797
+    },
+    {
+      "elapsedSeconds": 35.08,
+      "mcpMs": 4.88,
+      "modelConnectionReady": true,
+      "serverTick": 12897
+    },
+    {
+      "elapsedSeconds": 40.09,
+      "mcpMs": 4.66,
+      "modelConnectionReady": true,
+      "serverTick": 12997
+    },
+    {
+      "elapsedSeconds": 45.1,
+      "mcpMs": 3.29,
+      "modelConnectionReady": true,
+      "serverTick": 13097
+    },
+    {
+      "elapsedSeconds": 50.1,
+      "mcpMs": 1.86,
+      "modelConnectionReady": true,
+      "serverTick": 13197
+    },
+    {
+      "elapsedSeconds": 55.12,
+      "mcpMs": 8.07,
+      "modelConnectionReady": true,
+      "serverTick": 13298
+    },
+    {
+      "elapsedSeconds": 60.12,
+      "mcpMs": 2.98,
+      "modelConnectionReady": true,
+      "serverTick": 13398
+    },
+    {
+      "elapsedSeconds": 65.13,
+      "mcpMs": 3.75,
+      "modelConnectionReady": true,
+      "serverTick": 13498
+    },
+    {
+      "elapsedSeconds": 70.14,
+      "mcpMs": 4.1,
+      "modelConnectionReady": true,
+      "serverTick": 13598
+    },
+    {
+      "elapsedSeconds": 75.15,
+      "mcpMs": 4.18,
+      "modelConnectionReady": true,
+      "serverTick": 13698
+    },
+    {
+      "elapsedSeconds": 80.15,
+      "mcpMs": 4.03,
+      "modelConnectionReady": true,
+      "serverTick": 13798
+    },
+    {
+      "elapsedSeconds": 85.17,
+      "mcpMs": 5.44,
+      "modelConnectionReady": true,
+      "serverTick": 13899
+    },
+    {
+      "elapsedSeconds": 90.17,
+      "mcpMs": 3.45,
+      "modelConnectionReady": true,
+      "serverTick": 13999
+    },
+    {
+      "elapsedSeconds": 95.18,
+      "mcpMs": 4.1,
+      "modelConnectionReady": true,
+      "serverTick": 14099
+    },
+    {
+      "elapsedSeconds": 100.19,
+      "mcpMs": 4.39,
+      "modelConnectionReady": true,
+      "serverTick": 14199
+    },
+    {
+      "elapsedSeconds": 105.2,
+      "mcpMs": 4.62,
+      "modelConnectionReady": true,
+      "serverTick": 14299
+    },
+    {
+      "elapsedSeconds": 110.21,
+      "mcpMs": 4.47,
+      "modelConnectionReady": true,
+      "serverTick": 14399
+    },
+    {
+      "elapsedSeconds": 115.22,
+      "mcpMs": 6.24,
+      "modelConnectionReady": true,
+      "serverTick": 14500
+    },
+    {
+      "elapsedSeconds": 120.23,
+      "mcpMs": 3.29,
+      "modelConnectionReady": true,
+      "serverTick": 14600
+    },
+    {
+      "elapsedSeconds": 125.24,
+      "mcpMs": 3.7,
+      "modelConnectionReady": true,
+      "serverTick": 14700
+    },
+    {
+      "elapsedSeconds": 130.25,
+      "mcpMs": 4.19,
+      "modelConnectionReady": true,
+      "serverTick": 14800
+    }
+  ],
+  "status": "PASS",
+  "scope": "Idle listener and live authenticated observations; no model task or game mutation"
+}

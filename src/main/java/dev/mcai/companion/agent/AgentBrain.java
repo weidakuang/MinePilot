@@ -55,6 +55,8 @@ public final class AgentBrain implements AutoCloseable {
     private String pendingPlanToolCallId;
     private String currentRequester = "player";
     private int protocolRepairAttempts;
+    private JsonObject pendingMiningEvent;
+    private String miningMarker="",collectionMarker="",placementMarker="";
 
     public AgentBrain(
             MinecraftServer server,
@@ -97,13 +99,41 @@ public final class AgentBrain implements AutoCloseable {
         startQueuedInputIfPossible();
     }
 
+    public void onLocallyHandledStop() {
+        requireServerThread();modelGeneration++;modelBusy=false;
+        if(activeModelRequest!=null)activeModelRequest.cancel(true);
+        queuedInputs.clear();pendingMiningEvent=null;
+        if(pendingPlanToolCallId!=null){appendToolResult(pendingPlanToolCallId,"{\"status\":\"CANCELLED_BY_PLAYER\"}");pendingPlanToolCallId=null;}
+        history.add(message("user","The player stopped the active action through the local control. It has stopped and been acknowledged. Do not resume an old task."));
+        trimHistory();
+    }
+
     public void tick() {
         requireServerThread();
         Runnable completion;
         while ((completion = completions.poll()) != null) {
             completion.run();
         }
+        var runtime=AgentRuntime.active(server);
+        if(runtime!=null){
+            var placement=runtime.placement().status();String placementNext=placement.get("phase").getAsString()+placement.get("requestId")+placement.get("decisionId");
+            if(!placementNext.equals(placementMarker)){placementMarker=placementNext;if(java.util.Set.of("COMPLETED","PARTIAL","BLOCKED").contains(placement.get("phase").getAsString()))pendingMiningEvent=placement;}
+            var collection=runtime.collection().status();String next=collection.get("phase").getAsString()+collection.get("requestId");
+            if(!next.equals(collectionMarker)){
+                collectionMarker=next;
+                if(java.util.Set.of("COMPLETED","BLOCKED").contains(collection.get("phase").getAsString()))pendingMiningEvent=collection;
+            }
+            var state=runtime.mining().status();String marker=state.get("phase").getAsString()+state.get("requestId");
+            if(!marker.equals(miningMarker)){
+                miningMarker=marker;
+                if(!runtime.placement().ownsBody() && !runtime.placement().isChildRequest(state) && !runtime.collection().ownsBody() && !runtime.collection().isChildRequest(state) && java.util.Set.of("COMPLETED","BLOCKED").contains(state.get("phase").getAsString()))pendingMiningEvent=state;
+            }
+        }
         startQueuedInputIfPossible();
+        if(!modelBusy && pendingPlanToolCallId==null && queuedInputs.isEmpty() && pendingMiningEvent!=null){
+            history.add(message("user","BODY_JOB_RESULT (not a new player request; do not repeat the break; speech optional):\n"+pendingMiningEvent));
+            pendingMiningEvent=null;trimHistory();requestModel();
+        }
     }
 
     public void onNavigationEvent(NavigationEvent event) {
@@ -237,6 +267,14 @@ public final class AgentBrain implements AutoCloseable {
         boolean offered=false;
         for(var tool:toolsForCurrentPhase())if(tool.getAsJsonObject().getAsJsonObject("function").get("name").getAsString().equals(call.name()))offered=true;
         if(!offered)throw new IllegalArgumentException("Tool is not available in the current phase: "+call.name());
+        if(dev.mcai.companion.agent.placement.PlacementTools.NAMES.contains(call.name())) {
+            var result=dev.mcai.companion.agent.placement.PlacementTools.execute(AgentRuntime.active(server),call.name(),call.arguments());
+            return java.util.Set.of("place_block","choose_placement","resume_placement","resolve_placement","pause_placement","cancel_placement").contains(call.name()) && result.has("phase") && java.util.Set.of("EXECUTING","PAUSED","CANCELLED").contains(result.get("phase").getAsString()) ? ToolExecution.waiting(result.toString()) : ToolExecution.continueWith(result.toString());
+        }
+        if(dev.mcai.companion.agent.mining.CollectionTools.NAMES.contains(call.name()))
+            return ToolExecution.continueWith(dev.mcai.companion.agent.mining.CollectionTools.execute(AgentRuntime.active(server),call.name(),call.arguments()).toString());
+        if(dev.mcai.companion.agent.mining.MiningTools.NAMES.contains(call.name()))
+            return ToolExecution.continueWith(dev.mcai.companion.agent.mining.MiningTools.execute(AgentRuntime.active(server),call.name(),call.arguments()).toString());
         return switch (call.name()) {
             case "request_navigation" -> requestNavigation(call.arguments());
             case "say" -> say(call.arguments());
@@ -401,7 +439,7 @@ public final class AgentBrain implements AutoCloseable {
                 : navigation.status().worldRevision());
 
         var runtime=AgentRuntime.active(server);
-        state.add("world",runtime.perception.summary());state.add("inventorySummary",player.inventoryLedger.inventory());
+        state.add("world",runtime.perception.summary());state.add("inventorySummary",player.inventoryLedger.inventory());state.add("mining",runtime.mining().status());state.add("collection",runtime.collection().status());state.add("placement",runtime.placement().status());
         if(navigation.status().requestId()!=null)state.addProperty("requestId",navigation.status().requestId().toString());
         JsonArray players=new JsonArray();int count=0;
         for(var other:server.getPlayerList().getPlayers()) {
@@ -447,6 +485,16 @@ public final class AgentBrain implements AutoCloseable {
     }
 
     private JsonArray toolsForCurrentPhase() {
+        var runtime=AgentRuntime.active(server);
+        if(runtime!=null && runtime.placement().ownsBody())return AgentToolSchemas.navigationTools(false,
+                "say","listen","sense","inventory","inventory_events","annotate_item","waypoint","inventory_capacity","inspect_placement",
+                "placement_status","pause_placement","resume_placement","cancel_placement","set_hand");
+        if(runtime!=null && runtime.collection().ownsBody())return AgentToolSchemas.navigationTools(false,
+                "say","listen","sense","inventory","inventory_events","annotate_item","waypoint","inspect_tree","tree_farm",
+                "collection_status","pause_collection","resume_collection","cancel_collection");
+        if(runtime!=null && runtime.mining().ownsBody())return AgentToolSchemas.navigationTools(false,
+                "say","listen","sense","inventory","inventory_events","annotate_item","waypoint",
+                "mining_status","pause_mining","resume_mining","cancel_mining");
         NavigationToolCoordinator.Phase phase = navigation == null
                 ? NavigationToolCoordinator.Phase.IDLE
                 : navigation.status().phase();
@@ -465,7 +513,10 @@ public final class AgentBrain implements AutoCloseable {
                     false, "request_navigation", "say", "cancel_navigation", "listen", "inventory", "inventory_events", "sense", "waypoint", "annotate_item");
             case IDLE, COMPLETED, APPROACHED, FAILED, CANCELLED ->
                     AgentToolSchemas.navigationTools(
-                            false, "request_navigation", "say", "listen", "turn", "inventory", "inventory_events", "sense", "waypoint", "annotate_item");
+                            false, "request_navigation", "say", "listen", "turn", "inventory", "inventory_events", "sense", "waypoint", "annotate_item",
+                            "equip_tool","plan_mining","choose_mining","mining_status","pause_mining","resume_mining","cancel_mining",
+                            "inspect_tree","tree_farm","plan_collection","choose_collection","collection_status","pause_collection","resume_collection","cancel_collection",
+                            "set_hand","inventory_capacity","inspect_placement","place_block","plan_placement","choose_placement","placement_status","pause_placement","resume_placement","cancel_placement","resolve_placement");
         };
     }
 

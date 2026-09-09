@@ -1,0 +1,17 @@
+{
+  "kind": "source-informed native save/logout/login fixture",
+  "runDirectory": "run-repair-persistence-final-20260909",
+  "log": "/tmp/minepilot-persistence-final.log",
+  "observations": [
+    "[01:24:46] [Server thread/INFO] [de.mc.co.MinecraftAiCompanion/]: Persistence physical gate: position=(1.18795935E7, -48.0, 1184554.5), inventoryRestored=true, woodenPickaxeDamage=7, offhandTorches=3, gameMode=adventure, dimension=minecraft:overworld",
+    "[01:24:46] [Server thread/INFO] [minecraft/GameTestServer]: All 1 required tests passed :)",
+    "BUILD SUCCESSFUL in 8s"
+  ],
+  "assertions": [
+    "Saved position and dimension override deliberately different fallback spawn",
+    "Saved yaw/pitch, adventure mode, health and hunger preserved",
+    "Six spruce logs, wooden pickaxe damage 7 and three offhand torches restored from vanilla player data",
+    "Ten actual authoritative physics ticks preserve inventory and position"
+  ],
+  "userServerRestartEvidence": "2026-09-09-repair-installation.json"
+}

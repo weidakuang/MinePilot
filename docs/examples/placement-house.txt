@@ -1,0 +1,59 @@
+SMALL ROOM: TEXT BLUEPRINT EXAMPLE
+DESIGN ONLY: not a placed building or gameplay acceptance.
+Local x increases right/east; z increases down/south; y increases upward.
+P = oak planks; G = glass; D/d = one door lower/upper; b/h = one bed foot/head.
+T = wall torch facing south; C = chest facing south; . = require empty.
+Omitted world cells are preserved; blocked reserved air requires a separate decision.
+
+y=0 (rows z=0..6, columns x=0..4)
+PPPPP
+PPPPP
+PPPPP
+PPPPP
+PPPPP
+PPPPP
+PPPPP
+
+y=1 (rows z=0..6, columns x=0..4)
+PPPPP
+Ph.CP
+Pb..P
+P...P
+P...P
+P...P
+PPDPP
+
+y=2 (rows z=0..6, columns x=0..4)
+PPGPP
+P..TP
+P...P
+G...G
+P...P
+P...P
+PPdPP
+
+y=3 (rows z=0..6, columns x=0..4)
+PPPPP
+P...P
+P...P
+P...P
+P...P
+P...P
+PPPPP
+
+y=4 (rows z=0..6, columns x=0..4)
+PPPPP
+PPPPP
+PPPPP
+PPPPP
+PPPPP
+PPPPP
+PPPPP
+
+PERMANENT ITEMS (temporary support budget is not yet evaluated):
+minecraft:oak_planks: 125
+minecraft:chest: 1
+minecraft:red_bed: 1
+minecraft:oak_door: 1
+minecraft:glass: 3
+minecraft:torch: 1

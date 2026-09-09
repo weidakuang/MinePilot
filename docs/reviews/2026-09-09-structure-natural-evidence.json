@@ -1,0 +1,95 @@
+{
+  "setup": "Isolated seed-0 normal peaceful world. Native /locate village reported minecraft:village_plains at X272 Z944, 991 blocks from spawn. Operator spreadplayers prepared a safe position before query. No model or world mutation during this query.",
+  "wallMillis": 114.767,
+  "pollMcpMillis": [
+    2.359,
+    1.28
+  ],
+  "before": {
+    "x": 272.5,
+    "y": 68.0,
+    "z": 944.5,
+    "dimension": "minecraft:overworld",
+    "inventory": []
+  },
+  "after": {
+    "x": 272.5,
+    "y": 68.0,
+    "z": 944.5,
+    "dimension": "minecraft:overworld",
+    "inventory": []
+  },
+  "result": {
+    "searchCenter": {
+      "x": 272.5,
+      "y": 68.0,
+      "z": 944.5
+    },
+    "results": [
+      {
+        "structure": "minecraft:village_plains",
+        "recordId": "8b70752a-3318-399b-b8e4-1d8e5c1b60d2",
+        "x": 272.5,
+        "y": 68.0,
+        "z": 944.5,
+        "distance": 0.0,
+        "source": "server_structure_record",
+        "positionKind": "nearest_recorded_piece_volume_point",
+        "safeToStandVerified": false,
+        "currentBlocksVerified": false
+      }
+    ],
+    "cursor": "6f16e17a-61c6-4e59-b411-ebe4ed67e622",
+    "dimension": "minecraft:overworld",
+    "radius": 96,
+    "distanceMetric": "3d_sphere_to_nearest_recorded_piece_volume",
+    "source": "server_structure_records",
+    "filter": "#minecraft:village",
+    "status": "COMPLETE",
+    "complete": true,
+    "coverageComplete": true,
+    "truncated": false,
+    "nextOffset": 1,
+    "totalMatched": 1,
+    "checkedChunks": 136,
+    "primaryChunks": 136,
+    "referencedStartChunks": 0,
+    "scheduledChunks": 0,
+    "unavailableChunksOrRecords": 0,
+    "sampledAtTick": 4833,
+    "elapsedMillis": 49,
+    "snapshotAgeMillis": 111,
+    "retryAfterMs": 0,
+    "limitation": "Generated structure records may survive destruction. Positions are not entrances or safe navigation destinations; player buildings are not indexed. Native metadata generation may read dependency chunks outside the sphere; returned positions never exceed its radius."
+  },
+  "spawnQuery": {
+    "searchCenter": {
+      "x": -31.5,
+      "y": 65.0,
+      "z": 0.5
+    },
+    "results": [],
+    "cursor": "46db1070-cff5-4e0d-9f43-629e3a17dd0b",
+    "dimension": "minecraft:overworld",
+    "radius": 96,
+    "distanceMetric": "3d_sphere_to_nearest_recorded_piece_volume",
+    "source": "server_structure_records",
+    "filter": "#minecraft:village",
+    "status": "COMPLETE",
+    "complete": true,
+    "coverageComplete": true,
+    "truncated": false,
+    "nextOffset": 0,
+    "totalMatched": 0,
+    "checkedChunks": 136,
+    "primaryChunks": 136,
+    "referencedStartChunks": 0,
+    "scheduledChunks": 0,
+    "unavailableChunksOrRecords": 0,
+    "sampledAtTick": 845,
+    "retryAfterMs": 0,
+    "limitation": "Generated structure records may survive destruction. Positions are not entrances or safe navigation destinations; player buildings are not indexed. Native metadata generation may read dependency chunks outside the sphere; returned positions never exceed its radius."
+  },
+  "spawnQueryTimingNote": "Completed snapshot was polled much later; pre-fix age field is omitted, not a query latency measurement.",
+  "jarSha256": "ca0bac76b99f52b6acc749e3e05fbd2cc8e7efdd5182070c0b645b9a11ce1b73"
+}

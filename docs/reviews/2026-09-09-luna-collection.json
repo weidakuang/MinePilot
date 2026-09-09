@@ -1,0 +1,283 @@
+{
+  "testType": "Independent Luna decisions through the persistent public Skill controller in a source-informed fixture on a production Forge server; no private model output inspected",
+  "minecraft": "26.2",
+  "forge": "65.0.9",
+  "model": "gpt-5.6-luna",
+  "requestTimeUnix": 1788883825.30605,
+  "firstVisibleReplyTimeUnix": 1788883832.423,
+  "completedObservedTimeUnix": 1788883862.703872,
+  "firstVisibleReplySeconds": 7.117,
+  "requestToObservedCompletionSeconds": 37.398,
+  "fixture": "Six spruce logs and natural-state leaf cap; one wooden axe, survival; no further operator mutations during the trial",
+  "initialInventory": [
+    {
+      "slot": 0,
+      "item": "minecraft:wooden_axe",
+      "count": 1,
+      "damage": 0,
+      "maxDamage": 59
+    }
+  ],
+  "final": {
+    "time": 1788883862.703872,
+    "x": 2.626619024081139,
+    "y": -59.0,
+    "z": 0.5,
+    "dimension": "minecraft:overworld",
+    "inventory": [
+      {
+        "slot": 0,
+        "item": "minecraft:wooden_axe",
+        "count": 1,
+        "damage": 6,
+        "maxDamage": 59
+      },
+      {
+        "slot": 1,
+        "item": "minecraft:spruce_log",
+        "count": 6,
+        "damage": 0,
+        "maxDamage": 0
+      }
+    ],
+    "collection": {
+      "phase": "COMPLETED",
+      "step": "WAIT",
+      "planServerMillis": 4.073375,
+      "reason": "Every approved trunk block was physically broken and all matching log pickups verified",
+      "ownsBody": false,
+      "requestId": "1d75e8e4-0441-41a9-8cdf-5dce8212af8c",
+      "dimension": "minecraft:overworld",
+      "fixedCenter": {
+        "z": 0.5,
+        "y": -59.0,
+        "x": 0.5
+      },
+      "radius": 10.0,
+      "resource": "wood",
+      "requestedCount": 6,
+      "verifiedInventoryIncrease": 6,
+      "options": [],
+      "selectedOptionId": "tree-1",
+      "selectedSource": "tree",
+      "activeTool": {
+        "slot": 0,
+        "item": "minecraft:wooden_axe",
+        "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+        "damageable": true,
+        "damage": 6,
+        "maxDurability": 59,
+        "remainingDurability": 53
+      },
+      "physicalDistance": 2.126619024081139,
+      "brokenBlocks": 6,
+      "pickupReceipts": [
+        {
+          "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+          "item": "minecraft:spruce_log",
+          "name": "Spruce Log",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "source": {
+            "category": "mined_block",
+            "confidence": "entity_origin_event",
+            "mergedStackLineageKnown": false,
+            "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+            "actorId": "87deb2b6-ae8e-308f-ad81-2c66a495f8d7",
+            "actorName": "MinePilot",
+            "requestId": "2bbc9ce1-c5f5-4287-a5db-d0c74073ef28",
+            "block": "minecraft:spruce_log",
+            "dimension": "minecraft:overworld",
+            "x": 3,
+            "y": -59,
+            "z": 0
+          },
+          "entityId": "0cb626dd-b2b2-4de0-a90e-3c3be3090d02",
+          "collectionCreditedCount": 1
+        },
+        {
+          "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+          "item": "minecraft:spruce_log",
+          "name": "Spruce Log",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "source": {
+            "category": "mined_block",
+            "confidence": "entity_origin_event",
+            "mergedStackLineageKnown": false,
+            "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+            "actorId": "87deb2b6-ae8e-308f-ad81-2c66a495f8d7",
+            "actorName": "MinePilot",
+            "requestId": "77d45e89-158d-4d90-ac31-abd650b97c15",
+            "block": "minecraft:spruce_log",
+            "dimension": "minecraft:overworld",
+            "x": 3,
+            "y": -58,
+            "z": 0
+          },
+          "entityId": "4ee89097-781c-444d-b6ae-2eac7030121b",
+          "collectionCreditedCount": 1
+        },
+        {
+          "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+          "item": "minecraft:spruce_log",
+          "name": "Spruce Log",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "source": {
+            "category": "mined_block",
+            "confidence": "entity_origin_event",
+            "mergedStackLineageKnown": false,
+            "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+            "actorId": "87deb2b6-ae8e-308f-ad81-2c66a495f8d7",
+            "actorName": "MinePilot",
+            "requestId": "a7469d7d-0cfb-453f-9764-f09fbac5c83d",
+            "block": "minecraft:spruce_log",
+            "dimension": "minecraft:overworld",
+            "x": 3,
+            "y": -57,
+            "z": 0
+          },
+          "entityId": "cbd1100e-46e3-47ff-9b04-44d244d68058",
+          "collectionCreditedCount": 1
+        },
+        {
+          "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+          "item": "minecraft:spruce_log",
+          "name": "Spruce Log",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "source": {
+            "category": "mined_block",
+            "confidence": "entity_origin_event",
+            "mergedStackLineageKnown": false,
+            "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+            "actorId": "87deb2b6-ae8e-308f-ad81-2c66a495f8d7",
+            "actorName": "MinePilot",
+            "requestId": "0141e0aa-1134-4785-89a1-40d1100a2aa3",
+            "block": "minecraft:spruce_log",
+            "dimension": "minecraft:overworld",
+            "x": 3,
+            "y": -56,
+            "z": 0
+          },
+          "entityId": "37fc1759-958f-4c39-add2-33538998f3fe",
+          "collectionCreditedCount": 1
+        },
+        {
+          "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+          "item": "minecraft:spruce_log",
+          "name": "Spruce Log",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "source": {
+            "category": "mined_block",
+            "confidence": "entity_origin_event",
+            "mergedStackLineageKnown": false,
+            "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+            "actorId": "87deb2b6-ae8e-308f-ad81-2c66a495f8d7",
+            "actorName": "MinePilot",
+            "requestId": "5740ea10-2c5d-4b75-90a7-5f468b114f33",
+            "block": "minecraft:spruce_log",
+            "dimension": "minecraft:overworld",
+            "x": 3,
+            "y": -55,
+            "z": 0
+          },
+          "entityId": "e04f11d8-28ee-410f-9bed-6965ae6903e5",
+          "collectionCreditedCount": 1
+        },
+        {
+          "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+          "item": "minecraft:spruce_log",
+          "name": "Spruce Log",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "source": {
+            "category": "mined_block",
+            "confidence": "entity_origin_event",
+            "mergedStackLineageKnown": false,
+            "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+            "actorId": "87deb2b6-ae8e-308f-ad81-2c66a495f8d7",
+            "actorName": "MinePilot",
+            "requestId": "15115e45-bd3c-4bed-b9e7-20e5bf0bc0f6",
+            "block": "minecraft:spruce_log",
+            "dimension": "minecraft:overworld",
+            "x": 3,
+            "y": -54,
+            "z": 0
+          },
+          "entityId": "968bd99e-4ac9-444c-92ba-22d1ab188b9b",
+          "collectionCreditedCount": 1
+        }
+      ],
+      "childMiningRequestIds": [
+        "0141e0aa-1134-4785-89a1-40d1100a2aa3",
+        "77d45e89-158d-4d90-ac31-abd650b97c15",
+        "a7469d7d-0cfb-453f-9764-f09fbac5c83d",
+        "15115e45-bd3c-4bed-b9e7-20e5bf0bc0f6",
+        "2bbc9ce1-c5f5-4287-a5db-d0c74073ef28",
+        "5740ea10-2c5d-4b75-90a7-5f468b114f33"
+      ],
+      "wholeTree": true,
+      "wholeTreeVerified": true,
+      "remainingApprovedBlocks": 0,
+      "sourceAttribution": "Origin-event evidence only; complete merged-stack lineage is not established",
+      "bodyX": 2.626619024081139,
+      "bodyY": -59.0,
+      "bodyZ": 0.5,
+      "currentRoute": {
+        "optionId": "A",
+        "distanceBlocks": 2.0,
+        "estimatedSeconds": 0.3563791874554526,
+        "estimatedHealthLost": 0.0,
+        "supportMaterials": []
+      },
+      "currentBlock": {
+        "x": 3,
+        "y": -54,
+        "z": 0
+      }
+    },
+    "chat": {
+      "latestSequence": 0,
+      "systemChat": {
+        "messages": [
+          {
+            "sequence": 1,
+            "origin": "received_agent_chat",
+            "text": "[AI] MinePilot: 好，我先去东边确认这棵云杉树。",
+            "gameTick": 1102
+          },
+          {
+            "sequence": 2,
+            "origin": "received_agent_chat",
+            "text": "[AI] MinePilot: 我已到东侧，正在确认目标云杉树的位置。",
+            "gameTick": 1396
+          },
+          {
+            "sequence": 3,
+            "origin": "received_agent_chat",
+            "text": "[AI] MinePilot: 好的，我先确认东侧的云杉树，再完整砍伐并捡起所有原木。",
+            "gameTick": 6115
+          }
+        ],
+        "latestSequence": 3
+      },
+      "messages": []
+    }
+  },
+  "earlierFailedTrial": "The initial trial only approached an invented eastward coordinate and stopped. Navigation completion schema prohibited further tools and omitted the original task. Failure evidence retained in the isolated run directory; controller fixed before the successful rerun."
+}

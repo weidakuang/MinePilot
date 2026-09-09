@@ -1,0 +1,1315 @@
+[
+  {
+    "phase": "COMPLETED",
+    "step": "TRAVEL",
+    "planServerMillis": 5.828417,
+    "reason": "Matching pickup receipts and current inventory increase meet the requested count; this is NOT proof of felling a whole tree",
+    "ownsBody": false,
+    "requestId": "1f674b6b-ca9f-4add-a7b0-b8f53b39405a",
+    "dimension": "minecraft:overworld",
+    "fixedCenter": {
+      "z": -1.16421175E7,
+      "x": -754796.5,
+      "y": -47.0
+    },
+    "radius": 10.0,
+    "resource": "wood",
+    "requestedCount": 4,
+    "verifiedInventoryIncrease": 4,
+    "options": [],
+    "selectedOptionId": "nearby-drops",
+    "selectedSource": "drops",
+    "activeTool": {
+      "slot": 0,
+      "item": "minecraft:oak_log",
+      "entryId": "fa6051282077d07257ac82526d3e18dd28e4c1b7038d941c2841e846b838e86d",
+      "damageable": false
+    },
+    "physicalDistance": 1.0530819477934112,
+    "brokenBlocks": 0,
+    "pickupReceipts": [
+      {
+        "entryId": "fa6051282077d07257ac82526d3e18dd28e4c1b7038d941c2841e846b838e86d",
+        "item": "minecraft:oak_log",
+        "name": "Oak Log",
+        "count": 4,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "unknown",
+          "confidence": "unknown",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established."
+        },
+        "entityId": "4e06a2c1-f014-4fc8-843d-b0166b90b663",
+        "collectionCreditedCount": 4
+      }
+    ],
+    "childMiningRequestIds": [],
+    "wholeTree": false,
+    "wholeTreeVerified": false,
+    "remainingApprovedBlocks": 0,
+    "sourceAttribution": "Origin-event evidence only; complete merged-stack lineage is not established",
+    "bodyX": -754795.4550212707,
+    "bodyY": -47.0,
+    "bodyZ": -1.164211746845264E7,
+    "currentRoute": {
+      "optionId": "A",
+      "distanceBlocks": 3.0,
+      "estimatedSeconds": 0.534568781183179,
+      "estimatedHealthLost": 0.0,
+      "supportMaterials": []
+    },
+    "currentDrop": {
+      "entityId": "4e06a2c1-f014-4fc8-843d-b0166b90b663",
+      "alive": false,
+      "x": -754794.1294220969,
+      "y": -47.0,
+      "z": -1.1642117151615167E7
+    },
+    "case": "wood any acquired loose logs without felling",
+    "inventory": {
+      "entries": [
+        {
+          "entryId": "fa6051282077d07257ac82526d3e18dd28e4c1b7038d941c2841e846b838e86d",
+          "item": "minecraft:oak_log",
+          "name": "Oak Log",
+          "count": 4,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            0
+          ]
+        }
+      ],
+      "equipment": [],
+      "revision": 2,
+      "latestEventSequence": 1,
+      "memoryWritable": true
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "TRAVEL",
+    "planServerMillis": 2.524125,
+    "reason": "Every approved trunk block was physically broken and all matching log pickups verified",
+    "ownsBody": false,
+    "requestId": "c1751e3e-fa1f-4f65-bfdd-59503c476725",
+    "dimension": "minecraft:overworld",
+    "fixedCenter": {
+      "z": -1.164211746845264E7,
+      "x": -754795.4550212707,
+      "y": -47.0
+    },
+    "radius": 10.0,
+    "resource": "wood",
+    "requestedCount": 3,
+    "verifiedInventoryIncrease": 3,
+    "options": [],
+    "selectedOptionId": "tree-1",
+    "selectedSource": "tree",
+    "activeTool": {
+      "slot": 1,
+      "item": "bare_hands",
+      "damageable": false
+    },
+    "physicalDistance": 3.052248948476316,
+    "brokenBlocks": 3,
+    "pickupReceipts": [
+      {
+        "entryId": "fa6051282077d07257ac82526d3e18dd28e4c1b7038d941c2841e846b838e86d",
+        "item": "minecraft:oak_log",
+        "name": "Oak Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "fc569c30-19c3-4aa0-98f7-42271953989c",
+          "block": "minecraft:oak_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -47,
+          "z": -11642118
+        },
+        "entityId": "2e75eef7-e0a3-461e-804d-38d26121e1f8",
+        "collectionCreditedCount": 1
+      },
+      {
+        "entryId": "fa6051282077d07257ac82526d3e18dd28e4c1b7038d941c2841e846b838e86d",
+        "item": "minecraft:oak_log",
+        "name": "Oak Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "ab870c8a-a8ec-4700-9aef-dd6594f64ce5",
+          "block": "minecraft:oak_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -46,
+          "z": -11642118
+        },
+        "entityId": "0da91d4a-87a4-4c1d-a1b2-bbe23f8bec38",
+        "collectionCreditedCount": 1
+      },
+      {
+        "entryId": "fa6051282077d07257ac82526d3e18dd28e4c1b7038d941c2841e846b838e86d",
+        "item": "minecraft:oak_log",
+        "name": "Oak Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "de269cfd-813d-45b1-9365-565310dbffa0",
+          "block": "minecraft:oak_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -45,
+          "z": -11642118
+        },
+        "entityId": "5603f180-2dcb-4b74-a076-46d99eb021fd",
+        "collectionCreditedCount": 1
+      }
+    ],
+    "childMiningRequestIds": [
+      "ed4d45c5-5050-4d7a-ad7b-3fdae348b30d",
+      "fc569c30-19c3-4aa0-98f7-42271953989c",
+      "de269cfd-813d-45b1-9365-565310dbffa0",
+      "ab870c8a-a8ec-4700-9aef-dd6594f64ce5"
+    ],
+    "wholeTree": true,
+    "wholeTreeVerified": true,
+    "remainingApprovedBlocks": 0,
+    "sourceAttribution": "Origin-event evidence only; complete merged-stack lineage is not established",
+    "bodyX": -754793.003352199,
+    "bodyY": -47.0,
+    "bodyZ": -1.1642118523551831E7,
+    "currentRoute": {
+      "optionId": "A",
+      "distanceBlocks": 2.0,
+      "estimatedSeconds": 0.3563791874554526,
+      "estimatedHealthLost": 0.0,
+      "supportMaterials": []
+    },
+    "currentDrop": {
+      "entityId": "5603f180-2dcb-4b74-a076-46d99eb021fd",
+      "alive": false,
+      "x": -754791.785814247,
+      "y": -47.0,
+      "z": -1.1642118722929502E7
+    },
+    "case": "one approval, three normal bare-hand breaks and pickups; pause/chat/resume",
+    "inventory": {
+      "entries": [
+        {
+          "entryId": "fa6051282077d07257ac82526d3e18dd28e4c1b7038d941c2841e846b838e86d",
+          "item": "minecraft:oak_log",
+          "name": "Oak Log",
+          "count": 3,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            0
+          ]
+        }
+      ],
+      "equipment": [],
+      "revision": 6,
+      "latestEventSequence": 4,
+      "memoryWritable": true
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "TRAVEL",
+    "planServerMillis": 0.514916,
+    "reason": "Every approved trunk block was physically broken and all matching log pickups verified",
+    "ownsBody": false,
+    "requestId": "2b0e34fb-2a36-44f4-91ee-9a08b9b9ada6",
+    "dimension": "minecraft:overworld",
+    "fixedCenter": {
+      "z": -1.16421175E7,
+      "x": -754796.5,
+      "y": -47.0
+    },
+    "radius": 10.0,
+    "resource": "wood",
+    "requestedCount": 4,
+    "verifiedInventoryIncrease": 4,
+    "options": [],
+    "selectedOptionId": "tree-1",
+    "selectedSource": "tree",
+    "activeTool": {
+      "slot": 0,
+      "item": "minecraft:wooden_axe",
+      "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+      "damageable": true,
+      "damage": 4,
+      "maxDurability": 59,
+      "remainingDurability": 55
+    },
+    "physicalDistance": 5.089202186572678,
+    "brokenBlocks": 4,
+    "pickupReceipts": [
+      {
+        "entryId": "357f30e3bb7150ac66b7bebddcaa53ec093a2fbeb90baf1e5aefd50e7d71d518",
+        "item": "minecraft:birch_log",
+        "name": "Birch Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "af4b6b95-e445-475a-98ba-391e95496bfc",
+          "block": "minecraft:birch_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -47,
+          "z": -11642118
+        },
+        "entityId": "13aab9f0-96b9-424b-93c6-9156f29d8c20",
+        "collectionCreditedCount": 1
+      },
+      {
+        "entryId": "357f30e3bb7150ac66b7bebddcaa53ec093a2fbeb90baf1e5aefd50e7d71d518",
+        "item": "minecraft:birch_log",
+        "name": "Birch Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "d6daac91-b722-4fe9-87d2-e14b22262d19",
+          "block": "minecraft:birch_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -46,
+          "z": -11642118
+        },
+        "entityId": "33e54439-1ccb-4e79-b562-042417c063bd",
+        "collectionCreditedCount": 1
+      },
+      {
+        "entryId": "357f30e3bb7150ac66b7bebddcaa53ec093a2fbeb90baf1e5aefd50e7d71d518",
+        "item": "minecraft:birch_log",
+        "name": "Birch Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "89935d17-88c8-4224-9d0f-bc7d8564ec62",
+          "block": "minecraft:birch_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -45,
+          "z": -11642118
+        },
+        "entityId": "f387dc04-b717-4ab2-bcc5-fcc9fa0fb884",
+        "collectionCreditedCount": 1
+      },
+      {
+        "entryId": "357f30e3bb7150ac66b7bebddcaa53ec093a2fbeb90baf1e5aefd50e7d71d518",
+        "item": "minecraft:birch_log",
+        "name": "Birch Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "82bb3875-4996-4aed-befa-3603c6d06de6",
+          "block": "minecraft:birch_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -45,
+          "z": -11642119
+        },
+        "entityId": "b8ccb190-2ea7-485e-8ec8-5a01c3d1cd9c",
+        "collectionCreditedCount": 1
+      }
+    ],
+    "childMiningRequestIds": [
+      "af4b6b95-e445-475a-98ba-391e95496bfc",
+      "d6daac91-b722-4fe9-87d2-e14b22262d19",
+      "89935d17-88c8-4224-9d0f-bc7d8564ec62",
+      "82bb3875-4996-4aed-befa-3603c6d06de6"
+    ],
+    "wholeTree": true,
+    "wholeTreeVerified": true,
+    "remainingApprovedBlocks": 0,
+    "sourceAttribution": "Origin-event evidence only; complete merged-stack lineage is not established",
+    "bodyX": -754792.5075619131,
+    "bodyY": -47.0,
+    "bodyZ": -1.1642118462704219E7,
+    "currentRoute": {
+      "optionId": "A",
+      "distanceBlocks": 2.414213562373095,
+      "estimatedSeconds": 0.43018773385122866,
+      "estimatedHealthLost": 0.0,
+      "supportMaterials": []
+    },
+    "currentDrop": {
+      "entityId": "b8ccb190-2ea7-485e-8ec8-5a01c3d1cd9c",
+      "alive": false,
+      "x": -754791.1006380074,
+      "y": -47.0,
+      "z": -1.164211801958202E7
+    },
+    "case": "branched birch tree uses actual axe durability",
+    "inventory": {
+      "entries": [
+        {
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "name": "Wooden Axe",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            0
+          ]
+        },
+        {
+          "entryId": "357f30e3bb7150ac66b7bebddcaa53ec093a2fbeb90baf1e5aefd50e7d71d518",
+          "item": "minecraft:birch_log",
+          "name": "Birch Log",
+          "count": 4,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            1
+          ]
+        }
+      ],
+      "equipment": [
+        {
+          "slot": 0,
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "damage": 4,
+          "maxDurability": 59,
+          "remainingDurability": 55
+        }
+      ],
+      "revision": 15,
+      "latestEventSequence": 9,
+      "memoryWritable": true
+    }
+  },
+  {
+    "phase": "CANCELLED",
+    "step": "BREAK",
+    "planServerMillis": 0.421625,
+    "reason": "Cancelled by controller",
+    "ownsBody": false,
+    "requestId": "7589f380-fe06-43da-81f7-a20dc5d6b7d4",
+    "dimension": "minecraft:overworld",
+    "fixedCenter": {
+      "z": -1.16421175E7,
+      "x": -754796.5,
+      "y": -47.0
+    },
+    "radius": 10.0,
+    "resource": "wood",
+    "requestedCount": 3,
+    "verifiedInventoryIncrease": 0,
+    "options": [],
+    "selectedOptionId": "tree-1",
+    "selectedSource": "tree",
+    "activeTool": {
+      "slot": 0,
+      "item": "minecraft:wooden_axe",
+      "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+      "damageable": true,
+      "damage": 4,
+      "maxDurability": 59,
+      "remainingDurability": 55
+    },
+    "physicalDistance": 3.0094192410072553,
+    "brokenBlocks": 0,
+    "pickupReceipts": [],
+    "childMiningRequestIds": [
+      "9215e4bd-b554-4320-b253-a5794aecc88e"
+    ],
+    "wholeTree": true,
+    "wholeTreeVerified": false,
+    "remainingApprovedBlocks": 3,
+    "sourceAttribution": "Origin-event evidence only; complete merged-stack lineage is not established",
+    "bodyX": -754793.4986199419,
+    "bodyY": -47.0,
+    "bodyZ": -1.1642117496297492E7,
+    "currentRoute": {
+      "optionId": "A",
+      "distanceBlocks": 3.0,
+      "estimatedSeconds": 0.534568781183179,
+      "estimatedHealthLost": 0.0,
+      "supportMaterials": []
+    },
+    "currentBlock": {
+      "x": -754792,
+      "y": -47,
+      "z": -11642118
+    },
+    "case": "chat cancellation prevents delayed destruction",
+    "inventory": {
+      "entries": [
+        {
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "name": "Wooden Axe",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            0
+          ]
+        },
+        {
+          "entryId": "357f30e3bb7150ac66b7bebddcaa53ec093a2fbeb90baf1e5aefd50e7d71d518",
+          "item": "minecraft:birch_log",
+          "name": "Birch Log",
+          "count": 4,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            1
+          ]
+        }
+      ],
+      "equipment": [
+        {
+          "slot": 0,
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "damage": 4,
+          "maxDurability": 59,
+          "remainingDurability": 55
+        }
+      ],
+      "revision": 15,
+      "latestEventSequence": 9,
+      "memoryWritable": true
+    }
+  },
+  {
+    "phase": "BLOCKED",
+    "step": "SELECT",
+    "planServerMillis": 0.34825,
+    "reason": "Approved blocks exhausted; collected 1 of 2. Uncollected or merged drops need a new decision",
+    "ownsBody": false,
+    "requestId": "b7c71fc8-e3fa-408d-8e99-c8f3dbfdc392",
+    "dimension": "minecraft:overworld",
+    "fixedCenter": {
+      "z": -1.1642117496297492E7,
+      "x": -754793.4986199419,
+      "y": -47.0
+    },
+    "radius": 3.0,
+    "resource": "minecraft:coal_ore",
+    "requestedCount": 2,
+    "verifiedInventoryIncrease": 1,
+    "options": [],
+    "selectedOptionId": "matching-blocks",
+    "selectedSource": "blocks",
+    "activeTool": {
+      "slot": 0,
+      "item": "minecraft:wooden_pickaxe",
+      "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+      "damageable": true,
+      "damage": 1,
+      "maxDurability": 59,
+      "remainingDurability": 58
+    },
+    "physicalDistance": 0.5727761261441333,
+    "brokenBlocks": 1,
+    "pickupReceipts": [
+      {
+        "entryId": "c382f5199919e9b9bf6e6920c2fdd5e5652dd78303cab7d3f8d9f146f81e4a00",
+        "item": "minecraft:coal",
+        "name": "Coal",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "2886e137-de09-42e2-81a3-0a8dea67ac81",
+          "block": "minecraft:coal_ore",
+          "dimension": "minecraft:overworld",
+          "x": -754795,
+          "y": -47,
+          "z": -11642118
+        },
+        "entityId": "f6dc2e71-f77d-44ec-8645-cc920510f827",
+        "collectionCreditedCount": 1
+      }
+    ],
+    "childMiningRequestIds": [
+      "2886e137-de09-42e2-81a3-0a8dea67ac81"
+    ],
+    "wholeTree": false,
+    "wholeTreeVerified": false,
+    "remainingApprovedBlocks": 0,
+    "sourceAttribution": "Origin-event evidence only; complete merged-stack lineage is not established",
+    "bodyX": -754793.9417299535,
+    "bodyY": -47.0,
+    "bodyZ": -1.1642117853782654E7,
+    "currentRoute": {
+      "optionId": "A",
+      "distanceBlocks": 2.414213562373095,
+      "estimatedSeconds": 0.43018773385122866,
+      "estimatedHealthLost": 0.0,
+      "supportMaterials": []
+    },
+    "case": "fixed-radius ore collection reports honest partial result; no fishbone prerequisite",
+    "inventory": {
+      "entries": [
+        {
+          "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+          "item": "minecraft:wooden_pickaxe",
+          "name": "Wooden Pickaxe",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            0
+          ]
+        },
+        {
+          "entryId": "357f30e3bb7150ac66b7bebddcaa53ec093a2fbeb90baf1e5aefd50e7d71d518",
+          "item": "minecraft:birch_log",
+          "name": "Birch Log",
+          "count": 4,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            1
+          ]
+        },
+        {
+          "entryId": "c382f5199919e9b9bf6e6920c2fdd5e5652dd78303cab7d3f8d9f146f81e4a00",
+          "item": "minecraft:coal",
+          "name": "Coal",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            2
+          ]
+        },
+        {
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "name": "Wooden Axe",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            20
+          ]
+        }
+      ],
+      "equipment": [
+        {
+          "slot": 0,
+          "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+          "item": "minecraft:wooden_pickaxe",
+          "damage": 1,
+          "maxDurability": 59,
+          "remainingDurability": 58
+        },
+        {
+          "slot": 20,
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "damage": 4,
+          "maxDurability": 59,
+          "remainingDurability": 55
+        }
+      ],
+      "revision": 18,
+      "latestEventSequence": 11,
+      "memoryWritable": true
+    }
+  },
+  {
+    "phase": "BLOCKED",
+    "step": "SELECT",
+    "planServerMillis": 0.087625,
+    "reason": "DROPPED_ITEM_UNAVAILABLE: planned drops disappeared or moved outside the fixed sphere; quantity not acquired",
+    "ownsBody": false,
+    "requestId": "e7e12f62-a7f4-47ef-9325-fcf89630f371",
+    "dimension": "minecraft:overworld",
+    "fixedCenter": {
+      "z": -1.1642117853782654E7,
+      "x": -754793.9417299535,
+      "y": -47.0
+    },
+    "radius": 8.0,
+    "resource": "wood",
+    "requestedCount": 1,
+    "verifiedInventoryIncrease": 0,
+    "options": [],
+    "selectedOptionId": "nearby-drops",
+    "selectedSource": "drops",
+    "activeTool": {
+      "slot": 0,
+      "item": "minecraft:wooden_pickaxe",
+      "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+      "damageable": true,
+      "damage": 1,
+      "maxDurability": 59,
+      "remainingDurability": 58
+    },
+    "physicalDistance": 0.015653220850017382,
+    "brokenBlocks": 0,
+    "pickupReceipts": [],
+    "childMiningRequestIds": [],
+    "wholeTree": false,
+    "wholeTreeVerified": false,
+    "remainingApprovedBlocks": 0,
+    "sourceAttribution": "Origin-event evidence only; complete merged-stack lineage is not established",
+    "bodyX": -754793.9529807633,
+    "bodyY": -47.0,
+    "bodyZ": -1.1642117864665788E7,
+    "case": "disappearing drop returns decision with zero pickup",
+    "inventory": {
+      "entries": [
+        {
+          "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+          "item": "minecraft:wooden_pickaxe",
+          "name": "Wooden Pickaxe",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            0
+          ]
+        },
+        {
+          "entryId": "357f30e3bb7150ac66b7bebddcaa53ec093a2fbeb90baf1e5aefd50e7d71d518",
+          "item": "minecraft:birch_log",
+          "name": "Birch Log",
+          "count": 4,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            1
+          ]
+        },
+        {
+          "entryId": "c382f5199919e9b9bf6e6920c2fdd5e5652dd78303cab7d3f8d9f146f81e4a00",
+          "item": "minecraft:coal",
+          "name": "Coal",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            2
+          ]
+        },
+        {
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "name": "Wooden Axe",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            20
+          ]
+        }
+      ],
+      "equipment": [
+        {
+          "slot": 0,
+          "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+          "item": "minecraft:wooden_pickaxe",
+          "damage": 1,
+          "maxDurability": 59,
+          "remainingDurability": 58
+        },
+        {
+          "slot": 20,
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "damage": 4,
+          "maxDurability": 59,
+          "remainingDurability": 55
+        }
+      ],
+      "revision": 18,
+      "latestEventSequence": 11,
+      "memoryWritable": true
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "WAIT",
+    "planServerMillis": 0.123708,
+    "reason": "Matching pickup receipts and current inventory increase meet the requested count; this is NOT proof of felling a whole tree",
+    "ownsBody": false,
+    "requestId": "6898ad1e-0b30-4f95-8bf4-7d8bcce67226",
+    "dimension": "minecraft:overworld",
+    "fixedCenter": {
+      "z": -1.16421175E7,
+      "x": -754796.5,
+      "y": -47.0
+    },
+    "radius": 2.0,
+    "resource": "minecraft:stone",
+    "requestedCount": 2,
+    "verifiedInventoryIncrease": 2,
+    "options": [],
+    "selectedOptionId": "matching-blocks",
+    "selectedSource": "blocks",
+    "activeTool": {
+      "slot": 8,
+      "item": "minecraft:wooden_pickaxe",
+      "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+      "damageable": true,
+      "damage": 2,
+      "maxDurability": 59,
+      "remainingDurability": 57
+    },
+    "physicalDistance": 1.091959973163801,
+    "brokenBlocks": 2,
+    "pickupReceipts": [
+      {
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38",
+        "item": "minecraft:cobblestone",
+        "name": "Cobblestone",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "f730cf13-1ed9-4d14-b371-b50ce1c50282",
+          "block": "minecraft:stone",
+          "dimension": "minecraft:overworld",
+          "x": -754797,
+          "y": -47,
+          "z": -11642119
+        },
+        "entityId": "8db4e77d-c9a2-4ad4-a0db-78ca625cd3a0",
+        "collectionCreditedCount": 1
+      },
+      {
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38",
+        "item": "minecraft:cobblestone",
+        "name": "Cobblestone",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "837b04d6-3a5a-4ca6-b493-9ddb16735457",
+          "block": "minecraft:stone",
+          "dimension": "minecraft:overworld",
+          "x": -754796,
+          "y": -47,
+          "z": -11642119
+        },
+        "entityId": "29a02197-6612-4ce2-b59c-7b7ed112962a",
+        "collectionCreditedCount": 1
+      }
+    ],
+    "childMiningRequestIds": [
+      "f730cf13-1ed9-4d14-b371-b50ce1c50282",
+      "837b04d6-3a5a-4ca6-b493-9ddb16735457"
+    ],
+    "wholeTree": false,
+    "wholeTreeVerified": false,
+    "remainingApprovedBlocks": 0,
+    "sourceAttribution": "Origin-event evidence only; complete merged-stack lineage is not established",
+    "bodyX": -754796.5112053517,
+    "bodyY": -47.0,
+    "bodyZ": -1.1642118590232136E7,
+    "currentRoute": {
+      "optionId": "A",
+      "distanceBlocks": 2.0,
+      "estimatedSeconds": 0.3563791874554526,
+      "estimatedHealthLost": 0.0,
+      "supportMaterials": []
+    },
+    "currentBlock": {
+      "x": -754796,
+      "y": -47,
+      "z": -11642119
+    },
+    "case": "stone command defaults to cobblestone and equips a storage-slot wooden pickaxe on approval",
+    "inventory": {
+      "entries": [
+        {
+          "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38",
+          "item": "minecraft:cobblestone",
+          "name": "Cobblestone",
+          "count": 2,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            0
+          ]
+        },
+        {
+          "entryId": "357f30e3bb7150ac66b7bebddcaa53ec093a2fbeb90baf1e5aefd50e7d71d518",
+          "item": "minecraft:birch_log",
+          "name": "Birch Log",
+          "count": 4,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            1
+          ]
+        },
+        {
+          "entryId": "c382f5199919e9b9bf6e6920c2fdd5e5652dd78303cab7d3f8d9f146f81e4a00",
+          "item": "minecraft:coal",
+          "name": "Coal",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            2
+          ]
+        },
+        {
+          "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+          "item": "minecraft:wooden_pickaxe",
+          "name": "Wooden Pickaxe",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            8
+          ]
+        },
+        {
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "name": "Wooden Axe",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            20
+          ]
+        }
+      ],
+      "equipment": [
+        {
+          "slot": 8,
+          "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+          "item": "minecraft:wooden_pickaxe",
+          "damage": 2,
+          "maxDurability": 59,
+          "remainingDurability": 57
+        },
+        {
+          "slot": 20,
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "damage": 4,
+          "maxDurability": 59,
+          "remainingDurability": 55
+        }
+      ],
+      "revision": 23,
+      "latestEventSequence": 13,
+      "memoryWritable": true
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "TRAVEL",
+    "planServerMillis": 0.448667,
+    "reason": "Every approved trunk block was physically broken and all matching log pickups verified",
+    "ownsBody": false,
+    "requestId": "312fde9b-d0c8-43d4-80db-8e70e446a650",
+    "dimension": "minecraft:overworld",
+    "fixedCenter": {
+      "z": -1.16421175E7,
+      "x": -754796.5,
+      "y": -47.0
+    },
+    "radius": 10.0,
+    "resource": "wood",
+    "requestedCount": 6,
+    "verifiedInventoryIncrease": 6,
+    "options": [],
+    "selectedOptionId": "tree-1",
+    "selectedSource": "tree",
+    "activeTool": {
+      "slot": 8,
+      "item": "minecraft:wooden_axe",
+      "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+      "damageable": true,
+      "damage": 10,
+      "maxDurability": 59,
+      "remainingDurability": 49
+    },
+    "physicalDistance": 6.102623406649123,
+    "brokenBlocks": 6,
+    "pickupReceipts": [
+      {
+        "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+        "item": "minecraft:spruce_log",
+        "name": "Spruce Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "9ea87bb7-c111-40aa-a058-b81743da6f0d",
+          "block": "minecraft:spruce_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -47,
+          "z": -11642118
+        },
+        "entityId": "125c33c6-1659-456f-90cb-a4ef3ae08a80",
+        "collectionCreditedCount": 1
+      },
+      {
+        "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+        "item": "minecraft:spruce_log",
+        "name": "Spruce Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "8cc28bdc-8384-470b-b6b9-6ca7a343f6ca",
+          "block": "minecraft:spruce_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -46,
+          "z": -11642118
+        },
+        "entityId": "c760d021-4e1f-4d8e-b19d-9a55fd40e01a",
+        "collectionCreditedCount": 1
+      },
+      {
+        "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+        "item": "minecraft:spruce_log",
+        "name": "Spruce Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "89944d0b-5c98-4bfd-a967-412c47a0fa11",
+          "block": "minecraft:spruce_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -45,
+          "z": -11642118
+        },
+        "entityId": "5ed02ad9-b758-443f-b7f4-323b330c2bca",
+        "collectionCreditedCount": 1
+      },
+      {
+        "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+        "item": "minecraft:spruce_log",
+        "name": "Spruce Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "5c1c993f-6bb4-44ce-8680-2a21ce0b5c8b",
+          "block": "minecraft:spruce_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -44,
+          "z": -11642118
+        },
+        "entityId": "9c457564-cc0e-448f-8eb4-0b1a9eb572ab",
+        "collectionCreditedCount": 1
+      },
+      {
+        "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+        "item": "minecraft:spruce_log",
+        "name": "Spruce Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "fa70df25-eb07-4acd-8bff-d28c1f39690a",
+          "block": "minecraft:spruce_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -43,
+          "z": -11642118
+        },
+        "entityId": "00193dcf-e3f6-4639-af72-ebf387df0952",
+        "collectionCreditedCount": 1
+      },
+      {
+        "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+        "item": "minecraft:spruce_log",
+        "name": "Spruce Log",
+        "count": 1,
+        "importance": 2,
+        "protected": true,
+        "classified": false,
+        "source": {
+          "category": "mined_block",
+          "confidence": "entity_origin_event",
+          "mergedStackLineageKnown": false,
+          "attributionNote": "The origin event belongs to this entity. Vanilla can merge stacks; attribution of every item in a merged stack is not established.",
+          "actorId": "fbc17b69-cf96-3d9a-9f2e-3864c3ab31b5",
+          "actorName": "MinePilot",
+          "requestId": "860b889c-51db-48bb-997b-ac298c33bcdf",
+          "block": "minecraft:spruce_log",
+          "dimension": "minecraft:overworld",
+          "x": -754792,
+          "y": -42,
+          "z": -11642118
+        },
+        "entityId": "0ac3043c-3df2-45c4-ae18-f0d30cfc1b78",
+        "collectionCreditedCount": 1
+      }
+    ],
+    "childMiningRequestIds": [
+      "89944d0b-5c98-4bfd-a967-412c47a0fa11",
+      "5c1c993f-6bb4-44ce-8680-2a21ce0b5c8b",
+      "9ea87bb7-c111-40aa-a058-b81743da6f0d",
+      "fa70df25-eb07-4acd-8bff-d28c1f39690a",
+      "8cc28bdc-8384-470b-b6b9-6ca7a343f6ca",
+      "860b889c-51db-48bb-997b-ac298c33bcdf"
+    ],
+    "wholeTree": true,
+    "wholeTreeVerified": true,
+    "remainingApprovedBlocks": 0,
+    "sourceAttribution": "Origin-event evidence only; complete merged-stack lineage is not established",
+    "bodyX": -754791.7206742094,
+    "bodyY": -47.0,
+    "bodyZ": -1.1642116700016635E7,
+    "currentRoute": {
+      "optionId": "A",
+      "distanceBlocks": 2.0,
+      "estimatedSeconds": 0.3563791874554526,
+      "estimatedHealthLost": 0.0,
+      "supportMaterials": []
+    },
+    "currentDrop": {
+      "entityId": "0ac3043c-3df2-45c4-ae18-f0d30cfc1b78",
+      "alive": false,
+      "x": -754790.3457527722,
+      "y": -47.0,
+      "z": -1.1642116544669492E7
+    },
+    "case": "six-log spruce fully felled and acquired despite count\u003d1",
+    "inventory": {
+      "entries": [
+        {
+          "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38",
+          "item": "minecraft:cobblestone",
+          "name": "Cobblestone",
+          "count": 2,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            0
+          ]
+        },
+        {
+          "entryId": "357f30e3bb7150ac66b7bebddcaa53ec093a2fbeb90baf1e5aefd50e7d71d518",
+          "item": "minecraft:birch_log",
+          "name": "Birch Log",
+          "count": 4,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            1
+          ]
+        },
+        {
+          "entryId": "c382f5199919e9b9bf6e6920c2fdd5e5652dd78303cab7d3f8d9f146f81e4a00",
+          "item": "minecraft:coal",
+          "name": "Coal",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            2
+          ]
+        },
+        {
+          "entryId": "c46cc92a4ed6ff41cda7a2e1df67568bc3f7cab59fa6a7e252e3a450dec4ceb9",
+          "item": "minecraft:spruce_log",
+          "name": "Spruce Log",
+          "count": 6,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            3
+          ]
+        },
+        {
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "name": "Wooden Axe",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            8
+          ]
+        },
+        {
+          "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+          "item": "minecraft:wooden_pickaxe",
+          "name": "Wooden Pickaxe",
+          "count": 1,
+          "importance": 2,
+          "protected": true,
+          "classified": false,
+          "slots": [
+            20
+          ]
+        }
+      ],
+      "equipment": [
+        {
+          "slot": 8,
+          "entryId": "d31166c97cac9579f7a223033eab41e05f7a5649615bd195d215bd06cd907c82",
+          "item": "minecraft:wooden_axe",
+          "damage": 10,
+          "maxDurability": 59,
+          "remainingDurability": 49
+        },
+        {
+          "slot": 20,
+          "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+          "item": "minecraft:wooden_pickaxe",
+          "damage": 2,
+          "maxDurability": 59,
+          "remainingDurability": 57
+        }
+      ],
+      "revision": 36,
+      "latestEventSequence": 19,
+      "memoryWritable": true
+    }
+  }
+]

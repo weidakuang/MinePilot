@@ -1,0 +1,434 @@
+{
+  "mode": "real dedicated Forge 65.0.9 server at normal tick rate; persistent gpt-5.6-luna controller",
+  "controller": "No parent placement commands after fixture setup; model decisions/reasoning not inspected",
+  "observation": "Public chat, dimension/coordinates, inventory and bounded actual block states only",
+  "testVersionSha256": "401aea6801e98937413483c248099951f2902fceb922df1fb1b132dff5025a77",
+  "seconds": {
+    "firstReply": 10.762213945388794,
+    "physicalCompletion": 15.447811126708984,
+    "completionChat": 18.79402804374695,
+    "followupReply": 3.599838972091675
+  },
+  "samplingIntervalSeconds": 0.15,
+  "initial": {
+    "wallTime": 1788876476.393495,
+    "monotonic": 10.07833725,
+    "body": {
+      "dimension": "minecraft:overworld",
+      "x": 0.5,
+      "y": -60.0,
+      "z": 0.5,
+      "hotbar": [
+        {
+          "slot": 0,
+          "item": "minecraft:cobblestone",
+          "count": 8,
+          "damage": 0,
+          "maxDamage": 0
+        },
+        {
+          "slot": 1,
+          "empty": true
+        },
+        {
+          "slot": 2,
+          "empty": true
+        },
+        {
+          "slot": 3,
+          "empty": true
+        },
+        {
+          "slot": 4,
+          "empty": true
+        },
+        {
+          "slot": 5,
+          "empty": true
+        },
+        {
+          "slot": 6,
+          "empty": true
+        },
+        {
+          "slot": 7,
+          "empty": true
+        },
+        {
+          "slot": 8,
+          "empty": true
+        }
+      ],
+      "inventory": [
+        {
+          "slot": 0,
+          "item": "minecraft:cobblestone",
+          "count": 8,
+          "damage": 0,
+          "maxDamage": 0
+        }
+      ]
+    },
+    "blocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 1212,
+      "blocks": [
+        {
+          "x": 2,
+          "y": -60,
+          "z": 0,
+          "state": "Block{minecraft:air}"
+        },
+        {
+          "x": 2,
+          "y": -60,
+          "z": 1,
+          "state": "Block{minecraft:air}"
+        },
+        {
+          "x": 2,
+          "y": -60,
+          "z": 2,
+          "state": "Block{minecraft:air}"
+        }
+      ]
+    },
+    "chat": [
+      {
+        "sequence": 1,
+        "player": "Server",
+        "text": "请用圆石在坐标2,-60,0到2,-60,2这一排放好三个方块，完成以后告诉我。",
+        "serverTick": 1209,
+        "handledLocally": false
+      }
+    ],
+    "systemChat": [
+      {
+        "sequence": 1,
+        "origin": "received_system_chat",
+        "text": "[Server] 请用圆石在坐标2,-60,0到2,-60,2这一排放好三个方块，完成以后告诉我。",
+        "gameTick": 1209
+      }
+    ]
+  },
+  "final": {
+    "wallTime": 1788876491.8413062,
+    "monotonic": 25.534489333,
+    "body": {
+      "dimension": "minecraft:overworld",
+      "x": 0.5,
+      "y": -60.0,
+      "z": 0.5,
+      "hotbar": [
+        {
+          "slot": 0,
+          "item": "minecraft:cobblestone",
+          "count": 5,
+          "damage": 0,
+          "maxDamage": 0
+        },
+        {
+          "slot": 1,
+          "empty": true
+        },
+        {
+          "slot": 2,
+          "empty": true
+        },
+        {
+          "slot": 3,
+          "empty": true
+        },
+        {
+          "slot": 4,
+          "empty": true
+        },
+        {
+          "slot": 5,
+          "empty": true
+        },
+        {
+          "slot": 6,
+          "empty": true
+        },
+        {
+          "slot": 7,
+          "empty": true
+        },
+        {
+          "slot": 8,
+          "empty": true
+        }
+      ],
+      "inventory": [
+        {
+          "slot": 0,
+          "item": "minecraft:cobblestone",
+          "count": 5,
+          "damage": 0,
+          "maxDamage": 0
+        }
+      ]
+    },
+    "blocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 1521,
+      "blocks": [
+        {
+          "x": 2,
+          "y": -60,
+          "z": 0,
+          "state": "Block{minecraft:cobblestone}"
+        },
+        {
+          "x": 2,
+          "y": -60,
+          "z": 1,
+          "state": "Block{minecraft:cobblestone}"
+        },
+        {
+          "x": 2,
+          "y": -60,
+          "z": 2,
+          "state": "Block{minecraft:cobblestone}"
+        }
+      ]
+    },
+    "chat": [],
+    "systemChat": []
+  },
+  "completionChat": [
+    {
+      "sequence": 3,
+      "origin": "received_agent_chat",
+      "text": "[AI] MinePilot: 已完成，三个圆石方块已放置在指定坐标。",
+      "gameTick": 1587
+    }
+  ],
+  "followup": [
+    {
+      "sequence": 5,
+      "origin": "received_agent_chat",
+      "text": "[AI] MinePilot: 我还在，背包里还剩5个圆石。",
+      "gameTick": 2308
+    }
+  ],
+  "earlierBuildTrial": {
+    "mode": "real dedicated Forge 65.0.9 server; normal persistent gpt-5.6-luna controller",
+    "controller": "No parent placement commands after fixture setup; model decisions/reasoning not inspected",
+    "observation": "Public chat, dimension/coordinates, inventory and bounded actual block states only",
+    "testVersionSha256": "cda16c6b2053abb34ddb1a08081225d5595b983d9e8f027a5fc5c2783f97fb98",
+    "seconds": {
+      "firstReply": 10.648065090179443,
+      "physicalCompletion": 14.900934219360352,
+      "completionChat": 20.199584007263184,
+      "followupReply": 4.149164199829102
+    },
+    "samplingIntervalSeconds": 0.15,
+    "initial": {
+      "wallTime": 1788875785.557361,
+      "monotonic": 21.604824208,
+      "body": {
+        "dimension": "minecraft:overworld",
+        "x": 0.5,
+        "y": -60.0,
+        "z": 0.5,
+        "hotbar": [
+          {
+            "slot": 0,
+            "item": "minecraft:cobblestone",
+            "count": 8,
+            "damage": 0,
+            "maxDamage": 0
+          },
+          {
+            "slot": 1,
+            "empty": true
+          },
+          {
+            "slot": 2,
+            "empty": true
+          },
+          {
+            "slot": 3,
+            "empty": true
+          },
+          {
+            "slot": 4,
+            "empty": true
+          },
+          {
+            "slot": 5,
+            "empty": true
+          },
+          {
+            "slot": 6,
+            "empty": true
+          },
+          {
+            "slot": 7,
+            "empty": true
+          },
+          {
+            "slot": 8,
+            "empty": true
+          }
+        ],
+        "inventory": [
+          {
+            "slot": 0,
+            "item": "minecraft:cobblestone",
+            "count": 8,
+            "damage": 0,
+            "maxDamage": 0
+          }
+        ]
+      },
+      "blocks": {
+        "dimension": "minecraft:overworld",
+        "tick": 1055,
+        "blocks": [
+          {
+            "x": 2,
+            "y": -60,
+            "z": 0,
+            "state": "Block{minecraft:air}"
+          },
+          {
+            "x": 2,
+            "y": -60,
+            "z": 1,
+            "state": "Block{minecraft:air}"
+          },
+          {
+            "x": 2,
+            "y": -60,
+            "z": 2,
+            "state": "Block{minecraft:air}"
+          }
+        ]
+      },
+      "chat": [
+        {
+          "sequence": 1,
+          "player": "Server",
+          "text": "请用圆石在坐标2,-60,0到2,-60,2这一排放好三个方块，完成以后告诉我。",
+          "serverTick": 1055,
+          "handledLocally": false
+        }
+      ],
+      "systemChat": [
+        {
+          "sequence": 2,
+          "origin": "received_system_chat",
+          "text": "[Server] 请用圆石在坐标2,-60,0到2,-60,2这一排放好三个方块，完成以后告诉我。",
+          "gameTick": 1055
+        }
+      ]
+    },
+    "final": {
+      "wallTime": 1788875800.458295,
+      "monotonic": 36.506529333,
+      "body": {
+        "dimension": "minecraft:overworld",
+        "x": 0.5,
+        "y": -60.0,
+        "z": 0.5,
+        "hotbar": [
+          {
+            "slot": 0,
+            "item": "minecraft:cobblestone",
+            "count": 5,
+            "damage": 0,
+            "maxDamage": 0
+          },
+          {
+            "slot": 1,
+            "empty": true
+          },
+          {
+            "slot": 2,
+            "empty": true
+          },
+          {
+            "slot": 3,
+            "empty": true
+          },
+          {
+            "slot": 4,
+            "empty": true
+          },
+          {
+            "slot": 5,
+            "empty": true
+          },
+          {
+            "slot": 6,
+            "empty": true
+          },
+          {
+            "slot": 7,
+            "empty": true
+          },
+          {
+            "slot": 8,
+            "empty": true
+          }
+        ],
+        "inventory": [
+          {
+            "slot": 0,
+            "item": "minecraft:cobblestone",
+            "count": 5,
+            "damage": 0,
+            "maxDamage": 0
+          }
+        ]
+      },
+      "blocks": {
+        "dimension": "minecraft:overworld",
+        "tick": 1353,
+        "blocks": [
+          {
+            "x": 2,
+            "y": -60,
+            "z": 0,
+            "state": "Block{minecraft:cobblestone}"
+          },
+          {
+            "x": 2,
+            "y": -60,
+            "z": 1,
+            "state": "Block{minecraft:cobblestone}"
+          },
+          {
+            "x": 2,
+            "y": -60,
+            "z": 2,
+            "state": "Block{minecraft:cobblestone}"
+          }
+        ]
+      },
+      "chat": [],
+      "systemChat": []
+    },
+    "completionChat": [
+      {
+        "sequence": 4,
+        "origin": "received_agent_chat",
+        "text": "[AI] MinePilot: 已完成，三个圆石方块已放置好。",
+        "gameTick": 1459
+      }
+    ],
+    "followup": [
+      {
+        "sequence": 6,
+        "origin": "received_agent_chat",
+        "text": "[AI] MinePilot: 我在，背包还剩5个圆石。",
+        "gameTick": 2135
+      }
+    ],
+    "limitation": "One simple batch trial; not a latency guarantee, arbitrary house acceptance or client rendering test."
+  },
+  "limitation": "Two simple batch trials, one on the final build. Not a latency guarantee, arbitrary house acceptance or client rendering test."
+}

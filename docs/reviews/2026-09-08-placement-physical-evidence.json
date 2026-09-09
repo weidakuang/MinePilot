@@ -1,0 +1,1338 @@
+[
+  {
+    "case": "native storage/offhand swaps, Air conservation, full-bag rejection and capacity",
+    "capacity": {
+      "storageSlots": 36,
+      "emptyStorageSlots": 2,
+      "hands": {
+        "main": {
+          "slot": 1,
+          "item": "minecraft:stick",
+          "count": 64,
+          "entryId": "6fe9c6e0e133738d9d58d565a6a1cb78578442be8ae37f953ea527d78748f083"
+        },
+        "offhand": {
+          "slot": 40,
+          "item": "minecraft:wooden_pickaxe",
+          "count": 1,
+          "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee"
+        }
+      },
+      "item": "minecraft:cobblestone",
+      "compatibleStackSpace": 24,
+      "additionalItemCapacity": 152,
+      "assumption": "These free slots are dedicated to this exact item/components; capacities for different items cannot be summed. Armor/offhand are excluded."
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "558b45d5-c8fe-4dea-9e83-0997cf49ea24",
+    "revision": 1,
+    "requestedTargets": 1,
+    "satisfiedTargets": 1,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 1,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 11,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:cobblestone}",
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38",
+        "consumed": 1
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "single real placement from storage slot; missing item/reach denied",
+    "elapsedTicks": 8,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:cobblestone",
+        "count": 3,
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 13,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:cobblestone}"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "fdb7a1bc-4ea4-428f-9dce-1c4d55067d8e",
+    "revision": 2,
+    "requestedTargets": 1,
+    "satisfiedTargets": 1,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 1,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 16,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:oak_log}[axis\u003dx]",
+        "entryId": "fa6051282077d07257ac82526d3e18dd28e4c1b7038d941c2841e846b838e86d",
+        "consumed": 1
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "native horizontal log orientation",
+    "elapsedTicks": 5,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:oak_log",
+        "count": 3,
+        "entryId": "fa6051282077d07257ac82526d3e18dd28e4c1b7038d941c2841e846b838e86d"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 18,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:oak_log}[axis\u003dx]"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "c43df2c0-bb2e-46b4-bcbe-b2a0e075a91f",
+    "revision": 3,
+    "requestedTargets": 1,
+    "satisfiedTargets": 1,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 1,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 21,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:oak_slab}[type\u003dtop,waterlogged\u003dfalse]",
+        "entryId": "2b18c6eeaa8bae83e4965d280fc816c511f3b936a62c73d9a30f6274948561f7",
+        "consumed": 1
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "top slab uses real side hit",
+    "elapsedTicks": 5,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:oak_slab",
+        "count": 3,
+        "entryId": "2b18c6eeaa8bae83e4965d280fc816c511f3b936a62c73d9a30f6274948561f7"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 23,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:oak_slab}[type\u003dtop,waterlogged\u003dfalse]"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "3bc3cbc9-8149-42e3-8c12-57d0c247ebbc",
+    "revision": 4,
+    "requestedTargets": 1,
+    "satisfiedTargets": 1,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 1,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 26,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:oak_door}[facing\u003deast,half\u003dlower,hinge\u003dleft,open\u003dfalse,powered\u003dfalse]",
+        "entryId": "845631f5d428aa3a22533363f84e7e1684ac71d3bf497475d63192b5f4cc3e57",
+        "consumed": 1
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "door two cells one item",
+    "elapsedTicks": 5,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:oak_door",
+        "count": 1,
+        "entryId": "845631f5d428aa3a22533363f84e7e1684ac71d3bf497475d63192b5f4cc3e57"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 28,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:oak_door}[facing\u003deast,half\u003dlower,hinge\u003dleft,open\u003dfalse,powered\u003dfalse]"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "5a958bb9-4dde-48d5-a799-af6fbe59012a",
+    "revision": 5,
+    "requestedTargets": 1,
+    "satisfiedTargets": 1,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 1,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 31,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:red_bed}[facing\u003deast,occupied\u003dfalse,part\u003dfoot]",
+        "entryId": "89a23df3d1a2e01f6b0db0d7dd921c2dc020412dd66caddba3e9d234583b5cfe",
+        "consumed": 1
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "bed two cells one item",
+    "elapsedTicks": 5,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "air",
+        "count": 0
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 33,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:red_bed}[facing\u003deast,occupied\u003dfalse,part\u003dfoot]"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 1.5044066805074578,
+    "bodyX": -1961801.5,
+    "bodyY": -46.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "910e65d8-cbc5-420a-96aa-5f835b073a1e",
+    "revision": 6,
+    "requestedTargets": 1,
+    "satisfiedTargets": 1,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 1,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 40,
+        "target": {
+          "x": -1961802,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:cobblestone}",
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38",
+        "consumed": 1
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "native underfoot jump, placement, continuous displacement and landing",
+    "elapsedTicks": 13,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:cobblestone",
+        "count": 2,
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 46,
+      "blocks": [
+        {
+          "x": -1961802,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:cobblestone}"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "832b68d3-db49-4dc7-8d7c-91b47f60038e",
+    "revision": 7,
+    "requestedTargets": 3,
+    "satisfiedTargets": 3,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 3,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 52,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:glass}",
+        "entryId": "5e93c4529a170f72863d778035b16ab7f45cb7bf5a2d30705efeae0fb36d8d3f",
+        "consumed": 1
+      },
+      {
+        "operation": "place",
+        "tick": 86,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695577
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:glass}",
+        "entryId": "5e93c4529a170f72863d778035b16ab7f45cb7bf5a2d30705efeae0fb36d8d3f",
+        "consumed": 1
+      },
+      {
+        "operation": "place",
+        "tick": 90,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695576
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:glass}",
+        "entryId": "5e93c4529a170f72863d778035b16ab7f45cb7bf5a2d30705efeae0fb36d8d3f",
+        "consumed": 1
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "one batch approval; pause, chat, empty-hand change, resume",
+    "elapsedTicks": 9,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:glass",
+        "count": 5,
+        "entryId": "5e93c4529a170f72863d778035b16ab7f45cb7bf5a2d30705efeae0fb36d8d3f"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 92,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:glass}"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "BLOCKED",
+    "step": "",
+    "reason": "NO_LEGAL_PLACEMENT_FACE_OR_STATE",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "53aceaf6-7b86-4b06-8917-1ea99e4136ec",
+    "revision": 9,
+    "requestedTargets": 1,
+    "satisfiedTargets": 0,
+    "skippedTargets": 0,
+    "currentTarget": {
+      "x": -1961800,
+      "y": -47,
+      "z": -11695578
+    },
+    "obstruction": {
+      "targetState": "Block{minecraft:stone}",
+      "eyeDistance": 2.292247807432947,
+      "interactionRange": 4.5,
+      "firstBlockTowardTargetCenter": {
+        "x": -1961800,
+        "y": -47,
+        "z": -11695578
+      },
+      "firstBlockState": "Block{minecraft:stone}",
+      "coverage": "This is the current center ray, not proof that every possible face or approach is blocked"
+    },
+    "childMiningRequestIds": [
+      "9f60360a-8fc3-4c47-a8d2-8dc98ab56fe5"
+    ],
+    "receiptCount": 0,
+    "receipts": [],
+    "decisions": [
+      {
+        "optionId": "cancel",
+        "description": "Cancel remaining work; already changed cells remain",
+        "estimatedSeconds": 0
+      },
+      {
+        "optionId": "retry",
+        "description": "Recheck the same bounded target after the observed obstruction changes; no hidden excavation"
+      },
+      {
+        "optionId": "skip",
+        "description": "Omit the current target; final outcome remains PARTIAL"
+      },
+      {
+        "optionId": "mine_obstacle",
+        "tool": {
+          "slot": 0,
+          "item": "minecraft:wooden_pickaxe",
+          "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+          "damageable": true,
+          "damage": 0,
+          "maxDurability": 59,
+          "remainingDurability": 59
+        },
+        "targetBlock": "minecraft:stone",
+        "targetBlocks": 1,
+        "accessBlocks": 0,
+        "movementDistance": 0,
+        "estimatedBreakTicks": 113.0,
+        "estimatedSeconds": 5.65,
+        "estimateAssumption": "Current held tool, effects and server rules; aiming and pickup time excluded",
+        "nominalDurabilityCost": 1,
+        "durabilityCostMin": 0,
+        "durabilityCostNominalMax": 1,
+        "remainingDurabilityAtNominalCost": 58,
+        "durabilityAssumption": "Tool component\u0027s nominal wear; enchantments or other mods can change actual wear",
+        "canHarvest": true,
+        "supportMaterials": [],
+        "hazards": [],
+        "riskAssessment": "No current local hazard detected; checked again before each action",
+        "pickupIncluded": false,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "description": "Approve this exact normal break with the selected real inventory tool and displayed durability cost; then retry the original placement"
+      }
+    ],
+    "decisionId": "53aceaf6-7b86-4b06-8917-1ea99e4136ec:9",
+    "options": [],
+    "case": "obstruction returns actual held-tool cost and choices",
+    "elapsedTicks": 1,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:wooden_pickaxe",
+        "count": 1,
+        "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 93,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:stone}"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "53aceaf6-7b86-4b06-8917-1ea99e4136ec",
+    "revision": 9,
+    "requestedTargets": 1,
+    "satisfiedTargets": 1,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [
+      "9f60360a-8fc3-4c47-a8d2-8dc98ab56fe5"
+    ],
+    "receiptCount": 2,
+    "receipts": [
+      {
+        "phase": "COMPLETED",
+        "reason": "Target block changed through the player break action; emitted drops are not proof of pickup",
+        "sampledAtTick": 117,
+        "requestId": "9f60360a-8fc3-4c47-a8d2-8dc98ab56fe5",
+        "dimension": "minecraft:overworld",
+        "x": -1961800,
+        "y": -47,
+        "z": -11695578,
+        "options": [
+          {
+            "optionId": "held-tool",
+            "tool": {
+              "slot": 0,
+              "item": "minecraft:wooden_pickaxe",
+              "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+              "damageable": true,
+              "damage": 0,
+              "maxDurability": 59,
+              "remainingDurability": 59
+            },
+            "targetBlock": "minecraft:stone",
+            "targetBlocks": 1,
+            "accessBlocks": 0,
+            "movementDistance": 0,
+            "estimatedBreakTicks": 113.0,
+            "estimatedSeconds": 5.65,
+            "estimateAssumption": "Current held tool, effects and server rules; aiming and pickup time excluded",
+            "nominalDurabilityCost": 1,
+            "durabilityCostMin": 0,
+            "durabilityCostNominalMax": 1,
+            "remainingDurabilityAtNominalCost": 58,
+            "durabilityAssumption": "Tool component\u0027s nominal wear; enchantments or other mods can change actual wear",
+            "canHarvest": true,
+            "supportMaterials": [],
+            "hazards": [],
+            "riskAssessment": "No current local hazard detected; checked again before each action",
+            "pickupIncluded": false
+          }
+        ],
+        "breakProgress": 1.0,
+        "emittedDrops": [
+          {
+            "entityId": "be549137-af49-43fa-8bd5-97eba8e42545",
+            "item": "minecraft:cobblestone",
+            "count": 1
+          }
+        ],
+        "durabilityDamageBefore": 0,
+        "durabilityDamageAfter": 1,
+        "observedTargetState": "Block{minecraft:air}",
+        "collectionVerified": false,
+        "bodyX": -1961801.5,
+        "bodyY": -47.0,
+        "bodyZ": -1.16955775E7,
+        "operation": "approved_obstacle_break"
+      },
+      {
+        "operation": "place",
+        "tick": 121,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:cobblestone}",
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38",
+        "consumed": 1
+      }
+    ],
+    "decisions": [
+      {
+        "optionId": "cancel",
+        "description": "Cancel remaining work; already changed cells remain",
+        "estimatedSeconds": 0
+      },
+      {
+        "optionId": "retry",
+        "description": "Recheck the same bounded target after the observed obstruction changes; no hidden excavation"
+      },
+      {
+        "optionId": "skip",
+        "description": "Omit the current target; final outcome remains PARTIAL"
+      },
+      {
+        "optionId": "mine_obstacle",
+        "tool": {
+          "slot": 0,
+          "item": "minecraft:wooden_pickaxe",
+          "entryId": "25a21c9d28c84a18a3e9e552bf9707665eaecbad2854118cc6d2ee8b35af2bee",
+          "damageable": true,
+          "damage": 0,
+          "maxDurability": 59,
+          "remainingDurability": 59
+        },
+        "targetBlock": "minecraft:stone",
+        "targetBlocks": 1,
+        "accessBlocks": 0,
+        "movementDistance": 0,
+        "estimatedBreakTicks": 113.0,
+        "estimatedSeconds": 5.65,
+        "estimateAssumption": "Current held tool, effects and server rules; aiming and pickup time excluded",
+        "nominalDurabilityCost": 1,
+        "durabilityCostMin": 0,
+        "durabilityCostNominalMax": 1,
+        "remainingDurabilityAtNominalCost": 58,
+        "durabilityAssumption": "Tool component\u0027s nominal wear; enchantments or other mods can change actual wear",
+        "canHarvest": true,
+        "supportMaterials": [],
+        "hazards": [],
+        "riskAssessment": "No current local hazard detected; checked again before each action",
+        "pickupIncluded": false,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "description": "Approve this exact normal break with the selected real inventory tool and displayed durability cost; then retry the original placement"
+      }
+    ],
+    "decisionId": "53aceaf6-7b86-4b06-8917-1ea99e4136ec:9",
+    "options": [],
+    "case": "model-approved normal excavation with automatic storage-tool selection and real wear, then placement",
+    "elapsedTicks": 30,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:cobblestone",
+        "count": 2,
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 123,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:cobblestone}"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 3.9871886647306383,
+    "bodyX": -1961797.5128113353,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "a79a7c71-baeb-41f2-a192-3e1110540c1a",
+    "revision": 10,
+    "requestedTargets": 1,
+    "satisfiedTargets": 1,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 1,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 175,
+        "target": {
+          "x": -1961795,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:cobblestone}",
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38",
+        "consumed": 1
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "bounded autonomous walking to legal working reach",
+    "elapsedTicks": 54,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:cobblestone",
+        "count": 7,
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 177,
+      "blocks": [
+        {
+          "x": -1961795,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:cobblestone}"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "CANCELLED",
+    "step": "",
+    "reason": "Cancelled; completed cells and remaining temporary supports are retained",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "5182ecf9-7f90-4f1b-9790-1f71b7a75109",
+    "revision": 11,
+    "requestedTargets": 1,
+    "satisfiedTargets": 0,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 0,
+    "receipts": [],
+    "decisions": [],
+    "options": [],
+    "case": "chat cancellation prevents delayed placement",
+    "elapsedTicks": 40,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "air",
+        "count": 0
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 217,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:air}"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "PARTIAL",
+    "step": "",
+    "reason": "Some required targets were explicitly skipped",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "7869b13e-3975-4cef-b9f9-f9c9e97d4f84",
+    "revision": 13,
+    "requestedTargets": 1,
+    "satisfiedTargets": 0,
+    "skippedTargets": 1,
+    "childMiningRequestIds": [],
+    "receiptCount": 0,
+    "receipts": [],
+    "decisions": [
+      {
+        "optionId": "cancel",
+        "description": "Cancel remaining work; already changed cells remain",
+        "estimatedSeconds": 0
+      },
+      {
+        "optionId": "retry",
+        "description": "Recheck the same bounded target after the observed obstruction changes; no hidden excavation"
+      },
+      {
+        "optionId": "skip",
+        "description": "Omit the current target; final outcome remains PARTIAL"
+      }
+    ],
+    "decisionId": "7869b13e-3975-4cef-b9f9-f9c9e97d4f84:13",
+    "options": [],
+    "case": "unbreakable obstacle skipped yields PARTIAL",
+    "elapsedTicks": 1,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:cobblestone",
+        "count": 3,
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 219,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:bedrock}"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "65c93870-b5ca-4d18-b7cd-2e7b3f286412",
+    "revision": 14,
+    "requestedTargets": 1,
+    "satisfiedTargets": 1,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 1,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 222,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:wall_torch}[facing\u003dwest]",
+        "entryId": "b63bbdf98e45a64f3b72105f18ed85d5d96ea0ad7e1927257ef4691d2566ad8a",
+        "consumed": 1
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "native wall torch variant and support face",
+    "elapsedTicks": 5,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:torch",
+        "count": 2,
+        "entryId": "b63bbdf98e45a64f3b72105f18ed85d5d96ea0ad7e1927257ef4691d2566ad8a"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 224,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:wall_torch}[facing\u003dwest]"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "f59c69bb-47a5-4994-81a5-4aa515d1383f",
+    "revision": 15,
+    "requestedTargets": 1,
+    "satisfiedTargets": 1,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [
+      "880cf8f7-e311-4415-b032-32cd1dc8a703"
+    ],
+    "receiptCount": 2,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 227,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:dirt}",
+        "entryId": "49dc8d5d796971c36cf158a8ff4b006961bfbd364fa8e22749c45751fa3c77b4",
+        "consumed": 1
+      },
+      {
+        "phase": "COMPLETED",
+        "reason": "Target block changed through the player break action; emitted drops are not proof of pickup",
+        "sampledAtTick": 243,
+        "requestId": "880cf8f7-e311-4415-b032-32cd1dc8a703",
+        "dimension": "minecraft:overworld",
+        "x": -1961800,
+        "y": -47,
+        "z": -11695578,
+        "options": [
+          {
+            "optionId": "held-tool",
+            "tool": {
+              "slot": 0,
+              "item": "minecraft:dirt",
+              "entryId": "49dc8d5d796971c36cf158a8ff4b006961bfbd364fa8e22749c45751fa3c77b4",
+              "damageable": false
+            },
+            "targetBlock": "minecraft:dirt",
+            "targetBlocks": 1,
+            "accessBlocks": 0,
+            "movementDistance": 0,
+            "estimatedBreakTicks": 15.0,
+            "estimatedSeconds": 0.75,
+            "estimateAssumption": "Current held tool, effects and server rules; aiming and pickup time excluded",
+            "canHarvest": true,
+            "supportMaterials": [],
+            "hazards": [],
+            "riskAssessment": "No current local hazard detected; checked again before each action",
+            "pickupIncluded": false
+          }
+        ],
+        "breakProgress": 1.0,
+        "emittedDrops": [
+          {
+            "entityId": "5513142b-59b6-4327-b68f-3ea6578fc27b",
+            "item": "minecraft:dirt",
+            "count": 1
+          }
+        ],
+        "durabilityDamageBefore": 0,
+        "durabilityDamageAfter": 0,
+        "observedTargetState": "Block{minecraft:air}",
+        "collectionVerified": false,
+        "bodyX": -1961801.5,
+        "bodyY": -47.0,
+        "bodyZ": -1.16955775E7,
+        "operation": "temporary_cleanup"
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "protected support rejected; expendable support normally placed and mined for cleanup",
+    "elapsedTicks": 21,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:dirt",
+        "count": 2,
+        "entryId": "49dc8d5d796971c36cf158a8ff4b006961bfbd364fa8e22749c45751fa3c77b4"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 245,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:air}"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "BLOCKED",
+    "step": "",
+    "reason": "NO_LEGAL_PLACEMENT_FACE_OR_STATE",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "4d6b2e6f-4e8b-47cb-8326-04aea81def4d",
+    "revision": 17,
+    "requestedTargets": 1,
+    "satisfiedTargets": 0,
+    "skippedTargets": 0,
+    "currentTarget": {
+      "x": -1961798,
+      "y": -47,
+      "z": -11695578
+    },
+    "obstruction": {
+      "targetState": "Block{minecraft:air}",
+      "eyeDistance": 4.15384159672479,
+      "interactionRange": 4.5,
+      "firstBlockTowardTargetCenter": {
+        "x": -1961801,
+        "y": -46,
+        "z": -11695578
+      },
+      "firstBlockState": "Block{minecraft:stone}",
+      "coverage": "This is the current center ray, not proof that every possible face or approach is blocked"
+    },
+    "childMiningRequestIds": [],
+    "receiptCount": 0,
+    "receipts": [],
+    "decisions": [
+      {
+        "optionId": "cancel",
+        "description": "Cancel remaining work; already changed cells remain",
+        "estimatedSeconds": 0
+      },
+      {
+        "optionId": "retry",
+        "description": "Recheck the same bounded target after the observed obstruction changes; no hidden excavation"
+      },
+      {
+        "optionId": "skip",
+        "description": "Omit the current target; final outcome remains PARTIAL"
+      }
+    ],
+    "decisionId": "4d6b2e6f-4e8b-47cb-8326-04aea81def4d:17",
+    "options": [],
+    "case": "proximity knowledge does not bypass physical wall occlusion",
+    "elapsedTicks": 1,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:cobblestone",
+        "count": 4,
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 246,
+      "blocks": [
+        {
+          "x": -1961798,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:air}"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 1.4292473140215778,
+    "bodyX": -1961800.4886690811,
+    "bodyY": -47.0,
+    "bodyZ": -1.1695578507616352E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "96468638-2120-4737-b416-c9d0e1c4d1d8",
+    "revision": 18,
+    "requestedTargets": 2,
+    "satisfiedTargets": 2,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 2,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 249,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:cobblestone}",
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38",
+        "consumed": 1
+      },
+      {
+        "operation": "place",
+        "tick": 290,
+        "target": {
+          "x": -1961798,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:cobblestone}",
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38",
+        "consumed": 1
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "fixed-origin text blueprint preserves opening and verifies two placed cells",
+    "elapsedTicks": 46,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "minecraft:cobblestone",
+        "count": 6,
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38"
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "air",
+        "count": 0
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 292,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:cobblestone}"
+        }
+      ]
+    }
+  },
+  {
+    "phase": "COMPLETED",
+    "step": "",
+    "reason": "Required cells and companion states verified through native placement; see actual material receipts",
+    "ownsBody": false,
+    "physicalDistance": 0.0,
+    "bodyX": -1961801.5,
+    "bodyY": -47.0,
+    "bodyZ": -1.16955775E7,
+    "dimension": "minecraft:overworld",
+    "requestId": "47dc68b7-8317-4d10-b965-305763e30ee0",
+    "revision": 19,
+    "requestedTargets": 1,
+    "satisfiedTargets": 1,
+    "skippedTargets": 0,
+    "childMiningRequestIds": [],
+    "receiptCount": 1,
+    "receipts": [
+      {
+        "operation": "place",
+        "tick": 295,
+        "target": {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578
+        },
+        "before": "Block{minecraft:air}",
+        "after": "Block{minecraft:cobblestone}",
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38",
+        "consumed": 1
+      }
+    ],
+    "decisions": [],
+    "options": [],
+    "case": "offhand native placement with empty main hand",
+    "elapsedTicks": 5,
+    "hands": {
+      "main": {
+        "slot": 0,
+        "item": "air",
+        "count": 0
+      },
+      "offhand": {
+        "slot": 40,
+        "item": "minecraft:cobblestone",
+        "count": 3,
+        "entryId": "6e8b0a6bba78a49e783b15172dc6ec4617a1e4b8931b3823670015f7b61bcc38"
+      }
+    },
+    "physicalBlocks": {
+      "dimension": "minecraft:overworld",
+      "tick": 297,
+      "blocks": [
+        {
+          "x": -1961800,
+          "y": -47,
+          "z": -11695578,
+          "state": "Block{minecraft:cobblestone}"
+        }
+      ]
+    }
+  }
+]

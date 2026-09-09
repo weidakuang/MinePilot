@@ -21,7 +21,7 @@ final class ModelToolInterfaceTest {
             exchange.sendResponseHeaders(200,response.length);exchange.getResponseBody().write(response);exchange.close();
         });server.start();
         try(var client=new OpenAiCompatibleChatClient(new ModelConfig(URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/v1"),"synthetic-test-credential","synthetic-protocol-test",.2))){
-            var names=new ArrayList<>(KnowledgeTools.NAMES);names.add("request_navigation");names.add("say");
+            var names=new ArrayList<>(KnowledgeTools.NAMES);names.addAll(dev.mcai.companion.agent.mining.MiningTools.NAMES);names.addAll(dev.mcai.companion.agent.mining.CollectionTools.NAMES);names.addAll(dev.mcai.companion.agent.placement.PlacementTools.NAMES);names.add("request_navigation");names.add("say");
             var tools=AgentToolSchemas.navigationTools(false,names.toArray(String[]::new));
             var result=client.complete(List.of(),tools).get(5,TimeUnit.SECONDS);
             assertEquals("sense",result.toolCalls().getFirst().name());assertEquals(4,result.toolCalls().getFirst().arguments().get("limit").getAsInt());
@@ -29,6 +29,11 @@ final class ModelToolInterfaceTest {
             var functions=new HashMap<String,JsonObject>();
             for(var tool:request.getAsJsonArray("tools")){var function=tool.getAsJsonObject().getAsJsonObject("function");functions.put(function.get("name").getAsString(),function);}
             for(var definition:KnowledgeTools.definitions()){var d=definition.getAsJsonObject();assertEquals(d.get("inputSchema"),functions.get(d.get("name").getAsString()).get("parameters"));}
+            var radius=functions.get("sense").getAsJsonObject("parameters").getAsJsonObject("properties").getAsJsonObject("radius");
+            assertEquals(1,radius.get("minimum").getAsInt());assertEquals(96,radius.get("maximum").getAsInt());
+            for(var definition:dev.mcai.companion.agent.mining.MiningTools.definitions()){var d=definition.getAsJsonObject();assertEquals(d.get("inputSchema"),functions.get(d.get("name").getAsString()).get("parameters"));}
+            for(var definition:dev.mcai.companion.agent.mining.CollectionTools.definitions()){var d=definition.getAsJsonObject();assertEquals(d.get("inputSchema"),functions.get(d.get("name").getAsString()).get("parameters"));}
+            for(var definition:dev.mcai.companion.agent.placement.PlacementTools.definitions()){var d=definition.getAsJsonObject();assertEquals(d.get("inputSchema"),functions.get(d.get("name").getAsString()).get("parameters"));}
             var nav=functions.get("request_navigation").getAsJsonObject("parameters").getAsJsonObject("properties");
             for(String key:List.of("continuous_follow","replace_request_id","forward_blocks","allow_partial"))assertTrue(nav.has(key));
             var targets=nav.getAsJsonObject("target_kind").getAsJsonArray("enum");assertTrue(targets.contains(new JsonPrimitive("waypoint")));assertTrue(targets.contains(new JsonPrimitive("dropped_item")));

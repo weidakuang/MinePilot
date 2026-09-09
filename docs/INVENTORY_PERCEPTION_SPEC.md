@@ -3,6 +3,12 @@
 Date: 2026-09-06. This document refines the user's draft; implementation and
 acceptance status must be reported separately.
 
+Updated 2026-09-08: the user clarified spherical, omnidirectional block/item
+proximity, omission of air from model results, and directional vision outside
+that sphere. See MINING_COLLECTION_DRAFT.md. The sphere implementation and its first physical boundary tests are now recorded
+in reviews/2026-09-08-mining-foundation.md. Broad visibility/performance acceptance
+remains separate.
+
 ## Orientation
 
 Heading is clockwise from north: N=0, E=90, S=180, W=270; input 360 normalizes
@@ -29,7 +35,9 @@ must remain unknown; categories are not a promise of universal attribution.
 
 Classification is 0 (most important) through 5 (least important), with a bounded
 note. Unclassified identities default to protected level 2. Identical item and
-component identities share a conservative policy across slots/split stacks.
+component identities, excluding ordinary durability damage, share a conservative
+policy across slots/split stacks. Per-slot equipment observations retain actual
+damage and remaining durability; wear is not an acquisition.
 Different provenance batches remain distinct event records even if items merge.
 Policies and named waypoints are world-scoped and persist independently of slot
 positions. Item importance is not permission to discard or spend arbitrarily.
@@ -48,10 +56,13 @@ counts/sources must remain available through a bounded paginated event stream.
 
 ## Perception layers
 
-- Proximity: block positions in a ±10 cube, dropped stacks within a 10-block
-  sphere, living entities in a ±16 cube, including occluded entities. Label this
-  explicitly as a privileged local sensor rather than visual evidence.
-- Vision: loaded entities/blocks up to 96 blocks, horizontal ±60 degrees from
+- Proximity: non-air block centers and dropped-stack positions within a 10-block
+  sphere around the body's feet, in every direction regardless of occlusion or
+  facing. Skip air in model observations; navigation can inspect empty space
+  internally. Living entities retain their separate earlier ±16 cube sensor.
+  Label proximity explicitly as a privileged local sensor rather than visual evidence.
+- Vision: outside the block/item proximity sphere, require directional vision
+  and occlusion checks, up to 96 blocks total from the eyes, horizontal ±60 degrees from
   heading; vertical ±60 degrees from pitch. Unknown/unloaded space blocks the
   ray. Distinguish known absence from incomplete coverage.
 - Occlusion: use block shapes and an explicit pass-through policy. Fluids,
@@ -70,11 +81,22 @@ Default observations contain basic world/weather/time/body information and
 small summaries, not all block coordinates. Detailed queries are bounded and
 paginated, with timestamp, coverage and truncation. Large block searches must
 use bounded scan work, not iterate a 193-cubed volume every tick. Filters target
-types, names or identifiers. Results do not generate/load chunks. Tree results
-are observed log candidates; they are not automatically a complete tree.
-Structure markers are observed/remembered candidates, not hidden seed-based
-`locate` results. Unseen structures require actual exploration or a separately
-declared privileged capability. Never imply absence outside examined coverage.
+types, names or identifiers. Visual/entity/block results do not generate/load
+chunks. Tree results are observed log candidates, not automatically a complete
+tree. Block markers remain clues. Never imply absence outside examined coverage.
+
+As authorized on 2026-09-09, `sense kind=structures` also queries native server
+generation records in a maximum 96-block 3D sphere, default 96. This is explicitly
+privileged knowledge, independent of line of sight. The fixed query center,
+dimension and distance to the closest individual recorded piece volume are
+returned; points outside the sphere and distant structure centers/bounds are
+not disclosed. Native start/reference metadata can be scheduled for unloaded
+chunks, including necessary dependency chunks, without full terrain generation
+being requested by this tool. Main-thread record work is sliced, dispatch uses
+the native thread-aware chunk API, results paginate and identical recent queries
+are cached. Unknown/failed/timeout coverage cannot become proof of absence.
+Records do not verify present-day blocks, entrances or safe standing positions;
+player-built houses, farms and portals still require observation or waypoints.
 
 ## Dynamic drops, memory and chat
 

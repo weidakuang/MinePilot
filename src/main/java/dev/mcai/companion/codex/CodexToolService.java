@@ -83,6 +83,9 @@ final class CodexToolService {
         for(String cursor:java.util.List.of("after_chat","after_system","after_inventory"))poll.add(cursor,integer("Exclusive cursor; default 0."));
         tools.add(tool("poll_events","Read chat, inventory events and navigation together on one server tick for the persistent listener.",schema(poll),true,false));
         dev.mcai.companion.agent.knowledge.KnowledgeTools.definitions().forEach(tools::add);
+        dev.mcai.companion.agent.mining.MiningTools.definitions().forEach(tools::add);
+        dev.mcai.companion.agent.mining.CollectionTools.definitions().forEach(tools::add);
+        dev.mcai.companion.agent.placement.PlacementTools.definitions().forEach(tools::add);
         tools.add(tool("observe",
                 "Read MinePilot body state, inventory, hotbar and recent player chat.",
                 schema(new JsonObject()), true, false));
@@ -186,6 +189,18 @@ final class CodexToolService {
     }
 
     private JsonObject executeTool(String name, JsonObject arguments) {
+        if(dev.mcai.companion.agent.placement.PlacementTools.NAMES.contains(name)) {
+            if(!dev.mcai.companion.agent.placement.PlacementTools.READ_ONLY.contains(name))requireExternalControl();
+            return dev.mcai.companion.agent.placement.PlacementTools.execute(runtime,name,arguments);
+        }
+        if(dev.mcai.companion.agent.mining.CollectionTools.NAMES.contains(name)) {
+            if(!java.util.Set.of("inspect_tree","collection_status").contains(name))requireExternalControl();
+            return dev.mcai.companion.agent.mining.CollectionTools.execute(runtime,name,arguments);
+        }
+        if(dev.mcai.companion.agent.mining.MiningTools.NAMES.contains(name)) {
+            if(!name.equals("mining_status"))requireExternalControl();
+            return dev.mcai.companion.agent.mining.MiningTools.execute(runtime,name,arguments);
+        }
         return switch (name) {
             case "observe" -> observe();
             case "poll_events" -> pollEvents(arguments);
@@ -208,7 +223,7 @@ final class CodexToolService {
         chatArgs.addProperty("after_system_sequence",optionalLong(args,"after_system",0));
         var result=new JsonObject();result.add("chat",readChat(chatArgs));
         result.add("inventoryEvents",runtime.player().inventoryLedger.events(optionalLong(args,"after_inventory",0),16));
-        result.add("navigation",navigationStatus());return result;
+        result.add("navigation",navigationStatus());result.add("mining",runtime.mining().status());result.add("collection",runtime.collection().status());result.add("placement",runtime.placement().status());return result;
     }
 
     private JsonObject observe() {
@@ -216,6 +231,7 @@ final class CodexToolService {
         JsonObject result = bodyState(player);
         result.addProperty("online", player.isAlive() && player.connection != null);
         result.addProperty("externalControlAvailable", runtime.externalControlAvailable());
+        result.add("mining",runtime.mining().status());result.add("collection",runtime.collection().status());result.add("placement",runtime.placement().status());
         result.add("world",runtime.perception.summary());
         result.add("inventorySummary",runtime.player().inventoryLedger.inventory());
         result.addProperty("latestChatSequence", runtime.latestChatSequence());

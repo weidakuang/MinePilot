@@ -26,6 +26,6 @@ public record NavigationPlannerConfig(
     }
 
     public static NavigationPlannerConfig defaults() {
-        return new NavigationPlannerConfig(5, 1, 2, 80_000, 150, 12);
+        return new NavigationPlannerConfig(5, 1, 2, 80_000, 600, 12);
     }
 }

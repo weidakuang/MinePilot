@@ -1,0 +1,189 @@
+{
+  "status": "design_example_not_implemented_or_built",
+  "name": "small_room_example",
+  "frame": {
+    "dimension": "minecraft:overworld",
+    "origin": [
+      0,
+      0,
+      0
+    ],
+    "axes": {
+      "x": "east",
+      "y": "up",
+      "z": "south"
+    },
+    "rotation_degrees": 0
+  },
+  "size": [
+    5,
+    5,
+    7
+  ],
+  "layer_format": "Each layer is one y. Rows increase z; characters increase x. The origin is an illustrative local anchor, not a gameplay destination.",
+  "palette": {
+    "P": {
+      "item": "minecraft:oak_planks",
+      "block": "minecraft:oak_planks"
+    },
+    "G": {
+      "item": "minecraft:glass",
+      "block": "minecraft:glass"
+    },
+    "D": {
+      "item": "minecraft:oak_door",
+      "block": "minecraft:oak_door",
+      "state": {
+        "facing": "south",
+        "half": "lower",
+        "hinge": "left",
+        "open": "false",
+        "powered": "false"
+      },
+      "feature": "door",
+      "action_anchor": true
+    },
+    "d": {
+      "block": "minecraft:oak_door",
+      "state": {
+        "facing": "south",
+        "half": "upper",
+        "hinge": "left",
+        "open": "false",
+        "powered": "false"
+      },
+      "feature": "door",
+      "generated_by": "D"
+    },
+    "b": {
+      "item": "minecraft:red_bed",
+      "block": "minecraft:red_bed",
+      "state": {
+        "facing": "north",
+        "part": "foot",
+        "occupied": "false"
+      },
+      "feature": "bed",
+      "action_anchor": true
+    },
+    "h": {
+      "block": "minecraft:red_bed",
+      "state": {
+        "facing": "north",
+        "part": "head",
+        "occupied": "false"
+      },
+      "feature": "bed",
+      "generated_by": "b"
+    },
+    "T": {
+      "item": "minecraft:torch",
+      "block": "minecraft:wall_torch",
+      "state": {
+        "facing": "south"
+      },
+      "mount_support_offset": [
+        0,
+        0,
+        -1
+      ]
+    },
+    "C": {
+      "item": "minecraft:chest",
+      "block": "minecraft:chest",
+      "state": {
+        "facing": "south",
+        "type": "single"
+      }
+    },
+    ".": {
+      "operation": "require_air",
+      "meaning": "Keep empty; an occupied cell is a conflict, not permission to excavate."
+    }
+  },
+  "layers": [
+    {
+      "y": 0,
+      "rows": [
+        "PPPPP",
+        "PPPPP",
+        "PPPPP",
+        "PPPPP",
+        "PPPPP",
+        "PPPPP",
+        "PPPPP"
+      ]
+    },
+    {
+      "y": 1,
+      "rows": [
+        "PPPPP",
+        "Ph.CP",
+        "Pb..P",
+        "P...P",
+        "P...P",
+        "P...P",
+        "PPDPP"
+      ]
+    },
+    {
+      "y": 2,
+      "rows": [
+        "PPGPP",
+        "P..TP",
+        "P...P",
+        "G...G",
+        "P...P",
+        "P...P",
+        "PPdPP"
+      ]
+    },
+    {
+      "y": 3,
+      "rows": [
+        "PPPPP",
+        "P...P",
+        "P...P",
+        "P...P",
+        "P...P",
+        "P...P",
+        "PPPPP"
+      ]
+    },
+    {
+      "y": 4,
+      "rows": [
+        "PPPPP",
+        "PPPPP",
+        "PPPPP",
+        "PPPPP",
+        "PPPPP",
+        "PPPPP",
+        "PPPPP"
+      ]
+    }
+  ],
+  "constraints": {
+    "unspecified_cells": "preserve",
+    "permanent_materials_only": true,
+    "temporary_supports": "Require a separate evaluated budget and safe cleanup; this example does not assert none are needed.",
+    "door_approach": [
+      2,
+      1,
+      7
+    ],
+    "keep_interior_passage": {
+      "from": [
+        2,
+        1,
+        1
+      ],
+      "to": [
+        2,
+        2,
+        5
+      ]
+    },
+    "world_precondition": "Loaded stable site; exact placement poses, roof access and server rules remain to be planned and tested."
+  }
+}

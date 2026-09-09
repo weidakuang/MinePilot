@@ -35,7 +35,7 @@ class ModelWorker:
     def decision(self):
         if len(self.text) > 65536: raise ValueError('Decision exceeded size limit')
         value = json.loads(self.text)
-        if not isinstance(value, dict) or value.get('action') not in {'say', 'navigate', 'choose', 'cancel', 'plan', 'jump', 'wait', 'tool', 'organize'}:
+        if not isinstance(value, dict) or value.get('action') not in {'say', 'navigate', 'choose', 'cancel', 'plan', 'jump', 'wait', 'tool', 'organize', 'approve', 'reject'}:
             raise ValueError('Invalid decision')
         return value
     def terminate(self):
@@ -61,6 +61,29 @@ class PersistentModel:
         self.worker = None
         self.thread_id = None
         self.turns = 0
+        self.closed = False
+        self.ready = threading.Event()
+
+    def prepare(self, instructions):
+        threading.Thread(target=self._prepare, args=(instructions,), daemon=True).start()
+
+    def _ensure_thread(self, instructions):
+        if self.closed: raise RuntimeError('Model transport is closed')
+        self._start()
+        if self.thread_id is None or self.turns >= 16 or self.worker is not None and self.worker.cancelled:
+            response = self.rpc('thread/start', {'model': self.model, 'ephemeral': True,
+                'cwd': str(self.workspace), 'sandbox': 'read-only', 'approvalPolicy': 'never',
+                'baseInstructions': instructions,
+                'config': {'model_reasoning_effort': 'low', 'web_search': 'disabled'}})
+            self.thread_id = response['thread']['id']; self.turns = 0
+        if self.closed: raise RuntimeError('Model transport is closed')
+        self.ready.set()
+
+    def _prepare(self, instructions):
+        try:
+            with self.setup_lock: self._ensure_thread(instructions)
+        except (OSError, ValueError, KeyError, RuntimeError, queue.Empty):
+            self.ready.clear()
 
     def launch(self, instructions, event_text, schema):
         worker = ModelWorker(self)
@@ -75,6 +98,8 @@ class PersistentModel:
         command += ['-c', 'web_search="disabled"']
         self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        if self.closed:
+            self.close(); raise RuntimeError('Model transport is closed')
         self.thread_id = None
         threading.Thread(target=self._read, args=(self.process,), daemon=True).start()
         self.rpc('initialize', {'clientInfo': {'name': 'minepilot-companion', 'version': '0.2.0'},
@@ -84,16 +109,10 @@ class PersistentModel:
     def _begin(self, worker, instructions, event_text, schema):
         try:
             with self.setup_lock:
-                self._start()
                 if worker.cancelled:
                     worker.finish(-15); return
                 # Bound retained route snapshots while retaining warm conversation turns.
-                if self.thread_id is None or self.turns >= 16 or self.worker is not None and self.worker.cancelled:
-                    response = self.rpc('thread/start', {'model': self.model, 'ephemeral': True,
-                        'cwd': str(self.workspace), 'sandbox': 'read-only', 'approvalPolicy': 'never',
-                        'baseInstructions': instructions,
-                        'config': {'model_reasoning_effort': 'low', 'web_search': 'disabled'}})
-                    self.thread_id = response['thread']['id']; self.turns = 0
+                self._ensure_thread(instructions)
                 if worker.cancelled:
                     worker.finish(-15); return
                 self.worker = worker
@@ -162,6 +181,8 @@ class PersistentModel:
         except (OSError, RuntimeError, queue.Empty): worker.finish(-15)
 
     def close(self):
+        self.closed = True
+        self.ready.clear()
         if self.process is not None and self.process.poll() is None:
             self.process.terminate()
             try: self.process.wait(timeout=3)

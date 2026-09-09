@@ -38,6 +38,10 @@ public final class MinecraftAiCompanion {
             if(event.getEntity() instanceof dev.mcai.companion.agent.body.MinePilotServerPlayer body && body.inventoryLedger != null)
                 body.inventoryLedger.pickedUp(event.getOriginalEntity(),event.getStack());
         });
+        net.minecraftforge.event.entity.EntityJoinLevelEvent.BUS.addListener(event -> {
+            if(event.getEntity() instanceof net.minecraft.world.entity.item.ItemEntity item)
+                dev.mcai.companion.agent.mining.MiningCoordinator.onItemSpawn(item);
+        });
         net.minecraftforge.event.entity.item.ItemTossEvent.BUS.addListener(event -> {
                 dev.mcai.companion.agent.knowledge.DropProvenance.mark(event.getEntity(),"player_toss",event.getPlayer()); });
         net.minecraftforge.event.entity.living.LivingDropsEvent.BUS.addListener(event -> {

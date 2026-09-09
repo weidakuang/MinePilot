@@ -35,6 +35,12 @@ public final class AgentRuntime implements AutoCloseable {
     private final HeadlessPlayerSession session;
     private final NavigationToolCoordinator navigation;
     private final AgentBrain brain;
+    private final dev.mcai.companion.agent.placement.PlacementCoordinator placement;
+    public dev.mcai.companion.agent.placement.PlacementCoordinator placement(){return placement;}
+    private final dev.mcai.companion.agent.mining.CollectionCoordinator collection;
+    public dev.mcai.companion.agent.mining.CollectionCoordinator collection(){return collection;}
+    private final dev.mcai.companion.agent.mining.MiningCoordinator mining;
+    public dev.mcai.companion.agent.mining.MiningCoordinator mining(){return mining;}
     private final Deque<VisiblePlayerChat> playerChat = new ArrayDeque<>();
     private final Deque<ExternalToolCall> externalToolTrace = new ArrayDeque<>();
     private long chatSequence;
@@ -60,7 +66,7 @@ public final class AgentRuntime implements AutoCloseable {
     public String turnPhase(){return turnPhase;}
     public void turnTo(double heading) {
         requireServerThread();
-        if(jumpActive() || !navigation.status().phase().terminal() && navigation.status().phase()!=NavigationToolCoordinator.Phase.IDLE)
+        if(placement.ownsBody() || collection.ownsBody() || mining.ownsBody() || jumpActive() || !navigation.status().phase().terminal() && navigation.status().phase()!=NavigationToolCoordinator.Phase.IDLE)
             throw new IllegalStateException("Stop the active movement before a turn-only action");
         if(!player().isAlive())throw new IllegalStateException("Turning requires a living body");
         turnYaw=dev.mcai.companion.agent.navigation.NavigationFollower.headingToMinecraftYaw(dev.mcai.companion.agent.knowledge.WorldPerception.normalize(heading));
@@ -69,7 +75,7 @@ public final class AgentRuntime implements AutoCloseable {
 
     public void jumpOnce() {
         requireServerThread();
-        if (jumpStartedTick >= 0 || turnActive()) throw new IllegalStateException("A jump or turn is already active");
+        if (placement.ownsBody() || collection.ownsBody() || mining.ownsBody() || jumpStartedTick >= 0 || turnActive()) throw new IllegalStateException("A jump or turn is already active");
         if (!navigation.status().phase().terminal()
                 && navigation.status().phase() != NavigationToolCoordinator.Phase.IDLE)
             throw new IllegalStateException("Cancel navigation before requesting a jump");
@@ -95,6 +101,9 @@ public final class AgentRuntime implements AutoCloseable {
         this.brain = brain;
         session.player().inventoryLedger = new dev.mcai.companion.agent.knowledge.InventoryLedger(session.player());
         perception = new dev.mcai.companion.agent.knowledge.WorldPerception(session.player());
+        mining = new dev.mcai.companion.agent.mining.MiningCoordinator(this);
+        collection = new dev.mcai.companion.agent.mining.CollectionCoordinator(this);
+        placement = new dev.mcai.companion.agent.placement.PlacementCoordinator(this);
         hearing = new dev.mcai.companion.agent.knowledge.SoundPerception(session.player());
         session.receivedSound = hearing::receive;
         session.visibleSystemChat = text -> {
@@ -177,6 +186,10 @@ public final class AgentRuntime implements AutoCloseable {
         boolean handledLocally = false;
         if (java.util.Set.of("停下", "停止", "stop", "stop moving").contains(stop)) {
             handledLocally = true;
+            placement.cancelForChat();
+            collection.cancelForChat();
+            mining.cancelForChat();
+            if(brain!=null)brain.onLocallyHandledStop();
             if(turnActive()){turnYaw=null;turnPhase="CANCELLED";}
             if (jumpActive()) { jumpStartedTick = -1; jumpPhase = "CANCELLED"; handledLocally = true; }
             var state = navigation.status();
@@ -197,9 +210,15 @@ public final class AgentRuntime implements AutoCloseable {
             return;
         }
         navigation.beforePhysicsTick();
+        collection.beforePhysics();
+        placement.beforePhysics();
+        mining.tickBeforePhysics();
         session.tick();
         player().inventoryLedger.tick();
         navigation.tick();
+        collection.tickAfterPhysics();
+        placement.afterPhysics();
+        perception.structures.tick();
         if(turnActive()) {
             if(!player().isAlive()){turnYaw=null;turnPhase="FAILED";player().stopControlling();}
             else if(Math.abs(net.minecraft.util.Mth.wrapDegrees(player().getYRot()-turnYaw))<=1){turnYaw=null;turnPhase="COMPLETED";player().stopControlling();}
@@ -215,7 +234,7 @@ public final class AgentRuntime implements AutoCloseable {
                 player().applyControlFrame(new dev.mcai.companion.agent.body.AgentControlFrame(
                         player().getYRot(), player().getXRot(), 0, 0, age <= 20 && !jumpSawAirborne && player().onGround(), false, false));
             }
-        } else if ((navigation.status().phase().terminal() || navigation.status().phase() == NavigationToolCoordinator.Phase.IDLE || navigation.status().phase() == NavigationToolCoordinator.Phase.FOLLOWING)
+        } else if (!placement.ownsBody() && !collection.ownsBody() && !mining.ownsBody() && (navigation.status().phase().terminal() || navigation.status().phase() == NavigationToolCoordinator.Phase.IDLE || navigation.status().phase() == NavigationToolCoordinator.Phase.FOLLOWING)
                 && attentionTarget != null) {
             ServerPlayer target = server.getPlayerList().getPlayer(attentionTarget);
             if (target != null && target.isAlive() && target.level() == player().level()
@@ -387,7 +406,11 @@ public final class AgentRuntime implements AutoCloseable {
         if (brain != null) {
             brain.close();
         }
+        placement.close();
+        collection.close();
+        mining.cancelForChat();
         navigation.close();
+        perception.structures.close();
         session.close();
     }
 

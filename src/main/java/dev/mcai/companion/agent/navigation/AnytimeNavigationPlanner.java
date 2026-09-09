@@ -32,6 +32,7 @@ public final class AnytimeNavigationPlanner {
     private static final double MINIMUM_HEALTH_RESERVE = 0.5;
 
     private final NavigationPlannerConfig config;
+    private static final ThreadLocal<Map<GridPosition,Boolean>> OCCUPANCY = new ThreadLocal<>();
 
     public AnytimeNavigationPlanner(NavigationPlannerConfig config) {
         this.config = Objects.requireNonNull(config, "config");
@@ -42,6 +43,12 @@ public final class AnytimeNavigationPlanner {
     }
 
     public NavigationPlan plan(UUID requestId, NavigationWorldSnapshot snapshot, boolean allowPartial) {
+        OCCUPANCY.set(new HashMap<>());
+        try { return planSnapshot(requestId,snapshot,allowPartial); }
+        finally { OCCUPANCY.remove(); }
+    }
+
+    private NavigationPlan planSnapshot(UUID requestId, NavigationWorldSnapshot snapshot, boolean allowPartial) {
         Objects.requireNonNull(requestId, "requestId");
         Objects.requireNonNull(snapshot, "snapshot");
         long budgetNanos = Math.multiplyExact(config.planningBudgetMillis(), 1_000_000L);
@@ -61,7 +68,9 @@ public final class AnytimeNavigationPlanner {
                     || expired(deadline)) {
                 break;
             }
-            SearchResult result = search(snapshot, goal, policy, deadline, diagnostics);
+            long walkDeadline=Math.min(deadline, System.nanoTime()+budgetNanos/3);
+            SearchResult result = search(snapshot, goal, policy, walkDeadline, diagnostics, false);
+            if(result==null)result=search(snapshot,goal,policy,deadline,diagnostics,true);
             if (result == null) {
                 continue;
             }
@@ -121,7 +130,8 @@ public final class AnytimeNavigationPlanner {
             Goal goal,
             Policy policy,
             long deadline,
-            SearchDiagnostics diagnostics
+            SearchDiagnostics diagnostics,
+            boolean includeGaps
     ) {
         PriorityQueue<SearchNode> open = new PriorityQueue<>(Comparator.comparingDouble(SearchNode::f));
         Map<SearchState, Double> best = new HashMap<>();
@@ -166,7 +176,7 @@ public final class AnytimeNavigationPlanner {
             }
 
             for (Transition transition : transitions(
-                    snapshot, current.state().position(), current.state().supportBlocksUsed())) {
+                    snapshot, current.state().position(), current.state().supportBlocksUsed(), includeGaps)) {
                 if (transition.action() == RouteOption.Action.GAP_JUMP && !snapshot.resources().canSprint()) continue;
                 int nextSupport = current.state().supportBlocksUsed() + transition.supportBlocks();
                 double nextDamage = current.predictedDamage() + transition.expectedDamage();
@@ -237,7 +247,8 @@ public final class AnytimeNavigationPlanner {
     private List<Transition> transitions(
             NavigationWorldSnapshot snapshot,
             GridPosition from,
-            int supportBlocksUsed
+            int supportBlocksUsed,
+            boolean includeGaps
     ) {
         List<Transition> result = new ArrayList<>(24);
         Cell fromCell = snapshot.cell(from);
@@ -250,7 +261,7 @@ public final class AnytimeNavigationPlanner {
                 }
             }
         }
-        if (!fromCell.climbable() && snapshot.resources().canSprint()
+        if (includeGaps && !fromCell.climbable() && snapshot.resources().canSprint()
                 && canOccupy(snapshot, from, true) && bodySpacePassable(snapshot, from.offset(0, 1, 0))) {
             for (int dx = -4; dx <= 4; dx++) {
                 for (int dz = -4; dz <= 4; dz++) {
@@ -344,9 +355,16 @@ public final class AnytimeNavigationPlanner {
             GridPosition feet,
             boolean requireSupport
     ) {
-        if (!bodySpacePassable(snapshot, feet)) {
-            return false;
+        var cache=OCCUPANCY.get();
+        if(requireSupport && cache!=null) {
+            Boolean cached=cache.get(feet);if(cached!=null)return cached;
+            boolean result=occupiable(snapshot,feet,true);cache.put(feet,result);return result;
         }
+        return occupiable(snapshot,feet,requireSupport);
+    }
+
+    private static boolean occupiable(NavigationWorldSnapshot snapshot, GridPosition feet, boolean requireSupport) {
+        if (!bodySpacePassable(snapshot, feet)) return false;
         Cell feetCell = snapshot.cell(feet);
         if (feetCell.climbable()) return true;
         if (feetCell.water()) {

@@ -54,6 +54,18 @@ public final class AgentToolSchemas {
             var value=definition.getAsJsonObject();String name=value.get("name").getAsString();
             if(allowed.contains(name))tools.add(tool(name,value.get("description").getAsString(),value.getAsJsonObject("inputSchema")));
         }
+        for(var definition:dev.mcai.companion.agent.mining.MiningTools.definitions()) {
+            var value=definition.getAsJsonObject();String name=value.get("name").getAsString();
+            if(allowed.contains(name))tools.add(tool(name,value.get("description").getAsString(),value.getAsJsonObject("inputSchema")));
+        }
+        for(var definition:dev.mcai.companion.agent.mining.CollectionTools.definitions()) {
+            var value=definition.getAsJsonObject();String name=value.get("name").getAsString();
+            if(allowed.contains(name))tools.add(tool(name,value.get("description").getAsString(),value.getAsJsonObject("inputSchema")));
+        }
+        for(var definition:dev.mcai.companion.agent.placement.PlacementTools.definitions()) {
+            var value=definition.getAsJsonObject();String name=value.get("name").getAsString();
+            if(allowed.contains(name))tools.add(tool(name,value.get("description").getAsString(),value.getAsJsonObject("inputSchema")));
+        }
         if (tools.isEmpty()) {
             throw new IllegalArgumentException("At least one model tool must be allowed");
         }

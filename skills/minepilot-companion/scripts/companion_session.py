@@ -29,6 +29,22 @@ def check_mod_tools(client):
         raise IncompatibleMod("运行中的 MinePilot 模组版本缺少接口，请安装匹配的新版 JAR 后重启世界："+", ".join(sorted(missing)))
 
 
+def observation_for_event(observation, event):
+    observation = dict(observation)
+    observation.pop("recentPlayerChat", None)
+    if event["type"] in {"player_chat","initial_request","continue_player_request"}:
+        historical = []
+        for kind in ("navigation","mining","collection","placement"):
+            if observation.get(kind, {}).get("phase") in {"COMPLETED","PARTIAL","APPROACHED","FAILED","BLOCKED","CANCELLED"}:
+                observation.pop(kind)
+                historical.append(kind + "_status")
+        if historical: observation["historicalJobStatusTools"] = historical
+    if event["type"] == "navigation_event": observation.pop("navigation", None)
+    if event["type"] == "tool_result" and event.get("tool") in {"plan_collection", "plan_mining", "plan_placement"}:
+        observation.pop(event["tool"].removeprefix("plan_"), None)
+    return observation
+
+
 class SessionLoop:
     """One worker owns decisions; the listener survives every worker completion."""
     def __init__(self, client, launch, initial_message=None):
@@ -40,13 +56,21 @@ class SessionLoop:
         self.initial_message = initial_message
         self.worker_started = 0.0
         self.last_decision_timing = None
+        self.decision_timings = []
         self.pending_event = None
         self.last_player_event = None
         self.worker_event = None
         self.repair_attempts = {}
         self.dialogue = []
+        self.navigation_origin_request = None
         self.authorized_request = None
         self.requested_pace = "auto"
+        self.last_placement = None
+        self.placement_origin_request = None
+        self.last_collection = None
+        self.collection_origin_request = None
+        self.last_mining = None
+        self.mining_origin_request = None
         self.last_inventory = 0
         self.inventory_pending = []
         self.inventory_review = False
@@ -110,13 +134,28 @@ class SessionLoop:
             self.last_chat = max(m["sequence"] for m in messages)
         status = batch["navigation"] if batch is not None else self.client.call_tool("navigation_status", {})
         marker = (status.get("requestId"), status.get("phase"))
+        mining = batch.get("mining", {}) if batch is not None else {}
+        mining_marker = (mining.get("requestId"), mining.get("phase"))
+        collection = batch.get("collection", {}) if batch is not None else {}
+        collection_marker = (collection.get("requestId"), collection.get("phase"))
+        placement = batch.get("placement", {}) if batch is not None else {}
+        placement_marker = (placement.get("requestId"), placement.get("phase"), placement.get("decisionId"))
+        if mining.get("requestId") in collection.get("childMiningRequestIds", []) + placement.get("childMiningRequestIds", []):
+            self.last_mining = mining_marker
         if any(m.get("handledLocally") for m in messages):
             self.stop_worker()
             self.pending_event = self.last_player_event = self.worker_event = None
             self.last_navigation = marker
+            self.navigation_origin_request = None
+            self.last_mining = mining_marker
+            self.last_collection = collection_marker
+            self.last_placement = placement_marker
+            self.placement_origin_request = None
+            self.collection_origin_request = None
+            self.mining_origin_request = None
             messages = [m for m in messages if not m.get("handledLocally")]
         direct = fast_commands.parse(messages[0]["text"]) if len(messages)==1 else None
-        if direct and status.get("phase") in {"IDLE","COMPLETED","APPROACHED","FAILED","CANCELLED"}:
+        if direct and not placement.get("ownsBody") and not collection.get("ownsBody") and mining.get("phase") not in {"EXECUTING", "PAUSED"} and status.get("phase") in {"IDLE","COMPLETED","APPROACHED","FAILED","CANCELLED"}:
             self.stop_worker()
             self.pending_event = self.last_player_event = self.worker_event = None
             try:
@@ -124,6 +163,7 @@ class SessionLoop:
                 refreshed=self.client.call_tool("navigation_status",{})
                 self.last_navigation=(refreshed.get("requestId"),refreshed.get("phase"))
                 if direct["action"]=="navigate":
+                    self.navigation_origin_request={"type":"player_chat","messages":messages}
                     self.authorized_request=refreshed.get("requestId");self.requested_pace=direct.get("pace","auto")
             except minepilot.ToolError as failure:
                 self.pending_event={"type":"operation_failed","reason":str(failure)}
@@ -132,13 +172,19 @@ class SessionLoop:
         if self.worker is not None and self.worker.poll() is not None and not messages:
             code = self.worker.returncode
             finished = self.worker
-            if hasattr(finished,"metrics"): self.last_decision_timing = finished.metrics()
+            if hasattr(finished,"metrics"):
+                self.last_decision_timing = finished.metrics()
+                self.decision_timings = (self.decision_timings + [{"finishedAt":time.time(), **self.last_decision_timing}])[-32:]
             self.worker = None
             if not code and hasattr(finished, "decision"):
                 try:
                     decision = codex_decisions.normalize_decision(finished.decision())
                     if self.worker_event and decision["action"] not in codex_decisions.event_schema(self.worker_event)["properties"]["action"]["enum"]:
                         raise ValueError("Decision is not valid for this event")
+                    if self.worker_event and decision["action"] == "tool":
+                        allowed = codex_decisions.event_schema(self.worker_event)["properties"].get("tool_name", {}).get("enum", [])
+                        if decision.get("tool_name") not in allowed: raise ValueError("Tool is not valid for this event")
+                    decision = codex_decisions.bind_plan_decision(decision, self.worker_event or {})
                     if self.worker_event and self.worker_event.get("type") == "navigation_event":
                         expected = self.worker_event["state"]
                         current = self.client.call_tool("navigation_status", {})
@@ -153,21 +199,49 @@ class SessionLoop:
                             decision = {"action": "say", "message": "同一段路连续尝试后仍然卡住了，我先停在这里，不再重复起跳。你仍可以和我聊天或换个目标。"}
                         else:
                             self.repair_attempts = {request: count + 1}
+                    if (self.worker_event and self.worker_event.get("type") == "navigation_event"
+                            and self.worker_event.get("state", {}).get("phase") == "COMPLETED"
+                            and decision["action"] in {"tool", "navigate"}):
+                        self.last_player_event = self.worker_event.get("request")
                     decision = self.quiet_inventory_decision(decision)
                     tool_result = codex_decisions.apply(self.client, decision)
+                    if decision["action"] == "tool" and decision.get("tool_name") in {"choose_placement","place_block"}:
+                        self.placement_origin_request = self.last_player_event
+                    if decision["action"] == "tool" and decision.get("tool_name") in {"cancel_placement","pause_placement","resume_placement","resolve_placement"} and tool_result:
+                        result=tool_result.get("result",{})
+                        self.last_placement=(result.get("requestId"),result.get("phase"),result.get("decisionId"))
+                    if decision["action"] == "tool" and decision.get("tool_name") == "choose_collection":
+                        self.collection_origin_request = self.last_player_event
+                    if decision["action"] == "tool" and decision.get("tool_name") in {"cancel_collection","pause_collection","resume_collection"} and tool_result:
+                        result=tool_result.get("result",{})
+                        self.last_collection=(result.get("requestId"),result.get("phase"))
+                    if decision["action"] == "tool" and decision.get("tool_name") == "choose_mining":
+                        self.mining_origin_request = self.last_player_event
+                    if decision["action"] == "tool" and decision.get("tool_name") in {"cancel_mining","pause_mining","resume_mining"} and tool_result:
+                        result=tool_result.get("result",{})
+                        self.last_mining=(result.get("requestId"),result.get("phase"))
                     if decision["action"] == "tool" and tool_result:
-                        self.query_turns += 1
-                        if self.query_turns <= 8:
-                            self.pending_event = {"type":"tool_result", **tool_result, "request":self.last_player_event}
+                        name = tool_result["tool"]
+                        phase = tool_result.get("result", {}).get("phase")
+                        if name in {"choose_collection","resume_collection","choose_mining","resume_mining","choose_placement","place_block","resume_placement","resolve_placement"} and phase == "EXECUTING" or name in {"pause_collection","cancel_collection","pause_mining","cancel_mining","pause_placement","cancel_placement"} and phase in {"PAUSED","CANCELLED"}:
+                            # The accepted job proceeds in the game; its terminal event
+                            # or fresh chat is the next reason to ask the model.
+                            self.query_turns = 0
+                            self.last_player_event = None
                         else:
-                            self.pending_event = {"type":"operation_failed", "reason":"Query budget reached; search coverage is incomplete. Do not claim absence beyond scanned results."}
+                            self.query_turns += 1
+                            if self.query_turns <= 8:
+                                self.pending_event = {"type":"tool_result", **tool_result, "request":self.last_player_event}
+                            else:
+                                self.pending_event = {"type":"operation_failed", "reason":"Query budget reached; search coverage is incomplete. Do not claim absence beyond scanned results."}
                     if decision["action"] == "organize": self.inventory_review = False
                     status = self.client.call_tool("navigation_status", {})
                     marker = (status.get("requestId"), status.get("phase"))
                     if decision["action"] == "navigate":
+                        self.navigation_origin_request = self.last_player_event or (self.worker_event or {}).get("request")
                         self.authorized_request = status.get("requestId")
                         self.requested_pace = decision.get("pace", "auto")
-                    if decision.get("message") and decision.get("action") in {"say", "navigate", "cancel", "organize"}:
+                    if decision.get("message") and decision.get("action") in {"say", "navigate", "cancel", "organize", "tool"}:
                         self.reported_acquisitions.update(e["sequence"] for e in self.acquisition_context(self.worker_event or {}))
                         self.dialogue.append({"speaker": "MinePilot", "text": decision["message"]})
                         self.dialogue = self.dialogue[-12:]
@@ -225,16 +299,31 @@ class SessionLoop:
         elif self.worker is None and self.pending_event:
             event, self.pending_event = self.pending_event, None
         elif self.worker is None and marker != self.last_navigation and marker[1] in TERMINAL | {"PLAN_READY"}:
-            event = {"type": "navigation_event", "state": status}
+            event = {"type": "navigation_event", "state": status, "request": self.navigation_origin_request if marker[0]==self.authorized_request else None}
+        elif self.worker is None and placement_marker != self.last_placement and placement_marker[1] in {"COMPLETED","PARTIAL","BLOCKED","CANCELLED"}:
+            event = {"type":"placement_event", "state":placement, "request":self.placement_origin_request}
+            self.last_placement = placement_marker
+            self.query_turns = 0
+        elif self.worker is None and collection_marker != self.last_collection and collection_marker[1] in {"COMPLETED","BLOCKED","CANCELLED"}:
+            event = {"type":"collection_event", "state":collection, "request":self.collection_origin_request, "recentAcquisitions":self.recent_acquisitions}
+            self.last_collection = collection_marker
+            self.query_turns = 0
+        elif self.worker is None and mining_marker != self.last_mining and mining_marker[1] in {"COMPLETED","BLOCKED","CANCELLED"}:
+            event = {"type":"mining_event", "state":mining, "request":self.mining_origin_request, "recentAcquisitions":self.recent_acquisitions}
+            self.last_mining = mining_marker
+            self.query_turns = 0
         elif self.worker is None and self.inventory_pending:
             event = {"type":"inventory_event", "events":self.inventory_pending,"historyTruncated":self.inventory_overflow}
             self.inventory_pending = []
             self.inventory_overflow = False
-        elif self.worker is None and self.inventory_review and marker[1] in {"IDLE","COMPLETED","APPROACHED","FAILED","CANCELLED"}:
+        elif self.worker is None and self.inventory_review and not placement.get("ownsBody") and not collection.get("ownsBody") and mining.get("phase") not in {"EXECUTING","PAUSED"} and marker[1] in {"IDLE","COMPLETED","APPROACHED","FAILED","CANCELLED"}:
             event = {"type":"inventory_review"}
             self.inventory_review = False
         if marker[1] not in TERMINAL | {"PLAN_READY"} or event is not None and event["type"] == "navigation_event":
             self.last_navigation = marker
+        if placement_marker[1] not in {"COMPLETED","PARTIAL","BLOCKED","CANCELLED"}: self.last_placement = placement_marker
+        if collection_marker[1] not in {"COMPLETED","BLOCKED","CANCELLED"}: self.last_collection = collection_marker
+        if mining_marker[1] not in {"COMPLETED","BLOCKED","CANCELLED"}: self.last_mining = mining_marker
         if event is not None:
             if event["type"]=="navigation_event" and "DROPPED_ITEM_UNAVAILABLE" in event.get("state",{}).get("lastEventMessage",""):
                 event["recentAcquisitions"] = self.recent_acquisitions
@@ -246,10 +335,7 @@ class SessionLoop:
                 self.last_navigation = None
             self.stop_worker()
             if hasattr(self.client, "initialize"):
-                observation = self.client.call_tool("observe", {})
-                observation.pop("recentPlayerChat", None)
-                if event["type"] == "navigation_event":
-                    observation.pop("navigation", None)
+                observation = observation_for_event(self.client.call_tool("observe", {}), event)
                 event = {**event, "observation": observation}
                 event["receivedSystemChat"] = self.system_messages
             if event["type"] != "navigation_event": event["conversation"] = self.dialogue
@@ -308,6 +394,19 @@ def launch_worker(args, directory, event, last_chat):
     return codex_decisions.launch(args, directory, event, last_chat)
 
 
+def cancel_body_work(client):
+    # Cancel the parent first so its next tick cannot restart a mining child.
+    for kind in ("placement", "collection", "mining", "navigation"):
+        try:
+            current = client.call_tool(kind + "_status", {})
+            if current.get("requestId") and current.get("phase") not in {"APPROACHED","COMPLETED","PARTIAL","FAILED","CANCELLED","IDLE"}:
+                arguments = {"request_id":current["requestId"]}
+                if kind == "navigation": arguments["reason"] = "Companion session stopped"
+                client.call_tool("cancel_" + kind, arguments)
+        except minepilot.ClientError:
+            pass
+
+
 def serve(args, directory):
     try:
         guard = lock_session(directory)
@@ -338,6 +437,13 @@ def serve(args, directory):
                     loop.last_inventory = observation.get("inventorySummary", {}).get("latestEventSequence",0)
                     previous_navigation = observation.get("navigation", {})
                     loop.last_navigation = (previous_navigation.get("requestId"), previous_navigation.get("phase"))
+                    previous_placement = observation.get("placement", {})
+                    loop.last_placement = (previous_placement.get("requestId"), previous_placement.get("phase"), previous_placement.get("decisionId"))
+                    previous_collection = observation.get("collection", {})
+                    loop.last_collection = (previous_collection.get("requestId"), previous_collection.get("phase"))
+                    previous_mining = observation.get("mining", {})
+                    loop.last_mining = (previous_mining.get("requestId"), previous_mining.get("phase"))
+                    codex_decisions.prepare(args, directory)
                 inbox = directory / "inbox.json"
                 if inbox.exists():
                     loop.initial_message = json.loads(inbox.read_text())["message"]
@@ -345,7 +451,9 @@ def serve(args, directory):
                 loop.tick()
                 write_state(directory, status="LISTENING", model=args.model,
                             profile=str(args.profile), workerActive=loop.worker is not None,
-                            lastChatSequence=loop.last_chat, lastDecisionTiming=loop.last_decision_timing)
+                            lastChatSequence=loop.last_chat, lastDecisionTiming=loop.last_decision_timing,
+                            decisionTimings=loop.decision_timings,
+                            modelConnectionReady=codex_decisions.model_for(args, directory).ready.is_set())
             except IncompatibleMod as failure:
                 incompatibility = str(failure)
                 break
@@ -359,12 +467,7 @@ def serve(args, directory):
     finally:
         if loop is not None:
             loop.stop_worker()
-            try:
-                current = loop.client.call_tool("navigation_status", {})
-                if current.get("requestId") and current.get("phase") not in {"APPROACHED", "COMPLETED", "FAILED", "CANCELLED", "IDLE"}:
-                    loop.client.call_tool("cancel_navigation", {"request_id": current["requestId"], "reason": "Companion session stopped"})
-            except minepilot.ClientError:
-                pass
+            cancel_body_work(loop.client)
         codex_decisions.close()
         write_state(directory, status="INCOMPATIBLE_MOD" if incompatibility else "STOPPED", model=args.model, reason=incompatibility)
         guard.close()

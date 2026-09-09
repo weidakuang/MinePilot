@@ -11,6 +11,14 @@ class FacingTest {
         }
         assertEquals(9261,seen.size());
     }
+    @Test void proximityIsASphereWithExplicitBoundaryAndQueryRadius(){
+        var origin=new net.minecraft.world.phys.Vec3(.25,-48.0,.75);
+        assertTrue(WorldPerception.insideProximity(origin,origin.add(0,10,0),10));
+        assertTrue(WorldPerception.insideProximity(origin,origin.add(0,0,-10),10));
+        assertFalse(WorldPerception.insideProximity(origin,origin.add(8,0,8),10));
+        assertFalse(WorldPerception.insideProximity(origin,origin.add(0,10.0001,0),96));
+        assertFalse(WorldPerception.insideProximity(origin,origin.add(0,0,6),5));
+    }
     @Test void compassAndRelativeSidesAreUnambiguous(){
         assertEquals(0,WorldPerception.normalize(360));
         assertEquals(180,WorldPerception.relativeHeading(90,"left"));

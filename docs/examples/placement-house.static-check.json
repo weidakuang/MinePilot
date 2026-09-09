@@ -1,0 +1,46 @@
+{
+  "status": "STATIC_LAYOUT_CHECK_ONLY",
+  "blueprint": "placement-house.blueprint.json",
+  "size_xyz": [
+    5,
+    5,
+    7
+  ],
+  "totalCells": 175,
+  "symbolCounts": {
+    "P": 125,
+    "h": 1,
+    ".": 41,
+    "C": 1,
+    "b": 1,
+    "D": 1,
+    "G": 3,
+    "T": 1,
+    "d": 1
+  },
+  "permanentItemCounts": {
+    "minecraft:oak_planks": 125,
+    "minecraft:chest": 1,
+    "minecraft:red_bed": 1,
+    "minecraft:oak_door": 1,
+    "minecraft:glass": 3,
+    "minecraft:torch": 1
+  },
+  "itemUseActions": 132,
+  "checks": [
+    "unique bounded coordinates",
+    "known palette symbols",
+    "door lower/upper pairing",
+    "bed foot/head pairing and supporting floor",
+    "wall torch support",
+    "two-high connected interior passage",
+    "permanent item counts do not double-count doors/beds"
+  ],
+  "notVerified": [
+    "native placement and requested orientation",
+    "roof access and temporary support cost",
+    "world geometry and server permission",
+    "physical movement and inventory consumption",
+    "independent model construction"
+  ]
+}

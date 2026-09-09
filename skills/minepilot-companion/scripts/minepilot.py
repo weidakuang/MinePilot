@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import http.client
 import os
 import stat
 import sys
@@ -35,7 +36,9 @@ class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
-HTTP = urllib.request.build_opener(NoRedirectHandler())
+# The only supported destination is authenticated loopback. macOS system proxy
+# settings can otherwise route even 127.0.0.1 through a proxy and break idle play.
+HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirectHandler())
 
 
 def config_path() -> Path:
@@ -128,8 +131,12 @@ class McpClient:
             if 300 <= exc.code < 400:
                 raise ClientError("MinePilot MCP redirects are forbidden") from exc
             raise ClientError(f"MinePilot MCP returned HTTP {exc.code}") from exc
-        except (urllib.error.URLError, TimeoutError) as exc:
-            raise ClientError(f"Cannot reach the local MinePilot MCP endpoint: {exc}") from exc
+        except (OSError, http.client.HTTPException) as exc:
+            # Do not retry a possibly applied mutation here. The listener can
+            # reconnect and observe state; partial/closed responses must not kill it.
+            raise ClientError(
+                f"Cannot reach the local MinePilot MCP endpoint ({type(exc).__name__}); request outcome may be unknown"
+            ) from exc
         if notification:
             return None
         try:
@@ -204,7 +211,7 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("observe")
 
     game_tool = commands.add_parser("tool", help="Call a bounded public gameplay tool")
-    game_tool.add_argument("--name", required=True, choices=["turn", "sense", "listen", "inventory", "inventory_events", "annotate_item", "waypoint", "jump_once"])
+    game_tool.add_argument("--name", required=True, choices=["turn", "sense", "listen", "inventory", "inventory_events", "annotate_item", "waypoint", "jump_once", "equip_tool", "plan_mining", "choose_mining", "mining_status", "pause_mining", "resume_mining", "cancel_mining", "inspect_tree", "tree_farm", "plan_collection", "choose_collection", "collection_status", "pause_collection", "resume_collection", "cancel_collection", "set_hand", "inventory_capacity", "inspect_placement", "place_block", "plan_placement", "choose_placement", "placement_status", "pause_placement", "resume_placement", "cancel_placement", "resolve_placement"])
     game_tool.add_argument("--arguments", default="{}", help="JSON object using the public tool schema")
 
     read_chat = commands.add_parser("read-chat")

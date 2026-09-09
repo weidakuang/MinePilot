@@ -1,6 +1,249 @@
+# Latest addition: native structure records within 96 blocks — 2026-09-09
+
+`sense kind=structures` now queries native server structure starts/references,
+not bell/marker candidates. Default/max radius 96, measured as a fixed 3D sphere
+to the nearest individual recorded piece volume. Results identify their server
+source and do not prove current blocks, an entrance or a safe standing point.
+Registered IDs, #tags, village/村庄 and other Chinese aliases are supported.
+Queries are bounded, continued with a cursor, cached briefly and do not expose
+out-of-radius centers/bounds. Native metadata dependencies may be loaded outside
+the sphere. Other visual/block/entity queries remain unchanged. Player-built
+houses, farms and portals are not generation records.
+
+Read `docs/reviews/2026-09-09-structure-records.md`. Seven native physical fixture
+queries passed, including 95/96/97-block limits, an external referenced start,
+vertical exclusion and no bell false positive. A naturally generated seed-0
+village matched vanilla /locate; its bounded query took 49 ms processing /
+114.767 ms including polling, with unchanged position/inventory. A village 991
+blocks from spawn was excluded there. Luna's public Chinese report matched the
+independent native result and did not move the body. 29 JUnit, 70 Python and the
+knowledge/support physical gate passed. These samples do not guarantee all
+queries or model responses within a fixed time.
+
+Latest installed JAR SHA-256:
+`ca0bac76b99f52b6acc749e3e05fbd2cc8e7efdd5182070c0b645b9a11ce1b73`.
+The repository, original user server and XMCL copies match. The same peaceful
+survival world remains at `127.0.0.1:25565`, offline auth and OP retained. Server
+PID 94800, console session 20475; Luna listener PID 94828. Verify transient IDs
+before reuse. Use `run-peaceful-play-20260908-234254/profile.json`. Coordinates
+and inventory survived the controlled restart exactly. Complete world and JAR
+backups were kept; the test server/listener were stopped. Client restart is
+required, and client entry remains unverified. Server Forge 65.0.9 versus the
+last-known XMCL configured 65.0.8 discrepancy remains documented. No commit/push.
+
+See `docs/reviews/2026-09-09-structure-installation.json` for live verification.
+Older structure-marker-only statements below are superseded by this bounded,
+explicitly privileged capability; other previous acceptance limits still apply.
+
+---
+
+# Historical repair and running user server — 2026-09-09 01:27 local
+
+Read `docs/reviews/2026-09-09-movement-collection-repair.md` first. Walking gaze,
+intermediate-cell braking, persistent dynamic follow, compatible automatic
+repair selection, forest planning budget, palette-filtered search, inventory
+mining tool choice, whole-tree completion and native player knockback were
+repaired. The persistent Luna controller now keeps the original collection goal
+through approach navigation instead of stopping at that subtask's destination.
+Normal travel prefers AUTO pace. Chunk/world reads remain on the server thread
+with bounded capture work; path search runs on a worker, without CPU affinity.
+
+29 JUnit and 69 Python tests passed. Fourteen physical navigation scenarios and
+mining/collection/placement/knowledge/sound gates passed. Final follow resumed in
+24 ticks after a stationary target moved, with the same request; native attack
+displaced the body 1.932713 blocks. Independent Luna whole-spruce trial: first
+reply 7.117 s, physical completion 37.398 s, six logs received and six axe damage.
+The earlier failed Luna approach is retained. Do not claim general 3D/parkour,
+universal tree recognition or a fixed latency guarantee.
+
+Restart revealed and fixed a pre-existing missing native player-data load during
+embedded login. The new persistence gate proves actual save/logout/rejoin plus
+inventory, tool damage, offhand, mode, position, dimension and rotation. The
+user server's original Agent data was restored from the pre-restart world
+archive; only Agent data files were restored, not the whole world. Public
+observation verified zero position error and unchanged original inventory.
+
+Current production server: `run-peaceful-play-20260908-234254/`, same peaceful
+survival world, `127.0.0.1:25565`, offline auth and OP weidakuang retained.
+Server PID 93475, console session 81882; Luna listener PID 93640, LISTENING and
+model connection ready. Verify these transient IDs before reuse. Use this run's
+explicit `profile.json` with MCP `127.0.0.1:25766/mcp`, not the default XMCL
+integrated-world profile. Leave server and listener available for user play.
+
+An idle listener originally exited on an uncaught RemoteDisconnected from the
+macOS local proxy. The loopback client now bypasses system/environment proxies
+and treats interrupted responses as connection failures; it never replays an
+uncertain mutation automatically. The proxy/closed-response HTTP regression
+passes. System proxy settings were not modified.
+The restarted listener also passed 27 live observations across 130.25 seconds
+without exiting; the server continued at approximately 20 ticks/second.
+
+Installed repository/server/XMCL JAR SHA-256:
+`3aaa4d2d53ffbb0b35653cbcf4798b3564fe5bb2cda09e64ca1d76242418b228`.
+Client restart is required; fresh client entry has not been verified. Production
+server Forge is 65.0.9; the last-known client configured Forge is 65.0.8. Preserve
+the world/JAR backups, dirty working tree and previous work. No commit or push.
+See `docs/reviews/2026-09-09-repair-installation.json` for restoration evidence.
+
+---
+
+# Historical user play server launch — 2026-09-08 23:43 local
+
+The user requested a fresh default peaceful world for hands-on testing. The real
+production Forge 65.0.9 server is running at `127.0.0.1:25565`, with natural world
+generation, survival mode, peaceful difficulty, offline authentication (retained
+from the user's earlier request), and OP retained for `weidakuang`.
+
+Server directory: `run-peaceful-play-20260908-234254/`. Native server PID was 89774
+and the console tool session was 42905 at launch. The persistent Luna Skill
+listener PID was 89800, using this directory's `profile.json` and MCP at
+`127.0.0.1:25766/mcp`. Verify liveness before reusing IDs. This is an ongoing user
+play session; leave server and listener running until the user asks to stop.
+
+The server loads the production JAR, and its SHA-256 matches the repository and
+XMCL client copies: `401aea6801e98937413483c248099951f2902fceb922df1fb1b132dff5025a77`.
+The client was already synchronized. No code changed; a redundant rebuild was
+cancelled during dependency refresh and the previously accepted artifact was used.
+The user's normal Skill profile was preserved; use the explicit active-server
+profile above. Current Minecraft client entry is not claimed from server readiness.
+Earlier test-server shutdown records below are historical and refer to other runs.
+
+---
+
+# Latest checkpoint: placement foundation — 2026-09-08
+
+Placement is now implemented and physically tested; earlier design-only notes
+below are historical. Read `docs/reviews/2026-09-08-placement.md` and
+`skills/minepilot-companion/references/placement.md` for the current contract.
+
+- Native five-block selection with vanilla reach/occlusion, oriented placement,
+  door/bed footprints, underfoot jumping and real inventory/main/offhand swaps.
+- Interruptible 256-action batches via explicit cells, inclusive regions or
+  fixed-origin text layers; reserved air is not automatic excavation permission.
+- Bounded safe working-position movement, concrete obstacle decisions, selected
+  inventory mining-tool cost, normal temporary cleanup and importance protection.
+- Shared MCP/internal schemas and persistent Skill events; chat remains usable.
+- 18 source-informed physical case groups, 29 JUnit tests, 65 Python tests and
+  Skill validation passed. Knowledge/support, mining, collection and final
+  navigation repair gates passed. One earlier half-slab search-budget timeout is
+  retained in the review; do not turn later passes into a 100% reliability claim.
+- Final-build Luna normal-chat trial: first visible reply 10.76 s, three real
+  cobblestone cells plus inventory 8 -> 5 at 15.45 s, completion chat 18.79 s;
+  subsequent chat answered in 3.60 s. No private model output was inspected.
+- XMCL JAR atomically updated with backup, SHA-256
+  `401aea6801e98937413483c248099951f2902fceb922df1fb1b132dff5025a77`.
+  Test listener/server stopped and token removed. Real-client world entry remains
+  unverified; backend Forge was 65.0.9, last-known XMCL UI selection was 65.0.8.
+
+Whole-house recognition/design, renovations, stripping and rail networks remain
+unaccepted. Preserve the dirty working tree and all backups. No new commit/push.
+Continue with actual client acceptance and bounded construction scenarios; do
+not infer the full placement/renovation draft from this foundation.
+
+---
+
+# Placement design checkpoint — 2026-09-08
+
+The next proposed capability is specified in `docs/PLACEMENT_BUILDING_DRAFT.md`:
+native placement, general hand/offhand selection and capacity, interruptible
+batches, obstacle decisions and declarative text blueprints. The sample layout
+and static-only checks are in `docs/examples/placement-house.*`. No placement
+production implementation, Skill tool exposure, physical gate or JAR change was
+made for this design review. Existing latency/collection acceptance below stands.
+
+The code review found that the existing navigation support path needs a shared
+placement primitive with real aim/reach checks and actual state/count verification;
+`consumesAction()` alone can mean block interaction rather than placement. Preserve
+the support importance 0..2 prohibition. Five-block target selection must not
+extend native interaction reach. Doors/beds use one item for multiple cells;
+reserved blueprint air must not silently authorize excavation. Read the draft
+before implementation; the user endorsed the broad direction, while detailed
+defaults and physical acceptance remain pending.
+
+The user subsequently added renovation scenarios: second-storey additions,
+cherry-wood frame infill, height-anchored cut/fill and cobblestone floor replacement,
+in-place log stripping, model-designed huts and home-to-village railways. Section
+11 of the placement draft adds bounded reference grounding, observed-to-desired
+state differences, native tool transformations, preservation constraints and
+rail surveying/functional acceptance. These are design requirements, not newly
+implemented tools. No production/Skill/JAR or world change was made for this update.
+
+---
+
+# Latest checkpoint: persistent companion latency — 2026-09-08
+
+The installed Skill/controller now delivers model-authored tool messages, prepares
+its model connection without inference, uses compact model-approved collection
+choices, avoids redundant post-start model turns, and isolates historical job
+success from new requests. Listener shutdown cancels collection/mining/navigation.
+
+Real normal-tick Forge 65.0.9, persistent Luna, survival, empty inventory and bare
+hands: final three-birch-log trials finished in 25.847 s and 22.326 s, with first
+visible replies at 7.695 s and 5.193 s. The second reused the same controller.
+A preceding 30.897 s miss and a false-completion/empty-inventory failure are kept
+in the evidence. These samples do not guarantee every request within 30 seconds.
+60 Python tests and Skill validation passed. No Java or JAR change in this step;
+the installed Skill symlink receives the update on listener startup. Test server
+and listener stopped after the run. Details: `docs/reviews/2026-09-08-companion-latency.md`.
+
+---
+
 # MinePilot Project Handoff
 
-Last updated: 2026-09-07
+## 2026-09-08 continuous collection checkpoint
+
+The local working tree now includes bounded wood/ore collection on top of the
+single-block foundation. See [the collection review](reviews/2026-09-08-collection.md)
+for exact acceptance and limitations. `plan_collection`/`choose_collection`
+automate normal approach, repeated breaks and pickup while chat remains available.
+Sources distinguish loose logs and mature trees; explicit tree/farm policies are
+preserved. `inspect_tree` and world-scoped `tree_farm` declarations expose
+classification evidence and uncertainty. Fishbone mining is optional and its
+executor is still unimplemented.
+
+The public Forge gate covers actual bare-hand/axe gathering, branches, loose
+logs, pause/chat/resume/cancel, fixed-radius partial ore results and disappearing
+drops. The first independent Luna trial FAILED after one log because pickup
+populated the selected empty hand slot; that path has been fixed and is covered
+by a new empty-inventory real-server regression. A fresh independent Luna retest acquired three birch logs in 53.33 seconds from
+the public request; cold-task latency remains slow. Evidence is recorded in the review. Do not erase the failed first trial.
+
+The installed JAR now has SHA-256 `8fa48ec45bac6f7febfe2985a314a8123ab744f75bf2b7fa9db1d8d21f6cb04b`; see `docs/reviews/2026-09-08-collection-installation.json`. Both independent servers/observers and Luna operators are stopped. Real client entry remains unverified.
+
+These changes remain local and uncommitted on `codex/backup-rebuild-20260908`.
+The previously uploaded backup commit is unchanged. Original parkour, broad
+natural-world navigation, access excavation, container sources, replanting,
+automated farm operation, fishbone/cave execution and live internal-provider
+latency remain open. Do not infer complete mining or every tree shape from these
+bounded results.
+
+
+Last updated: 2026-09-08
+
+## First mining implementation checkpoint
+
+See `docs/reviews/2026-09-08-mining-foundation.md`. Implemented the 10-block
+non-air sphere, wear-stable policy/count identity, per-slot durability,
+hotbar-tool selection and one reachable-block mining plan/choice/status with
+pause/resume/cancel. Actual player actions respect native progress and server
+denials. Shared public/internal schemas and the Skill expose this limited scope.
+Mining-origin pickup events do not claim full merged provenance.
+
+Real Forge gates proved coal mining/wear/pickup, pause/cancel persistence, sphere
+boundaries and server-denial/approval guards. One independent spawned Luna trial
+acquired coal x1 with wooden-pickaxe damage 1; request-to-pickup was 37.387 seconds,
+and its result chat took 48.601 seconds. This does not solve latency. Later final
+guards have source-informed evidence only. Tests: 26 JUnit and 50 Python.
+
+The broader design is in `docs/MINING_COLLECTION_DRAFT.md`. Interaction-position
+navigation, access excavation, fixed-radius/cuboid automation, tool alternatives,
+mining supports, cave exploration and fishbone mining remain unimplemented.
+The original parkour and broader responsiveness problems remain open.
+The final JAR is installed in XMCL with a preserved previous-JAR backup; see
+`docs/reviews/2026-09-08-mining-installation.json`. Client world entry is unverified.
+All temporary test servers/operators/observers were stopped.
+The prior GitHub backup is `81dfb6b` on `codex/backup-rebuild-20260908`; current
+mining work is local and uncommitted. Preserve all earlier reports/failures.
 
 ## Latest movement/latency checkpoint
 

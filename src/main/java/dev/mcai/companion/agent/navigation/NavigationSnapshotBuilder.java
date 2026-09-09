@@ -38,7 +38,11 @@ public final class NavigationSnapshotBuilder {
         this.config = Objects.requireNonNull(config, "config");
     }
 
-    public NavigationWorldSnapshot capture(
+    public NavigationWorldSnapshot capture(MinePilotServerPlayer player,NavigationPlan.ResolvedDestination destination,long revision) {
+        var capture=begin(player,destination,revision);capture.advance(Long.MAX_VALUE);return capture.finish();
+    }
+
+    public Capture begin(
             MinePilotServerPlayer player,
             NavigationPlan.ResolvedDestination destination,
             long worldRevision
@@ -62,20 +66,44 @@ public final class NavigationSnapshotBuilder {
                 (int) Math.floor(destination.y()),
                 (int) Math.floor(destination.z()));
         Bounds bounds = bounds(level, start, goal);
-        List<Threat> threats = captureThreats(level, player, bounds);
-        Map<GridPosition, Cell> cells = new HashMap<>((int) Math.min(
-                Integer.MAX_VALUE - 8L, volume(bounds) * 4L / 3L + 1L));
-        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        return new Capture(player, destination, worldRevision, bounds, start);
+    }
 
-        for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
-            for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
-                for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
+    /** Capture in bounded tick slices; immutable geometry is then searched on a worker. */
+    public final class Capture {
+        private final MinePilotServerPlayer player;
+        private final ServerLevel level;
+        private final NavigationPlan.ResolvedDestination destination;
+        private final long worldRevision, observedTick;
+        private final Bounds bounds;
+        private final GridPosition start;
+        private final NavigationWorldSnapshot.Position exactStart;
+        private final NavigationWorldSnapshot.BodyResources resources;
+        private final List<Threat> threats;
+        private final Map<GridPosition,Cell> cells=new HashMap<>();
+        private final BlockPos.MutableBlockPos cursor=new BlockPos.MutableBlockPos();
+        private long index;
+        private Capture(MinePilotServerPlayer player, NavigationPlan.ResolvedDestination destination,long revision,Bounds bounds,GridPosition start) {
+            this.player=player;this.level=player.level();this.destination=destination;this.worldRevision=revision;this.bounds=bounds;this.start=start;
+            observedTick=level.getGameTime();exactStart=new NavigationWorldSnapshot.Position(player.getX(),player.getY(),player.getZ());
+            resources=resources(player);threats=captureThreats(level,player,bounds);
+        }
+        public boolean advance(long budgetNanos) {
+            if(!level.getServer().isSameThread())throw new IllegalStateException("Capture requires server thread");
+            long began=System.nanoTime();int width=bounds.maxX()-bounds.minX()+1,depth=bounds.maxZ()-bounds.minZ()+1;
+            do {
+                long n=index++;
+                readCell(bounds.minX()+(int)(n%width),bounds.minY()+(int)(n/(width*depth)),bounds.minZ()+(int)((n/width)%depth));
+            } while(index<volume(bounds) && System.nanoTime()-began<budgetNanos);
+            return index>=volume(bounds);
+        }
+        private void readCell(int x,int y,int z) {
                     cursor.set(x, y, z);
                     GridPosition position = new GridPosition(x, y, z);
                     if (!level.isLoaded(cursor)
                             || !level.getWorldBorder().isWithinBounds(cursor)) {
                         cells.put(position, Cell.UNKNOWN);
-                        continue;
+                        return;
                     }
                     BlockState state = level.getBlockState(cursor);
                     boolean water = state.getFluidState().is(FluidTags.WATER);
@@ -101,21 +129,11 @@ public final class NavigationSnapshotBuilder {
                             collision && !openable || state.is(Blocks.SCAFFOLDING),
                             shape.toAabbs().stream().map(b->new NavigationWorldSnapshot.CollisionBox(b.minX,b.minY,b.minZ,b.maxX,b.maxY,b.maxZ)).toList()
                     ));
-                }
-            }
         }
-
-        return new NavigationWorldSnapshot(
-                worldRevision,
-                level.getGameTime(),
-                currentDimension,
-                bounds,
-                start,
-                new NavigationWorldSnapshot.Position(player.getX(), player.getY(), player.getZ()),
-                destination,
-                resources(player),
-                cells
-        );
+        public NavigationWorldSnapshot finish() {
+            if(index<volume(bounds))throw new IllegalStateException("Capture is incomplete");
+            return new NavigationWorldSnapshot(worldRevision,observedTick,level.dimension().identifier().toString(),bounds,start,exactStart,destination,resources,cells);
+        }
     }
 
     private Bounds bounds(ServerLevel level, GridPosition start, GridPosition goal) {
@@ -193,10 +211,9 @@ public final class NavigationSnapshotBuilder {
     ) {
         int supports = 0;
         var stock = new java.util.ArrayList<RouteOption.SupportMaterial>();
-        for (int slot = 0; slot < player.getInventory().getSelectionSize(); slot++) {
+        for (int slot = 0; slot < 36; slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
-            if (!stack.isEmpty() && player.gameMode.getGameModeForPlayer()!=net.minecraft.world.level.GameType.ADVENTURE
-                    && player.gameMode.getGameModeForPlayer()!=net.minecraft.world.level.GameType.SPECTATOR
+            if (!stack.isEmpty() && player.gameMode.getGameModeForPlayer()==net.minecraft.world.level.GameType.SURVIVAL
                     && player.inventoryLedger != null && player.inventoryLedger.expendable(stack)
                     && stack.getItem() instanceof BlockItem blockItem
                     && blockItem.getBlock().defaultBlockState().isCollisionShapeFullBlock(

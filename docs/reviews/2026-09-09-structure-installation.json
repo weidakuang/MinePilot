@@ -1,0 +1,106 @@
+{
+  "date": "2026-09-09",
+  "sha256": "ca0bac76b99f52b6acc749e3e05fbd2cc8e7efdd5182070c0b645b9a11ce1b73",
+  "clientPath": "/Users/weida/Library/Application Support/xmcl/instances/26.2-forge65.0.9/mods/mcai_companion-0.2.0-dev-mc26.2.jar",
+  "serverPath": "/Users/weida/Documents/minecraft-ai-companion-forge/run-peaceful-play-20260908-234254/mods/mcai_companion-0.2.0-dev-mc26.2.jar",
+  "worldBackup": "/Users/weida/Documents/minecraft-ai-companion-forge/run-peaceful-play-20260908-234254/.minepilot-backup/peaceful-world-before-structures-20260909.tar.gz",
+  "serverForge": "65.0.9",
+  "clientConfiguredForge": "65.0.8",
+  "clientRestartRequired": true,
+  "serverAddress": "127.0.0.1:25565",
+  "feature": "Native structure records limited to a 96-block 3D sphere",
+  "serverPid": 94800,
+  "consoleSession": 20475,
+  "listenerPid": 94828,
+  "listenerModel": "gpt-5.6-luna",
+  "before": {
+    "dimension": "minecraft:overworld",
+    "x": -67.62221411534422,
+    "y": 70.0,
+    "z": 6.590436849925072,
+    "inventory": [
+      {
+        "count": 2,
+        "damage": 0,
+        "item": "minecraft:spruce_log",
+        "maxDamage": 0,
+        "slot": 0
+      },
+      {
+        "count": 1,
+        "damage": 0,
+        "item": "minecraft:wooden_pickaxe",
+        "maxDamage": 59,
+        "slot": 1
+      },
+      {
+        "count": 3,
+        "damage": 0,
+        "item": "minecraft:leaf_litter",
+        "maxDamage": 0,
+        "slot": 2
+      }
+    ]
+  },
+  "after": {
+    "dimension": "minecraft:overworld",
+    "x": -67.62221411534422,
+    "y": 70.0,
+    "z": 6.590436849925072,
+    "inventory": [
+      {
+        "count": 2,
+        "damage": 0,
+        "item": "minecraft:spruce_log",
+        "maxDamage": 0,
+        "slot": 0
+      },
+      {
+        "count": 1,
+        "damage": 0,
+        "item": "minecraft:wooden_pickaxe",
+        "maxDamage": 59,
+        "slot": 1
+      },
+      {
+        "count": 3,
+        "damage": 0,
+        "item": "minecraft:leaf_litter",
+        "maxDamage": 0,
+        "slot": 2
+      }
+    ]
+  },
+  "liveStructureQuery": {
+    "searchCenter": {
+      "x": -67.62221411534422,
+      "y": 70.0,
+      "z": 6.590436849925072
+    },
+    "results": [],
+    "cursor": "76405cf6-244b-4efb-b0b5-65d3d27c1163",
+    "dimension": "minecraft:overworld",
+    "radius": 96,
+    "distanceMetric": "3d_sphere_to_nearest_recorded_piece_volume",
+    "source": "server_structure_records",
+    "filter": "#minecraft:village",
+    "status": "COMPLETE",
+    "complete": true,
+    "coverageComplete": true,
+    "truncated": false,
+    "nextOffset": 0,
+    "totalMatched": 0,
+    "checkedChunks": 140,
+    "primaryChunks": 140,
+    "referencedStartChunks": 0,
+    "scheduledChunks": 0,
+    "unavailableChunksOrRecords": 0,
+    "sampledAtTick": 160159,
+    "elapsedMillis": 18,
+    "snapshotAgeMillis": 113,
+    "retryAfterMs": 0,
+    "limitation": "Generated structure records may survive destruction. Positions are not entrances or safe navigation destinations; player buildings are not indexed. Native metadata generation may read dependency chunks outside the sphere; returned positions never exceed its radius."
+  },
+  "listenerStatus": "LISTENING",
+  "modelConnectionReady": true
+}

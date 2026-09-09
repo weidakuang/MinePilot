@@ -21,8 +21,9 @@ public final class KnowledgeTools {
         tools.add(tool("inventory_events","Read actual acquisition events and current inventory. Unknown source means unproven, not system-given.",schema(invEvents),true,false));
         JsonObject annotation=new JsonObject();annotation.add("entry_id",string("Current inventory entryId including item components."));annotation.add("importance",integer("0 most important through 5 least important. Levels 0..2 cannot be used as navigation support."));annotation.add("note",string("Up to 256 characters."));
         tools.add(tool("annotate_item","Persist item importance and note in this world. Identical split stacks share the policy.",schema(annotation,"entry_id","importance","note"),false,false));
-        JsonObject sense=new JsonObject();sense.add("kind",enumString("entities","items","blocks","trees","structures"));sense.add("radius",integer("1..96 blocks, loaded space only."));sense.add("filter",string("Type/name/id substring; empty means all."));sense.add("offset",integer("Entity result offset."));sense.add("cursor",string("Block search continuation cursor."));sense.add("limit",integer("1..64 results."));
-        tools.add(tool("sense","Query bounded perception. Local sensors bypass occlusion; farther vision follows the custom transparent-block rules. Structure markers are candidates, never hidden locate results.",schema(sense,"kind"),true,false));
+        JsonObject sense=new JsonObject();sense.add("kind",enumString("entities","items","blocks","trees","structures"));sense.add("radius",integer("1..96 blocks. Structures default 96 and use a fixed 3D sphere; other sensors inspect loaded space."));sense.add("filter",string("Type/name/id substring; structures accept registered ids, #tags and aliases such as village/村庄. Empty means all."));sense.add("offset",integer("Entity or completed structure result offset."));sense.add("cursor",string("Block/structure search continuation cursor; retain it while SEARCHING."));sense.add("limit",integer("1..64 results."));
+        sense.getAsJsonObject("radius").addProperty("minimum",1);sense.getAsJsonObject("radius").addProperty("maximum",96);
+        tools.add(tool("sense","Query bounded perception. Structures query native server generation records within a maximum 96-block sphere, including obscured structures; results are not visual sightings, verified current buildings or safe entrances. Other sensors follow proximity/vision rules. Continue cursors and respect coverageComplete.",schema(sense,"kind"),true,false));
         JsonObject point=new JsonObject();point.add("operation",enumString("save","list","remove"));point.add("name",string("Waypoint name, up to 64 characters."));point.add("note",string("Up to 256 characters."));point.add("dimension",string("Defaults to current dimension."));point.add("x",number("Defaults to body X."));point.add("y",number("Defaults to body Y."));point.add("z",number("Defaults to body Z."));
         point.add("offset",integer("Waypoint list offset."));point.add("limit",integer("Waypoint list limit 1..32."));
         tools.add(tool("waypoint","Save, list or remove dimension-scoped coordinate memories; these are not current terrain observations.",schema(point,"operation"),false,false));
@@ -63,8 +64,9 @@ public final class KnowledgeTools {
     }
     private JsonObject sense(JsonObject a){
         String kind=requiredString(a,"kind"),filter=optionalString(a,"filter","");int limit=Math.toIntExact(optionalLong(a,"limit",32));
-        int radius=Math.toIntExact(optionalLong(a,"radius",kind.equals("entities")?96:10));
+        int radius=Math.toIntExact(optionalLong(a,"radius",kind.equals("entities") || kind.equals("structures")?96:10));
         if(kind.equals("entities") || kind.equals("items"))return runtime.perception.entities(Math.toIntExact(optionalLong(a,"offset",0)),limit,filter,radius,kind.equals("items"));
+        if(kind.equals("structures"))return runtime.perception.structures.query(radius,filter,optionalString(a,"cursor",""),Math.toIntExact(optionalLong(a,"offset",0)),limit);
         if(!java.util.Set.of("blocks","trees","structures").contains(kind))throw new IllegalArgumentException("Unknown sense category");
         return runtime.perception.blocks(radius,filter,kind,optionalString(a,"cursor",""),limit);
     }

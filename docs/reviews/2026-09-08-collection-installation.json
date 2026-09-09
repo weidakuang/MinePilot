@@ -1,0 +1,11 @@
+{
+  "built": "/Users/weida/Documents/minecraft-ai-companion-forge/build/libs/mcai_companion-0.2.0-dev-mc26.2.jar",
+  "installed": "/Users/weida/Library/Application Support/xmcl/instances/26.2-forge65.0.9/mods/mcai_companion-0.2.0-dev-mc26.2.jar",
+  "sha256": "8fa48ec45bac6f7febfe2985a314a8123ab744f75bf2b7fa9db1d8d21f6cb04b",
+  "previousSha256": "e11bc0a043aadd98e443613274dba24ef85ebd8f9989fb3cfa7c9725608a8a6d",
+  "backup": "/Users/weida/Library/Application Support/xmcl/instances/26.2-forge65.0.9/mods/.minepilot-backup/mcai_companion-0.2.0-dev-mc26.2-pre-collection-20260908-e11bc0a043aa.jar",
+  "minecraftProcessesBeforeInstall": [],
+  "backendForge": "65.0.9",
+  "realClientLaunchVerified": false,
+  "note": "XMCL instance folder says Forge 65.0.9; launcher previously reported 65.0.8. No client world entry was repeated."
+}

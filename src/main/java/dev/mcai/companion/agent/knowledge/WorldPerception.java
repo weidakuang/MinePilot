@@ -28,9 +28,11 @@ public final class WorldPerception {
     private final List<net.minecraft.core.component.DataComponentType<?>> variantTypes=new ArrayList<>();
     private final LinkedHashMap<String,EntityScan> entityScans=new LinkedHashMap<>();
     private int budgetTick=Integer.MIN_VALUE;private long scanNanos;private double peakScanMillis;
-    public long beginWork(long maximumNanos){int tick=player.level().getServer().getTickCount();if(tick!=budgetTick){budgetTick=tick;scanNanos=0;}return System.nanoTime()+Math.min(maximumNanos,Math.max(0,3_000_000L-scanNanos));}
-    public void recordWork(long began){scanNanos+=System.nanoTime()-began;peakScanMillis=Math.max(peakScanMillis,scanNanos/1_000_000.0);}
-    public JsonObject performance(){var out=new JsonObject();out.addProperty("scanBudgetMillisPerTick",3);out.addProperty("currentTickScanMillis",scanNanos/1_000_000.0);out.addProperty("peakTickScanMillis",peakScanMillis);out.addProperty("activeBlockScans",scans.size());out.addProperty("activeEntityScans",entityScans.size());return out;}
+    public long beginWork(long maximumNanos){int tick=player.level().getServer().getTickCount();if(tick!=budgetTick){budgetTick=tick;scanNanos=0;}return dev.mcai.companion.agent.concurrent.MainThreadBudget.of(player.level().getServer()).deadline(maximumNanos);}
+    public void recordWork(long began){int tick=player.level().getServer().getTickCount();if(tick!=budgetTick){budgetTick=tick;scanNanos=0;}dev.mcai.companion.agent.concurrent.MainThreadBudget.of(player.level().getServer()).record(began);scanNanos+=System.nanoTime()-began;peakScanMillis=Math.max(peakScanMillis,scanNanos/1_000_000.0);}
+    public JsonObject performance(){var out=new JsonObject();var shared=dev.mcai.companion.agent.concurrent.MainThreadBudget.of(player.level().getServer());
+        out.addProperty("sharedWorldReadBudgetMillis",shared.limitNanos()/1_000_000.0);out.addProperty("sharedWorldReadMillis",shared.usedNanos()/1_000_000.0);out.addProperty("peakSharedWorldReadMillis",shared.peakNanos()/1_000_000.0);
+        out.addProperty("analysisWorkers",dev.mcai.companion.agent.concurrent.AnalysisWorkers.workerCount());out.addProperty("analysisActive",dev.mcai.companion.agent.concurrent.AnalysisWorkers.active());out.addProperty("analysisQueued",dev.mcai.companion.agent.concurrent.AnalysisWorkers.queued());out.addProperty("scanBudgetMillisPerTick",3);out.addProperty("currentTickScanMillis",scanNanos/1_000_000.0);out.addProperty("peakTickScanMillis",peakScanMillis);out.addProperty("activeBlockScans",scans.size());out.addProperty("activeEntityScans",entityScans.size());return out;}
     private long lastEntityTick=-100;
     private JsonObject entitySnapshot;
     private final LinkedHashMap<String,ScanPage> scans=new LinkedHashMap<>();

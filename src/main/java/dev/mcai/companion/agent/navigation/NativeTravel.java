@@ -42,7 +42,7 @@ public final class NativeTravel implements AutoCloseable {
     public void tick(){
         var p=runtime.player();
         if(phase.equals("CAPTURING")){
-            if(capture.advance(2_000_000)){pending=planner.submit(UUID.randomUUID(),capture.finish());capture=null;phase="PLANNING";}return;
+            if(capture.advance(2_000_000)){pending=planner.submit(UUID.randomUUID(),capture,false);capture=null;phase="PLANNING";}return;
         }
         if(phase.equals("PLANNING")){
             if(!pending.isDone())return;

@@ -23,9 +23,6 @@ public final class StructurePerception {
     private static final int MAX_STARTS = 512;
     private final MinePilotServerPlayer player;
     private final LinkedHashMap<String, Scan> scans = new LinkedHashMap<>();
-    private final java.util.concurrent.ExecutorService scheduler = java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
-        Thread thread = new Thread(task, "MinePilot-Structure-Scheduler"); thread.setDaemon(true); return thread;
-    });
     private static final Map<String, String> ALIASES = Map.ofEntries(
             Map.entry("村庄", "#minecraft:village"), Map.entry("village", "#minecraft:village"),
             Map.entry("要塞", "minecraft:stronghold"), Map.entry("下界要塞", "minecraft:fortress"),
@@ -88,7 +85,9 @@ public final class StructurePerception {
         int tick = player.level().getServer().getTickCount();
         if (tick == lastTick) return;
         lastTick = tick;
-        long deadline = System.nanoTime() + 2_000_000L;
+        var budget=dev.mcai.companion.agent.concurrent.MainThreadBudget.of(player.level().getServer());
+        long began=System.nanoTime(),deadline=budget.deadline(2_000_000L);
+        try {
         boolean scheduled = false;
         for (Scan scan : scans.values()) {
             if (scan.done()) continue;
@@ -119,9 +118,10 @@ public final class StructurePerception {
             if (scan.queue.isEmpty() && scan.pending.isEmpty()) scan.finish();
             if (System.nanoTime() >= deadline) break;
         }
+        } finally {budget.record(began);}
     }
 
-    public void close() { scans.clear(); scheduler.shutdown(); } // Native shared chunk futures must not be cancelled.
+    public void close() { scans.clear(); } // Native shared chunk futures must not be cancelled.
     private void requireServerThread() {
         if (!player.level().getServer().isSameThread()) throw new IllegalStateException("Structure records require the server thread");
     }

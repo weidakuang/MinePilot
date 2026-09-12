@@ -4,7 +4,8 @@
  * Upstream commit: 34ef004dac3095fbbd928a897927e277c69d02fa
  * Modifications 2026-09-12 by weida / MinePilot contributors:
  * relocated package, English documentation, public loaded-chunk accessor,
- * and unused import removal. Runtime scanning algorithm is retained.
+ * and unused import removal. On 2026-09-13 resource jobs gained copied-section
+ * worker scanning; the synchronous primitive remains for small local queries.
  * See META-INF/licenses/numen and THIRD_PARTY_NOTICES.md.
  */
 package dev.mcai.companion.vendor.numen.scan;
@@ -71,6 +72,32 @@ public final class BlockScanner {
         // section's palette holds no target.
         if (!section.maybeHas(filter)) return;
         scanSection(section, chunkX, sectionY, chunkZ, center, radius, radiusSq, filter, out);
+    }
+
+    /** Owns a copied palette/storage; no live chunk, level, entity or inventory. */
+    public record SectionSnapshot(net.minecraft.world.level.chunk.PalettedContainer<BlockState> states,
+                                  int x,int y,int z) {}
+    public static SectionSnapshot snapshot(ServerLevel level,ChunkAccess chunk,int x,int y,int z,
+                                            Predicate<BlockState> filter) {
+        if(!level.getServer().isSameThread())throw new IllegalStateException("Section copy requires server thread");
+        int index=level.getSectionIndexFromSectionY(y);
+        if(index<0 || index>=chunk.getSectionsCount())return null;
+        var section=chunk.getSection(index);
+        if(section==null || section.hasOnlyAir() || !section.maybeHas(filter))return null;
+        return new SectionSnapshot(section.getStates().copy(),x,y,z);
+    }
+    public static List<Hit> scanSnapshots(List<SectionSnapshot> sections,BlockPos center,int radius,
+                                           Predicate<BlockState> filter) {
+        var hits=new java.util.ArrayList<Hit>();
+        for(var section:sections)for(int y=0;y<16;y++) {
+            if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException();
+            for(int x=0;x<16;x++)for(int z=0;z<16;z++) {
+                var state=section.states().get(x,y,z);if(!filter.test(state))continue;
+                var pos=new BlockPos(section.x()*16+x,section.y()*16+y,section.z()*16+z);
+                double distance=pos.distSqr(center);if(distance<=radius*(double)radius)hits.add(new Hit(pos,state,Math.sqrt(distance)));
+            }
+        }
+        return List.copyOf(hits);
     }
 
     private static void scanSection(LevelChunkSection section,

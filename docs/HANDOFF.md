@@ -980,3 +980,20 @@ exact inventory debit. Automatic routes accept up to 16 manifested expendable
 supports. 44 Java / 128 Python tests and both native navigation gates passed.
 Production backup: `/Users/weida/Documents/minecraft-ai-companion-forge/.minepilot-backup/navigation-arrival-1789222097`.
 Installed JAR: `3f81fa164d26733f80e03b8002660d80eae10f6c6a3826199d71fd9df958c1e8`.
+
+
+## 2026-09-13 01:03 — shared analysis workers / E5 preparation
+
+GitHub pre-change backup: `https://github.com/weidakuang/MinePilot/commit/7b9a4f2fb94c1530bd17876608630d26b9bc900b`; exact source-tree match verified.
+Current work branch: `codex/e5-threading-20260913` (no backup upstream).
+See `THREADING_E5_20260913.md` for thread ownership, residual synchronous work,
+JVM controls and measured limits. Shared 1–4 analysis workers replace independent
+pools; copied-section resource matching, route-map/threat math and excavation
+planning are off-thread. Main-thread world reads share a 3 ms cooperative budget;
+collection/placement route captures now yield between ticks.
+46 Java / 128 Python tests and six native gate groups passed. Installed-server
+read-only probe: 16 wood candidates in 188.58 ms, not exhaustive coverage;
+40 ticks in 2.008 seconds, health 20, idle navigation. No E5 hardware benchmark.
+Installed SHA-256: `185ecd16808201b1d99555ebbb6c20fefb904149ff8354d27bb8398b2ab93dc0`.
+Stopped-world backup: `/Users/weida/Documents/minecraft-ai-companion-forge/.minepilot-backup/threading-1789228874`.
+Production server PID 81520, listener PID 81612; DeepSeek connected.

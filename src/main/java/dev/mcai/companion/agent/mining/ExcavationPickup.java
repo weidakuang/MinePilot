@@ -63,8 +63,7 @@ final class ExcavationPickup implements AutoCloseable {
         if(budget<.5){fail("Excavation travel budget leaves no room for remaining pickup");return;}
         try{
             if(phase.equals("CAPTURING")){
-                long began=System.nanoTime(),allowance=r.perception.beginWork(1_500_000L)-began;if(allowance<=0)return;
-                boolean done=capture.advance(allowance);r.perception.recordWork(began);if(done){pending=planner.submit(UUID.randomUUID(),capture.finish());capture=null;phase="PLANNING";}return;
+                boolean done=capture.advance(1_500_000L);if(done){pending=planner.submit(UUID.randomUUID(),capture,false);capture=null;phase="PLANNING";}return;
             }
             if(phase.equals("PLANNING")){
                 if(!pending.isDone())return;NavigationPlan plan;

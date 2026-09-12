@@ -127,8 +127,8 @@ public final class NavigationToolCoordinator implements AutoCloseable {
         var current=active;
         try {
             if(!current.capture.advance(2_000_000L))return;
-            var snapshot=current.capture.finish();current.capture=null;
-            if(player.position().distanceToSqr(new net.minecraft.world.phys.Vec3(snapshot.exactStart().x(),snapshot.exactStart().y(),snapshot.exactStart().z()))>.25) {
+            var snapshot=current.capture;current.capture=null;
+            if(player.position().distanceToSqr(new net.minecraft.world.phys.Vec3(snapshot.startPosition().x(),snapshot.startPosition().y(),snapshot.startPosition().z()))>.25) {
                 current.phase=Phase.REPLAN_REQUIRED;planNavigation(current.intent.requestId());return;
             }
             UUID requestId=current.intent.requestId();

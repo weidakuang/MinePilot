@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 // Adapted from Dwinovo/minecraft-numen 34ef004dac3095fbbd928a897927e277c69d02fa.
+// Modified 2026-09-13: owned section snapshots, bounded worker batches and
+// main-thread live validation under the shared MinePilot world-read budget.
 package dev.mcai.companion.vendor.numen.scan;
 
 import dev.mcai.companion.MinecraftAiCompanion;
@@ -40,7 +42,6 @@ public final class BlockSearch {
     private final String label;
     private final MinecraftServer owner;
     private final java.util.function.Predicate<BlockPos> eligible;
-    private static final java.util.Map<MinecraftServer,SearchBudget> BUDGETS = new java.util.WeakHashMap<>();
     private long startTick = -1;
     private final UUID entityUuid;
     private final ResourceKey<Level> dimension;
@@ -68,6 +69,11 @@ public final class BlockSearch {
     private ChunkAccess currentChunk;
     private int currentChunkX, currentChunkZ, sectionCursor;
 
+    private final dev.mcai.companion.agent.concurrent.AnalysisWorkers worker=new dev.mcai.companion.agent.concurrent.AnalysisWorkers();
+    private java.util.concurrent.CompletableFuture<List<BlockScanner.Hit>> pending;
+    private List<BlockScanner.Hit> unvalidated=List.of();
+    private int validationIndex;
+    private boolean exhausted;
     private final List<BlockScanner.Hit> matches = new ArrayList<>();
 
     /**
@@ -96,7 +102,8 @@ public final class BlockSearch {
         this.center = center;
         this.radius = radius;
         this.radiusSq = (double) radius * radius;
-        this.filter = state -> targets.contains(state.getBlock());
+        var targetCopy=Set.copyOf(targets);
+        this.filter = state -> targetCopy.contains(state.getBlock());
         this.onDone = onDone;
         this.label = describe(targets);
         this.centerChunkX = SectionPos.blockToSectionCoord(center.getX());
@@ -129,60 +136,55 @@ public final class BlockSearch {
 
     /** Abandon one search: no callback will fire. Unknown / already-finished ids are a no-op. */
     public static void cancel(int id) {
-        JOBS.removeIf(job -> job.id == id);
+        JOBS.removeIf(job -> {if(job.id!=id)return false;job.worker.close();return true;});
     }
 
     /** Advance all pending scans under the shared budget. */
     public static void tick(MinecraftServer server) {
         if (JOBS.isEmpty()) return;
-        BUDGETS.computeIfAbsent(server, key -> new SearchBudget()).refresh(server);
-        Iterator<BlockSearch> it = JOBS.iterator();
-        while (it.hasNext()) {
-            BlockSearch job = it.next();
-            if (job.owner == server && job.tickOne(server)) it.remove();
-        }
+        if(!server.isSameThread())throw new IllegalStateException("Search dispatch requires server thread");
+        var budget=dev.mcai.companion.agent.concurrent.MainThreadBudget.of(server);
+        long began=System.nanoTime(),deadline=budget.deadline(2_000_000L);
+        try {
+            Iterator<BlockSearch> it=JOBS.iterator();
+            while(it.hasNext() && System.nanoTime()<deadline){var job=it.next();if(job.owner==server && job.tickOne(server,deadline))it.remove();}
+        } finally {budget.record(began);}
     }
 
-    /** @return true when finished (reply sent). */
-    private boolean tickOne(MinecraftServer server) {
-        ServerLevel level = server.getLevel(dimension);
-        if (level == null) {
-            finish(server, false);
-            return true;
+    /** Copy small palette batches, scan off-thread, then validate live candidates in slices. */
+    private boolean tickOne(MinecraftServer server,long timeLimit) {
+        ServerLevel level=server.getLevel(dimension);
+        if(level==null){finish(server,true);return true;}
+        if(deadline<0){startTick=server.getTickCount();deadline=startTick+DEADLINE_TICKS;}
+        if(server.getTickCount()>=deadline){finish(server,true);return true;}
+        if(pending!=null){
+            if(!pending.isDone())return false;
+            try{unvalidated=pending.join();validationIndex=0;}catch(java.util.concurrent.CompletionException failed){finish(server,true);return true;}
+            pending=null;
         }
-        if (deadline < 0) {
-            startTick = server.getTickCount();
-            deadline = startTick + DEADLINE_TICKS;
+        while(validationIndex<unvalidated.size() && System.nanoTime()<timeLimit){
+            var hit=unvalidated.get(validationIndex++);
+            if(level.isLoaded(hit.pos()) && level.getBlockState(hit.pos()).equals(hit.state()) && eligible.test(hit.pos()))matches.add(hit);
+            if(matches.size()>=MAX_COLLECT){finish(server,true);return true;}
         }
-        if (server.getTickCount() >= deadline) {
-            finish(server, true);
-            return true;
+        feedBound();
+        if(validationIndex<unvalidated.size())return false;
+        unvalidated=List.of();validationIndex=0;
+        if(exhausted){finish(server,false);return true;}
+        var batch=new ArrayList<BlockScanner.SectionSnapshot>();int visited=0;
+        while(batch.size()<8 && visited++<128 && System.nanoTime()<timeLimit){
+            if(currentChunk==null && !nextColumn(level)){exhausted=true;break;}
+            var loaded=BlockScanner.loadedChunk(level,currentChunkX,currentChunkZ);
+            if(loaded==null){currentChunk=null;columnsUnloaded++;continue;}
+            var copy=BlockScanner.snapshot(level,loaded,currentChunkX,sectionOrder[sectionCursor++],currentChunkZ,filter);
+            if(copy!=null)batch.add(copy);
+            if(sectionCursor>=sectionOrder.length){currentChunk=null;columnsScanned++;}
         }
-        while (true) {
-            if (currentChunk == null && !nextColumn(level)) {
-                finish(server, false);   // spiral exhausted
-                return true;
-            }
-            // Scan the in-progress column one budgeted section at a time, nearest layer first.
-            while (sectionCursor < sectionOrder.length) {
-                if (!BUDGETS.get(server).trySectionScan()) return false;
-                BlockScanner.scanChunkSection(level, currentChunk,
-                        currentChunkX, sectionOrder[sectionCursor], currentChunkZ,
-                        center, radius, radiusSq, filter, matches);
-                // Keep only task-eligible exposed candidates before applying caps.
-                // Buried stone must not fill the quota and starve a nearby outcrop.
-                for (int i=matches.size()-1;i>=fed;i--) if(!eligible.test(matches.get(i).pos())) matches.remove(i);
-                sectionCursor++;
-                feedBound();
-                if (matches.size() >= MAX_COLLECT) {
-                    // Ring order means what we have is the nearest area anyway.
-                    finish(server, false);
-                    return true;
-                }
-            }
-            currentChunk = null;
-            columnsScanned++;
-        }
+        if(!batch.isEmpty()){
+            var copies=List.copyOf(batch);var searchCenter=center;int searchRadius=radius;var predicate=filter;
+            pending=worker.submit(()->BlockScanner.scanSnapshots(copies,searchCenter,searchRadius,predicate));
+        } else if(exhausted){finish(server,false);return true;}
+        return false;
     }
 
     /**
@@ -229,6 +231,7 @@ public final class BlockSearch {
     }
 
     private void finish(MinecraftServer server, boolean deadlineHit) {
+        worker.close();
         matches.sort(Comparator.comparingDouble(BlockScanner.Hit::distance));
         // One line per search, and it has to carry everything a bug report needs: what was
         // asked, what came back, WHY it stopped, and what it cost. "She can't find X" is

@@ -20,6 +20,7 @@ import net.minecraft.world.phys.*;
 public final class PlacementCoordinator implements AutoCloseable {
     public record Cell(BlockPos pos,ItemStack item,String entry,Map<String,String> state,InteractionHand hand,boolean jump,boolean temporary,BlockState before) {}
     private final AgentRuntime r;private final MinePilotServerPlayer p;
+    private NavigationSnapshotBuilder.Capture routeCapture;
     private final PlanningExecutor planner=new PlanningExecutor(NavigationPlannerConfig.defaults());
     private final NavigationSnapshotBuilder snapshots=new NavigationSnapshotBuilder(new NavigationSnapshotBuilder.CaptureConfig(4,4,6,48,24,50_000,8));
     private final NavigationFollower follower;
@@ -178,6 +179,7 @@ public final class PlacementCoordinator implements AutoCloseable {
                 case "AIM","JUMP" -> placeTick();
                 case "VERIFY" -> verify();
                 case "LAND" -> {if(p.onGround()){if(p.getY()<active.pos.getY()+.95){block("JUMP_LANDING_NOT_VERIFIED",active.pos);return;}advance();}else if(tick()-stepStarted>60)block("LANDING_TIMEOUT",active.pos);}
+                case "CAPTURE_ROUTE" -> {if(routeCapture.advance(2_000_000L)){pendingRoute=planner.submit(UUID.randomUUID(),routeCapture,false);routeCapture=null;step="PLAN_ROUTE";}}
                 case "PLAN_ROUTE" -> resolveRoute();
                 case "TRAVEL" -> {follower.tick();if(routeEvent!=null){var e=routeEvent;routeEvent=null;if(e.type()==NavigationEvent.Type.NAVIGATION_COMPLETED){step="SELECT";active=null;}else if(e.type()==NavigationEvent.Type.NAVIGATION_DECISION_REQUIRED || e.type()==NavigationEvent.Type.NAVIGATION_FAILED){if(!approaches.isEmpty())beginRoute();else block("APPROACH_BLOCKED: "+e.message(),active==null?null:active.pos);}}}
                 case "MINE" -> {
@@ -307,7 +309,7 @@ public final class PlacementCoordinator implements AutoCloseable {
         if(approaches.isEmpty()){block("NO_EVALUATED_SAFE_APPROACH",active.pos);return;}
         var dest=Vec3.atBottomCenterOf(approaches.removeFirst());routeStart=p.position();
         var destination=new NavigationPlan.ResolvedDestination(dimension,dest.x,dest.y,dest.z,.5,false,"placement:"+request,OptionalDouble.empty(),Optional.empty());
-        pendingRoute=planner.submit(UUID.randomUUID(),snapshots.capture(p,destination,0));step="PLAN_ROUTE";routeEvent=null;
+        routeCapture=snapshots.begin(p,destination,0);step="CAPTURE_ROUTE";routeEvent=null;
     }
     private void resolveRoute(){
         if(!pendingRoute.isDone())return;
@@ -316,7 +318,7 @@ public final class PlacementCoordinator implements AutoCloseable {
         chosenRoute=route.options().stream().filter(o->o.feasibleNow() && o.supportBlocksRequired()==0 && o.estimatedHealthLost()==0 && o.distanceBlocks()+distance<=maxDistance && o.steps().stream().allMatch(s->new Vec3(s.x(),s.y(),s.z()).distanceToSqr(origin)<=24*24)).min(Comparator.comparingDouble(RouteOption::distanceBlocks)).orElse(null);
         if(chosenRoute==null){beginRoute();return;}follower.start(route,chosenRoute,TravelPace.AUTO,OptionalDouble.empty());step="TRAVEL";
     }
-    private void stopChildren(){
+    private void stopChildren(){routeCapture=null;
         if(pendingRoute!=null){pendingRoute.cancel(true);pendingRoute=null;}follower.cancel("Placement action stopped");
         if(mineId!=null && childMining.contains(mineId.toString()) && r.mining().status().has("requestId") && r.mining().status().get("requestId").getAsString().equals(mineId.toString()))child(()->r.mining().interrupt(mineId,false,"Placement parent stopped"));
         mineId=null;p.stopControlling();

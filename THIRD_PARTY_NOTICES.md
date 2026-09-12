@@ -48,3 +48,11 @@ pinned Numen revision. MinePilot retains its snapshot planner, collision checks,
 real material manifest, native item use, and server-player physics. The local
 adaptations are in `AnytimeNavigationPlanner`, `NavigationFollower`, and
 `NavigationToolCoordinator`; the upstream movement classes are not wholesale ports.
+
+On 2026-09-13, `BlockScanner` gained copied palette-section scans, and
+`BlockSearch` gained bounded asynchronous batches and live main-thread candidate
+validation. Their runtime world-read budget is now MinePilot's shared
+`agent/concurrent/MainThreadBudget`; the ported `SearchBudget` remains a reference
+and test primitive, not a second production budget. The new shared worker and
+budget adapters remain Apache-2.0; modifications inside the Numen source files
+retain LGPL-3.0-only.

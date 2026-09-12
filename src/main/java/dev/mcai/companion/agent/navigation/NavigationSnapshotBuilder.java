@@ -75,6 +75,7 @@ public final class NavigationSnapshotBuilder {
         private final ServerLevel level;
         private final NavigationPlan.ResolvedDestination destination;
         private final long worldRevision, observedTick;
+        private final String dimension;
         private final Bounds bounds;
         private final GridPosition start;
         private final NavigationWorldSnapshot.Position exactStart;
@@ -84,17 +85,20 @@ public final class NavigationSnapshotBuilder {
         private final BlockPos.MutableBlockPos cursor=new BlockPos.MutableBlockPos();
         private long index;
         private Capture(MinePilotServerPlayer player, NavigationPlan.ResolvedDestination destination,long revision,Bounds bounds,GridPosition start) {
+            this.dimension=player.level().dimension().identifier().toString();
             this.player=player;this.level=player.level();this.destination=destination;this.worldRevision=revision;this.bounds=bounds;this.start=start;
             observedTick=level.getGameTime();exactStart=new NavigationWorldSnapshot.Position(player.getX(),player.getY(),player.getZ());
             resources=resources(player);threats=captureThreats(level,player,bounds);
         }
         public boolean advance(long budgetNanos) {
             if(!level.getServer().isSameThread())throw new IllegalStateException("Capture requires server thread");
-            long began=System.nanoTime();int width=bounds.maxX()-bounds.minX()+1,depth=bounds.maxZ()-bounds.minZ()+1;
-            do {
+            if(index>=volume(bounds))return true;
+            var budget=dev.mcai.companion.agent.concurrent.MainThreadBudget.of(level.getServer());
+            long began=System.nanoTime(),deadline=budgetNanos==Long.MAX_VALUE ? Long.MAX_VALUE : budget.deadline(budgetNanos);int width=bounds.maxX()-bounds.minX()+1,depth=bounds.maxZ()-bounds.minZ()+1;
+            try { while(index<volume(bounds) && System.nanoTime()<deadline) {
                 long n=index++;
                 readCell(bounds.minX()+(int)(n%width),bounds.minY()+(int)(n/(width*depth)),bounds.minZ()+(int)((n/width)%depth));
-            } while(index<volume(bounds) && System.nanoTime()-began<budgetNanos);
+            }} finally {budget.record(began);}
             return index>=volume(bounds);
         }
         private void readCell(int x,int y,int z) {
@@ -124,15 +128,26 @@ public final class NavigationSnapshotBuilder {
                             openable,
                             damaging,
                             unstable,
-                            hostileRisk(position, threats),
+                            0,
                             state.is(BlockTags.CLIMBABLE),
                             collision && !openable || state.is(Blocks.SCAFFOLDING),
                             shape.toAabbs().stream().map(b->new NavigationWorldSnapshot.CollisionBox(b.minX,b.minY,b.minZ,b.maxX,b.maxY,b.maxZ)).toList()
                     ));
         }
+        public NavigationWorldSnapshot.Position startPosition(){return exactStart;}
         public NavigationWorldSnapshot finish() {
             if(index<volume(bounds))throw new IllegalStateException("Capture is incomplete");
-            return new NavigationWorldSnapshot(worldRevision,observedTick,level.dimension().identifier().toString(),bounds,start,exactStart,destination,resources,cells);
+            var finished=cells;
+            if(!threats.isEmpty()) {
+                finished=new HashMap<>();
+                for(var entry:cells.entrySet()) {
+                    if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException();
+                    var c=entry.getValue();
+                    finished.put(entry.getKey(),new Cell(c.collision(),c.water(),c.lava(),c.openableDoor(),c.damaging(),c.unstable(),
+                            hostileRisk(entry.getKey(),threats),c.climbable(),c.supportsStanding(),c.shape()));
+                }
+            }
+            return new NavigationWorldSnapshot(worldRevision,observedTick,dimension,bounds,start,exactStart,destination,resources,finished);
         }
     }
 

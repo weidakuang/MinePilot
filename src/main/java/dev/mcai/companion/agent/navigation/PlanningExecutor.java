@@ -2,42 +2,23 @@ package dev.mcai.companion.agent.navigation;
 
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /** Dedicated, bounded CPU pool for route planning. */
 public final class PlanningExecutor implements AutoCloseable {
     private final AnytimeNavigationPlanner planner;
-    private final ThreadPoolExecutor executor;
-
-    public PlanningExecutor(NavigationPlannerConfig config) {
-        Objects.requireNonNull(config, "config");
-        planner = new AnytimeNavigationPlanner(config);
-        AtomicInteger sequence = new AtomicInteger();
-        ThreadFactory threads = task -> {
-            Thread thread = new Thread(task,
-                    "minepilot-navigation-" + sequence.incrementAndGet());
-            thread.setDaemon(true);
-            thread.setPriority(Math.max(Thread.MIN_PRIORITY, Thread.NORM_PRIORITY - 1));
-            return thread;
-        };
-        executor = new ThreadPoolExecutor(
-                config.workerThreads(),
-                config.workerThreads(),
-                30L,
-                TimeUnit.SECONDS,
-                new ArrayBlockingQueue<>(config.maximumQueuedPlans()),
-                threads,
-                new ThreadPoolExecutor.AbortPolicy()
-        );
-        executor.allowCoreThreadTimeOut(true);
+    private final dev.mcai.companion.agent.concurrent.AnalysisWorkers executor=new dev.mcai.companion.agent.concurrent.AnalysisWorkers();
+    public PlanningExecutor(NavigationPlannerConfig config) {planner=new AnytimeNavigationPlanner(Objects.requireNonNull(config));}
+    /** Finish snapshot math and map ownership on the same bounded worker as A*. */
+    public CompletableFuture<NavigationPlan> submit(UUID id,NavigationSnapshotBuilder.Capture capture,boolean partial) {
+        return executor.submit(()->planner.plan(id,capture.finish(),partial));
     }
-
+    public CompletableFuture<NavigationPlan> submitAny(UUID id,NavigationSnapshotBuilder.Capture capture,
+            java.util.List<NavigationPlan.ResolvedDestination> destinations) {
+        var goals=java.util.List.copyOf(destinations);
+        return executor.submit(()->planner.planAny(id,capture.finish(),goals));
+    }
     public CompletableFuture<NavigationPlan> submit(
             UUID requestId,
             NavigationWorldSnapshot snapshot
@@ -47,8 +28,7 @@ public final class PlanningExecutor implements AutoCloseable {
 
     public CompletableFuture<NavigationPlan> submit(UUID requestId, NavigationWorldSnapshot snapshot, boolean allowPartial) {
         try {
-            return CompletableFuture.supplyAsync(
-                    () -> planner.plan(requestId, snapshot, allowPartial), executor);
+            return executor.submit(() -> planner.plan(requestId, snapshot, allowPartial));
         } catch (RejectedExecutionException rejected) {
             return CompletableFuture.failedFuture(new PlanningBusyException(
                     "Navigation planner queue is full", rejected));
@@ -57,13 +37,13 @@ public final class PlanningExecutor implements AutoCloseable {
 
     @Override
     public void close() {
-        executor.shutdownNow();
+        executor.close();
     }
 
     public CompletableFuture<NavigationPlan> submitAny(UUID requestId,NavigationWorldSnapshot snapshot,
             java.util.List<NavigationPlan.ResolvedDestination> destinations) {
         var goals=java.util.List.copyOf(destinations);
-        try{return CompletableFuture.supplyAsync(()->planner.planAny(requestId,snapshot,goals),executor);}
+        try{return executor.submit(()->planner.planAny(requestId,snapshot,goals));}
         catch(RejectedExecutionException rejected){return CompletableFuture.failedFuture(new PlanningBusyException("Navigation planner queue is full",rejected));}
     }
 

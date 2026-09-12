@@ -20,6 +20,8 @@ import net.minecraft.world.phys.*;
 public final class CollectionCoordinator implements AutoCloseable {
     private final AgentRuntime runtime;
     private final MinePilotServerPlayer body;
+    private NavigationSnapshotBuilder.Capture routeCapture;
+    private List<NavigationPlan.ResolvedDestination> routeGoals;
     private final PlanningExecutor planner=new PlanningExecutor(NavigationPlannerConfig.defaults());
     private final NavigationSnapshotBuilder snapshots=new NavigationSnapshotBuilder(new NavigationSnapshotBuilder.CaptureConfig(4,4,6,48,24,50_000,8));
     private final NavigationFollower follower;
@@ -138,7 +140,7 @@ thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsB
             }else if(!seeds.isEmpty())addOption("matching-blocks","blocks",seeds.stream().limit(128).toList(),List.of(),new JsonObject());
         }
         if(options.isEmpty()){phase="BLOCKED";if(reason.isEmpty())reason="No eligible source in the observed fixed sphere; change the search or source policy. No blind excavation or fishbone mining was started.";}
-        planNanos=System.nanoTime()-scanStart;return status();
+        planNanos=System.nanoTime()-scanStart;runtime.perception.recordWork(scanStart);return status();
     }
     private void addOption(String id,String source,List<BlockPos> blocks,List<String> drops,JsonObject survey){
         var states=new LinkedHashMap<BlockPos,BlockState>();double breakTicks=0;int wear=0;
@@ -188,7 +190,7 @@ thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsB
     }
     public JsonObject resume(UUID id){thread();requireRequest(id);if(!phase.equals("PAUSED"))throw new IllegalStateException("Collection is not paused");phase="EXECUTING";step="SELECT";inaccessible.clear();lastPosition=body.position();return status();}
     public void cancelForChat(){if(ownsBody() || phase.equals("PLAN_READY"))interrupt(request,false);}
-    private void stopChildren(){if(pendingRoute!=null){pendingRoute.cancel(true);pendingRoute=null;}follower.cancel("Collection interrupted");child(()->{runtime.mining().cancelForChat();return null;});body.stopControlling();routeEvent=null;}
+    private void stopChildren(){routeCapture=null;routeGoals=null;if(pendingRoute!=null){pendingRoute.cancel(true);pendingRoute=null;}follower.cancel("Collection interrupted");child(()->{runtime.mining().cancelForChat();return null;});body.stopControlling();routeEvent=null;}
     private void block(String why){stopChildren();phase="BLOCKED";reason=why;}
     private boolean inside(Vec3 p){return p.distanceToSqr(center)<=radius*radius+1e-8;}
     private boolean insideTravel(Vec3 p){return p.distanceToSqr(center)<=(radius+2)*(radius+2)+1e-8;}
@@ -230,6 +232,9 @@ thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsB
                 else if(childPhase.equals("BLOCKED") || childPhase.equals("CANCELLED")){block("Block operation stopped: "+state.get("reason").getAsString());return;}else return;
             }
             if(step.equals("SETTLING_DROP")){if(tick()<waitUntil)return;step="SELECT";selectNext();return;}
+            if(step.equals("CAPTURE_ROUTE")){
+                if(routeCapture.advance(2_000_000L)){pendingRoute=planner.submitAny(UUID.randomUUID(),routeCapture,routeGoals);routeCapture=null;step="PLAN_ROUTE";}return;
+            }
             if(step.equals("PLAN_ROUTE")){resolveRoute();return;}
             if(step.equals("TRAVEL")){
                 if(drop!=null && !drop.isAlive()){
@@ -360,7 +365,7 @@ thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsB
         }
         var destinations=approaches.stream().limit(128).map(dest->new NavigationPlan.ResolvedDestination(dimension,dest.x,dest.y,dest.z,.5,false,"collection:"+request,OptionalDouble.empty(),Optional.empty())).toList();
         approaches.clear();
-        routeStart=body.position();pendingRoute=planner.submitAny(UUID.randomUUID(),snapshots.capture(body,destinations.getFirst(),0),destinations);step="PLAN_ROUTE";routeEvent=null;
+        routeStart=body.position();routeGoals=destinations;routeCapture=snapshots.begin(body,destinations.getFirst(),0);step="CAPTURE_ROUTE";routeEvent=null;
     }
     private boolean clearPickupHeadroom(){
         // A drop in the one-block notch just mined may need its matching resource

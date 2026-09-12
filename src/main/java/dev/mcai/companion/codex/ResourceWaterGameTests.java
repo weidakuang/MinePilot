@@ -24,6 +24,10 @@ public final class ResourceWaterGameTests {
         JsonObject call(String name,JsonObject args){var params=new JsonObject();params.addProperty("name",name);params.add("arguments",args);var request=new JsonObject();request.add("params",params);var result=tools.dispatch("tools/call",request);h.assertTrue(!result.get("isError").getAsBoolean(),name+": "+result);return result.getAsJsonObject("structuredContent");}
         JsonObject obj(String text){return JsonParser.parseString(text).getAsJsonObject();}
         void body(BlockPos pos){var p=r.player();p.setGameMode(GameType.SURVIVAL);p.setPos(Vec3.atBottomCenterOf(pos));p.setDeltaMovement(Vec3.ZERO);p.stopControlling();p.level().getChunkSource().move(p);}
+        final dev.mcai.companion.agent.concurrent.AnalysisWorkers testWorker=new dev.mcai.companion.agent.concurrent.AnalysisWorkers();
+        java.util.concurrent.CompletableFuture<java.util.List<dev.mcai.companion.vendor.numen.scan.BlockScanner.Hit>> copyProbe;
+        final java.util.concurrent.atomic.AtomicReference<String> copyThread=new java.util.concurrent.atomic.AtomicReference<>();
+        boolean copyVerified;
         void start(){r.onChat("TestHuman","stop");var l=h.getLevel();for(int x=-8;x<=8;x++)for(int z=-8;z<=8;z++)for(int y=-2;y<=8;y++)l.setBlock(base.offset(x,y,z),(y<0?Blocks.BEDROCK:Blocks.AIR).defaultBlockState(),2);
             body(base);r.player().setOnGround(true);r.memory.chat("user","TestHuman","Remember the camp next to the river.");r.memory.update("The player prefers a riverside camp.","Build the camp","ACTIVE",false);
             var restored=new CompanionMemory(r).snapshot();h.assertTrue(restored.get("summary").getAsString().contains("riverside") && restored.getAsJsonArray("recent").toString().contains("next to the river"),"Dialogue did not survive memory reload");
@@ -32,6 +36,14 @@ public final class ResourceWaterGameTests {
             r.server().getCommands().performPrefixedCommand(r.server().createCommandSourceStack(),"forceload add "+(base.getX()+128)+" "+(base.getZ()-16)+" "+(base.getX()+160)+" "+(base.getZ()+16));
             for(int x=130;x<=160;x++)for(int z=-1;z<=1;z++)for(int y=-1;y<=2;y++)l.setBlock(base.offset(x,y,z),Blocks.AIR.defaultBlockState(),2);
             l.setBlock(base.offset(149,0,0),Blocks.ANCIENT_DEBRIS.defaultBlockState(),2);l.setBlock(base.offset(151,0,0),Blocks.ANCIENT_DEBRIS.defaultBlockState(),2);
+            var probe=base.offset(149,0,0);
+            var copied=dev.mcai.companion.vendor.numen.scan.BlockScanner.snapshot(l,
+                dev.mcai.companion.vendor.numen.scan.BlockScanner.loadedChunk(l,probe.getX()>>4,probe.getZ()>>4),
+                probe.getX()>>4,probe.getY()>>4,probe.getZ()>>4,state->state.is(Blocks.ANCIENT_DEBRIS));
+            h.assertTrue(copied!=null,"Snapshot probe missed loaded palette");
+            l.setBlock(probe,Blocks.AIR.defaultBlockState(),2);
+            copyProbe=testWorker.submit(()->{copyThread.set(Thread.currentThread().getName());return dev.mcai.companion.vendor.numen.scan.BlockScanner.scanSnapshots(java.util.List.of(copied),probe,2,state->state.is(Blocks.ANCIENT_DEBRIS));});
+            h.addCleanup(ignored->testWorker.close());
             h.onEachTick(this::tick);since=h.getTick();
         }
         void next(int n){dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Resource/water stage {} passed in {} ticks",stage,h.getTick()-since);stage=n;since=h.getTick();}
@@ -40,9 +52,19 @@ public final class ResourceWaterGameTests {
             body(base.above());r.player().setAirSupply(100);health=r.player().getHealth();submerged=false;
         }
         void tick(){h.assertTrue(h.getTick()-since<(stage==7?8000:900),"Resource/water timeout stage "+stage+" at "+r.player().position()+" breath="+r.breath.status()+" gather="+r.gather().status());var p=r.player();
-            if(stage==0){if(h.getTick()-since<40)return;var query=r.resources.query("minecraft:ancient_debris",150,64,cursor);cursor=query.get("cursor").getAsString();if(!query.get("complete").getAsBoolean())return;
+            if(stage==0){
+                if(!copyVerified){if(!copyProbe.isDone())return;
+                    h.assertTrue(copyThread.get().startsWith("minepilot-analysis-"),"Resource math ran on server thread");
+                    h.assertTrue(h.getLevel().getBlockState(base.offset(149,0,0)).isAir() && copyProbe.join().stream().anyMatch(hit->hit.pos().equals(base.offset(149,0,0))),"Worker read changed live section instead of owned snapshot");
+                    h.getLevel().setBlock(base.offset(149,0,0),Blocks.ANCIENT_DEBRIS.defaultBlockState(),2);copyVerified=true;
+                    dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Resource snapshot isolation verified on {}",copyThread.get());
+                }
+                if(h.getTick()-since<40)return;var query=r.resources.query("minecraft:ancient_debris",150,64,cursor);cursor=query.get("cursor").getAsString();if(!query.get("complete").getAsBoolean())return;
                 boolean near=false,far=false;for(var value:query.getAsJsonArray("results")){var row=value.getAsJsonObject();near|=row.get("x").getAsInt()==base.getX()+149;far|=row.get("x").getAsInt()==base.getX()+151;}
-                h.assertTrue(near && !far,"150-block search boundary failed: "+query);h.assertTrue(!r.mining().reachable(base.offset(149,0,0)),"Perception changed native reach");pool(false);next(1);
+                h.assertTrue(near && !far,"150-block search boundary failed: "+query);
+                h.getLevel().setBlock(base.offset(149,0,0),Blocks.AIR.defaultBlockState(),2);
+                var stale=r.resources.query("minecraft:ancient_debris",150,64,cursor);
+                for(var hit:stale.getAsJsonArray("results"))h.assertTrue(hit.getAsJsonObject().get("x").getAsInt()!=base.getX()+149,"Stale copied resource survived live revalidation");h.assertTrue(!r.mining().reachable(base.offset(149,0,0)),"Perception changed native reach");pool(false);next(1);
             }else if(stage==1 || stage==2){submerged|=p.isEyeInFluid(FluidTags.WATER);if(!submerged || p.isEyeInFluid(FluidTags.WATER))return;
                 h.assertTrue(p.getY()>base.getY()+3,"Head cleared without a real ascent");h.assertTrue(p.getHealth()>=health,"Lost health before native breath recovery");
                 if(stage==1){next(6);}else{
@@ -60,7 +82,7 @@ public final class ResourceWaterGameTests {
                 call("gather",obj("{\"resource\":\"minecraft:coal_ore\",\"output_item\":\"minecraft:coal\",\"count\":4,\"radius\":30}"));next(7);
             }else if(stage==7){var state=call("gather_status",new JsonObject());if(state.has("travelPhase") && state.get("travelPhase").getAsString().equals("PLANNING"))java.util.concurrent.locks.LockSupport.parkNanos(5_000_000);if(state.get("phase").getAsString().equals("EXECUTING"))return;
                 h.assertTrue(state.get("phase").getAsString().equals("COMPLETED") && state.get("verifiedInventoryIncrease").getAsInt()>=4 && p.getY()>=base.getY()+4,"Natural bank access/collection failed: "+state);
-                int cleared=state.getAsJsonObject("access").get("clearedBlocks").getAsInt();h.assertTrue(cleared>0 && cleared<=24,"Bank recovery bypassed bounded physical breaks");next(5);h.succeed();}
+                int cleared=state.getAsJsonObject("access").get("clearedBlocks").getAsInt();h.assertTrue(cleared>0 && cleared<=24,"Bank recovery bypassed bounded physical breaks");next(5);dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Threading performance counters: {}",r.perception.performance());h.succeed();}
         }
     }
 }

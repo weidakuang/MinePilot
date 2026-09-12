@@ -20,7 +20,7 @@ import static dev.mcai.companion.agent.mining.ExcavationPlanner.*;
 /** Approved excavation scope plus native, interruptible break/place/walk execution. */
 public final class ExcavationCoordinator implements AutoCloseable {
     private final AgentRuntime r;
-    private final ExecutorService executor=Executors.newSingleThreadExecutor(task->{var t=new Thread(task,"MinePilot-Excavation");t.setDaemon(true);return t;});
+    private final dev.mcai.companion.agent.concurrent.AnalysisWorkers executor=new dev.mcai.companion.agent.concurrent.AnalysisWorkers();
     private final NavigationFollower follower;
     private final ExcavationPickup pickup;
     private boolean collectDrops,allowGrove,replant,treeCleared,replanted;
@@ -159,7 +159,7 @@ public final class ExcavationCoordinator implements AutoCloseable {
         destructive=targets.size()>128;
         var snapshot=new Snapshot(base,cells,targets,supports,allowAccess,allowSupports,requireHarvest,mode.equals("access"),maxBreaks,maxDistance,treeSurvey!=null,r.player().blockInteractionRange());
         phase="PLANNING";step="PLAN";
-        future=CompletableFuture.supplyAsync(()->{long begin=System.nanoTime();var value=ExcavationPlanner.alternatives(snapshot);workerMillis=(System.nanoTime()-begin)/1_000_000.0;return value;},executor);
+        future=executor.submit(()->{long begin=System.nanoTime();var value=ExcavationPlanner.alternatives(snapshot);workerMillis=(System.nanoTime()-begin)/1_000_000.0;return value;});
     }
     private List<Tool> previewTools(BlockState state,BlockPos bp){
         String key=state.toString();if(toolCache.containsKey(key))return toolCache.get(key);
@@ -272,5 +272,5 @@ public final class ExcavationCoordinator implements AutoCloseable {
     public static Pos pos(BlockPos p){return new Pos(p.getX(),p.getY(),p.getZ());}
     public static BlockPos blockPos(Pos p){return new BlockPos(p.x(),p.y(),p.z());}
     private static Vec3 feet(Pos p){return new Vec3(p.x()+.5,p.y(),p.z()+.5);}
-    @Override public void close(){cancelForChat();pickup.close();executor.shutdownNow();}
+    @Override public void close(){cancelForChat();pickup.close();executor.close();}
 }

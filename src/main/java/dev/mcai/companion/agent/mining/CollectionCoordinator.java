@@ -24,13 +24,13 @@ public final class CollectionCoordinator implements AutoCloseable {
     private final NavigationSnapshotBuilder snapshots=new NavigationSnapshotBuilder(new NavigationSnapshotBuilder.CaptureConfig(4,4,6,48,24,50_000,8));
     private final NavigationFollower follower;
     private final LinkedHashMap<String,Option> options=new LinkedHashMap<>();
-    private final Set<BlockPos> done=new HashSet<>();
+    private final Set<BlockPos> done=new HashSet<>(), inaccessible=new HashSet<>();
     private final Set<String> mineRequests=new HashSet<>(),approvedDropIds=new HashSet<>();
     private final Map<String,Integer> minedSupply=new HashMap<>(),creditedSupply=new HashMap<>();
     private boolean allowGrove,wholeTree;
     private long planNanos;
-    private final List<BlockPos> approaches=new ArrayList<>();
-    private final JsonArray breaks=new JsonArray(),receipts=new JsonArray();
+    private final List<Vec3> approaches=new ArrayList<>();
+    private final JsonArray breaks=new JsonArray(),receipts=new JsonArray(),rejectedTrees=new JsonArray();
     private UUID request,childRequest;
     private Vec3 center,origin,lastPosition;
     private String dimension,resource,species,outputItem,phase="IDLE",step="",reason="";
@@ -55,13 +55,16 @@ public final class CollectionCoordinator implements AutoCloseable {
         follower=new NavigationFollower(body,e->routeEvent=e,id->arrivalProblem(),why->followerInvalidated(why));
     }
     private void followerInvalidated(String why){follower.requestReplan(why);}
+    public int reservedCount(ItemStack stack){return ownsBody() && selected!=null && !selected.tool.isEmpty() && body.inventoryLedger.key(stack).equals(body.inventoryLedger.key(selected.tool)) ? selected.tool.getCount() : 0;}
     public boolean ownsBody(){return phase.equals("EXECUTING") || phase.equals("PAUSED");}
     public boolean isChildRequest(JsonObject state){return state.has("requestId") && mineRequests.contains(state.get("requestId").getAsString());}
     public boolean internalAction(){return internalAction;}
     private <T>T child(Supplier<T> action){internalAction=true;try{return action.get();}finally{internalAction=false;}}
     private int tick(){return runtime.server().getTickCount();}
     private void thread(){if(!runtime.server().isSameThread())throw new IllegalStateException("Collection requires server thread");}
-    private void idle(){thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsBody() || runtime.mining().ownsBody() || runtime.jumpActive() || runtime.turnActive() || runtime.navigation().status().phase()!=NavigationToolCoordinator.Phase.IDLE && !runtime.navigation().status().phase().terminal())throw new IllegalStateException("Finish or cancel the current body action first");}
+    private void idle(){
+        if(runtime.excavation()!=null && runtime.excavation().ownsBody() && !runtime.excavation().internalAction())throw new IllegalStateException("Pause or cancel excavation before an independent body action");
+thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsBody() || runtime.mining().ownsBody() || runtime.jumpActive() || runtime.turnActive() || runtime.navigation().status().phase()!=NavigationToolCoordinator.Phase.IDLE && !runtime.navigation().status().phase().terminal())throw new IllegalStateException("Finish or cancel the current body action first");}
 
     public JsonObject plan(String resource,String outputItem,String species,String source,Vec3 center,int radius,int count,BlockPos treeSeed,boolean allowGrove){
         return plan(resource,outputItem,species,source,center,radius,count,treeSeed,allowGrove,source.equals("tree"));
@@ -76,6 +79,7 @@ public final class CollectionCoordinator implements AutoCloseable {
             case "minecraft:stone" -> "minecraft:cobblestone";
             case "minecraft:deepslate" -> "minecraft:cobbled_deepslate";
             case "minecraft:coal_ore","minecraft:deepslate_coal_ore" -> "minecraft:coal";
+            case "minecraft:crafting_table","minecraft:furnace","minecraft:chest","minecraft:barrel","minecraft:smoker","minecraft:blast_furnace" -> resource;
             default -> "";
         };
         if(wholeTree && (!wood || source.equals("drops")))throw new IllegalArgumentException("whole_tree requires wood from a tree");
@@ -87,55 +91,70 @@ public final class CollectionCoordinator implements AutoCloseable {
         if(resource.equals("minecraft:air") || resource.equals("minecraft:cave_air") || resource.equals("minecraft:void_air"))throw new IllegalArgumentException("Air is omitted from collection");
         this.allowGrove=allowGrove;this.resource=resource;this.outputItem=outputItem;this.species=species;this.center=center;this.radius=radius;this.desired=count;
         this.origin=body.position();this.dimension=body.level().dimension().identifier().toString();this.request=UUID.randomUUID();plannedTick=tick();
-        phase="PLAN_READY";reason="";step="";options.clear();done.clear();breaks.asList().clear();receipts.asList().clear();received=0;distance=0;selected=null;route=null;chosenRoute=null;
+        mineRequests.clear();approvedDropIds.clear();drop=null;target=null;
+        rejectedTrees.asList().clear();phase="PLAN_READY";reason="";step="";options.clear();done.clear();inaccessible.clear();breaks.asList().clear();receipts.asList().clear();received=0;distance=0;selected=null;route=null;chosenRoute=null;
         var foundDrops=new ArrayList<String>();
         if(!source.equals("tree") && !source.equals("blocks") && !wholeTree){
-            for(var e:body.level().getEntitiesOfClass(ItemEntity.class,new AABB(center,center).inflate(radius),e->e.isAlive() && inside(e.position()) && runtime.perception.sensed(e) && matchesItem(BuiltInRegistries.ITEM.getKey(e.getItem().getItem()).toString())))foundDrops.add(e.getUUID().toString());
+            for(var e:body.level().getEntitiesOfClass(ItemEntity.class,new AABB(center,center).inflate(radius),e->e.isAlive() && !dev.mcai.companion.agent.knowledge.DiscardedItems.avoided(e,body) && inside(e.position()) && runtime.perception.sensed(e) && matchesItem(BuiltInRegistries.ITEM.getKey(e.getItem().getItem()).toString())))foundDrops.add(e.getUUID().toString());
             if(!foundDrops.isEmpty())addOption("nearby-drops","drops",List.of(),foundDrops,new JsonObject());
         }
         if(!source.equals("drops")){
             var seeds=new ArrayList<BlockPos>();BlockPos base=BlockPos.containing(center);
             if(treeSeed!=null){if(!inside(Vec3.atCenterOf(treeSeed)))throw new IllegalArgumentException("Specified tree lies outside the fixed task sphere");seeds.add(treeSeed);}
-            else for(int x=-radius;x<=radius;x++)for(int y=-radius;y<=radius;y++)for(int z=-radius;z<=radius;z++){
-                var p=base.offset(x,y,z);if(!inside(Vec3.atCenterOf(p)) || !runtime.perception.observableBlock(p))continue;
-                String id=TreeSurvey.id(body.level().getBlockState(p));
-                if(wood?(!TreeSurvey.species(id).isEmpty() && (species.equals("any") || TreeSurvey.species(id).equals(species))):id.equals(resource))seeds.add(p);
+            else {
+                // Numen's palette scan skips whole sections lacking the resource.
+                // The adapter keeps our exact task sphere and ordinary perception rules.
+                var hits=new ArrayList<dev.mcai.companion.vendor.numen.scan.BlockScanner.Hit>();
+                java.util.function.Predicate<BlockState> filter=state->{
+                    String id=TreeSurvey.id(state);
+                    return wood?(!TreeSurvey.species(id).isEmpty() && (species.equals("any") || TreeSurvey.species(id).equals(species))):id.equals(resource);
+                };
+                int extent=radius+1;
+                for(int cx=(base.getX()-extent)>>4;cx<=(base.getX()+extent)>>4;cx++)
+                    for(int cz=(base.getZ()-extent)>>4;cz<=(base.getZ()+extent)>>4;cz++){
+                        var chunk=dev.mcai.companion.vendor.numen.scan.BlockScanner.loadedChunk(body.level(),cx,cz);
+                        if(chunk==null)continue;
+                        for(int sy=(base.getY()-extent)>>4;sy<=(base.getY()+extent)>>4;sy++)
+                            dev.mcai.companion.vendor.numen.scan.BlockScanner.scanChunkSection(body.level(),chunk,cx,sy,cz,base,extent,extent*extent,filter,hits);
+                    }
+                for(var hit:hits)if(inside(Vec3.atCenterOf(hit.pos())) && runtime.perception.observableBlock(hit.pos()))seeds.add(hit.pos());
             }
-            seeds.sort(Comparator.comparingDouble(p->p.distToCenterSqr(body.position())));
+            seeds.sort(Comparator.comparingInt((BlockPos p)->wood || exposed(p)?0:1).thenComparingDouble(p->p.distToCenterSqr(body.position())));
             if(wood){
                 var inspected=new HashSet<BlockPos>();int surveys=0;
                 for(var seed:seeds){if(inspected.contains(seed))continue;if(++surveys>8)break;
                     var survey=TreeSurvey.inspect(runtime,seed);inspected.addAll(survey.logs());
                     if(treeSeed!=null && !species.equals("any") && !survey.species().equals(species))throw new IllegalArgumentException("Specified tree does not match requested species");
                     if(!survey.harvestable() || survey.classification().equals("managed_grove_candidate") && !allowGrove){
-                        if(treeSeed!=null)reason=survey.classification()+": "+String.join(", ",survey.evidence());continue;
+                        var rejected=survey.json();rejected.add("seed",TreeSurvey.position(seed));if(rejectedTrees.size()<8)rejectedTrees.add(rejected);reason="Observed trunk candidates could not yet be approved; see rejectedTrees for exact reasons. This is not proof of no trees.";continue;
                     }
                     if(wholeTree && survey.logs().stream().anyMatch(p->!inside(Vec3.atCenterOf(p)))) {reason="Whole tree extends outside fixed task sphere; replan its center/radius. No tree was felled.";continue;}
                     var blocks=survey.logs().stream().filter(p->inside(Vec3.atCenterOf(p))).sorted(Comparator.comparingInt((BlockPos p)->p.getY()).thenComparingDouble(p->p.distToCenterSqr(body.position()))).limit(wholeTree?128:count).toList();
                     if(!blocks.isEmpty())addOption("tree-"+(options.size()+1),"tree",blocks,List.of(),survey.json());
                     if(options.size()>=4)break;
                 }
-            }else if(!seeds.isEmpty())addOption("matching-blocks","blocks",seeds.stream().limit(count).toList(),List.of(),new JsonObject());
+            }else if(!seeds.isEmpty())addOption("matching-blocks","blocks",seeds.stream().limit(128).toList(),List.of(),new JsonObject());
         }
         if(options.isEmpty()){phase="BLOCKED";if(reason.isEmpty())reason="No eligible source in the observed fixed sphere; change the search or source policy. No blind excavation or fishbone mining was started.";}
         planNanos=System.nanoTime()-scanStart;return status();
     }
     private void addOption(String id,String source,List<BlockPos> blocks,List<String> drops,JsonObject survey){
         var states=new LinkedHashMap<BlockPos,BlockState>();double breakTicks=0;int wear=0;
+        int maxBreaks=source.equals("blocks")?Math.min(desired,blocks.size()):blocks.size();
         MiningToolChoice choice;
-        try {choice=blocks.isEmpty()?new MiningToolChoice(body.getInventory().getSelectedSlot(),body.getMainHandItem().copy()):MiningToolChoice.best(body,body.level().getBlockState(blocks.getFirst()),true,blocks.size());}
+        try {choice=blocks.isEmpty()?new MiningToolChoice(body.getInventory().getSelectedSlot(),body.getMainHandItem().copy()):MiningToolChoice.best(body,body.level().getBlockState(blocks.getFirst()),true,maxBreaks);}
         catch(IllegalArgumentException unavailable){reason=unavailable.getMessage();return;}
         var tool=choice.stack();var data=tool.get(net.minecraft.core.component.DataComponents.TOOL);
         if(!blocks.isEmpty() && tool.isDamageableItem() && data==null)return;
         for(var p:blocks){var state=body.level().getBlockState(p);float progress=state.getDestroyProgress(body,body.level(),p);
             if(state.getDestroySpeed(body.level(),p)<0 || state.requiresCorrectToolForDrops() && !tool.isCorrectToolForDrops(state))return;
-            states.put(p,state);breakTicks+=choice.estimatedTicks(body,state,p);if(tool.isDamageableItem() && state.getDestroySpeed(body.level(),p)!=0)wear+=data.damagePerBlock();
+            states.put(p,state);if(states.size()<=maxBreaks){breakTicks+=choice.estimatedTicks(body,state,p);if(tool.isDamageableItem() && state.getDestroySpeed(body.level(),p)!=0)wear+=data.damagePerBlock();}
         }
         if(!blocks.isEmpty() && tool.isDamageableItem() && tool.getMaxDamage()-tool.getDamageValue()<=wear)return;
         var out=new JsonObject();out.addProperty("optionId",id);out.addProperty("source",source);
         if(survey.has("logs")){survey=survey.deepCopy();survey.addProperty("observedLogCount",survey.getAsJsonArray("logs").size());survey.remove("logs");}
         out.add("survey",survey);
-        out.addProperty("targetBlocks",blocks.size());out.add("targetPositions",new Gson().toJsonTree(blocks.stream().map(TreeSurvey::position).toList()));out.add("dropEntityIds",new Gson().toJsonTree(drops));
+        out.addProperty("maximumBlocksToBreak",maxBreaks);out.addProperty("targetBlocks",blocks.size());out.add("targetPositions",new Gson().toJsonTree(blocks.stream().map(TreeSurvey::position).toList()));out.add("dropEntityIds",new Gson().toJsonTree(drops));
         out.add("tool",choice.json(body));
         out.addProperty("wholeTree",wholeTree && source.equals("tree"));out.addProperty("nominalDurabilityCostMax",wear);
         if(tool.isDamageableItem())out.addProperty("remainingDurabilityAtNominalCost",tool.getMaxDamage()-tool.getDamageValue()-wear);
@@ -165,7 +184,7 @@ public final class CollectionCoordinator implements AutoCloseable {
         if(ownsBody() || phase.equals("PLAN_READY")){stopChildren();phase=pause?"PAUSED":"CANCELLED";reason=pause?"Paused by controller":"Cancelled by controller";}
         return status();
     }
-    public JsonObject resume(UUID id){thread();requireRequest(id);if(!phase.equals("PAUSED"))throw new IllegalStateException("Collection is not paused");phase="EXECUTING";step="SELECT";lastPosition=body.position();return status();}
+    public JsonObject resume(UUID id){thread();requireRequest(id);if(!phase.equals("PAUSED"))throw new IllegalStateException("Collection is not paused");phase="EXECUTING";step="SELECT";inaccessible.clear();lastPosition=body.position();return status();}
     public void cancelForChat(){if(ownsBody() || phase.equals("PLAN_READY"))interrupt(request,false);}
     private void stopChildren(){if(pendingRoute!=null){pendingRoute.cancel(true);pendingRoute=null;}follower.cancel("Collection interrupted");child(()->{runtime.mining().cancelForChat();return null;});body.stopControlling();routeEvent=null;}
     private void block(String why){stopChildren();phase="BLOCKED";reason=why;}
@@ -182,13 +201,13 @@ public final class CollectionCoordinator implements AutoCloseable {
         var batch=body.inventoryLedger.events(inventoryCursor,32);if(batch.get("historyLost").getAsBoolean()){block("Acquisition history lost; cannot prove task collection");return;}
         for(var event:batch.getAsJsonArray("events")){var e=event.getAsJsonObject();inventoryCursor=e.get("sequence").getAsLong();
             for(var item:e.getAsJsonArray("acquired")){var row=item.getAsJsonObject();if(!matchesItem(row.get("item").getAsString()))continue;
-                var source=row.getAsJsonObject("source");boolean credited=selected.source.equals("drops")?row.has("entityId") && approvedDropIds.contains(row.get("entityId").getAsString()):source.has("requestId") && mineRequests.contains(source.get("requestId").getAsString());
-                if(credited){
-                    int amount=row.get("count").getAsInt();
-                    if(!selected.source.equals("drops")){
-                        String id=source.get("requestId").getAsString();amount=Math.min(amount,Math.max(0,minedSupply.getOrDefault(id,0)-creditedSupply.getOrDefault(id,0)));creditedSupply.merge(id,amount,Integer::sum);
-                    }
-                    received+=amount;if(amount>0 && receipts.size()<64){var receipt=row.deepCopy();receipt.addProperty("collectionCreditedCount",amount);receipts.add(receipt);}
+                var source=row.getAsJsonObject("source");var parts=new JsonArray();
+                if(source.has("lineage"))parts=source.getAsJsonArray("lineage");else {var part=new JsonObject();part.addProperty("count",row.get("count").getAsInt());part.add("source",source);parts.add(part);}
+                for(var partValue:parts){var part=partValue.getAsJsonObject();var originSource=part.getAsJsonObject("source");
+                    boolean credited=selected.source.equals("drops")?row.has("entityId") && approvedDropIds.contains(row.get("entityId").getAsString()):originSource.has("requestId") && mineRequests.contains(originSource.get("requestId").getAsString());
+                    if(!credited)continue;int amount=part.get("count").getAsInt();
+                    if(!selected.source.equals("drops")){String id=originSource.get("requestId").getAsString();amount=Math.min(amount,Math.max(0,minedSupply.getOrDefault(id,0)-creditedSupply.getOrDefault(id,0)));creditedSupply.merge(id,amount,Integer::sum);}
+                    received+=amount;if(amount>0 && receipts.size()<128){var receipt=row.deepCopy();receipt.addProperty("collectionCreditedCount",amount);receipt.add("creditedOrigin",originSource.deepCopy());receipts.add(receipt);}
                 }
             }
         }
@@ -205,7 +224,7 @@ public final class CollectionCoordinator implements AutoCloseable {
             if(verifiedCount()>=desired && (!wholeTree || done.containsAll(selected.blocks))){stopChildren();phase="COMPLETED";reason=wholeTree?"Every approved trunk block was physically broken and all matching log pickups verified":"Matching pickup receipts and current inventory increase meet the requested count; this is NOT proof of felling a whole tree";return;}
             if(step.equals("BREAK")){
                 var state=runtime.mining().status();String childPhase=state.get("phase").getAsString();
-                if(childPhase.equals("COMPLETED")){done.add(target);breaks.add(state);for(var row:state.getAsJsonArray("emittedDrops"))approvedDropIds.add(row.getAsJsonObject().get("entityId").getAsString());step="WAIT";waitUntil=tick()+15;}
+                if(childPhase.equals("COMPLETED")){done.add(target);inaccessible.clear();breaks.add(state);for(var row:state.getAsJsonArray("emittedDrops"))approvedDropIds.add(row.getAsJsonObject().get("entityId").getAsString());step="WAIT";waitUntil=tick()+15;}
                 else if(childPhase.equals("BLOCKED") || childPhase.equals("CANCELLED")){block("Block operation stopped: "+state.get("reason").getAsString());return;}else return;
             }
             if(step.equals("SETTLING_DROP")){if(tick()<waitUntil)return;step="SELECT";selectNext();return;}
@@ -216,7 +235,10 @@ public final class CollectionCoordinator implements AutoCloseable {
                     else block("DROPPED_ITEM_UNAVAILABLE: selected entity disappeared without a matching pickup receipt");return;}
                 follower.tick();
                 if(routeEvent!=null){var e=routeEvent;routeEvent=null;if(e.type()==NavigationEvent.Type.NAVIGATION_COMPLETED){step="WAIT";waitUntil=tick()+12;}
-                    else if(Set.of(NavigationEvent.Type.NAVIGATION_FAILED,NavigationEvent.Type.NAVIGATION_DECISION_REQUIRED,NavigationEvent.Type.NAVIGATION_CANCELLED).contains(e.type()))block("Collection route stopped: "+e.message());}
+                    else if(Set.of(NavigationEvent.Type.NAVIGATION_FAILED,NavigationEvent.Type.NAVIGATION_DECISION_REQUIRED,NavigationEvent.Type.NAVIGATION_CANCELLED).contains(e.type())){
+                        if(drop==null && target!=null){inaccessible.add(target);target=null;step="SELECT";}
+                        else block("Collection route stopped: "+e.message());
+                    }}
                 return;
             }
             if(step.equals("WAIT")){if(tick()<waitUntil)return;if(drop!=null){if(drop.isAlive()){
@@ -229,17 +251,17 @@ public final class CollectionCoordinator implements AutoCloseable {
     private void selectNext(){
         // Prefer the job's own drops; do not destroy more blocks while reachable loot is waiting.
         drop=null;
-        for(String id:approvedDropIds){var e=body.level().getEntity(UUID.fromString(id));if(e instanceof ItemEntity item && item.isAlive() && insideTravel(item.position()) && runtime.perception.sensed(item) && matchesItem(BuiltInRegistries.ITEM.getKey(item.getItem().getItem()).toString()) && (drop==null || item.distanceToSqr(body)<drop.distanceToSqr(body)))drop=item;}
+        for(String id:approvedDropIds){var e=body.level().getEntity(UUID.fromString(id));if(e instanceof ItemEntity item && item.isAlive() && !dev.mcai.companion.agent.knowledge.DiscardedItems.avoided(item,body) && insideTravel(item.position()) && runtime.perception.sensed(item) && matchesItem(BuiltInRegistries.ITEM.getKey(item.getItem().getItem()).toString()) && (drop==null || item.distanceToSqr(body)<drop.distanceToSqr(body)))drop=item;}
         if(drop!=null){
             target=null;receivedBeforeDrop=received;approaches.clear();
             if(!lastDrop.equals(drop.getUUID().toString())){lastDrop=drop.getUUID().toString();dropRepairs=0;dropSettleSince=tick();}
             var base=drop.blockPosition();
             for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++){
-                var p=base.offset(x,y,z);var feet=Vec3.atBottomCenterOf(p);
-                if(!body.getBoundingBox().move(feet.subtract(body.position())).inflate(.7,.3,.7).intersects(drop.getBoundingBox()) || !insideTravel(feet) || !body.level().isLoaded(p) || !body.level().getBlockState(p.below()).isCollisionShapeFullBlock(body.level(),p.below()))continue;
-                if(body.level().noCollision(body,body.getBoundingBox().move(feet.subtract(body.position()))))approaches.add(p);
+                var feet=standingFeet(base.offset(x,y,z));if(feet==null)continue;
+                if(!body.getBoundingBox().move(feet.subtract(body.position())).inflate(.7,.3,.7).intersects(drop.getBoundingBox()) || !insideTravel(feet))continue;
+                approaches.add(feet);
             }
-            approaches.sort(Comparator.comparingDouble(p->Vec3.atBottomCenterOf(p).distanceToSqr(drop.position())+.05*p.distToCenterSqr(body.position())));
+            approaches.sort(Comparator.comparingDouble(p->p.distanceToSqr(drop.position())+.05*p.distanceToSqr(body.position())));
             if(approaches.isEmpty() && !drop.onGround() && tick()-dropSettleSince<80) {
                 // High trunk drops need time to fall. Their current air cell is
                 // not a standing destination; observe again instead of failing the tree.
@@ -248,22 +270,45 @@ public final class CollectionCoordinator implements AutoCloseable {
             beginRoute();return;
         }
         if(selected.source.equals("drops")){block("DROPPED_ITEM_UNAVAILABLE: planned drops disappeared or moved outside the fixed sphere; quantity not acquired");return;}
-        var remaining=selected.blocks.stream().filter(p->!done.contains(p)).sorted(Comparator.comparingDouble(p->p.distToCenterSqr(body.position()))).toList();
-        if(remaining.isEmpty()){block("Approved blocks exhausted; collected "+verifiedCount()+" of "+desired+". Uncollected or merged drops need a new decision");return;}
-        for(var p:remaining){if(!body.level().getBlockState(p).equals(selected.states.get(p))){block("An unmined target changed; refusing to replace it or expand the job");return;}}
-        for(var p:remaining)if(!new AABB(p).intersects(body.getBoundingBox().move(0,-.05,0)) && runtime.mining().reachable(p)){startBreak(p);return;}
-        target=remaining.getFirst();approaches.clear();
-        for(int x=-2;x<=2;x++)for(int y=-5;y<=1;y++)for(int z=-2;z<=2;z++){
-            var stand=target.offset(x,y,z);if(stand.equals(target) || !inside(Vec3.atCenterOf(stand)) || !runtime.perception.observableBlock(stand))continue;
-            var feet=Vec3.atBottomCenterOf(stand);var box=body.getBoundingBox().move(feet.subtract(body.position()));
-            if(new AABB(target).intersects(box.move(0,-.05,0)))continue;
-            if(!body.level().getBlockState(stand.below()).isCollisionShapeFullBlock(body.level(),stand.below()) || !body.level().noCollision(body,box))continue;
-            if(runtime.mining().reachableFrom(target,feet))approaches.add(stand);
+        if(selected.source.equals("blocks") && done.size()>=Math.min(desired,selected.blocks.size())){
+            block("Approved break budget exhausted; verified pickups did not meet the requested count");return;
         }
-        approaches.sort(Comparator.comparingDouble(p->p.distToCenterSqr(body.position())));
-        if(approaches.size()>8)approaches.subList(8,approaches.size()).clear();
-        if(approaches.isEmpty()){block("No sensed safe standing place reaches the remaining wood/ore; a separate access or support plan is required");return;}
-        beginRoute();
+        var remaining=selected.blocks.stream().filter(p->!done.contains(p) && !inaccessible.contains(p))
+                .sorted(Comparator.comparingInt((BlockPos p)->exposed(p)?0:1).thenComparingInt(p->p.getY()<body.getBlockY()?1:0).thenComparingDouble(p->p.distToCenterSqr(body.position()))).toList();
+        if(remaining.isEmpty()){block("No reachable approved candidates remain; collected "+verifiedCount()+" of "+desired+". Inaccessible candidates were tried without blind excavation");return;}
+        for(var p:remaining){
+            if(!body.level().getBlockState(p).equals(selected.states.get(p))){
+                if(selected.source.equals("tree")){block("An unmined tree target changed; replan its identity");return;}
+                inaccessible.add(p);continue;
+            }
+            if(runtime.mining().problem(p,true)!=null){inaccessible.add(p);continue;}
+            if(!body.isInWater() && !new AABB(p).intersects(body.getBoundingBox().move(0,-.05,0)) && runtime.mining().reachable(p)){startBreak(p);return;}
+        }
+        // Test alternatives inside one native job, bounded per tick. A buried
+        // nearest block must not hide a farther exposed block in the same sphere.
+        int inspected=0;
+        for(var candidate:remaining){
+            if(inaccessible.contains(candidate))continue;
+            if(runtime.mining().problem(candidate,true)!=null){inaccessible.add(candidate);continue;}
+            if(inspected++>=8)return;
+            target=candidate;approaches.clear();
+            for(int x=-2;x<=2;x++)for(int y=-5;y<=1;y++)for(int z=-2;z<=2;z++){
+                var stand=target.offset(x,y,z);if(stand.equals(target) || !inside(Vec3.atCenterOf(stand)) || !runtime.perception.observableBlock(stand))continue;
+                var feet=standingFeet(stand);if(feet==null)continue;var box=body.getBoundingBox().move(feet.subtract(body.position()));
+                if(new AABB(target).intersects(box.move(0,-.05,0)))continue;
+                if(runtime.mining().reachableFrom(target,feet))approaches.add(feet);
+            }
+            approaches.sort(Comparator.comparingDouble(p->p.distanceToSqr(body.position())));
+            if(approaches.size()>8)approaches.subList(8,approaches.size()).clear();
+            if(!approaches.isEmpty()){beginRoute();return;}
+            inaccessible.add(target);target=null;
+        }
+    }
+    private boolean exposed(BlockPos p){
+        for(var face:net.minecraft.core.Direction.values()){
+            var q=p.relative(face);if(body.level().isLoaded(q) && body.level().getBlockState(q).getCollisionShape(body.level(),q).isEmpty())return true;
+        }
+        return false;
     }
     private void startBreak(BlockPos p){
         if(selected.source.equals("tree")){
@@ -292,10 +337,27 @@ public final class CollectionCoordinator implements AutoCloseable {
         child(()->runtime.mining().choose(childRequest,"held-tool"));step="BREAK";
     }
     private void beginRoute(){
-        if(approaches.isEmpty()){block("No evaluated safe approach route; a new decision is required. "+routeFailure);return;}
-        var p=approaches.removeFirst();var dest=Vec3.atBottomCenterOf(p);
+        if(approaches.isEmpty()){
+            if(drop==null && target!=null){inaccessible.add(target);target=null;step="SELECT";return;}
+            if (drop != null && clearPickupHeadroom()) return;
+            block("No evaluated safe approach route; a new decision is required. "+routeFailure);return;
+        }
+        var dest=approaches.removeFirst();
         var destination=new NavigationPlan.ResolvedDestination(dimension,dest.x,dest.y,dest.z,.5,false,"collection:"+request,OptionalDouble.empty(),Optional.empty());
         routeStart=body.position();pendingRoute=planner.submit(UUID.randomUUID(),snapshots.capture(body,destination,0));step="PLAN_ROUTE";routeEvent=null;
+    }
+    private boolean clearPickupHeadroom(){
+        // A drop in the one-block notch just mined may need its matching resource
+        // above removed before a player can enter. This remains inside the exact
+        // resource sphere and quantity budget; no unrelated access block is dug.
+        if(!selected.source.equals("blocks") || done.size()>=desired)return false;
+        var pos=drop.blockPosition().above();var state=body.level().getBlockState(pos);
+        if(!inside(Vec3.atCenterOf(pos)) || !TreeSurvey.id(state).equals(resource) || body.level().getBlockEntity(pos)!=null || !state.getFluidState().isEmpty() || !runtime.mining().reachable(pos))return false;
+        if(!selected.states.containsKey(pos)){
+            var blocks=new ArrayList<>(selected.blocks);blocks.add(pos);var states=new LinkedHashMap<>(selected.states);states.put(pos,state);
+            selected=new Option(selected.id,selected.source,List.copyOf(blocks),selected.drops,selected.description,states,selected.tool,selected.slot);
+        }
+        startBreak(pos);return true;
     }
     private void resolveRoute(){
         if(!pendingRoute.isDone())return;
@@ -307,18 +369,36 @@ public final class CollectionCoordinator implements AutoCloseable {
     }
     private String arrivalProblem(){
         if(drop!=null)return drop.isAlive() && body.getBoundingBox().inflate(.9,.4,.9).intersects(drop.getBoundingBox())?null:"The moving destination left the planned pickup area";
+        if(target!=null && new AABB(target).intersects(body.getBoundingBox().move(0,-.05,0)))return "The body still overlaps the work block; this approach did not provide a mining position";
         return target!=null && runtime.mining().reachable(target)?null:"Arrived position does not reach target block";
+    }
+    /** Match native path/slab/stair collision height rather than requiring full cubes. */
+    public Vec3 standingFeet(BlockPos cell){
+        if(!body.level().isLoaded(cell) || !body.level().getWorldBorder().isWithinBounds(cell)
+                || !body.level().getFluidState(cell).isEmpty())return null;
+        double top=Double.NaN;
+        for(int below=0;below<=2;below++){
+            var floor=cell.below(below);if(!body.level().isLoaded(floor))continue;
+            for(var box:body.level().getBlockState(floor).getCollisionShape(body.level(),floor).toAabbs()){
+                double y=floor.getY()+box.maxY;
+                if(y>=cell.getY()-1e-7 && y<cell.getY()+1-1e-7 && box.maxX>.2 && box.minX<.8 && box.maxZ>.2 && box.minZ<.8)
+                    top=Double.isNaN(top)?y:Math.max(top,y);
+            }
+        }
+        if(Double.isNaN(top))return null;
+        var feet=new Vec3(cell.getX()+.5,top,cell.getZ()+.5);
+        return body.level().noCollision(body,body.getBoundingBox().move(feet.subtract(body.position())))?feet:null;
     }
     public JsonObject status(){
         var out=new JsonObject();out.addProperty("phase",phase);out.addProperty("step",step);out.addProperty("planServerMillis",planNanos/1_000_000.0);out.addProperty("reason",reason);out.addProperty("ownsBody",ownsBody());
         if(request!=null){out.addProperty("requestId",request.toString());out.addProperty("dimension",dimension);out.add("fixedCenter",new Gson().toJsonTree(Map.of("x",center.x,"y",center.y,"z",center.z)));out.addProperty("radius",radius);out.addProperty("resource",resource);out.addProperty("requestedCount",desired);out.addProperty("verifiedInventoryIncrease",selected==null?0:verifiedCount());}
         var opts=new JsonArray();if(phase.equals("PLAN_READY"))options.values().forEach(o->opts.add(o.description.deepCopy()));out.add("options",opts);
         if(selected!=null){out.addProperty("selectedOptionId",selected.id);out.addProperty("selectedSource",selected.source);out.add("activeTool",runtime.mining().heldTool());}
-        out.addProperty("physicalDistance",distance);out.addProperty("brokenBlocks",done.size());out.add("pickupReceipts",receipts.deepCopy());
+        out.addProperty("inaccessibleCandidateCount",inaccessible.size());out.addProperty("physicalDistance",distance);out.addProperty("brokenBlocks",done.size());out.add("pickupReceipts",receipts.deepCopy());
         out.add("childMiningRequestIds",new Gson().toJsonTree(mineRequests));
         out.addProperty("wholeTree",wholeTree);out.addProperty("wholeTreeVerified",wholeTree && phase.equals("COMPLETED") && selected!=null && selected.source.equals("tree") && done.containsAll(selected.blocks));
         if(selected!=null)out.addProperty("remainingApprovedBlocks",selected.blocks.stream().filter(p->!done.contains(p)).count());
-        out.addProperty("sourceAttribution","Origin-event evidence only; complete merged-stack lineage is not established");
+        out.add("rejectedTrees",rejectedTrees.deepCopy());out.addProperty("sourceAttribution","Origin-event evidence only; complete merged-stack lineage is not established");
         out.addProperty("bodyX",body.getX());out.addProperty("bodyY",body.getY());out.addProperty("bodyZ",body.getZ());
         if(chosenRoute!=null){var summary=new JsonObject();summary.addProperty("optionId",chosenRoute.optionId());summary.addProperty("distanceBlocks",chosenRoute.distanceBlocks());summary.addProperty("estimatedSeconds",chosenRoute.estimatedSeconds());summary.addProperty("estimatedHealthLost",chosenRoute.estimatedHealthLost());summary.add("supportMaterials",new Gson().toJsonTree(chosenRoute.supportMaterials()));out.add("currentRoute",summary);}
         if(target!=null)out.add("currentBlock",TreeSurvey.position(target));

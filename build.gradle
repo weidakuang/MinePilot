@@ -25,6 +25,7 @@ minecraft {
             workingDir = layout.projectDirectory.dir(
                 providers.gradleProperty('minepilot_run_dir').getOrElse('run'))
             systemProperty 'eventbus.api.strictRuntimeChecks', 'true'
+            args '--mixin', 'mcai_companion.mixins.json'
         }
 
         register('client') {
@@ -53,8 +54,15 @@ minecraft {
             def collectionGate = Boolean.parseBoolean(System.getProperty('minepilot.collectionTest', 'false'))
             def miningGate = Boolean.parseBoolean(System.getProperty('minepilot.miningTest', 'false'))
             def persistenceGate = Boolean.parseBoolean(System.getProperty('minepilot.persistenceTest', 'false'))
+            def dropGate = Boolean.parseBoolean(System.getProperty('minepilot.dropTest', 'false'))
+            def provenanceGate = Boolean.parseBoolean(System.getProperty('minepilot.provenanceTest', 'false'))
+            def excavationGate = Boolean.parseBoolean(System.getProperty('minepilot.excavationTest', 'false'))
+            def resourceWaterGate = Boolean.parseBoolean(System.getProperty('minepilot.resourceWaterTest', 'false'))
+            def campGate = Boolean.parseBoolean(System.getProperty('minepilot.campTest', 'false'))
+            def survivalGate = Boolean.parseBoolean(System.getProperty('minepilot.survivalTest', 'false'))
+            def playGate = Boolean.parseBoolean(System.getProperty('minepilot.playExperienceTest', 'false'))
             def structureGate = Boolean.parseBoolean(System.getProperty('minepilot.structureTest', 'false'))
-            if ([liveModelGate, codexSkillGate, repairGate, knowledgeGate, soundGate, followGate, miningGate, collectionGate, placementGate, persistenceGate, structureGate].count { it } > 1) {
+            if ([liveModelGate, codexSkillGate, repairGate, knowledgeGate, soundGate, followGate, miningGate, collectionGate, placementGate, persistenceGate, structureGate, excavationGate, provenanceGate, dropGate, playGate, survivalGate, resourceWaterGate, campGate].count { it } > 1) {
                 throw new GradleException(
                     'Enable only one MinePilot external black-box gate per run')
             }
@@ -66,7 +74,17 @@ minecraft {
                     ? 'mcai_companion:live_model_chat_navigation_blackbox'
                     : 'mcai_companion:headless_control_frame_displacement'
             systemProperty 'forge.enabledGameTestNamespaces', 'mcai_companion'
+            if (resourceWaterGate) selectedTest = 'mcai_companion:resource_water_regressions'
+            if (campGate) selectedTest = 'mcai_companion:camp_regressions'
+            if (survivalGate) selectedTest = 'mcai_companion:survival_regressions'
+            if (playGate) selectedTest = 'mcai_companion:play_experience_regressions'
             if (structureGate) selectedTest = 'mcai_companion:structure_record_regressions'
+            if (excavationGate) selectedTest = 'mcai_companion:excavation_regressions'
+            if (dropGate) selectedTest = 'mcai_companion:item_drop_regressions'
+            systemProperty 'minepilot.dropTest', Boolean.toString(dropGate)
+            if (provenanceGate) selectedTest = 'mcai_companion:provenance_regressions'
+            systemProperty 'minepilot.provenanceTest', Boolean.toString(provenanceGate)
+            systemProperty 'minepilot.excavationTest', Boolean.toString(excavationGate)
             systemProperty 'minepilot.structureTest', Boolean.toString(structureGate)
             systemProperty 'minepilot.liveNavigationTest',
                 Boolean.toString(liveModelGate)
@@ -115,9 +133,12 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.named('jar') {
+    from('THIRD_PARTY_NOTICES.md')
+    from('src/main/java/dev/mcai/companion/vendor/numen') { into 'META-INF/sources/numen' }
     includeEmptyDirs = false
     manifest {
         attributes(
+            'MixinConfigs': 'mcai_companion.mixins.json',
             'Specification-Title': 'MinePilot',
             'Specification-Vendor': 'weida',
             'Specification-Version': project.version,

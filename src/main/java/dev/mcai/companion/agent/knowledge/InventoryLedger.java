@@ -85,7 +85,8 @@ public final class InventoryLedger {
         if (identities.size() >= 256) identities.remove(identities.keySet().iterator().next());
         identities.put(stable, stack.copyWithCount(1)); return stable;
     }
-    private String digest(ItemStack stack) {
+    private String digest(ItemStack stack) {return fingerprint(player,stack);}
+    public static String fingerprint(net.minecraft.world.entity.player.Player player,ItemStack stack) {
         var value = ItemStack.CODEC.encodeStart(player.registryAccess().createSerializationContext(JsonOps.INSTANCE), stack).getOrThrow();
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical(value).getBytes(StandardCharsets.UTF_8))); }
         catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
@@ -169,12 +170,15 @@ public final class InventoryLedger {
         for(var entry:all.entrySet()){if(i++<offset)continue;if(selected.size()==limit)break;selected.add(entry.getKey(),entry.getValue().deepCopy());}
         var out=new JsonObject();out.add("waypoints",selected);out.addProperty("total",all.size());out.addProperty("nextOffset",offset+selected.size());out.addProperty("truncated",offset+selected.size()<all.size());return out;
     }
-    public void pickedUp(ItemEntity entity, ItemStack actuallyPickedUp) {
+    public void pickedUp(ItemEntity entity, ItemStack actuallyPickedUp, JsonObject source) {
         if (actuallyPickedUp.isEmpty()) return;
         JsonObject row = describe(actuallyPickedUp); row.addProperty("count",actuallyPickedUp.getCount());
-        JsonObject source = DropProvenance.source(entity,player);
         row.add("source",source); row.addProperty("entityId",entity.getUUID().toString());
         if (pickups.size() < 128) pickups.add(row);
+    }
+    public void granted(ItemStack stack,JsonObject source) {
+        if(stack.isEmpty())return;var row=describe(stack);row.addProperty("count",stack.getCount());row.add("source",source.deepCopy());
+        if(pickups.size()<128)pickups.add(row);
     }
     public void tick() {
         var now = counts(); JsonArray changes = new JsonArray(); var credited = new HashMap<String,Integer>();
@@ -184,6 +188,7 @@ public final class InventoryLedger {
             changes.add(pickup); credited.merge(id,n,Integer::sum);
         }
         pickups.clear();
+        CarriedProvenance.sync(player);
         for (var e:now.entrySet()) {
             int gained=e.getValue()-previous.getOrDefault(e.getKey(),0)-credited.getOrDefault(e.getKey(),0);
             if(gained>0) { var row=describe(identities.get(e.getKey())); row.addProperty("count",gained);
@@ -216,7 +221,7 @@ public final class InventoryLedger {
             if(row==null){row=describe(stack);row.addProperty("count",0);row.add("slots",new JsonArray());rows.put(id,row);}
             row.addProperty("count",row.get("count").getAsInt()+stack.getCount());row.getAsJsonArray("slots").add(i);
         }
-        rows.values().forEach(entries::add);out.add("entries",entries);out.add("equipment",equipment());out.addProperty("revision",revision);out.addProperty("latestEventSequence",sequence);out.addProperty("memoryWritable",writable);return out;
+        rows.values().forEach(row->{row.add("origins",DropProvenance.compact(CarriedProvenance.describe(player,row.get("entryId").getAsString(),row.get("count").getAsInt()),4));entries.add(row);});out.add("entries",entries);out.add("equipment",equipment());out.addProperty("revision",revision);out.addProperty("latestEventSequence",sequence);out.addProperty("memoryWritable",writable);return out;
     }
     /** Exact slot observations remain distinct even when policy identity ignores wear. */
     public JsonArray equipment() {
@@ -238,6 +243,11 @@ public final class InventoryLedger {
         JsonObject out=new JsonObject();out.add("events",selected);out.addProperty("latestSequence",sequence);
         out.addProperty("historyLost",!events.isEmpty() && after<events.getFirst().get("sequence").getAsLong()-1);
         if(!selected.isEmpty())out.add("inventory",inventory());return out;
+    }
+    public JsonObject origins(String id,int offset,int limit){
+        var count=counts().get(id);if(count==null || offset<0 || limit<1 || limit>16)throw new IllegalArgumentException("A carried entryId and page bounds offset>=0, limit 1..16 are required");
+        var source=CarriedProvenance.describe(player,id,count);var all=source.getAsJsonArray("lineage");var page=new JsonArray();for(int i=offset;i<all.size() && page.size()<limit;i++)page.add(all.get(i));
+        source.add("lineage",page);source.addProperty("entryId",id);source.addProperty("totalSegments",all.size());source.addProperty("nextOffset",offset+page.size());source.addProperty("truncated",offset+page.size()<all.size());return source;
     }
     public static String bounded(String s,int n){return s.length()>n?s.substring(0,n):s;}
 }

@@ -4,6 +4,24 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from codex_transport import PersistentModel,ModelWorker
 
 class TransportTests(unittest.TestCase):
+    def test_fast_uses_confirmed_priority_with_low_effort(self):
+        model=PersistentModel('unused',Path('/tmp'),'gpt-5.6-luna','fast')
+        model._start=lambda:None;calls=[]
+        def rpc(name,args):
+            calls.append((name,args))
+            return {'thread':{'id':'fast-thread'},'serviceTier':'priority','reasoningEffort':'low'} if name=='thread/start' else {'turn':{'id':'fast-turn'}}
+        model.rpc=rpc;worker=ModelWorker(model);model._begin(worker,'instructions','hello',{})
+        self.assertEqual('fast',calls[0][1]['config']['service_tier'])
+        self.assertEqual('low',calls[-1][1]['effort'])
+        self.assertEqual('priority',model.actual_service_tier)
+        self.assertTrue(model.ready.is_set())
+
+    def test_fast_does_not_silently_fall_back(self):
+        model=PersistentModel('unused',Path('/tmp'),'gpt-5.6-luna','fast');model._start=lambda:None
+        model.rpc=lambda *a:{'thread':{'id':'wrong'},'serviceTier':'default'}
+        with self.assertRaisesRegex(RuntimeError,'not accepted'):model._ensure_thread('instructions')
+        self.assertFalse(model.ready.is_set())
+
     def test_only_matching_turn_can_finish_current_worker(self):
         model=PersistentModel('unused',Path('/tmp'),'gpt-5.6-luna');worker=ModelWorker(model)
         worker.thread_id='thread';worker.turn_id='current';model.worker=worker

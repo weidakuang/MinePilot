@@ -30,7 +30,7 @@ final class ModelToolInterfaceTest {
             for(var tool:request.getAsJsonArray("tools")){var function=tool.getAsJsonObject().getAsJsonObject("function");functions.put(function.get("name").getAsString(),function);}
             for(var definition:KnowledgeTools.definitions()){var d=definition.getAsJsonObject();assertEquals(d.get("inputSchema"),functions.get(d.get("name").getAsString()).get("parameters"));}
             var radius=functions.get("sense").getAsJsonObject("parameters").getAsJsonObject("properties").getAsJsonObject("radius");
-            assertEquals(1,radius.get("minimum").getAsInt());assertEquals(96,radius.get("maximum").getAsInt());
+            assertEquals(1,radius.get("minimum").getAsInt());assertEquals(150,radius.get("maximum").getAsInt());
             for(var definition:dev.mcai.companion.agent.mining.MiningTools.definitions()){var d=definition.getAsJsonObject();assertEquals(d.get("inputSchema"),functions.get(d.get("name").getAsString()).get("parameters"));}
             for(var definition:dev.mcai.companion.agent.mining.CollectionTools.definitions()){var d=definition.getAsJsonObject();assertEquals(d.get("inputSchema"),functions.get(d.get("name").getAsString()).get("parameters"));}
             for(var definition:dev.mcai.companion.agent.placement.PlacementTools.definitions()){var d=definition.getAsJsonObject();assertEquals(d.get("inputSchema"),functions.get(d.get("name").getAsString()).get("parameters"));}

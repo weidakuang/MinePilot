@@ -1,0 +1,668 @@
+{
+  "date": "2026-09-10",
+  "scope": "Tree search/cell-coordinate repair and native item dropping",
+  "jarSha256": "58d172e565666910f182d7aa1cc84e7b4a1ca5085e9ae5b68d79bd05742be56e",
+  "gates": [
+    {
+      "gate": "drop",
+      "log": "/tmp/minepilot-final-drop-drop.log",
+      "gradleSuccess": true,
+      "requiredTestsPassed": true
+    },
+    {
+      "gate": "knowledge",
+      "log": "/tmp/minepilot-final-drop-knowledge.log",
+      "gradleSuccess": true,
+      "requiredTestsPassed": true
+    },
+    {
+      "gate": "collection",
+      "log": "/tmp/minepilot-final-drop-collection.log",
+      "gradleSuccess": true,
+      "requiredTestsPassed": true
+    },
+    {
+      "gate": "mining",
+      "log": "/tmp/minepilot-final-drop-mining.log",
+      "gradleSuccess": true,
+      "requiredTestsPassed": true
+    },
+    {
+      "gate": "placement",
+      "log": "/tmp/minepilot-final-drop-placement.log",
+      "gradleSuccess": true,
+      "requiredTestsPassed": true
+    },
+    {
+      "gate": "excavation",
+      "log": "/tmp/minepilot-final-drop-excavation.log",
+      "gradleSuccess": true,
+      "requiredTestsPassed": true
+    },
+    {
+      "gate": "provenance",
+      "log": "/tmp/minepilot-final-drop-provenance.log",
+      "gradleSuccess": true,
+      "requiredTestsPassed": true
+    }
+  ],
+  "junit": {
+    "tests": 33,
+    "failures": 0
+  },
+  "python": {
+    "tests": 80,
+    "failures": 0
+  },
+  "skillValidation": "passed",
+  "naturalForest": {
+    "kind": "source-informed read-only inspection of original-world backup",
+    "body": {
+      "x": -71.35,
+      "y": 70.0,
+      "z": 10.3,
+      "dimension": "minecraft:overworld"
+    },
+    "pages": 8,
+    "elapsedSeconds": 0.42,
+    "matchedTrunkCells": 39,
+    "scanComplete": true,
+    "coverageComplete": true,
+    "surveys": [
+      {
+        "species": "oak",
+        "classification": "incomplete_observation",
+        "ownership": "unknown_unless_controller_declared",
+        "completeObservedComponent": false,
+        "harvestable": false,
+        "evidence": [
+          "Matching non-persistent canopy / fungal cap",
+          "Trunk meets compatible ground/root"
+        ],
+        "logs": [
+          {
+            "x": -78,
+            "y": 69,
+            "z": 3
+          },
+          {
+            "x": -78,
+            "y": 70,
+            "z": 3
+          },
+          {
+            "x": -78,
+            "y": 71,
+            "z": 3
+          },
+          {
+            "x": -78,
+            "y": 72,
+            "z": 3
+          },
+          {
+            "x": -78,
+            "y": 73,
+            "z": 3
+          }
+        ],
+        "roots": [
+          {
+            "x": -78,
+            "y": 69,
+            "z": 3
+          }
+        ],
+        "rootLayout": "single_trunk",
+        "seed": {
+          "x": -78,
+          "y": 69,
+          "z": 3
+        },
+        "seedBlock": "minecraft:oak_log",
+        "coordinateConvention": "Integer block coordinates; copy sense results x/y/z exactly. Do not round block centers toward zero."
+      },
+      {
+        "species": "oak",
+        "classification": "incomplete_observation",
+        "ownership": "unknown_unless_controller_declared",
+        "completeObservedComponent": false,
+        "harvestable": false,
+        "evidence": [
+          "Matching non-persistent canopy / fungal cap",
+          "Trunk meets compatible ground/root"
+        ],
+        "logs": [
+          {
+            "x": -78,
+            "y": 69,
+            "z": 9
+          },
+          {
+            "x": -78,
+            "y": 70,
+            "z": 9
+          },
+          {
+            "x": -78,
+            "y": 71,
+            "z": 9
+          },
+          {
+            "x": -78,
+            "y": 72,
+            "z": 9
+          },
+          {
+            "x": -78,
+            "y": 73,
+            "z": 9
+          },
+          {
+            "x": -77,
+            "y": 73,
+            "z": 10
+          },
+          {
+            "x": -78,
+            "y": 74,
+            "z": 9
+          },
+          {
+            "x": -76,
+            "y": 73,
+            "z": 11
+          },
+          {
+            "x": -79,
+            "y": 75,
+            "z": 9
+          },
+          {
+            "x": -78,
+            "y": 75,
+            "z": 9
+          },
+          {
+            "x": -75,
+            "y": 74,
+            "z": 12
+          },
+          {
+            "x": -80,
+            "y": 75,
+            "z": 9
+          },
+          {
+            "x": -79,
+            "y": 76,
+            "z": 10
+          },
+          {
+            "x": -78,
+            "y": 76,
+            "z": 9
+          },
+          {
+            "x": -77,
+            "y": 76,
+            "z": 9
+          },
+          {
+            "x": -80,
+            "y": 77,
+            "z": 11
+          },
+          {
+            "x": -78,
+            "y": 77,
+            "z": 9
+          },
+          {
+            "x": -76,
+            "y": 76,
+            "z": 8
+          }
+        ],
+        "roots": [
+          {
+            "x": -78,
+            "y": 69,
+            "z": 9
+          }
+        ],
+        "rootLayout": "single_trunk",
+        "seed": {
+          "x": -78,
+          "y": 69,
+          "z": 9
+        },
+        "seedBlock": "minecraft:oak_log",
+        "coordinateConvention": "Integer block coordinates; copy sense results x/y/z exactly. Do not round block centers toward zero."
+      },
+      {
+        "species": "oak",
+        "classification": "incomplete_observation",
+        "ownership": "unknown_unless_controller_declared",
+        "completeObservedComponent": false,
+        "harvestable": false,
+        "evidence": [
+          "Matching non-persistent canopy / fungal cap",
+          "Trunk meets compatible ground/root"
+        ],
+        "logs": [
+          {
+            "x": -70,
+            "y": 70,
+            "z": 2
+          },
+          {
+            "x": -70,
+            "y": 71,
+            "z": 2
+          },
+          {
+            "x": -70,
+            "y": 72,
+            "z": 2
+          },
+          {
+            "x": -70,
+            "y": 73,
+            "z": 2
+          }
+        ],
+        "roots": [
+          {
+            "x": -70,
+            "y": 70,
+            "z": 2
+          }
+        ],
+        "rootLayout": "single_trunk",
+        "seed": {
+          "x": -70,
+          "y": 70,
+          "z": 2
+        },
+        "seedBlock": "minecraft:oak_log",
+        "coordinateConvention": "Integer block coordinates; copy sense results x/y/z exactly. Do not round block centers toward zero."
+      },
+      {
+        "species": "oak",
+        "classification": "mature_tree_candidate",
+        "ownership": "unknown_unless_controller_declared",
+        "completeObservedComponent": true,
+        "harvestable": true,
+        "evidence": [
+          "Matching non-persistent canopy / fungal cap",
+          "Trunk meets compatible ground/root"
+        ],
+        "logs": [
+          {
+            "x": -72,
+            "y": 70,
+            "z": 9
+          },
+          {
+            "x": -72,
+            "y": 71,
+            "z": 9
+          },
+          {
+            "x": -72,
+            "y": 72,
+            "z": 9
+          },
+          {
+            "x": -73,
+            "y": 73,
+            "z": 9
+          },
+          {
+            "x": -72,
+            "y": 73,
+            "z": 9
+          },
+          {
+            "x": -72,
+            "y": 74,
+            "z": 9
+          },
+          {
+            "x": -72,
+            "y": 75,
+            "z": 9
+          }
+        ],
+        "roots": [
+          {
+            "x": -72,
+            "y": 70,
+            "z": 9
+          }
+        ],
+        "rootLayout": "single_trunk",
+        "seed": {
+          "x": -72,
+          "y": 70,
+          "z": 9
+        },
+        "seedBlock": "minecraft:oak_log",
+        "coordinateConvention": "Integer block coordinates; copy sense results x/y/z exactly. Do not round block centers toward zero."
+      },
+      {
+        "species": "oak",
+        "classification": "mature_tree_candidate",
+        "ownership": "unknown_unless_controller_declared",
+        "completeObservedComponent": true,
+        "harvestable": true,
+        "evidence": [
+          "Matching non-persistent canopy / fungal cap",
+          "Trunk meets compatible ground/root"
+        ],
+        "logs": [
+          {
+            "x": -68,
+            "y": 70,
+            "z": 10
+          },
+          {
+            "x": -68,
+            "y": 71,
+            "z": 10
+          },
+          {
+            "x": -68,
+            "y": 72,
+            "z": 10
+          },
+          {
+            "x": -68,
+            "y": 73,
+            "z": 10
+          },
+          {
+            "x": -68,
+            "y": 74,
+            "z": 10
+          },
+          {
+            "x": -68,
+            "y": 75,
+            "z": 10
+          }
+        ],
+        "roots": [
+          {
+            "x": -68,
+            "y": 70,
+            "z": 10
+          }
+        ],
+        "rootLayout": "single_trunk",
+        "seed": {
+          "x": -68,
+          "y": 70,
+          "z": 10
+        },
+        "seedBlock": "minecraft:oak_log",
+        "coordinateConvention": "Integer block coordinates; copy sense results x/y/z exactly. Do not round block centers toward zero."
+      }
+    ]
+  },
+  "independentModelTest": {
+    "model": "gpt-5.6-luna",
+    "agentId": "01a086ba-ec07-7790-96fa-b85e1c675262",
+    "result": "completed",
+    "reportedElapsedGameSeconds": 86.7,
+    "elapsedNote": "1734 native ticks / 20; game time is not a wall-clock latency guarantee",
+    "scope": "Public Skill only. Operator independently found/felled a tree and dropped two collected logs; parent did not provide a target/route or control gameplay",
+    "initialBody": {
+      "x": -71.35,
+      "y": 70.0,
+      "z": 10.3,
+      "dimension": "minecraft:overworld"
+    },
+    "selectedTreeBefore": {
+      "species": "oak",
+      "classification": "mature_tree_candidate",
+      "ownership": "unknown_unless_controller_declared",
+      "completeObservedComponent": true,
+      "harvestable": true,
+      "evidence": [
+        "Matching non-persistent canopy / fungal cap",
+        "Trunk meets compatible ground/root"
+      ],
+      "logs": [
+        {
+          "x": -68,
+          "y": 70,
+          "z": 10
+        },
+        {
+          "x": -68,
+          "y": 71,
+          "z": 10
+        },
+        {
+          "x": -68,
+          "y": 72,
+          "z": 10
+        },
+        {
+          "x": -68,
+          "y": 73,
+          "z": 10
+        },
+        {
+          "x": -68,
+          "y": 74,
+          "z": 10
+        },
+        {
+          "x": -68,
+          "y": 75,
+          "z": 10
+        }
+      ],
+      "roots": [
+        {
+          "x": -68,
+          "y": 70,
+          "z": 10
+        }
+      ],
+      "rootLayout": "single_trunk",
+      "seed": {
+        "x": -68,
+        "y": 70,
+        "z": 10
+      },
+      "seedBlock": "minecraft:oak_log",
+      "coordinateConvention": "Integer block coordinates; copy sense results x/y/z exactly. Do not round block centers toward zero."
+    },
+    "blocksAfter": {
+      "dimension": "minecraft:overworld",
+      "tick": 6806,
+      "blocks": [
+        {
+          "x": -68,
+          "y": 70,
+          "z": 10,
+          "state": "Block{minecraft:air}"
+        },
+        {
+          "x": -68,
+          "y": 71,
+          "z": 10,
+          "state": "Block{minecraft:air}"
+        },
+        {
+          "x": -68,
+          "y": 72,
+          "z": 10,
+          "state": "Block{minecraft:air}"
+        },
+        {
+          "x": -68,
+          "y": 73,
+          "z": 10,
+          "state": "Block{minecraft:air}"
+        },
+        {
+          "x": -68,
+          "y": 74,
+          "z": 10,
+          "state": "Block{minecraft:air}"
+        },
+        {
+          "x": -68,
+          "y": 75,
+          "z": 10,
+          "state": "Block{minecraft:air}"
+        }
+      ]
+    },
+    "finalBody": {
+      "x": -67.67435820098873,
+      "y": 70.0,
+      "z": 9.470706826722253,
+      "dimension": "minecraft:overworld"
+    },
+    "collectionResult": {
+      "phase": "COMPLETED",
+      "wholeTreeVerified": true,
+      "brokenBlocks": 6,
+      "remainingApprovedBlocks": 0
+    },
+    "oakLogCounts": {
+      "before": 0,
+      "collected": 6,
+      "afterDrop": 4
+    },
+    "physicalDrop": {
+      "uuid": "e9c23534-3bf9-406e-b80d-168bf08cac52",
+      "type": "minecraft:item",
+      "x": -67.40761349850902,
+      "y": 70.0,
+      "z": 11.126219904929831,
+      "sense": "proximity_occlusion_bypass",
+      "visible": false,
+      "heading": 338.40516662597656,
+      "headHeading": 180.0,
+      "relativeFacing": "facing",
+      "pickupAvoided": true,
+      "stack": {
+        "entryId": "fa6051282077d07257ac82526d3e18dd28e4c1b7038d941c2841e846b838e86d",
+        "item": "minecraft:oak_log",
+        "name": "Oak Log",
+        "count": 2,
+        "importance": 2,
+        "protected": true,
+        "classified": false
+      },
+      "source": {
+        "category": "mixed",
+        "confidence": "causal_native_events",
+        "mergedStackLineageKnown": true,
+        "allOriginsKnown": true,
+        "lineageCount": 2,
+        "lineage": [
+          {
+            "count": 1,
+            "source": {
+              "category": "mined_block",
+              "discardOwner": "bd7a9e38-dd7e-3995-b2cc-4ead123644d6",
+              "discardRequest": "forest-repair-drop-20260910-001",
+              "actorId": "bd7a9e38-dd7e-3995-b2cc-4ead123644d6",
+              "actorName": "MinePilot",
+              "requestId": "270d6e78-78ab-4651-9d1f-fbae4f29f2e1",
+              "block": "minecraft:oak_log",
+              "dimension": "minecraft:overworld",
+              "x": -68,
+              "y": 70,
+              "z": 10,
+              "originEntityId": "8d18d76d-3050-4a87-afd5-7734deab5428",
+              "confidence": "entity_origin_event",
+              "mergedStackLineageKnown": false,
+              "lastTransfer": {
+                "kind": "player_toss",
+                "actorId": "bd7a9e38-dd7e-3995-b2cc-4ead123644d6",
+                "actorName": "MinePilot",
+                "gameTick": 894666
+              }
+            }
+          },
+          {
+            "count": 1,
+            "source": {
+              "category": "mined_block",
+              "discardOwner": "bd7a9e38-dd7e-3995-b2cc-4ead123644d6",
+              "discardRequest": "forest-repair-drop-20260910-001",
+              "actorId": "bd7a9e38-dd7e-3995-b2cc-4ead123644d6",
+              "actorName": "MinePilot",
+              "requestId": "324066d1-15e9-45e5-97c9-5fb352e38c4c",
+              "block": "minecraft:oak_log",
+              "dimension": "minecraft:overworld",
+              "x": -68,
+              "y": 71,
+              "z": 10,
+              "originEntityId": "c2f16e5f-e564-44a4-928d-927020383501",
+              "confidence": "entity_origin_event",
+              "mergedStackLineageKnown": false,
+              "lastTransfer": {
+                "kind": "player_toss",
+                "actorId": "bd7a9e38-dd7e-3995-b2cc-4ead123644d6",
+                "actorName": "MinePilot",
+                "gameTick": 894666
+              }
+            }
+          }
+        ],
+        "lineageSegments": 2,
+        "lineageDetailsTruncated": false
+      },
+      "sampledAtTick": 896088
+    },
+    "limits": "One natural six-log oak in an isolated original-world backup, not all species/forest conditions or large tree-farm acceptance.",
+    "temporaryServer": "stop requested after final public physical inspection"
+  },
+  "installation": {
+    "endpoint": "127.0.0.1:25565",
+    "mcpPort": 25766,
+    "body": {
+      "x": -200.6164523003764,
+      "y": 72.0,
+      "z": 10.300000011920929,
+      "dimension": "minecraft:overworld"
+    },
+    "preservation": {
+      "x": true,
+      "y": true,
+      "z": true,
+      "dimension": true,
+      "inventory": true,
+      "hotbar": true,
+      "selectedHotbarSlot": true
+    },
+    "dropToolsPresent": true,
+    "luna": {
+      "pid": 12446,
+      "status": "LISTENING",
+      "model": "gpt-5.6-luna",
+      "modelConnectionReady": true
+    },
+    "server": {
+      "pid": 12420,
+      "port": 25565,
+      "mcpPort": 25766,
+      "startedAt": 1788966870.257992,
+      "log": "/Users/weida/Documents/minecraft-ai-companion-forge/run-peaceful-play-20260908-234254/server-detached-1788966870256854000.log",
+      "directory": "/Users/weida/Documents/minecraft-ai-companion-forge/run-peaceful-play-20260908-234254"
+    },
+    "clientForgeConfiguredLastKnown": "65.0.8",
+    "serverForge": "65.0.9",
+    "clientWorldEntry": "not reverified after JAR replacement"
+  }
+}

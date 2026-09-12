@@ -34,11 +34,17 @@ public final class PlacementCoordinator implements AutoCloseable {
     private Cell active;private PlacementGeometry.Aim aim;private Map<BlockPos,BlockState> pendingFootprint;
     private BlockPos landingTarget;
     private int plannedTick;
+    private JsonObject deferredOne;private int vegetationClears;
     private int beforeCount;private CompletableFuture<NavigationPlan> pendingRoute;private NavigationEvent routeEvent;
     private NavigationPlan route;private RouteOption chosenRoute;
-    public PlacementCoordinator(AgentRuntime runtime){r=runtime;p=r.player();follower=new NavigationFollower(p,e->{if(e.type()!=NavigationEvent.Type.NAVIGATION_PROGRESS)routeEvent=e;},id->null,why->invalidateRoute(why));}
+    public PlacementCoordinator(AgentRuntime runtime){r=runtime;p=r.player();follower=new NavigationFollower(p,e->{if(e.type()!=NavigationEvent.Type.NAVIGATION_PROGRESS)routeEvent=e;},id->arrivalProblem(),why->invalidateRoute(why));}
+    private String arrivalProblem(){
+        if(active==null)return null;
+        return PlacementGeometry.aims(p,active.pos,active.item,active.hand,active.state,p.position()).isEmpty()?"Approach must actually clear the placement cell and reach a legal face":null;
+    }
     private void invalidateRoute(String why){follower.requestReplan(why);}
     public boolean executing(){return phase.equals("EXECUTING");}
+    public int reservedCount(ItemStack stack){return ownsBody()?materialCounts().getOrDefault(r.player().inventoryLedger.key(stack),0):0;}
     public boolean ownsBody(){return Set.of("EXECUTING","PAUSED").contains(phase);}
     public boolean internalAction(){return internal;}
     public boolean isChildRequest(JsonObject state){return state.has("requestId") && childMining.contains(state.get("requestId").getAsString());}
@@ -46,6 +52,8 @@ public final class PlacementCoordinator implements AutoCloseable {
     private int tick(){return r.server().getTickCount();}
     private void thread(){if(!r.server().isSameThread())throw new IllegalStateException("Placement requires the server thread");}
     private void idle(){
+        if(r.excavation()!=null && r.excavation().ownsBody() && !r.excavation().internalAction())throw new IllegalStateException("Pause or cancel excavation before an independent body action");
+
         thread();var n=r.navigation().status();
         if(r.collection().ownsBody() || r.mining().ownsBody() || r.jumpActive() || r.turnActive() || !n.phase().terminal() && n.phase()!=NavigationToolCoordinator.Phase.IDLE)
             throw new IllegalStateException("Finish or cancel the current body action first");
@@ -79,7 +87,7 @@ public final class PlacementCoordinator implements AutoCloseable {
             prepared.add(new Cell(pos,stack,p.inventoryLedger.key(stack),Map.copyOf(state),HandController.hand(PlacementTools.string(a,"hand","main")),PlacementTools.bool(a,"jump",false),temporary,p.level().getBlockState(pos)));
         }
         for(var q:air)if(!r.perception.observableBlock(q) || q.distToCenterSqr(p.position())>(move?24*24:25) || !p.level().getBlockState(q).isAir())throw new IllegalArgumentException("Reserved air must be sensed, in bounds and already empty; this placement plan does not authorize clearing it");
-        stopChildren();landingTarget=null;reservedAir=List.copyOf(air);
+        stopChildren();landingTarget=null;leanOrigin=leanTarget=null;reservedAir=List.copyOf(air);
         cells.clear();cells.addAll(prepared);finished.clear();skipped.clear();cleaned.clear();placed.clear();expected.clear();childMining.clear();receipts.asList().clear();
         for(var c:cells)expected.put(c.pos,c.before);
         request=UUID.randomUUID();phase="PLAN_READY";step="";reason="";dimension=p.level().dimension().identifier().toString();origin=p.position();plannedTick=tick();
@@ -92,7 +100,49 @@ public final class PlacementCoordinator implements AutoCloseable {
         for(var c:cells)if(!p.level().getBlockState(c.pos).equals(c.before))throw new IllegalStateException("A target changed since planning");
         decisions=new JsonArray();decisionId=null;phase="EXECUTING";started=tick();lastPosition=p.position();advance();return status();
     }
-    public JsonObject one(JsonObject a){var result=plan(List.of(a),false,0,false);return choose(UUID.fromString(result.get("requestId").getAsString()),"bounded-placement");}
+    public JsonObject one(JsonObject a){
+        idle();
+        if(ownsBody())throw new IllegalStateException("Cancel the current placement job before replacing it");
+        if(!a.has("slot") && "minecraft:crafting_table".equals(PlacementTools.string(a,"item",""))
+            && dev.mcai.companion.vendor.numen.tools.NativeInventory.count(p.getInventory(),net.minecraft.world.item.Items.CRAFTING_TABLE)==0){
+            var made=com.google.gson.JsonParser.parseString(new dev.mcai.companion.vendor.numen.tools.CraftOps().craft("minecraft:crafting_table",1,p)).getAsJsonObject();
+            if(!made.has("success") || !made.get("success").getAsBoolean())throw new IllegalStateException(made.get("message").getAsString());
+        }
+        // A body standing inside tall grass can see that plant before every
+        // prospective placement face. Clear only these observed replaceable
+        // weeds through native mining, then continue this same placement job.
+        for(var weed:List.of(p.blockPosition().above(),p.blockPosition())){
+            if(!dev.mcai.companion.agent.mining.MiningCoordinator.softVegetation(p.level().getBlockState(weed)) || !r.mining().reachable(weed))continue;
+            HandController.resolve(p,a); // Require the real placement item first.
+            cells.clear();finished.clear();skipped.clear();placed.clear();expected.clear();childMining.clear();receipts.asList().clear();active=null;decisions=new JsonArray();
+            deferredOne=a.deepCopy();vegetationClears=0;request=UUID.randomUUID();dimension=p.level().dimension().identifier().toString();origin=lastPosition=p.position();distance=0;allowMove=false;started=tick();phase="EXECUTING";step="CLEAR_VEGETATION";reason="";
+            var plan=child(()->r.mining().plan(weed,false,true));mineId=UUID.fromString(plan.get("requestId").getAsString());childMining.add(mineId.toString());child(()->r.mining().choose(mineId,"held-tool"));return status();
+        }
+        deferredOne=null;
+        if(!a.has("x") && !a.has("y") && !a.has("z")) {
+            int slot=HandController.resolve(p,a);var stack=p.getInventory().getItem(slot);
+            var hand=PlacementTools.string(a,"hand","main").equals("offhand")?InteractionHand.OFF_HAND:InteractionHand.MAIN_HAND;
+            var constraints=new HashMap<String,String>();if(a.has("state"))a.getAsJsonObject("state").entrySet().forEach(e->constraints.put(e.getKey(),e.getValue().getAsString()));
+            var candidates=new ArrayList<BlockPos>();
+            // Feet on paths, farmland and slabs lie inside the supporting block's
+            // integer cell. The adjacent placement cell can therefore be one up.
+            for(int x=-2;x<=2;x++)for(int z=-2;z<=2;z++)for(int y=-1;y<=1;y++) {
+                var q=p.blockPosition().offset(x,y,z);
+                if(!p.level().isLoaded(q) || !p.level().getBlockState(q).canBeReplaced() || !p.level().getFluidState(q).isEmpty()
+                        || new AABB(q).intersects(p.getBoundingBox()) || !p.level().getEntities(p,new AABB(q),e->e instanceof net.minecraft.world.entity.LivingEntity).isEmpty())continue;
+                candidates.add(q);
+            }
+            candidates.sort(Comparator.comparingDouble(q->q.distToCenterSqr(p.position())));
+            JsonObject selected=null;
+            for(var q:candidates)if(!PlacementGeometry.aims(p,q,stack,hand,constraints,p.position()).isEmpty()){
+                selected=a.deepCopy();for(var e:PlacementTools.xyz(q).entrySet())selected.add(e.getKey(),e.getValue());break;
+            }
+            if(selected==null)throw new IllegalArgumentException("No legal nearby empty/replaceable placement cell in two blocks; specify a sensed target or move");
+            a=selected;
+        }
+        var result=plan(List.of(a),false,0,false);return choose(UUID.fromString(result.get("requestId").getAsString()),"bounded-placement");
+    }
+
     private void require(UUID id){if(request==null || !request.equals(id))throw new IllegalArgumentException("Stale placement request");}
     private String resources(){
         for(var e:materialCounts().entrySet())if(count(e.getKey())<e.getValue())return "Missing reserved placement material "+e.getKey()+"; need "+e.getValue()+", have "+count(e.getKey());return null;
@@ -115,12 +165,21 @@ public final class PlacementCoordinator implements AutoCloseable {
         if(tick()-started>12000 || distance>maxDistance+2 && allowMove){block("JOB_BUDGET_EXHAUSTED",null);return;}
         try{
             switch(step){
+                case "CLEAR_VEGETATION" -> {
+                    var state=r.mining().status();if(state.get("phase").getAsString().equals("EXECUTING"))return;
+                    if(!state.get("phase").getAsString().equals("COMPLETED")){block("Native vegetation clearing: "+state.get("reason").getAsString(),null);return;}
+                    if(vegetationClears>=3){block("Vegetation changed repeatedly during placement",null);return;}
+                    UUID parent=request;int cleared=vegetationClears+1;var ids=new HashSet<>(childMining);var prior=receipts.deepCopy();state.addProperty("operation","native_replaceable_vegetation_clear");prior.add(state);
+                    var next=deferredOne.deepCopy();phase="IDLE";one(next);request=parent;vegetationClears=cleared;childMining.addAll(ids);for(var receipt:prior)receipts.add(receipt);
+                }
                 case "SELECT" -> select();
+                case "LEAN" -> leanTick();
+                case "UNLEAN" -> unleanTick();
                 case "AIM","JUMP" -> placeTick();
                 case "VERIFY" -> verify();
                 case "LAND" -> {if(p.onGround()){if(p.getY()<active.pos.getY()+.95){block("JUMP_LANDING_NOT_VERIFIED",active.pos);return;}advance();}else if(tick()-stepStarted>60)block("LANDING_TIMEOUT",active.pos);}
                 case "PLAN_ROUTE" -> resolveRoute();
-                case "TRAVEL" -> {follower.tick();if(routeEvent!=null){var e=routeEvent;routeEvent=null;if(e.type()==NavigationEvent.Type.NAVIGATION_COMPLETED){step="SELECT";active=null;}else if(e.type()==NavigationEvent.Type.NAVIGATION_DECISION_REQUIRED || e.type()==NavigationEvent.Type.NAVIGATION_FAILED)block("APPROACH_BLOCKED: "+e.message(),active==null?null:active.pos);}}
+                case "TRAVEL" -> {follower.tick();if(routeEvent!=null){var e=routeEvent;routeEvent=null;if(e.type()==NavigationEvent.Type.NAVIGATION_COMPLETED){step="SELECT";active=null;}else if(e.type()==NavigationEvent.Type.NAVIGATION_DECISION_REQUIRED || e.type()==NavigationEvent.Type.NAVIGATION_FAILED){if(!approaches.isEmpty())beginRoute();else block("APPROACH_BLOCKED: "+e.message(),active==null?null:active.pos);}}}
                 case "MINE" -> {
                     var m=r.mining().status();String phase=m.get("phase").getAsString();
                     if(phase.equals("COMPLETED")){
@@ -131,6 +190,34 @@ public final class PlacementCoordinator implements AutoCloseable {
                 default -> block("Unknown placement execution step",null);
             }
         }catch(RuntimeException failure){block("ACTION_REJECTED: "+String.valueOf(failure.getMessage()),active==null?null:active.pos);}
+    }
+    private Vec3 leanOrigin,leanTarget;
+    private boolean prepareLean(){
+        if(!active.temporary || !p.onGround() || active.pos.getY()!=p.blockPosition().getY()-1)return false;
+        var support=p.blockPosition().below();if(!p.level().getBlockState(support).isCollisionShapeFullBlock(p.level(),support))return false;
+        var direction=Vec3.atCenterOf(active.pos).subtract(p.position());double length=Math.hypot(direction.x,direction.z);if(length<.01 || length>1.8)return false;
+        for(double amount:new double[]{.38,.52,.62}){
+            var feet=p.position().add(direction.x/length*amount,0,direction.z/length*amount);var box=p.getBoundingBox().move(feet.subtract(p.position()));
+            var contact=new AABB(support).move(0,1,0);
+            if(box.maxX<=contact.minX+.08 || box.minX>=contact.maxX-.08 || box.maxZ<=contact.minZ+.08 || box.minZ>=contact.maxZ-.08 || !p.level().noCollision(p,box))continue;
+            if(PlacementGeometry.aims(p,active.pos,p.getItemInHand(active.hand),active.hand,active.state,feet).isEmpty())continue;
+            leanOrigin=p.position();leanTarget=feet;step="LEAN";stepStarted=tick();return true;
+        }return false;
+    }
+    private void leanTick(){
+        if(!p.onGround() || tick()-stepStarted>60 || p.position().distanceToSqr(leanOrigin)>1 || !p.level().getBlockState(active.pos).equals(expected.get(active.pos))){block("SUPPORT_EDGE_APPROACH_CHANGED",active.pos);return;}
+        var candidates=PlacementGeometry.aims(p,active.pos,p.getItemInHand(active.hand),active.hand,active.state,p.position());
+        if(!candidates.isEmpty()){aim=candidates.getFirst();step="AIM";stepStarted=tick();p.applyControlFrame(new AgentControlFrame(aim.yaw(),aim.pitch(),0,0,false,false,true));return;}
+        var delta=leanTarget.subtract(p.position());float yaw=(float)Math.toDegrees(Math.atan2(-delta.x,delta.z));
+        if(delta.horizontalDistance()<.03){block("SUPPORT_FACE_STILL_OCCLUDED_AT_SAFE_EDGE",active.pos);return;}
+        float forward=Math.abs(net.minecraft.util.Mth.wrapDegrees(yaw-p.getYRot()))<20?.35F:0;
+        p.applyControlFrame(new AgentControlFrame(yaw,30,forward,0,false,false,true));
+    }
+    private void unleanTick(){
+        if(!p.onGround() || tick()-stepStarted>60 || p.position().distanceToSqr(leanOrigin)>1){block("SUPPORT_RETURN_FROM_EDGE_FAILED",active.pos);return;}
+        var delta=leanOrigin.subtract(p.position());if(delta.horizontalDistance()<.05){leanOrigin=leanTarget=null;advance();return;}
+        float yaw=(float)Math.toDegrees(Math.atan2(-delta.x,delta.z));float forward=Math.abs(net.minecraft.util.Mth.wrapDegrees(yaw-p.getYRot()))<20?.5F:0;
+        p.applyControlFrame(new AgentControlFrame(yaw,15,forward,0,false,false,true));
     }
     private void select(){
         if(landingTarget!=null){
@@ -152,6 +239,7 @@ public final class PlacementCoordinator implements AutoCloseable {
                 if(!p.level().noCollision(p,p.getBoundingBox().expandTowards(0,1.25,0))){block("JUMP_HEADROOM_BLOCKED",c.pos);return;}
                 step="JUMP";stepStarted=tick();jumpStarted=tick();jumpSawAirborne=false;return;
             }
+            if(prepareLean())return;
             if(allowMove){prepareApproach();return;}
             block("NO_LEGAL_PLACEMENT_FACE_OR_STATE",c.pos);return;
         }
@@ -195,6 +283,7 @@ public final class PlacementCoordinator implements AutoCloseable {
         if(pendingFootprint.keySet().stream().anyMatch(reservedAir::contains)){block("COMPOUND_CONFLICTS_WITH_RESERVED_AIR",c.pos);return;}
         beforeCount=count(c.entry);var before=p.level().getBlockState(c.pos);
         p.swing(c.hand);p.gameMode.useItemOn(p,p.level(),p.getItemInHand(c.hand),c.hand,current.hit());
+        if(!p.level().getBlockState(c.pos).equals(before) && count(c.entry)<beforeCount)r.workstations.placed(c.pos);
         var row=new JsonObject();row.addProperty("operation","place");row.addProperty("tick",tick());row.add("target",PlacementTools.xyz(c.pos));row.addProperty("before",before.toString());row.addProperty("after",p.level().getBlockState(c.pos).toString());row.addProperty("entryId",c.entry);row.addProperty("consumed",beforeCount-count(c.entry));receipts.add(row);
         if(beforeCount-count(c.entry)!=1){block("NATIVE_USE_DID_NOT_CONSUME_ONE_PLACEMENT_ITEM",c.pos);return;}
         step="VERIFY";stepStarted=tick();verify();
@@ -202,6 +291,7 @@ public final class PlacementCoordinator implements AutoCloseable {
     private void verify(){
         for(var e:pendingFootprint.entrySet())if(!p.level().getBlockState(e.getKey()).equals(e.getValue())){block("PLACED_STATE_NOT_VERIFIED",e.getKey());return;}
         placed.putAll(pendingFootprint);finished.add(active.pos);
+        if(leanOrigin!=null){step="UNLEAN";stepStarted=tick();return;}
         if(jumpStarted>=0){landingTarget=active.pos;step="LAND";stepStarted=tick();p.stopControlling();}else advance();
     }
     private void prepareApproach(){
@@ -211,7 +301,7 @@ public final class PlacementCoordinator implements AutoCloseable {
             var feet=Vec3.atBottomCenterOf(q);if(!p.level().getBlockState(q.below()).isCollisionShapeFullBlock(p.level(),q.below()) || !p.level().noCollision(p,p.getBoundingBox().move(feet.subtract(p.position()))))continue;
             approaches.add(q);
         }
-        approaches.sort(Comparator.comparingDouble(q->q.distToCenterSqr(p.position())));if(approaches.size()>16)approaches.subList(16,approaches.size()).clear();approaches.removeIf(q->PlacementGeometry.aims(p,c.pos,c.item,c.hand,c.state,Vec3.atBottomCenterOf(q)).isEmpty());if(approaches.size()>4)approaches.subList(4,approaches.size()).clear();beginRoute();
+        approaches.sort(Comparator.comparingDouble(q->q.distToCenterSqr(p.position())));approaches.removeIf(q->PlacementGeometry.aims(p,c.pos,c.item,c.hand,c.state,Vec3.atBottomCenterOf(q)).isEmpty());if(approaches.size()>8)approaches.subList(8,approaches.size()).clear();beginRoute();
     }
     private void beginRoute(){
         if(approaches.isEmpty()){block("NO_EVALUATED_SAFE_APPROACH",active.pos);return;}
@@ -272,7 +362,7 @@ public final class PlacementCoordinator implements AutoCloseable {
     public JsonObject resume(UUID id){idle();require(id);if(!phase.equals("PAUSED"))throw new IllegalStateException("Placement is not paused");decisions=new JsonArray();decisionId=null;phase="EXECUTING";started=tick();lastPosition=p.position();advance();return status();}
     public void cancelForChat(){if(request!=null && (ownsBody() || phase.equals("PLAN_READY") || phase.equals("BLOCKED")))interrupt(request,false);}
     public JsonObject status(){
-        var out=new JsonObject();out.addProperty("phase",phase);out.addProperty("step",step);out.addProperty("reason",reason);out.addProperty("ownsBody",ownsBody());out.addProperty("physicalDistance",distance);
+        var out=new JsonObject();out.addProperty("phase",phase);out.addProperty("step",step);out.addProperty("step",step);out.addProperty("reason",reason);out.addProperty("ownsBody",ownsBody());out.addProperty("physicalDistance",distance);
         out.addProperty("bodyX",p.getX());out.addProperty("bodyY",p.getY());out.addProperty("bodyZ",p.getZ());out.addProperty("dimension",p.level().dimension().identifier().toString());
         if(request!=null){out.addProperty("requestId",request.toString());out.addProperty("revision",revision);out.addProperty("requestedTargets",cells.size());out.addProperty("satisfiedTargets",finished.size());out.addProperty("skippedTargets",skipped.size());}
         if(active!=null)out.add("currentTarget",PlacementTools.xyz(active.pos));

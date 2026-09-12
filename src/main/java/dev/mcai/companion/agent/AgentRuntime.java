@@ -35,6 +35,18 @@ public final class AgentRuntime implements AutoCloseable {
     private final HeadlessPlayerSession session;
     private final NavigationToolCoordinator navigation;
     private final AgentBrain brain;
+    public final dev.mcai.companion.agent.knowledge.CompanionMemory memory = new dev.mcai.companion.agent.knowledge.CompanionMemory(this);
+    public final dev.mcai.companion.agent.knowledge.CompanionEvents companionEvents = new dev.mcai.companion.agent.knowledge.CompanionEvents(this);
+    public final dev.mcai.companion.vendor.numen.movement.BreathChain breath = new dev.mcai.companion.vendor.numen.movement.BreathChain();
+    private final dev.mcai.companion.agent.survival.CampCoordinator camp = new dev.mcai.companion.agent.survival.CampCoordinator(this);
+    public dev.mcai.companion.agent.survival.CampCoordinator camp(){return camp;}
+    private final dev.mcai.companion.agent.mining.GatherCoordinator gather = new dev.mcai.companion.agent.mining.GatherCoordinator(this);
+    public dev.mcai.companion.agent.mining.GatherCoordinator gather(){return gather;}
+    private final dev.mcai.companion.agent.survival.SurvivalCoordinator survival = new dev.mcai.companion.agent.survival.SurvivalCoordinator(this);
+    public dev.mcai.companion.agent.survival.SurvivalCoordinator survival(){return survival;}
+    public final dev.mcai.companion.agent.mining.MiningSurvey miningSurvey;
+    private final dev.mcai.companion.agent.mining.ExcavationCoordinator excavation;
+    public dev.mcai.companion.agent.mining.ExcavationCoordinator excavation(){return excavation;}
     private final dev.mcai.companion.agent.placement.PlacementCoordinator placement;
     public dev.mcai.companion.agent.placement.PlacementCoordinator placement(){return placement;}
     private final dev.mcai.companion.agent.mining.CollectionCoordinator collection;
@@ -52,7 +64,12 @@ public final class AgentRuntime implements AutoCloseable {
     private String jumpPhase = "IDLE";
     private java.util.UUID attentionTarget;
     public final dev.mcai.companion.agent.knowledge.WorldPerception perception;
+    public final dev.mcai.companion.agent.knowledge.ResourceSearch resources = new dev.mcai.companion.agent.knowledge.ResourceSearch(this);
+    public final dev.mcai.companion.agent.knowledge.WorkstationMemory workstations = new dev.mcai.companion.agent.knowledge.WorkstationMemory(this);
+    public final dev.mcai.companion.agent.knowledge.PlayerFocus playerFocus = new dev.mcai.companion.agent.knowledge.PlayerFocus(this);
+    public final dev.mcai.companion.agent.knowledge.PerceptionSweep perceptionSweep = new dev.mcai.companion.agent.knowledge.PerceptionSweep(this);
     public final dev.mcai.companion.agent.knowledge.SoundPerception hearing;
+    public final dev.mcai.companion.agent.knowledge.ItemDropService itemDrops;
     private final java.util.Deque<com.google.gson.JsonObject> systemChat = new java.util.ArrayDeque<>();
     private long systemSequence;
     public com.google.gson.JsonObject systemChatSince(long after) {
@@ -62,11 +79,12 @@ public final class AgentRuntime implements AutoCloseable {
     }
     private Float turnYaw;
     private String turnPhase="IDLE";
-    public boolean turnActive(){return turnYaw!=null;}
+    public boolean turnActive(){return turnYaw!=null || perceptionSweep.active();}
     public String turnPhase(){return turnPhase;}
     public void turnTo(double heading) {
         requireServerThread();
-        if(placement.ownsBody() || collection.ownsBody() || mining.ownsBody() || jumpActive() || !navigation.status().phase().terminal() && navigation.status().phase()!=NavigationToolCoordinator.Phase.IDLE)
+        perceptionSweep.cancel();
+        if(excavation.ownsBody() || placement.ownsBody() || collection.ownsBody() || mining.ownsBody() || jumpActive() || !navigation.status().phase().terminal() && navigation.status().phase()!=NavigationToolCoordinator.Phase.IDLE)
             throw new IllegalStateException("Stop the active movement before a turn-only action");
         if(!player().isAlive())throw new IllegalStateException("Turning requires a living body");
         turnYaw=dev.mcai.companion.agent.navigation.NavigationFollower.headingToMinecraftYaw(dev.mcai.companion.agent.knowledge.WorldPerception.normalize(heading));
@@ -75,7 +93,7 @@ public final class AgentRuntime implements AutoCloseable {
 
     public void jumpOnce() {
         requireServerThread();
-        if (placement.ownsBody() || collection.ownsBody() || mining.ownsBody() || jumpStartedTick >= 0 || turnActive()) throw new IllegalStateException("A jump or turn is already active");
+        if (excavation.ownsBody() || placement.ownsBody() || collection.ownsBody() || mining.ownsBody() || jumpStartedTick >= 0 || turnActive()) throw new IllegalStateException("A jump or turn is already active");
         if (!navigation.status().phase().terminal()
                 && navigation.status().phase() != NavigationToolCoordinator.Phase.IDLE)
             throw new IllegalStateException("Cancel navigation before requesting a jump");
@@ -104,7 +122,10 @@ public final class AgentRuntime implements AutoCloseable {
         mining = new dev.mcai.companion.agent.mining.MiningCoordinator(this);
         collection = new dev.mcai.companion.agent.mining.CollectionCoordinator(this);
         placement = new dev.mcai.companion.agent.placement.PlacementCoordinator(this);
+        excavation = new dev.mcai.companion.agent.mining.ExcavationCoordinator(this);
+        miningSurvey = new dev.mcai.companion.agent.mining.MiningSurvey(this);
         hearing = new dev.mcai.companion.agent.knowledge.SoundPerception(session.player());
+        itemDrops = new dev.mcai.companion.agent.knowledge.ItemDropService(this);
         session.receivedSound = hearing::receive;
         session.visibleSystemChat = text -> {
             var row=new com.google.gson.JsonObject();row.addProperty("sequence",++systemSequence);row.addProperty("origin",text.startsWith("[AI] ")?"received_agent_chat":"received_system_chat");
@@ -169,14 +190,33 @@ public final class AgentRuntime implements AutoCloseable {
         if (closed || player == session.player() || text == null || text.isBlank()) {
             return;
         }
+        if(java.util.Set.of("标记这里","标记这个","mark here").contains(text.strip().toLowerCase(java.util.Locale.ROOT).replaceAll("[。.!！]+$", ""))){
+            markPlayerTarget(player);return;
+        }
+        playerFocus.capture(player, false);
         attentionTarget = player.getUUID();
         onChat(player.getGameProfile().name(), text);
+    }
+
+    /** Vanilla chat/command entry; no client key bindings or custom packets. */
+    public boolean markPlayerTarget(ServerPlayer human) {
+        requireServerThread();if(closed || human==session.player())return false;
+        var focus=playerFocus.capture(human,true);
+        if(!focus.has("kind"))return false;
+        if(focus.get("kind").getAsString().equals("miss")){
+            human.sendSystemMessage(net.minecraft.network.chat.Component.literal("[MinePilot] 准星在150格内没有命中目标。"));return false;
+        }
+        attentionTarget=human.getUUID();
+        String what=focus.has("stack")?focus.getAsJsonObject("stack").get("item").getAsString():focus.has("block")?focus.get("block").getAsString():focus.get("type").getAsString();
+        human.sendSystemMessage(net.minecraft.network.chat.Component.literal("[MinePilot] 已标记 "+what+"："+focus.get("position")));
+        onChat(human.getGameProfile().name(),"我标记了准星目标，请看我的标记。");return true;
     }
 
     /** Ordinary dedicated-server console chat uses the same bounded input queue. */
     public void onChat(String speakerName, String text) {
         requireServerThread();
         if (closed || text == null || text.isBlank()) return;
+        perceptionSweep.cancel();
         String bounded = text.length() > 512 ? text.substring(0, 512) : text;
         // A small explicit stop vocabulary is a server-side safety control, not
         // the general language encoder. Negated or conversational text does not
@@ -184,8 +224,13 @@ public final class AgentRuntime implements AutoCloseable {
         String stop = bounded.strip().toLowerCase(java.util.Locale.ROOT)
                 .replaceAll("[。.!！]+$", "");
         boolean handledLocally = false;
-        if (java.util.Set.of("停下", "停止", "stop", "stop moving").contains(stop)) {
+        if (java.util.Set.of("停下", "停下来", "停一下", "别动", "停止", "取消", "取消吧", "取消操作", "取消任务", "取消当前任务", "别挖了", "不用挖了", "别跟了", "stop", "stop moving", "cancel").contains(stop)) {
             handledLocally = true;
+            memory.pause(true);companionEvents.interrupted();
+            camp.cancel();
+            gather.cancel();
+            survival.cancel();
+            excavation.cancelForChat();
             placement.cancelForChat();
             collection.cancelForChat();
             mining.cancelForChat();
@@ -200,6 +245,7 @@ public final class AgentRuntime implements AutoCloseable {
             player().stopControlling();
             say("已停下，我还在这里。你可以继续聊天或告诉我新的目的地。");
         }
+        memory.chat("user",speakerName,bounded);
         playerChat.addLast(new VisiblePlayerChat(++chatSequence, speakerName, bounded, server.getTickCount(), handledLocally));
         while (playerChat.size() > CHAT_HISTORY_LIMIT) playerChat.removeFirst();
         if (brain != null && !handledLocally) brain.onChat(speakerName, bounded);
@@ -212,14 +258,28 @@ public final class AgentRuntime implements AutoCloseable {
         navigation.beforePhysicsTick();
         collection.beforePhysics();
         placement.beforePhysics();
+        excavation.beforePhysics();
         mining.tickBeforePhysics();
+        camp.beforePhysics();
+        gather.beforePhysics();
+        survival.beforePhysics();
+        breath.tick(player(), !camp.active() && !gather.active() && !survival.active() && !excavation.ownsBody() && !collection.ownsBody() && !mining.ownsBody() && !placement.ownsBody() && navigation.status().phase()!=NavigationToolCoordinator.Phase.EXECUTING && navigation.status().phase()!=NavigationToolCoordinator.Phase.FOLLOWING);
         session.tick();
+        survival.tick();
         player().inventoryLedger.tick();
         navigation.tick();
         collection.tickAfterPhysics();
         placement.afterPhysics();
+        excavation.afterPhysics();
         perception.structures.tick();
-        if(turnActive()) {
+        resources.tick();
+        gather.tick();
+        camp.tick();
+        companionEvents.tick();
+        miningSurvey.tick();
+        if(perceptionSweep.active()) {
+            perceptionSweep.tick();
+        } else if(turnYaw != null) {
             if(!player().isAlive()){turnYaw=null;turnPhase="FAILED";player().stopControlling();}
             else if(Math.abs(net.minecraft.util.Mth.wrapDegrees(player().getYRot()-turnYaw))<=1){turnYaw=null;turnPhase="COMPLETED";player().stopControlling();}
             else player().applyControlFrame(new dev.mcai.companion.agent.body.AgentControlFrame(turnYaw,player().getXRot(),0,0,false,false,false));
@@ -234,7 +294,7 @@ public final class AgentRuntime implements AutoCloseable {
                 player().applyControlFrame(new dev.mcai.companion.agent.body.AgentControlFrame(
                         player().getYRot(), player().getXRot(), 0, 0, age <= 20 && !jumpSawAirborne && player().onGround(), false, false));
             }
-        } else if (!placement.ownsBody() && !collection.ownsBody() && !mining.ownsBody() && (navigation.status().phase().terminal() || navigation.status().phase() == NavigationToolCoordinator.Phase.IDLE || navigation.status().phase() == NavigationToolCoordinator.Phase.FOLLOWING)
+        } else if (!camp.active() && !gather.active() && !survival.active() && !excavation.ownsBody() && !placement.ownsBody() && !collection.ownsBody() && !mining.ownsBody() && (navigation.status().phase().terminal() || navigation.status().phase() == NavigationToolCoordinator.Phase.IDLE || navigation.status().phase() == NavigationToolCoordinator.Phase.FOLLOWING)
                 && attentionTarget != null) {
             ServerPlayer target = server.getPlayerList().getPlayer(attentionTarget);
             if (target != null && target.isAlive() && target.level() == player().level()
@@ -306,6 +366,7 @@ public final class AgentRuntime implements AutoCloseable {
         if (text == null || text.isBlank() || text.length() > 512) {
             throw new IllegalArgumentException("Chat message must contain 1 to 512 characters");
         }
+        memory.chat("assistant",player().getGameProfile().name(),text.strip());
         server.getPlayerList().broadcastSystemMessage(
                 Component.literal("[AI] " + player().getGameProfile().name()
                         + ": " + text.strip()),
@@ -406,6 +467,12 @@ public final class AgentRuntime implements AutoCloseable {
         if (brain != null) {
             brain.close();
         }
+        camp.close();
+        gather.close();
+        survival.close();
+        resources.close();
+        miningSurvey.close();
+        excavation.close();
         placement.close();
         collection.close();
         mining.cancelForChat();

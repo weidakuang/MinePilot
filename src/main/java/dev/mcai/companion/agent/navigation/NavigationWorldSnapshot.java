@@ -30,7 +30,9 @@ public record NavigationWorldSnapshot(
         }
         Objects.requireNonNull(destination, "destination");
         Objects.requireNonNull(resources, "resources");
-        cells = Map.copyOf(cells);
+        // Dense spatial keys made Map.copyOf's linear-probing MapN spend seconds
+        // on the server thread. Keep an independently owned immutable hash map.
+        cells = java.util.Collections.unmodifiableMap(new java.util.HashMap<>(cells));
         if (!dimension.equals(destination.dimension())) {
             throw new IllegalArgumentException("Cross-dimension planning requires a portal route");
         }
@@ -45,6 +47,13 @@ public record NavigationWorldSnapshot(
     }
 
     public record GridPosition(int x, int y, int z) {
+        @Override public int hashCode() {
+            // Record's polynomial hash aliases neighbouring rows/planes (31*y+z).
+            // Mix all axes independently for dense voxel snapshots and A* maps.
+            int hash = x * 73856093 ^ y * 19349663 ^ z * 83492791;
+            return hash ^ (hash >>> 16);
+        }
+
         public GridPosition offset(int dx, int dy, int dz) {
             return new GridPosition(x + dx, y + dy, z + dz);
         }

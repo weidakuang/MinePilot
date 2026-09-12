@@ -56,7 +56,7 @@ public final class NavigationToolCoordinator implements AutoCloseable {
     public NavigationEvent requestNavigation(NavigationIntent intent, UUID replacesRequest) {
         requireServerThread();
         var runtime=dev.mcai.companion.agent.AgentRuntime.active(server);
-        if(runtime!=null && (runtime.placement().ownsBody() || runtime.mining().ownsBody() || runtime.collection().ownsBody()))throw new ProtocolException("Cancel mining/collection before requesting navigation");
+        if(runtime!=null && (runtime.excavation()!=null && runtime.excavation().ownsBody() || runtime.placement().ownsBody() || runtime.mining().ownsBody() || runtime.collection().ownsBody()))throw new ProtocolException("Cancel mining/collection before requesting navigation");
         Objects.requireNonNull(intent, "intent");
         if (!player.isAlive()) throw new ProtocolException("The Agent body is dead; navigation cannot start");
         if (intent.worldRevision() != worldRevision) {
@@ -86,7 +86,7 @@ public final class NavigationToolCoordinator implements AutoCloseable {
     public void acknowledgementSent(UUID requestId) {
         requireServerThread();
         var runtime=dev.mcai.companion.agent.AgentRuntime.active(server);
-        if(runtime!=null && (runtime.placement().ownsBody() || runtime.mining().ownsBody() || runtime.collection().ownsBody()))throw new ProtocolException("Cancel mining/collection before starting navigation");
+        if(runtime!=null && (runtime.excavation()!=null && runtime.excavation().ownsBody() || runtime.placement().ownsBody() || runtime.mining().ownsBody() || runtime.collection().ownsBody()))throw new ProtocolException("Cancel mining/collection before starting navigation");
         ActiveNavigation current = requireActive(requestId);
         if (current.phase != Phase.ACKNOWLEDGEMENT_REQUIRED) {
             throw new ProtocolException("SAY_SENT is not valid in phase " + current.phase);
@@ -97,7 +97,7 @@ public final class NavigationToolCoordinator implements AutoCloseable {
     public void planNavigation(UUID requestId) {
         requireServerThread();
         var runtime=dev.mcai.companion.agent.AgentRuntime.active(server);
-        if(runtime!=null && (runtime.placement().ownsBody() || runtime.mining().ownsBody() || runtime.collection().ownsBody()))throw new ProtocolException("Cancel mining/collection before starting navigation");
+        if(runtime!=null && (runtime.excavation()!=null && runtime.excavation().ownsBody() || runtime.placement().ownsBody() || runtime.mining().ownsBody() || runtime.collection().ownsBody()))throw new ProtocolException("Cancel mining/collection before starting navigation");
         ActiveNavigation current = requireActive(requestId);
         if (current.phase != Phase.ACKNOWLEDGED
                 && current.phase != Phase.REPLAN_REQUIRED) {
@@ -165,7 +165,8 @@ public final class NavigationToolCoordinator implements AutoCloseable {
                 Objects.requireNonNull(pace, "pace"),
                 current.destination == null
                         ? OptionalDouble.empty()
-                        : current.destination.arrivalHeading()
+                        : current.destination.arrivalHeading(),
+                current.intent.continuousFollow()
         );
         current.phase = Phase.EXECUTING;
         current.selectedOption = option.optionId();
@@ -248,13 +249,24 @@ public final class NavigationToolCoordinator implements AutoCloseable {
         ActiveNavigation current = active;
         if (current == null || (current.phase != Phase.EXECUTING && current.phase != Phase.FOLLOWING)
                 || current.destination == null || !current.destination.dynamic() || partialDestination().isPresent()
-                || player.tickCount - current.lastDynamicCheckTick < 5) {
+                || player.tickCount - current.lastDynamicCheckTick < (current.intent.continuousFollow() ? 1 : 5)) {
             return;
         }
         current.lastDynamicCheckTick = player.tickCount;
         try {
             NavigationPlan.ResolvedDestination latest = targetResolver.resolve(
                     server, player, current.intent.target());
+            if (current.intent.continuousFollow()) {
+                if (!latest.dimension().equals(current.destination.dimension())) {
+                    stopLostFollow("The followed target changed dimension; a verified portal route is required");return;
+                }
+                // Numen's resident/live-goal policy, using our own checked corridor
+                // and body. A nearby moving player need not create another path job.
+                if (follower.trackFollowTarget(latest)) {
+                    current.destination = latest;
+                    return;
+                }
+            }
             if (current.phase == Phase.FOLLOWING) {
                 double resumeRadius=latest.acceptanceRadius()+.75;
                 if (!latest.dimension().equals(current.destination.dimension())) {
@@ -297,6 +309,13 @@ public final class NavigationToolCoordinator implements AutoCloseable {
         emit(new NavigationEvent(NavigationEvent.Type.NAVIGATION_FAILED,active.intent.requestId(),reason,observedState(),List.of("say","request_navigation")));
     }
     private void repairFollow() {
+        // A resting follow can retain its executor; release it before an actual
+        // terrain repair so it cannot publish arrival over the new planning phase.
+        if (active.intent.continuousFollow() && follower.isActive()) {
+            active.suppressFollowerEvents = true;
+            try { follower.cancel("Repairing the followed target's route"); }
+            finally { active.suppressFollowerEvents = false; }
+        }
         active.phase=Phase.REPLAN_REQUIRED;
         active.followRepair=true;
         planNavigation(active.intent.requestId());

@@ -1,0 +1,36 @@
+{
+  "jar": "mcai_companion-0.2.0-dev-mc26.2.jar",
+  "sha256": "bf469f5910a69b5cbe4d38ac13c78e1297eeb50a745711a3900557dca2f4309e",
+  "minecraft": "26.2",
+  "forgeTested": "65.0.9",
+  "java": 25,
+  "javaTests": 42,
+  "pythonTests": 103,
+  "nativeNavigationScenarios": 14,
+  "followStoppedTicks": {
+    "oldSlow": [
+      15,
+      72
+    ],
+    "currentSlow": [
+      0,
+      72
+    ],
+    "currentTurning": [
+      0,
+      75
+    ]
+  },
+  "vanillaProtocol": {
+    "version": {
+      "name": "26.2",
+      "protocol": 776
+    },
+    "vanillaHandshake": true,
+    "forgeHandshakeSent": false,
+    "enteredPlay": true,
+    "teleportAcknowledged": true,
+    "matchesProductionJar": true
+  },
+  "migrationStatus": "PARTIAL_WITH_VERIFIED_SERVER_ONLY_AND_FOLLOW_CAPABILITIES"
+}

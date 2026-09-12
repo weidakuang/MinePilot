@@ -81,14 +81,14 @@ class LatencyTests(unittest.TestCase):
         client = Client()
         value = {'action':'tool','tool_name':'plan_collection','arguments_json':'{}','message':'好，我来收集木头。'}
         codex_decisions.apply(client, value)
-        self.assertEqual(['plan_collection','say'], [n for n,_ in client.calls])
+        self.assertEqual(['navigation_status','plan_collection','say'], [n for n,_ in client.calls])
         class Reject(Client):
             def call_tool(self, name, args):
                 self.calls.append((name,args))
                 raise minepilot.ToolError('Source is unavailable')
         rejected = Reject()
         with self.assertRaises(minepilot.ToolError): codex_decisions.apply(rejected, value)
-        self.assertEqual(['plan_collection'], [n for n,_ in rejected.calls])
+        self.assertEqual(['navigation_status'], [n for n,_ in rejected.calls])
 
     def test_collection_requires_model_approval_then_executes_without_extra_turn(self):
         class Game(CollectionClient):
@@ -150,6 +150,6 @@ class LatencyTests(unittest.TestCase):
                 self.calls.append((name,args))
                 return {'requestId':name,'phase':'EXECUTING'} if name.endswith('_status') else {}
         game=Game();cancel_body_work(game)
-        self.assertEqual(['placement_status','cancel_placement','collection_status','cancel_collection','mining_status','cancel_mining','navigation_status','cancel_navigation'],[n for n,_ in game.calls])
+        self.assertEqual(['camp_status','cancel_camp','gather_status','cancel_gather','survival_status','cancel_survival','excavation_status','cancel_excavation','placement_status','cancel_placement','collection_status','cancel_collection','mining_status','cancel_mining','navigation_status','cancel_navigation'],[n for n,_ in game.calls])
 
 if __name__ == '__main__': unittest.main()

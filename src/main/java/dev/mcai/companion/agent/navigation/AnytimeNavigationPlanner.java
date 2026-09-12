@@ -261,7 +261,14 @@ public final class AnytimeNavigationPlanner {
                 }
             }
         }
-        if (includeGaps && !fromCell.climbable() && snapshot.resources().canSprint()
+        if (fromCell.water() && snapshot.resources().canSwim()) {
+            for(int dy:new int[]{1,-1}) {
+                var next=from.offset(0,dy,0);
+                if(snapshot.cell(next).water() && canOccupy(snapshot,next,true))
+                    addTransition(snapshot,result,from,next,RouteOption.Action.SWIM,false);
+            }
+        }
+        if (includeGaps && !fromCell.climbable() && !fromCell.water() && snapshot.resources().canSprint()
                 && canOccupy(snapshot, from, true) && bodySpacePassable(snapshot, from.offset(0, 1, 0))) {
             for (int dx = -4; dx <= 4; dx++) {
                 for (int dz = -4; dz <= 4; dz++) {
@@ -426,6 +433,8 @@ public final class AnytimeNavigationPlanner {
                 * snapshot.resources().expectedDamageMultiplier();
         double horizontal = Math.hypot(to.x() - from.x(), to.z() - from.z());
         double distance = Math.hypot(horizontal, to.y() - from.y());
+        // Entry/down/up transitions must agree with live fluid validation too.
+        if(feet.water())action=RouteOption.Action.SWIM;
         output.add(new Transition(
                 to,
                 action,

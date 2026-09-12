@@ -31,9 +31,9 @@ public final class CollectionTools {
     }
     public static JsonObject execute(AgentRuntime r,String name,JsonObject a){
         return switch(name){
-            case "inspect_tree" -> TreeSurvey.inspect(r,position(a,"")).json();
+            case "inspect_tree" -> inspect(r,position(a,""));
             case "tree_farm" -> farm(r,a);
-            case "plan_collection" -> r.collection().plan(string(a,"resource",""),string(a,"output_item",""),string(a,"species","any"),string(a,"source","any"),coordinates(a,"")?new Vec3(integer(a,"x",0),integer(a,"y",0),integer(a,"z",0)):r.player().position(),integer(a,"radius",5),integer(a,"count",4),coordinates(a,"tree_")?position(a,"tree_"):null,bool(a,"allow_managed_grove",false),bool(a,"whole_tree",string(a,"source","any").equals("tree")));
+            case "plan_collection" -> r.collection().plan(resource(string(a,"resource","")),string(a,"output_item",""),string(a,"species","any"),string(a,"source","any"),coordinates(a,"")?new Vec3(integer(a,"x",0),integer(a,"y",0),integer(a,"z",0)):r.player().position(),integer(a,"radius",5),integer(a,"count",4),coordinates(a,"tree_")?position(a,"tree_"):null,bool(a,"allow_managed_grove",false),bool(a,"whole_tree",string(a,"source","any").equals("tree")));
             case "choose_collection" -> r.collection().choose(id(a),string(a,"option_id",""));
             case "collection_status" -> r.collection().status();
             case "pause_collection" -> r.collection().interrupt(id(a),true);
@@ -42,6 +42,15 @@ public final class CollectionTools {
             default -> throw new IllegalArgumentException("Unknown collection tool");
         };
     }
+    private static JsonObject inspect(AgentRuntime r,BlockPos seed){
+        var survey=TreeSurvey.inspect(r,seed);var out=survey.json();out.add("seed",TreeSurvey.position(seed));out.addProperty("seedBlock",TreeSurvey.id(r.player().level().getBlockState(seed)));
+        out.addProperty("coordinateConvention","Integer block coordinates; copy sense results x/y/z exactly. Do not round block centers toward zero.");
+        if(survey.species().isEmpty()){
+            var candidates=new JsonArray();for(int x=-3;x<=3;x++)for(int y=-3;y<=3;y++)for(int z=-3;z<=3;z++){
+                var q=seed.offset(x,y,z);if(candidates.size()>=16 || !r.perception.observableBlock(q))continue;String block=TreeSurvey.id(r.player().level().getBlockState(q));if(TreeSurvey.species(block).isEmpty())continue;var row=TreeSurvey.position(q);row.addProperty("block",block);candidates.add(row);
+            }out.add("nearbyTrunkCandidates",candidates);out.addProperty("nextAction","This seed is not a supported trunk. Inspect a returned real trunk candidate, or search trees. This result does not establish that nearby trees are absent.");
+        }return out;
+    }
     private static JsonObject farm(AgentRuntime r,JsonObject a){String op=string(a,"operation","");var f=new JsonObject();if(op.equals("save")){
         if(!coordinates(a,"min_") || !coordinates(a,"max_"))throw new IllegalArgumentException("Farm bounds required");
         String kind=string(a,"kind","");if(!Set.of("manual","automated").contains(kind))throw new IllegalArgumentException("Farm kind required");f.addProperty("kind",kind);
@@ -49,6 +58,12 @@ public final class CollectionTools {
         return r.player().inventoryLedger.treeFarm(op,string(a,"name",""),f);
     }
     private static UUID id(JsonObject a){return UUID.fromString(string(a,"request_id",""));}
+    private static String resource(String value){
+        if(Set.of("wood","木头","原木","树","树木").contains(value.strip()))return "wood";
+        String normalized=dev.mcai.companion.agent.knowledge.PerceptionQuery.normalize(value);
+        if(normalized.isBlank())throw new IllegalArgumentException("Collection resource is required");
+        return net.minecraft.resources.Identifier.parse(normalized).toString();
+    }
     private static String string(JsonObject a,String key,String fallback){if(!a.has(key))return fallback;if(!a.get(key).isJsonPrimitive() || !a.getAsJsonPrimitive(key).isString())throw new IllegalArgumentException("Expected string "+key);return a.get(key).getAsString();}
     private static boolean bool(JsonObject a,String key,boolean fallback){if(!a.has(key))return fallback;if(!a.get(key).isJsonPrimitive() || !a.getAsJsonPrimitive(key).isBoolean())throw new IllegalArgumentException("Expected boolean "+key);return a.get(key).getAsBoolean();}
     private static int integer(JsonObject a,String key,int fallback){if(!a.has(key))return fallback;if(!a.get(key).isJsonPrimitive() || !a.getAsJsonPrimitive(key).isNumber())throw new IllegalArgumentException("Expected integer "+key);try{return a.get(key).getAsBigDecimal().intValueExact();}catch(ArithmeticException e){throw new IllegalArgumentException("Expected bounded integer "+key);}}

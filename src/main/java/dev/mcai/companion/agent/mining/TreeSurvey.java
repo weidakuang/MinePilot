@@ -21,26 +21,27 @@ public final class TreeSurvey {
         return "";
     }
     public static String id(BlockState state){return BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();}
-    public record Survey(String species,List<BlockPos> logs,String classification,List<String> evidence,boolean bounded,boolean harvestable) {
+    public record Survey(String species,List<BlockPos> logs,String classification,List<String> evidence,boolean bounded,boolean harvestable,List<BlockPos> roots) {
         public JsonObject json(){var out=new JsonObject();out.addProperty("species",species);out.addProperty("classification",classification);
             out.addProperty("ownership","unknown_unless_controller_declared");out.addProperty("completeObservedComponent",bounded);out.addProperty("harvestable",harvestable);
-            out.add("evidence",new Gson().toJsonTree(evidence));var rows=new JsonArray();for(var p:logs)rows.add(position(p));out.add("logs",rows);return out;}
+            out.add("evidence",new Gson().toJsonTree(evidence));var rows=new JsonArray();for(var p:logs)rows.add(position(p));out.add("logs",rows);var rootRows=new JsonArray();roots.forEach(p->rootRows.add(position(p)));out.add("roots",rootRows);out.addProperty("rootLayout",roots.size()==4?"four_trunk_candidates":roots.size()==1?"single_trunk":"ambiguous_or_multiple");return out;}
     }
     public static JsonObject position(BlockPos p){var out=new JsonObject();out.addProperty("x",p.getX());out.addProperty("y",p.getY());out.addProperty("z",p.getZ());return out;}
     public static Survey inspect(AgentRuntime r,BlockPos seed) {
         var level=r.player().level();
-        if(!r.perception.observableBlock(seed))throw new IllegalArgumentException("Tree seed is not currently sensed");
+        var visibility=new HashMap<BlockPos,Boolean>();java.util.function.Predicate<BlockPos> sensed=p->visibility.computeIfAbsent(p.immutable(),r.perception::observableBlock);
+        if(!sensed.test(seed))throw new IllegalArgumentException("Tree seed is not currently sensed");
         String species=species(id(level.getBlockState(seed)));
-        if(species.isEmpty())return new Survey("",List.of(),"not_supported_unstripped_trunk",List.of("Bamboo, roots, stripped/decorative wood and unknown mod trees need separate rules"),true,false);
+        if(species.isEmpty())return new Survey("",List.of(),"not_supported_unstripped_trunk",List.of("Observed seed is "+id(level.getBlockState(seed))+"; this cell is not a supported unstripped trunk. Use exact integer block coordinates. Bamboo, roots and unknown mod trees need separate rules"),true,false,List.of());
         var logs=new LinkedHashSet<BlockPos>();var seen=new HashSet<BlockPos>();var queue=new ArrayDeque<BlockPos>();queue.add(seed.immutable());
         boolean complete=true,canopy=false,grounded=false,machine=false,construction=false,danger=false,declared=false;int saplings=0;
         var evidence=new LinkedHashSet<String>();var farms=r.player().inventoryLedger.treeFarms();
-        boolean memoryOk=farms.get("memoryWritable").getAsBoolean();
+        boolean memoryOk=farms.get("memoryWritable").getAsBoolean();if(!memoryOk)evidence.add("Protection memory is unavailable; repair storage before harvesting. This is not evidence that no tree exists");
         while(!queue.isEmpty() && logs.size()<128){
             var p=queue.removeFirst();if(!logs.add(p))continue;
             for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++){
                 if(x==0 && y==0 && z==0)continue;var q=p.offset(x,y,z);
-                if(!level.isLoaded(q) || !r.perception.observableBlock(q)){complete=false;continue;}
+                if(!level.isLoaded(q) || !sensed.test(q)){complete=false;continue;}
                 var state=level.getBlockState(q);
                 if(species(id(state)).equals(species) && !logs.contains(q) && !queue.contains(q))queue.add(q.immutable());
                 String sid=id(state);
@@ -48,14 +49,14 @@ public final class TreeSurvey {
                 if((species.equals("crimson") && state.is(Blocks.NETHER_WART_BLOCK)) || (species.equals("warped") && state.is(Blocks.WARPED_WART_BLOCK)))canopy=true;
             }
             var below=level.getBlockState(p.below());
-            if(r.perception.observableBlock(p.below()) && (below.is(BlockTags.DIRT) || below.is(Blocks.CRIMSON_NYLIUM) || below.is(Blocks.WARPED_NYLIUM) || below.is(Blocks.MANGROVE_ROOTS) || below.is(Blocks.MUDDY_MANGROVE_ROOTS)))grounded=true;
+            if(sensed.test(p.below()) && (below.is(BlockTags.DIRT) || below.is(Blocks.CRIMSON_NYLIUM) || below.is(Blocks.WARPED_NYLIUM) || below.is(Blocks.MANGROVE_ROOTS) || below.is(Blocks.MUDDY_MANGROVE_ROOTS)))grounded=true;
             for(var entry:farms.getAsJsonObject("farms").entrySet()){
                 var f=entry.getValue().getAsJsonObject();if(!f.get("dimension").getAsString().equals(level.dimension().identifier().toString()))continue;
                 if(contains(f,p)){declared=true;evidence.add("Declared farm: "+f.get("name").getAsString());if(f.get("kind").getAsString().equals("automated"))machine=true;}
             }
             // Union scan is capped by the connected trunk bound; never loads new chunks.
             for(int x=-2;x<=2;x++)for(int y=-2;y<=2;y++)for(int z=-2;z<=2;z++){
-                var q=p.offset(x,y,z);if(!seen.add(q) || !r.perception.observableBlock(q))continue;
+                var q=p.offset(x,y,z);if(!seen.add(q) || !sensed.test(q))continue;
                 var s=level.getBlockState(q);String sid=id(s);
                 if(s.getBlock() instanceof net.minecraft.world.level.block.SaplingBlock || s.is(Blocks.MANGROVE_PROPAGULE))saplings++;
                 if(isMachine(s)){machine=true;evidence.add("Production component: "+sid);}
@@ -66,6 +67,9 @@ public final class TreeSurvey {
         if(!queue.isEmpty())complete=false;
         if(canopy)evidence.add("Matching non-persistent canopy / fungal cap");if(grounded)evidence.add("Trunk meets compatible ground/root");
         if(saplings>0)evidence.add("Nearby saplings: "+saplings);
+        var roots=logs.stream().filter(p->!logs.contains(p.below()) && sensed.test(p.below()) && (level.getBlockState(p.below()).is(BlockTags.DIRT) || level.getBlockState(p.below()).is(Blocks.CRIMSON_NYLIUM) || level.getBlockState(p.below()).is(Blocks.WARPED_NYLIUM))).sorted(Comparator.<BlockPos>comparingInt(BlockPos::getY).thenComparingInt(BlockPos::getX).thenComparingInt(BlockPos::getZ)).toList();
+        boolean ambiguousRoots=roots.size()>1 && !(roots.size()==4 && Set.of("spruce","jungle","dark_oak","pale_oak").contains(species) && roots.stream().allMatch(p->p.getY()==roots.getFirst().getY() && Math.abs(p.getX()-roots.getFirst().getX())<=1 && Math.abs(p.getZ()-roots.getFirst().getZ())<=1));
+        if(ambiguousRoots)evidence.add("Connected trunks have several separated roots; one tree cannot be separated confidently from adjacent trees");
         boolean rows=false;
         for(var root:logs){
             if(logs.contains(root.below()))continue;
@@ -73,16 +77,16 @@ public final class TreeSurvey {
                 boolean line=true;
                 for(int index=start;index<start+3;index++){
                     var p=root.offset(axis==0?spacing*index:0,0,axis==1?spacing*index:0);
-                    if(!r.perception.observableBlock(p) || !r.perception.observableBlock(p.below()) || !species(id(level.getBlockState(p))).equals(species) || !level.getBlockState(p.below()).is(BlockTags.DIRT)){line=false;break;}
+                    if(!sensed.test(p) || !sensed.test(p.below()) || !species(id(level.getBlockState(p))).equals(species) || !level.getBlockState(p.below()).is(BlockTags.DIRT)){line=false;break;}
                 }
                 rows|=line;
             }
         }
         if(rows)evidence.add("Three trunks on compatible ground in a regularly spaced row (planting clue, not proof of ownership)");
         boolean grove=declared || saplings>=2 || rows;
-        String classification=machine?"automated_tree_farm_candidate":danger?"inhabited_tree":construction?"constructed_wood_candidate":!complete?"incomplete_observation":!canopy || !grounded || logs.size()<2?"unconfirmed_wood":grove?"managed_grove_candidate":"mature_tree_candidate";
+        String classification=machine?"automated_tree_farm_candidate":danger?"inhabited_tree":construction?"constructed_wood_candidate":ambiguousRoots?"connected_tree_cluster":!complete?"incomplete_observation":!canopy || !grounded || logs.size()<2?"unconfirmed_wood":grove?"managed_grove_candidate":"mature_tree_candidate";
         return new Survey(species,List.copyOf(logs),classification,List.copyOf(evidence),complete,
-                memoryOk && complete && canopy && grounded && logs.size()>=2 && !machine && !danger && !construction);
+                memoryOk && complete && canopy && grounded && logs.size()>=2 && !machine && !danger && !construction && !ambiguousRoots,roots);
     }
     public static boolean contains(JsonObject f,BlockPos p){return p.getX()>=f.get("min_x").getAsInt() && p.getX()<=f.get("max_x").getAsInt() && p.getY()>=f.get("min_y").getAsInt() && p.getY()<=f.get("max_y").getAsInt() && p.getZ()>=f.get("min_z").getAsInt() && p.getZ()<=f.get("max_z").getAsInt();}
     public static boolean isMachine(BlockState s){String id=id(s);return s.is(Blocks.PISTON) || s.is(Blocks.STICKY_PISTON) || s.is(Blocks.MOVING_PISTON) || s.is(Blocks.PISTON_HEAD) || s.is(Blocks.OBSERVER) || s.is(Blocks.DISPENSER) || s.is(Blocks.DROPPER) || s.is(Blocks.HOPPER) || s.is(Blocks.TNT) || s.is(Blocks.REDSTONE_WIRE) || s.is(Blocks.REPEATER) || s.is(Blocks.COMPARATOR) || s.is(Blocks.SLIME_BLOCK) || s.is(Blocks.HONEY_BLOCK) || id.contains("redstone");}

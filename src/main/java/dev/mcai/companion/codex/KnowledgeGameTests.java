@@ -28,6 +28,8 @@ public final class KnowledgeGameTests {
     private static final class Gate {
         final GameTestHelper h;final AgentRuntime runtime;final CodexToolService tools;final BlockPos origin;
         final List<net.minecraft.world.entity.Entity> fixtures=new ArrayList<>();
+        Villager near;String nearCursor="";int nearOffset;boolean nearReported;BlockPos searchTree;String treeCursor="";int aliasIndex,treePages;boolean treeFound;final List<String> aliases=List.of("","tree","trees","wood","树","树木","橡木","oak","minecraft:oak_log");
+        String scanCursor="",entityCursor="";int entityOffset,entityPages;final Set<String> entityIds=new HashSet<>();final List<Double> entityMillis=new ArrayList<>();boolean changedView;float entityHeading;int scanPages,examined;boolean scanFound;long scanStarted;
         Vec3 start;int phase;long began;String entry;long eventSequence;ItemEntity far;String routeRequest;
         Gate(GameTestHelper h){this.h=h;runtime=AgentRuntime.active(h.getLevel().getServer());tools=new CodexToolService(runtime);origin=h.absolutePos(new BlockPos(8,2,8));}
         JsonObject call(String tool,String args) {
@@ -93,15 +95,21 @@ public final class KnowledgeGameTests {
                         Blocks.REDSTONE_LAMP,net.minecraft.core.registries.BuiltInRegistries.BLOCK.getValue(net.minecraft.resources.Identifier.parse("minecraft:copper_bulb")),Blocks.SCULK_SENSOR,Blocks.CRAFTER,Blocks.PISTON)) {
                     wall(block.defaultBlockState());h.assertTrue(runtime.perception.visible(far),"Pass-through category blocked vision: "+block);
                 }
+                for(String name:List.of("oak_fence","oak_fence_gate","iron_door","oak_trapdoor","dandelion","oak_sign","oak_hanging_sign","sugar_cane","lily_pad","bamboo","candle","white_carpet","stone_slab","redstone_wire","repeater","comparator","lever","observer","hopper","dispenser","dropper","daylight_detector","redstone_torch","target","tripwire_hook","rail")){
+                    var b=net.minecraft.core.registries.BuiltInRegistries.BLOCK.getValue(net.minecraft.resources.Identifier.parse("minecraft:"+name));wall(b.defaultBlockState());h.assertTrue(runtime.perception.visible(far),"Requested pass-through category blocked ray: "+name);}
                 wall(Blocks.REDSTONE_BLOCK.defaultBlockState());h.assertTrue(!runtime.perception.visible(far),"Redstone block incorrectly transparent");
                 wall(Blocks.STONE.defaultBlockState());
-                Villager near=new Villager(EntityTypes.VILLAGER,h.getLevel());near.setNoAi(true);near.setPos(p.getX()+8,p.getY(),p.getZ());h.getLevel().addFreshEntity(near);fixtures.add(near);
+                near=new Villager(EntityTypes.VILLAGER,h.getLevel());near.setNoAi(true);near.setPos(p.getX()+8,p.getY(),p.getZ());h.getLevel().addFreshEntity(near);fixtures.add(near);
                 h.assertTrue(runtime.perception.sensed(near) && !runtime.perception.visible(near),"Local sensor/visual separation failed");
-                var sensed=call("sense","{\"kind\":\"entities\",\"filter\":\"minecraft:villager\",\"limit\":4}");h.assertTrue(sensed.getAsJsonArray("results").size()<=4,"Unbounded entity result");
-                boolean villagerReported=false;
+                phase=20;return;
+            }
+            if(phase==20){
+                var sensed=runtime.perception.entities(nearOffset,4,"minecraft:villager",96,false,nearCursor);h.assertTrue(sensed.getAsJsonArray("results").size()<=4,"Unbounded entity result");
+
                 for(var result:sensed.getAsJsonArray("results")){var row=result.getAsJsonObject();if(row.get("uuid").getAsString().equals(near.getUUID().toString())) {
-                    villagerReported=true;h.assertTrue(row.has("profession") && row.get("age").getAsString().equals("adult") && !row.get("visible").getAsBoolean(),"Villager metadata/sensor attribution missing");}}
-                h.assertTrue(villagerReported,"Public query omitted the nearby villager");
+                    nearReported=true;h.assertTrue(row.has("profession") && row.get("age").getAsString().equals("adult") && !row.get("visible").getAsBoolean(),"Villager metadata/sensor attribution missing");}}
+                if(!sensed.get("complete").getAsBoolean()){nearCursor=sensed.get("cursor").getAsString();nearOffset=sensed.get("nextOffset").getAsInt();return;}
+                h.assertTrue(nearReported,"Public query omitted the nearby villager");
                 h.assertTrue(call("observe","{}").getAsJsonObject("world").has("dayTime"),"Missing world clock");
                 var blocks=call("sense","{\"kind\":\"blocks\",\"radius\":10,\"limit\":4}");h.assertTrue(blocks.getAsJsonArray("results").size()<=4 && blocks.get("scannedCells").getAsInt()<=4096,"Unbounded block scan");
                 wall(Blocks.GLASS.defaultBlockState());
@@ -182,16 +190,38 @@ public final class KnowledgeGameTests {
                 } catch(java.io.IOException failure){throw new IllegalStateException("Could not construct storage failure fixture",failure);}
                 finally {try {java.nio.file.Files.deleteIfExists(temp);}catch(java.io.IOException ignored){}}
                 var marker=p.blockPosition().east(2);h.getLevel().setBlock(marker,Blocks.BELL.defaultBlockState(),2);
-                String scanCursor="";int scanPages=0,examined=0;boolean complete=false,found=false;long scanNanos=System.nanoTime();
-                while(scanPages++<20) {
-                    var scan=AgentRuntime.active(h.getLevel().getServer()).perception.blocks(96,"village","structures",scanCursor,64);
-                    examined+=scan.get("scannedCells").getAsInt();
-                    for(var value:scan.getAsJsonArray("results"))if(value.getAsJsonObject().get("block").getAsString().equals("minecraft:bell"))found=true;
-                    if(scan.get("complete").getAsBoolean()){complete=true;break;}scanCursor=scan.get("cursor").getAsString();
-                }
-                h.assertTrue(complete && found && examined<50000,"Sparse structure search still scanned a full 96-block cube or missed a sensed marker: "+scanPages+" pages, "+examined+" cells");
-                dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("96-block loaded-only village-marker scan: pages={}, cells={}, milliseconds={}",scanPages,examined,(System.nanoTime()-scanNanos)/1e6);
-                phase=10;h.succeed();
+                scanStarted=System.nanoTime();phase=10;return;
+            }
+            if(phase==10){
+                h.assertTrue(++scanPages<80,"Budgeted marker search did not finish");
+                var scan=runtime.perception.blocks(96,"village","structures",scanCursor,64);examined+=scan.get("scannedCells").getAsInt();
+                for(var value:scan.getAsJsonArray("results"))if(value.getAsJsonObject().get("block").getAsString().equals("minecraft:bell"))scanFound=true;
+                if(!scan.get("complete").getAsBoolean()){scanCursor=scan.get("cursor").getAsString();return;}
+                h.assertTrue(scanFound && examined<50000,"Sparse loaded search missed marker or scanned full cube");
+                dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Budgeted 96-block marker search: pages={}, cells={}, elapsedMs={}, performance={}",scanPages,examined,(System.nanoTime()-scanStarted)/1e6,runtime.perception.performance());
+                for(int i=0;i<80;i++){var mob=new Villager(EntityTypes.VILLAGER,h.getLevel());mob.setNoAi(true);mob.setNoGravity(true);mob.setPos(p.getX()+3+(i%10)*.8,p.getY()+3+(i/10)*.2,p.getZ()+3);mob.setCustomName(net.minecraft.network.chat.Component.literal("MinePilotPage"+i));if(i%2==0)mob.setAge(-24000);h.getLevel().addFreshEntity(mob);fixtures.add(mob);}entityHeading=p.getYRot();phase=11;return;
+            }
+            if(phase==11){
+                if(changedView)p.setYRot(entityHeading+10);
+                h.assertTrue(++entityPages<160,"Entity cursor failed to progress");
+                var result=runtime.perception.entities(entityOffset,7,"MinePilotPage",16,false,entityCursor);entityCursor=result.get("cursor").getAsString();entityOffset=result.get("nextOffset").getAsInt();entityMillis.add(result.get("pageServerMillis").getAsDouble());
+                h.assertTrue(result.getAsJsonArray("results").size()<=7 && result.toString().length()<32000,"Entity page is not bounded");
+                for(var v:result.getAsJsonArray("results")){var row=v.getAsJsonObject();h.assertTrue(entityIds.add(row.get("uuid").getAsString()),"Entity cursor duplicated a row");h.assertTrue(row.has("profession") && row.has("relativeFacing") && row.has("sampledAtTick"),"Entity description lacks native details");int id=Integer.parseInt(row.get("name").getAsString().replace("MinePilotPage",""));h.assertTrue(row.get("age").getAsString().equals(id%2==0?"baby":"adult"),"Native age variant lost");}
+                if(!changedView && !entityIds.isEmpty()){p.setYRot(p.getYRot()+10);changedView=true;}
+                if(!result.get("complete").getAsBoolean())return;
+                h.assertTrue(entityIds.size()==80 && result.get("totalIsFinal").getAsBoolean(),"Entity pagination lost candidates");h.assertTrue(result.get("viewChangedSinceStart").getAsBoolean() && !result.get("coverageComplete").getAsBoolean(),"Changed viewpoint falsely claimed complete coverage");
+                entityMillis.sort(Double::compareTo);dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Entity cursor gate: count=80, pages={}, p95Millis={}, maxMillis={}, sensorPerformance={}",entityPages,entityMillis.get(Math.min(entityMillis.size()-1,(int)(entityMillis.size()*.95))),entityMillis.getLast(),runtime.perception.performance());
+                fixtures.forEach(net.minecraft.world.entity.Entity::discard);p.inventoryLedger=new InventoryLedger(p);searchTree=p.blockPosition().offset(3,0,0);h.getLevel().setBlock(searchTree.below(),Blocks.DIRT.defaultBlockState(),2);for(int y=0;y<3;y++)h.getLevel().setBlock(searchTree.above(y),Blocks.OAK_LOG.defaultBlockState(),2);h.getLevel().setBlock(searchTree.above(3),Blocks.OAK_LEAVES.defaultBlockState(),2);phase=12;return;
+            }
+            if(phase==12){
+                h.assertTrue(++treePages<150,"Tree search cursor did not finish");var result=runtime.perception.blocks(10,aliases.get(aliasIndex),"trees",treeCursor,8);
+                for(var v:result.getAsJsonArray("results")){var row=v.getAsJsonObject();int x=row.get("x").getAsBigDecimal().intValueExact(),y=row.get("y").getAsBigDecimal().intValueExact(),z=row.get("z").getAsBigDecimal().intValueExact();var at=new BlockPos(x,y,z);if(at.equals(searchTree)){treeFound=true;h.assertTrue(dev.mcai.companion.agent.mining.TreeSurvey.inspect(runtime,at).harvestable(),"Exact sensed seed could not inspect the actual tree: "+dev.mcai.companion.agent.mining.TreeSurvey.inspect(runtime,at).json());}}
+                if(!result.get("complete").getAsBoolean()){treeCursor=result.get("cursor").getAsString();return;}
+                h.assertTrue(treeFound,"Tree alias omitted real oak: "+aliases.get(aliasIndex));aliasIndex++;treeFound=false;treeCursor="";
+                if(aliasIndex<aliases.size())return;
+                var args=dev.mcai.companion.agent.mining.TreeSurvey.position(searchTree.above(3));var wrong=dev.mcai.companion.agent.mining.CollectionTools.execute(runtime,"inspect_tree",args);
+                h.assertTrue(wrong.get("seedBlock").getAsString().equals("minecraft:oak_leaves") && !wrong.getAsJsonArray("nearbyTrunkCandidates").isEmpty(),"Wrong leaf seed did not offer actual trunk candidates");
+                dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Tree search regression: nine aliases, exact integer seeds and leaf-to-trunk recovery passed");phase=13;h.succeed();
             }
         }
         void wall(net.minecraft.world.level.block.state.BlockState state){for(int y=0;y<=3;y++)for(int z=-2;z<=2;z++)h.getLevel().setBlock(origin.offset(4,y,z),state,2);}

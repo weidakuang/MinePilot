@@ -27,7 +27,14 @@ python3 scripts/companion_session.py status
 Resolve script paths against this Skill, not the working directory. The listener
 uses the locally installed, authenticated Codex app-server over private stdio,
 keeps a model connection warm, and defaults to
-`gpt-5.6-luna`; honor an explicitly requested model with `--model`. It receives
+`gpt-5.6-luna`; honor an explicitly requested model with `--model`. The
+listener uses low reasoning effort. To opt into Fast, use `--service-tier fast`
+or set the non-secret `serviceTier` field in that world's local profile to
+`fast`; the default is `default`. Stop/restart the listener to change an active
+model or tier. Status reports `requestedServiceTier`, the accepted `serviceTier`
+(`priority` for Fast), and `reasoningEffort`. Do not claim Fast is active before
+the transport accepts it. These settings apply only to this companion process.
+ It receives
 new player chat even after an individual model turn, reply or movement ends.
 Return to the user once LISTENING is confirmed; do not run a competing manual
 controller. Starting again reuses the listener and delivers the new request.
@@ -39,7 +46,7 @@ choice. This fast path is part of normal play, not independent model-choice test
 Use `companion_session.py stop` only when asked to stop the companion session.
 An unavailable world is a connection failure, not successful companionship.
 The listener waits for the matching world to return and reconnects with its new
-token. It keeps waiting until explicitly stopped, without idle model calls.
+token. It keeps waiting until explicitly stopped, with batched idle survival decisions only while a player is online and autonomy is enabled. Stop pauses autonomy.
 Normal player conversation stays in Minecraft chat.
 The listener polls chat/inventory/navigation atomically every 0.2 seconds and
 reports only timing metadata in status. Cancellation does not block new chat;
@@ -52,6 +59,9 @@ with their planning call. The model compares returned options and approves one;
 accepted jobs run without a redundant decision just to wait. Completion remains
 physical evidence, and new instructions never inherit a previous job's success.
 Stopping the session cancels placement, collection and mining as well as navigation.
+For access/region/tunnel excavation and optional fishbone segments, read
+[references/excavation.md](references/excavation.md). The listener receives planning
+and terminal events; cancel the parent job before conflicting body actions.
 For placement, bounded text blueprints, real hand swaps and capacity queries, read
 [references/placement.md](references/placement.md). The persistent listener receives
 placement completion/blockage while continuing to process player chat.
@@ -155,15 +165,37 @@ cannot become navigation support. Every route's `supportMaterials` lists exact
 identities/quantities/grades, or an empty list with zero required blocks. The
 executor cannot silently substitute another material.
 
-`sense` takes `kind=entities|items|blocks|trees|structures`, `radius` (1..96),
+`sense` takes `kind=entities|items|blocks|trees|structures|standing_positions`, `radius` (1..150),
 `filter`, `limit` (1..64), and entity `offset` or block/structure `cursor`.
-Proximity information bypasses occlusion; vision obeys the custom transparent
-block policy without changing collision physics. Respect coverage/truncation;
+General queries read loaded candidates in the requested sphere and label
+visibility separately. `visible_only:true` uses the actual +/-60 degree view and
+custom transparent-block policy without changing collision physics. Respect coverage/truncation;
 tree candidates do not confirm whole trees. Do not use commands, world files or
 private game data to supplement the public tool results.
 
+When stationary and no other body action is active, `sweep:true` with
+`kind=entities|items|blocks|trees` performs a bounded physical look-around at four
+actual headings. Continue the same cursor/query until `complete:true`; the host
+polls empty incomplete pages without another model turn. For a strict visual sweep use `visible_only:true`; results obey
+loading, view and occlusion rules. Per-view work and output are
+capped; `coverageComplete:false` never establishes absence. Prefer a local
+radius 10 query for nearby resources before expanding to 150.
+
+`kind=standing_positions` returns short dry corridors whose body collision,
+support and endpoint centers were checked. Choose an available side that clears
+the player/work area. These are candidates; require actual navigation arrival.
+Nearby slopes and longer detours are outside this helper's scope.
+
+With an unmodified vanilla client, chat **标记这里** / **mark here** or use
+**/minepilot_mark** to mark the player's crosshair target. Chat
+observations include that explicit marker for up to 60 seconds, separately from
+implicit chat gaze, with compact nearby blocks/entities and pointed item stacks.
+Use this context for "that tree" or "what is this"; a mark alone does not start
+movement or breaking. Recent acquisition context can identify a handed-over
+item even after the item entity has been picked up.
+
 `sense` with `kind=structures` is explicitly privileged server-record knowledge,
-independent of facing/occlusion. Its default and maximum radius is 96 blocks in
+independent of facing/occlusion. Its default and maximum radius is 150 blocks in
 a fixed 3D sphere around the body when the query begins. It reports the closest
 recorded piece-volume point inside that sphere, even if the structure's start is
 farther away. It never exposes a farther structure's center or bounds. Use
@@ -173,8 +205,8 @@ Keep the original radius/filter with a continuation cursor while `SEARCHING`.
 Completed results use `nextOffset` plus the same cursor for additional pages.
 Only `coverageComplete=true` and `totalMatched=0` establish no matching record
 in the examined sphere. Partial coverage must not be reported as absence.
-The native scheduler may read/generate structure metadata in dependency chunks;
-this is not visual exploration, block placement or unrestricted `/locate`.
+The scheduler reads only already loaded structure metadata. It never requests
+chunk generation. Missing dependency chunks remain explicitly unknown.
 Records can survive demolition. `currentBlocksVerified=false` and
 `safeToStandVerified=false` mean the returned point is not a verified entrance,
 intact building or safe movement destination. Inspect local terrain first.
@@ -191,9 +223,13 @@ dimension-scoped name, coordinates and note. Navigate back with
 weather and basics. Received system chat uses a separate cursor from players.
 
 The persistent listener queues acquisitions immediately, permits silence, and
-reviews items at idle time. Exact commands `跳一下`, `往前走一格`, and `转向90度`
+reviews items at idle time. Exact commands `跳一下`, `往前走一格`, `转向90度`,
+`放下工作台` and `让开，我来砍`
 use public tools locally to reduce latency. Other language uses the model.
 This optimization is normal-play behavior, not independent model-choice proof.
+Completed short movement controls are consumed once and cannot replay the
+original relative move through a completion-model turn. Stop/cancel phrases
+interrupt body work immediately without asking the player for another approval.
 
 Inventory speech is silent by default. A player gift/loan, explicitly requested
 collection/report, or another concrete direct relationship to the player may
@@ -255,10 +291,10 @@ inventory gains; when requested, navigate to observed emitted drop UUIDs through
 the existing public navigation flow. Do not repeat a finished/blocked break from
 its event. Completion chat is optional; no unsolicited torches or repeated reports.
 
-Block proximity is a 10-block sphere in all directions, through occlusion, with
-air omitted from results. Beyond it, block/item vision is directional +/-60 degrees
-and at most 96 blocks with the custom transparency rules. Physical reach and
-interaction rays still obey ordinary game geometry.
+All general resource, structure, entity and marker queries have a shared
+150-block maximum; unloaded terrain stays unknown. Air is omitted from block
+results. `visible_only:true` distinguishes strict directional vision from the
+loaded-world query. Physical reach and interaction rays remain vanilla.
 
 ## Continuous wood and ore collection
 
@@ -268,3 +304,60 @@ mining a matching resource group, or inspecting/remembering a tree farm.
 The model chooses once; the job executes ordinary movement, breaks and pickups.
 Chat and notes remain usable. Fishbone mining is an optional strategy, never a
 prerequisite. Do not start it for an ordinary gathering request.
+
+### Bounded provenance and sensor pages
+
+`item_origins {entry_id,offset,limit}` (limit 1..16) reads counted recorded origins
+without filling every inventory observation with transfer history. The native
+tracker preserves merges, partial pickups, player transfers, system grants and
+recorded container transfers. Unknown origins and bounded/truncated histories
+are explicit; do not guess a giver. Inventory reports and thanks follow the
+existing player-related reporting policy.
+
+Entity/item searches, like block scans, may return an empty **incomplete** page.
+Retain both `cursor` and `nextOffset`, the original query bounds, and continue
+until the requested result or `complete`. `totalIsFinal:false` is not a total.
+Respect sample ticks and changed viewpoints; start a fresh scan for current
+complete coverage. Server world sampling is sliced across ticks and expensive
+excavation/cave analysis uses immutable worker snapshots.
+
+## Physical item drops
+
+drop_items {request_key,items:[{slot,entry_id,count}],reason:player_request,player_request:"actual instruction"} physically tosses exact carried counts along current facing. Item or entry_id can replace slot; slot requires entry_id. Use a new unique request_key per action and the identical key/arguments only for uncertain retries. Available during walking, following, mining, collection, excavation and placement without cancelling unrelated work. Autonomous capacity cleanup uses reason:capacity and cannot discard importance 0..2. A real player instruction authorizes specified protected items without another confirmation; never fabricate an instruction. Reservations return free/reserved quantities: drop excess or cancel the superseded job to release resources. Report actual receipts; never claim the player received a toss until pickup is observed. The Agent avoids its discarded drops, including mixed merged stacks. reclaim_drop {entity_id} explicitly allows that whole observed stack for normal pickup again. Do not announce every drop or inventory change.
+
+## Native survival, camp and persistent goals
+
+Use `gather {resource,count,radius:150}` for open-ended acquisition. The native
+job chooses exposed loaded candidates, approaches, mines and verifies pickups.
+A blocked natural bank can be cleared with at most eight small steps / 24 native
+terrain breaks, including jump headroom. No separate approval is needed for this
+already-authorized resource job.
+`gather_status` reports actual gains; `cancel_gather` stops the parent. Requesting
+cobblestone acquires it from natural stone. Use `find_resources` for a separate
+loaded-resource query; incomplete results do not establish absence.
+
+`craft {item,count}` consumes actual ingredients through backpack/workbench
+menus. `interact_block {x,y,z}` uses a reachable block. Inspect exact menu slots
+with `inspect_container`, then use `transfer_items {moves:[{from,to,count}]}`
+or omit destination/count for vanilla quick move. `close_container` returns
+leftovers normally. `smelt {x,y,z,item,fuel,count,fuel_count}` approaches and loads a furnace,
+waits normal cooking ticks and collects output as one job. `eat` performs timed
+consumption. Query/cancel these with `survival_status` and `cancel_survival`.
+
+`build_camp {auto_gather:true}` gathers shortages and builds a small shelter with
+83 cells: floor, walls, open entrance, roof, workbench, furnace and chest.
+`cancel_camp` retains the blueprint; `resume_camp` checks current world state.
+The existing body/navigation/placement system performs every physical action.
+
+`conversationMemory` stores recent dialogue, older condensed history and the
+overall goal by world/body/dimension. `remember_context` saves useful preferences
+and task state. The external listener also saves typed decision objective/status
+without another model turn. Casual chat preserves the unfinished objective. A
+child completing never proves later crafting, cooking or collection completed.
+
+`companion_mode {active:true}` enables autonomous basic survival while a player
+is online. Stop pauses it and all work, preserving native breath recovery. The
+listener keeps its Codex process, refreshes each short decision context, batches
+ordinary events and handles bounded tool failures without asking the same
+permission again. Public decisions, tool receipts and timings are journaled in
+the session's `decisions.jsonl`; credentials and model internals are excluded.

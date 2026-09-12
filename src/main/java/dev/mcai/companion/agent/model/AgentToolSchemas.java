@@ -50,7 +50,15 @@ public final class AgentToolSchemas {
                     "Cancel the active navigation request.",
                     cancelParameters()));
         }
+        for(var definition:dev.mcai.companion.agent.survival.SurvivalTools.definitions()) {
+            var value=definition.getAsJsonObject();String name=value.get("name").getAsString();
+            if(allowed.contains(name))tools.add(tool(name,value.get("description").getAsString(),value.getAsJsonObject("inputSchema")));
+        }
         for(var definition:dev.mcai.companion.agent.knowledge.KnowledgeTools.definitions()) {
+            var value=definition.getAsJsonObject();String name=value.get("name").getAsString();
+            if(allowed.contains(name))tools.add(tool(name,value.get("description").getAsString(),value.getAsJsonObject("inputSchema")));
+        }
+        for(var definition:dev.mcai.companion.agent.mining.ExcavationTools.definitions()) {
             var value=definition.getAsJsonObject();String name=value.get("name").getAsString();
             if(allowed.contains(name))tools.add(tool(name,value.get("description").getAsString(),value.getAsJsonObject("inputSchema")));
         }

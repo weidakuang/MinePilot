@@ -1,0 +1,63 @@
+{
+  "date": "2026-09-09 23:07:28 JST",
+  "server": "127.0.0.1:25581",
+  "serverDirectory": "/Users/weida/Documents/minecraft-ai-companion-forge/run-expansion-packaged-20260909",
+  "world": "expansion-natural-verification",
+  "worldType": "normal; seed 0; isolated administrative test fixtures retained away from natural spawn",
+  "difficulty": "peaceful",
+  "gameMode": "survival",
+  "onlineMode": false,
+  "op": "weidakuang (level 4)",
+  "serverPid": 8846,
+  "consoleSession": 62274,
+  "listenerPid": 9551,
+  "listenerModel": "gpt-5.6-luna",
+  "listenerStatus": "LISTENING",
+  "modelConnectionReady": true,
+  "profile": "/Users/weida/Documents/minecraft-ai-companion-forge/run-expansion-packaged-20260909/profile.json",
+  "jarSha256": "2bdf5f3158068fcc40dfc96d9572db60c28a6ef796d6eed8e52512009156d9bc",
+  "clientSynced": true,
+  "clientEntryVerified": false,
+  "clientRestartRequired": true,
+  "body": {
+    "dimension": "minecraft:overworld",
+    "x": -31.5,
+    "y": 65.0,
+    "z": 0.5,
+    "online": true,
+    "inventory": [
+      {
+        "slot": 0,
+        "item": "minecraft:iron_axe",
+        "count": 1,
+        "damage": 0,
+        "maxDamage": 250
+      },
+      {
+        "slot": 1,
+        "item": "minecraft:iron_pickaxe",
+        "count": 1,
+        "damage": 0,
+        "maxDamage": 250
+      },
+      {
+        "slot": 2,
+        "item": "minecraft:cobblestone",
+        "count": 29,
+        "damage": 0,
+        "maxDamage": 0
+      },
+      {
+        "slot": 4,
+        "item": "minecraft:spruce_log",
+        "count": 8,
+        "damage": 0,
+        "maxDamage": 0
+      }
+    ]
+  },
+  "independentTrial": "Independent operator interrupted before a final report. Interim observation showed 6 spruce logs; user handoff showed 8 logs, 29 cobblestone and no sapling. No independent wholeTreeVerified/replantVerified conclusion was obtained; do not mark the independent trial passed. Test subagent closed and any active parent job cancelled before normal companion start.",
+  "priorServer": "127.0.0.1:25565 remains unchanged",
+  "githubBackup": "codex/backup-rebuild-20260909 at 70b24f678e3abd9fcd8df6df8bd8b6d6b32ad65f; subsequent expansion still uncommitted locally",
+  "remaining": "Finish expansion documentation/review and GitHub backup; continue natural-world performance and independent end-to-end acceptance. No general parkour or latency guarantee."
+}

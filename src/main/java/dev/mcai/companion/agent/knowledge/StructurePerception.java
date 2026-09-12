@@ -41,8 +41,8 @@ public final class StructurePerception {
 
     public JsonObject query(int radius, String filter, String cursor, int offset, int limit) {
         requireServerThread();
-        if (radius < 1 || radius > 96 || offset < 0 || offset > MAX_STARTS || limit < 1 || limit > 64
-                || filter.length() > 128) throw new IllegalArgumentException("Structure query: radius 1..96, limit 1..64, offset 0..512");
+        if (radius < 1 || radius > PerceptionRange.MAX || offset < 0 || offset > MAX_STARTS || limit < 1 || limit > 64
+                || filter.length() > 128) throw new IllegalArgumentException("Structure query: radius 1..150, limit 1..64, offset 0..512");
         long now = System.nanoTime();
         scans.values().removeIf(s -> now - s.created > 60_000_000_000L);
         Scan scan = cursor.isBlank() ? null : scans.get(cursor);
@@ -111,20 +111,10 @@ public final class StructurePerception {
                 Work work = scan.queue.peekFirst();
                 var loaded = scan.level.getChunkSource().getChunkNow(work.pos.x(), work.pos.z());
                 if (loaded != null) { scan.queue.removeFirst(); scan.read(work, loaded); continue; }
-                if (scheduled || scan.pending.size() >= 2) break;
+                // Searching must never generate or load missing chunks. The missing
+                // record is reported as unknown and can be retried after travelling.
                 scan.queue.removeFirst();
-                // The public native entry point explicitly marshals off-thread calls
-                // to its main-thread processor. On the main thread it would managed-block.
-                // Only dispatch is off-thread; record reads below remain server-authoritative.
-                try {
-                    var source = scan.level.getChunkSource();
-                    var future = CompletableFuture.supplyAsync(() -> source.getChunkFuture(work.pos.x(), work.pos.z(),
-                            work.references ? ChunkStatus.STRUCTURE_REFERENCES : ChunkStatus.STRUCTURE_STARTS, true), scheduler)
-                            .thenCompose(result -> result);
-                    scan.pending.put(work, future);
-                    scan.scheduledChunks++;
-                } catch (RuntimeException unavailable) { scan.unavailable++; }
-                scheduled = true;
+                scan.unavailable++;
             }
             if (scan.queue.isEmpty() && scan.pending.isEmpty()) scan.finish();
             if (System.nanoTime() >= deadline) break;
@@ -236,7 +226,7 @@ public final class StructurePerception {
             out.addProperty("elapsedMillis",((done()?finishedNanos:System.nanoTime())-created)/1_000_000);
             out.addProperty("snapshotAgeMillis",(System.nanoTime()-created)/1_000_000);
             out.addProperty("retryAfterMs",done()?0:100);
-            out.addProperty("limitation","Generated structure records may survive destruction. Positions are not entrances or safe navigation destinations; player buildings are not indexed. Native metadata generation may read dependency chunks outside the sphere; returned positions never exceed its radius.");
+            out.addProperty("limitation","Generated structure records may survive destruction. Positions are not entrances or safe navigation destinations; player buildings are not indexed. Only loaded structure records are read; no chunks are generated for this query. Returned positions never exceed its radius.");
             return out;
         }
     }

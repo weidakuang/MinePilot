@@ -17,6 +17,7 @@ public final class MinePilotServerPlayer extends ServerPlayer {
     private static final float MAX_PITCH_CHANGE_PER_TICK = 12.0F;
 
     private volatile AgentControlFrame controlFrame = AgentControlFrame.IDLE;
+    private boolean singleTickControl;
     public dev.mcai.companion.agent.knowledge.InventoryLedger inventoryLedger;
 
     public MinePilotServerPlayer(
@@ -28,11 +29,21 @@ public final class MinePilotServerPlayer extends ServerPlayer {
         super(server, level, profile, clientInformation);
     }
 
+    public float yawForNextFrame(float target){return Mth.approachDegrees(getYRot(),target,MAX_YAW_CHANGE_PER_TICK);}
+
     public void applyControlFrame(AgentControlFrame next) {
+        singleTickControl = false;
         controlFrame = next == null ? AgentControlFrame.IDLE : next;
     }
 
+    /** Counter-input must expire even when its route has already been cancelled. */
+    public void applySingleTickControlFrame(AgentControlFrame next) {
+        applyControlFrame(next);
+        singleTickControl = true;
+    }
+
     public void stopControlling() {
+        singleTickControl = false;
         controlFrame = new AgentControlFrame(
                 getYRot(), getXRot(), 0.0F, 0.0F, false, false, false);
     }
@@ -60,6 +71,12 @@ public final class MinePilotServerPlayer extends ServerPlayer {
         int beforeChunkZ = blockPosition().getZ() >> 4;
 
         AgentControlFrame frame = controlFrame;
+        if (singleTickControl) stopControlling();
+        if(isInWater() && frame.forward()==0 && frame.strafe()==0 && !frame.sneak()) {
+            // Waiting, mining or menu work keeps a normal swim-up stroke without
+            // stealing the action's aim. Low-air escape can still steer upstream.
+            frame=new AgentControlFrame(frame.targetYaw(),frame.targetPitch(),0,0,true,frame.sprint(),false);
+        }
         float yaw = Mth.approachDegrees(getYRot(), frame.targetYaw(), MAX_YAW_CHANGE_PER_TICK);
         float pitch = Mth.approachDegrees(getXRot(), frame.targetPitch(), MAX_PITCH_CHANGE_PER_TICK);
         setYRot(yaw);

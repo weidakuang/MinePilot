@@ -6,24 +6,33 @@ import dev.mcai.companion.agent.AgentRuntime;
 
 /** One schema and execution path for perception and item policy, regardless of controller transport. */
 public final class KnowledgeTools {
-    public static final java.util.Set<String> NAMES=java.util.Set.of("listen","turn","inventory","inventory_events","annotate_item","waypoint","sense");
+    public static final java.util.Set<String> NAMES=java.util.Set.of("drop_items","reclaim_drop","listen","turn","inventory","item_origins","inventory_events","annotate_item","waypoint","sense");
     private final AgentRuntime runtime;
     public KnowledgeTools(AgentRuntime runtime){this.runtime=runtime;}
     public static JsonArray definitions(){
         JsonArray tools=new JsonArray();
+        var selection=new JsonObject();selection.add("slot",integer("Optional storage 0..35 or offhand 40; requires observed entry_id"));selection.add("entry_id",string("Observed exact inventory identity"));selection.add("item",string("Registered item ID; reject ambiguous component/durability variants"));selection.add("expected_damage",integer("Optional observed damage for rejecting changed tools"));selection.add("count",integer("Positive exact count; no all/negative amounts"));
+        var items=new JsonObject();items.addProperty("type","array");items.addProperty("minItems",1);items.addProperty("maxItems",8);items.add("items",schema(selection,"count"));
+        var drop=new JsonObject();drop.add("request_key",string("Unique action key, 1..150 characters; reuse identical arguments for an uncertain retry"));drop.add("items",items);drop.add("reason",enumString("capacity","player_request"));drop.add("player_request",string("Actual current player instruction authorizing the handover; required for player_request"));
+        tools.add(tool("drop_items","Physically toss exact carried counts along current facing using native physics. Available while walking/mining/placing; no body cancellation or hand swap. Autonomous cleanup protects importance 0..2; actual player instructions may authorize those items. Reservations report free quantity; cancel the affected job to release them. Inventory loss plus physical entity receipts proves toss, not recipient pickup. Dropped items remain avoided by this Agent even after merges.",schema(drop,"request_key","items","reason"),false,true));
+        var reclaim=new JsonObject();reclaim.add("entity_id",string("Currently sensed dropped item UUID"));tools.add(tool("reclaim_drop","Allow this Agent to pick up a previously discarded entity, including its entire current merged stack. This removes avoidance only; normal movement/pickup is still needed.",schema(reclaim,"entity_id"),false,false));
         JsonObject sounds=new JsonObject();sounds.add("after_sequence",integer("Optional exclusive cursor; omit to see all currently active captions."));sounds.add("limit",integer("Maximum 1..64 captions, default 32."));
         tools.add(tool("listen","Read recent native Chinese sound captions, eight relative directions, distances and attributed sources. Vanilla sound-resource ranges and 3-second lifetime; no visual occlusion. Positional source candidates are explicitly unconfirmed.",schema(sounds),true,false));
         JsonObject turn=new JsonObject();turn.add("heading",number("Absolute compass heading [0,360], north=0, east=90. Omit for a relative reference."));
         turn.add("reference",string("Observed entity UUID/name, or sun; omit with absolute heading."));turn.add("side",enumString("facing","back","left","right"));
         tools.add(tool("turn","Turn in place using normal input; relative side specifies which side of the Agent faces the reference.",schema(turn),false,false));
         tools.add(tool("inventory","Read item identities, counts, slots, notes and protective importance.",schema(new JsonObject()),true,false));
+        var origins=new JsonObject();origins.add("entry_id",string("Current carried inventory entryId"));origins.add("offset",integer("Origin-segment offset, default 0"));origins.add("limit",integer("1..16 origin segments, default 8"));
+        tools.add(tool("item_origins","Read paged counted origins for carried items, including native transfers and explicitly unknown/truncated history. Default inventory only summarizes origins; identical units use FIFO accounting across stack and slot changes.",schema(origins,"entry_id"),true,false));
         JsonObject invEvents=new JsonObject();invEvents.add("after_sequence",integer("Exclusive event cursor."));invEvents.add("limit",integer("1..32 batches."));
         tools.add(tool("inventory_events","Read actual acquisition events and current inventory. Unknown source means unproven, not system-given.",schema(invEvents),true,false));
         JsonObject annotation=new JsonObject();annotation.add("entry_id",string("Current inventory entryId including item components."));annotation.add("importance",integer("0 most important through 5 least important. Levels 0..2 cannot be used as navigation support."));annotation.add("note",string("Up to 256 characters."));
         tools.add(tool("annotate_item","Persist item importance and note in this world. Identical split stacks share the policy.",schema(annotation,"entry_id","importance","note"),false,false));
-        JsonObject sense=new JsonObject();sense.add("kind",enumString("entities","items","blocks","trees","structures"));sense.add("radius",integer("1..96 blocks. Structures default 96 and use a fixed 3D sphere; other sensors inspect loaded space."));sense.add("filter",string("Type/name/id substring; structures accept registered ids, #tags and aliases such as village/村庄. Empty means all."));sense.add("offset",integer("Entity or completed structure result offset."));sense.add("cursor",string("Block/structure search continuation cursor; retain it while SEARCHING."));sense.add("limit",integer("1..64 results."));
-        sense.getAsJsonObject("radius").addProperty("minimum",1);sense.getAsJsonObject("radius").addProperty("maximum",96);
-        tools.add(tool("sense","Query bounded perception. Structures query native server generation records within a maximum 96-block sphere, including obscured structures; results are not visual sightings, verified current buildings or safe entrances. Other sensors follow proximity/vision rules. Continue cursors and respect coverageComplete.",schema(sense,"kind"),true,false));
+        JsonObject sense=new JsonObject();sense.add("kind",enumString("entities","items","blocks","trees","structures","standing_positions"));sense.add("radius",integer("1..150 blocks. Structures default 150 and use a fixed 3D sphere; other sensors inspect loaded space."));sense.add("filter",string("Type/name/id substring; structures accept registered ids, #tags and aliases such as village/村庄. Empty means all."));sense.add("offset",integer("Entity or completed structure result offset."));sense.add("cursor",string("Block/entity/structure continuation cursor; use nextOffset for entity pages and retain the cursor until complete."));sense.add("limit",integer("1..64 results."));
+        sense.getAsJsonObject("radius").addProperty("minimum",1);sense.getAsJsonObject("radius").addProperty("maximum",PerceptionRange.MAX);
+        var visibleOnly=new JsonObject();visibleOnly.addProperty("type","boolean");visibleOnly.addProperty("description","Block/tree scans only: require actual current line of sight, excluding buried proximity-only matches. Useful for finding exposed stone before approaching it. Retain on continuation and sweep.");sense.add("visible_only",visibleOnly);
+        var sweep=new JsonObject();sweep.addProperty("type","boolean");sweep.addProperty("description","Optional physical four-heading look-around while idle, for entities/items/blocks/trees. Poll this same query/cursor until complete; bounded work may leave coverageComplete false.");sense.add("sweep",sweep);
+        tools.add(tool("sense","Query bounded perception. Structures query native server generation records within a maximum 150-block sphere, including obscured structures; results are not visual sightings, verified current buildings or safe entrances. Resources and entities read loaded server state and label visibility separately. sweep=true physically turns through four views without extra model decisions. Continue cursors and respect coverageComplete.",schema(sense,"kind"),false,false));
         JsonObject point=new JsonObject();point.add("operation",enumString("save","list","remove"));point.add("name",string("Waypoint name, up to 64 characters."));point.add("note",string("Up to 256 characters."));point.add("dimension",string("Defaults to current dimension."));point.add("x",number("Defaults to body X."));point.add("y",number("Defaults to body Y."));point.add("z",number("Defaults to body Z."));
         point.add("offset",integer("Waypoint list offset."));point.add("limit",integer("Waypoint list limit 1..32."));
         tools.add(tool("waypoint","Save, list or remove dimension-scoped coordinate memories; these are not current terrain observations.",schema(point,"operation"),false,false));
@@ -33,9 +42,12 @@ public final class KnowledgeTools {
     public JsonObject execute(String name,JsonObject args){
         if(!runtime.server().isSameThread())throw new IllegalStateException("Gameplay tools require the server thread");
         return switch(name){
+            case "drop_items"->runtime.itemDrops.drop(args);
+            case "reclaim_drop"->runtime.itemDrops.reclaim(args);
             case "listen"->runtime.hearing.query(optionalLong(args,"after_sequence",0),Math.toIntExact(optionalLong(args,"limit",32)));
             case "turn"->turn(args);
             case "inventory"->runtime.player().inventoryLedger.inventory();
+            case "item_origins"->runtime.player().inventoryLedger.origins(optionalString(args,"entry_id",""),Math.toIntExact(optionalLong(args,"offset",0)),Math.toIntExact(optionalLong(args,"limit",8)));
             case "inventory_events"->runtime.player().inventoryLedger.events(optionalLong(args,"after_sequence",0),Math.toIntExact(optionalLong(args,"limit",16)));
             case "annotate_item"->annotateItem(args);
             case "waypoint"->waypoint(args);
@@ -63,12 +75,13 @@ public final class KnowledgeTools {
         var p=runtime.player();return p.inventoryLedger.waypoint(op,optionalString(a,"name",""),optionalString(a,"dimension",p.level().dimension().identifier().toString()),optionalDouble(a,"x").orElse(p.getX()),optionalDouble(a,"y").orElse(p.getY()),optionalDouble(a,"z").orElse(p.getZ()),optionalString(a,"note",""));
     }
     private JsonObject sense(JsonObject a){
-        String kind=requiredString(a,"kind"),filter=optionalString(a,"filter","");int limit=Math.toIntExact(optionalLong(a,"limit",32));
-        int radius=Math.toIntExact(optionalLong(a,"radius",kind.equals("entities") || kind.equals("structures")?96:10));
-        if(kind.equals("entities") || kind.equals("items"))return runtime.perception.entities(Math.toIntExact(optionalLong(a,"offset",0)),limit,filter,radius,kind.equals("items"));
+        String kind=requiredString(a,"kind"),filter=optionalString(a,"filter","");if(kind.equals("standing_positions"))return runtime.perception.standingPositions();int limit=Math.toIntExact(optionalLong(a,"limit",32));
+        int radius=Math.toIntExact(optionalLong(a,"radius",PerceptionRange.DEFAULT));
+        if(a.has("sweep") && a.get("sweep").getAsBoolean())return runtime.perceptionSweep.query(kind,filter,radius,limit,optionalString(a,"cursor",""),a.has("visible_only") && a.get("visible_only").getAsBoolean());
+        if(kind.equals("entities") || kind.equals("items"))return runtime.perception.entities(Math.toIntExact(optionalLong(a,"offset",0)),limit,filter,radius,kind.equals("items"),optionalString(a,"cursor",""));
         if(kind.equals("structures"))return runtime.perception.structures.query(radius,filter,optionalString(a,"cursor",""),Math.toIntExact(optionalLong(a,"offset",0)),limit);
         if(!java.util.Set.of("blocks","trees","structures").contains(kind))throw new IllegalArgumentException("Unknown sense category");
-        return runtime.perception.blocks(radius,filter,kind,optionalString(a,"cursor",""),limit);
+        return runtime.perception.blocks(radius,filter,kind,optionalString(a,"cursor",""),limit,a.has("visible_only") && a.get("visible_only").getAsBoolean());
     }
 
     private static JsonObject tool(

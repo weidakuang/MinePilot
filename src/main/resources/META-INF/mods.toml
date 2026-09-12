@@ -4,19 +4,18 @@
 
 modLoader="javafml"
 loaderVersion="[65,66)"
-license="Apache-2.0"
-#clientSideOnly=true #optional, default=false
+license="Apache-2.0 AND LGPL-3.0-only"
 
 [[mods]]
 modId="mcai_companion"
 version="0.2.0-dev-mc26.2"
 displayName="MinePilot"
 authors="weida"
-#displayTest="MATCH_VERSION" #optional, default=MATCH_VERSION when not clientSideOnly, else IGNORE_ALL_VERSION
+displayTest="IGNORE_SERVER_VERSION"
 
-description='''MinePilot is an AI companion for Minecraft Java Edition.
-This development build contains the rebuilt headless player body, natural-chat
-model encoder, and the first physically executed navigation tool.'''
+description='''MinePilot is a server-side AI companion for Minecraft Java Edition.
+Players connect with an unmodified Minecraft 26.2 client. Chat and /minepilot_mark
+control the companion through vanilla packets; no client mod is required.'''
 
 [[dependencies.mcai_companion]]
     modId="forge"

@@ -35,7 +35,7 @@ public final class CollectionGameTests {
             var cap=block(fungus?(species.equals("crimson")?"nether_wart_block":"warped_wart_block"):species+"_leaves").defaultBlockState();if(cap.hasProperty(BlockStateProperties.PERSISTENT))cap=cap.setValue(BlockStateProperties.PERSISTENT,false);
             h.getLevel().setBlock(tree.above(3),cap,2);h.getLevel().setBlock(tree.below(),fungus?block(species+"_nylium").defaultBlockState():Blocks.DIRT.defaultBlockState(),2);}
         void resetBodyForFixture(){var p=r.player();p.setPos(Vec3.atBottomCenterOf(origin));p.setDeltaMovement(Vec3.ZERO);p.setOnGround(true);p.stopControlling();}
-        void stage(int n){stage=n;since=h.getTick();}
+        void stage(int n){dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Collection regression stage {} finished after {} ticks",stage,h.getTick()-since);stage=n;since=h.getTick();}
         void record(String name){var row=call("collection_status",new JsonObject(),true);row.addProperty("case",name);row.add("inventory",r.player().inventoryLedger.inventory());evidence.add(row);}
         int count(Item item){int n=0;for(int i=0;i<r.player().getInventory().getContainerSize();i++){var s=r.player().getInventory().getItem(i);if(s.is(item))n+=s.getCount();}return n;}
         void start(){
@@ -58,6 +58,7 @@ public final class CollectionGameTests {
         }
         void tick(){
             var p=r.player();var status=call("collection_status",new JsonObject(),true);String phase=status.get("phase").getAsString();long age=h.getTick()-since;
+            if(age>0 && age%500==0)dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Collection regression waiting at stage {}: {}",stage,status);
             if(stage==1 && phase.equals("COMPLETED")){
                 h.assertTrue(count(Items.OAK_LOG)==4 && h.getLevel().getBlockState(tree).is(Blocks.OAK_LOG),"Loose log collection destroyed tree or failed inventory");record("wood any acquired loose logs without felling");
                 // Separate empty-inventory fixture reproduces automatic filling of the selected empty hand.
@@ -77,6 +78,7 @@ public final class CollectionGameTests {
                 r.onChat("TestHuman","停下");h.assertTrue(r.collection().status().get("phase").getAsString().equals("CANCELLED"),"Chat failed to cancel collection");stage(7);
             }else if(stage==7 && age>=80){
                 h.assertTrue(h.getLevel().getBlockState(tree).is(Blocks.OAK_LOG) && p.getMainHandItem().getDamageValue()==4,"Cancelled break resumed later");record("chat cancellation prevents delayed destruction");
+                resetBodyForFixture(); // Do not insert the next fixture's ore inside the body's collision box.
                 var coal=p.blockPosition().west();h.getLevel().setBlock(coal,Blocks.COAL_ORE.defaultBlockState(),2);h.getLevel().setBlock(coal.west(5),Blocks.COAL_ORE.defaultBlockState(),2);p.getInventory().setItem(20,new ItemStack(Items.WOODEN_PICKAXE));
                 var a=obj("{\"resource\":\"minecraft:coal_ore\",\"output_item\":\"minecraft:coal\",\"source\":\"blocks\",\"radius\":3,\"count\":2}");var plan=call("plan_collection",a,true);h.assertTrue(plan.getAsJsonArray("options").get(0).getAsJsonObject().get("targetBlocks").getAsInt()==1,"Fixed sphere included outside ore");choose(plan,null);stage(8);
             }else if(stage==8 && phase.equals("BLOCKED")){
@@ -104,8 +106,28 @@ public final class CollectionGameTests {
                 h.assertTrue(status.get("wholeTreeVerified").getAsBoolean() && count(Items.SPRUCE_LOG)==before+6,"Six-log spruce was truncated to the requested item count");
                 for(int y=0;y<6;y++)h.assertTrue(h.getLevel().getBlockState(tree.above(y)).isAir(),"Spruce trunk remains after whole-tree completion");
                 record("six-log spruce fully felled and acquired despite count=1");
-                try{var path=r.server().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("collection-physical-evidence.json");java.nio.file.Files.writeString(path,new GsonBuilder().setPrettyPrinting().create().toJson(evidence));}catch(java.io.IOException e){throw new IllegalStateException(e);}stage(12);h.succeed();
-            }else if(phase.equals("BLOCKED") && stage!=8 && stage!=9 && stage!=12){h.fail("Collection blocked at stage "+stage+": "+status);}
+                resetBodyForFixture();
+                // Nearest stone is sealed below the body. Farther surface stone
+                // must remain a candidate even though count is only four items.
+                var buried=origin.below(3);
+                for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++)
+                    h.getLevel().setBlock(buried.offset(x,y,z),Blocks.BEDROCK.defaultBlockState(),2);
+                h.getLevel().setBlock(buried,Blocks.STONE.defaultBlockState(),2);
+                for(int z=-1;z<=2;z++)h.getLevel().setBlock(origin.offset(6,0,z),Blocks.STONE.defaultBlockState(),2);
+                p.getInventory().clearContent();p.getInventory().setItem(0,new ItemStack(Items.WOODEN_PICKAXE));p.inventoryLedger.tick();
+                p.setYRot(-90);p.setXRot(0);p.setYHeadRot(-90);
+                var plan=call("plan_collection",obj("{\"resource\":\"stone\",\"source\":\"blocks\",\"radius\":10,\"count\":4}"),true);
+                var option=plan.getAsJsonArray("options").get(0).getAsJsonObject();
+                h.assertTrue(option.get("targetBlocks").getAsInt()>=5 && option.get("maximumBlocksToBreak").getAsInt()==4,"Alternatives lost or break budget expanded: "+option);
+                choose(plan,null);stage(12);
+            }else if(stage==12 && phase.equals("COMPLETED")){
+                h.assertTrue(count(Items.COBBLESTONE)==4 && status.get("brokenBlocks").getAsInt()==4,"Surface alternatives were not physically harvested and acquired: "+status);
+                h.assertTrue(h.getLevel().getBlockState(origin.below(3)).is(Blocks.STONE),"Collector excavated the sealed nearest target");
+                h.assertTrue(p.getMainHandItem().is(Items.WOODEN_PICKAXE) && p.getMainHandItem().getDamageValue()==4,"Alternative count consumed excessive durability");
+                for(int z=-1;z<=2;z++)h.assertTrue(h.getLevel().getBlockState(origin.offset(6,0,z)).isAir(),"Exposed target remains");
+                record("Numen palette scan and alternate surface targets: four cobblestone receipts; buried nearest stone untouched");
+                try{var path=r.server().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("collection-physical-evidence.json");java.nio.file.Files.writeString(path,new GsonBuilder().setPrettyPrinting().create().toJson(evidence));}catch(java.io.IOException e){throw new IllegalStateException(e);}stage(13);h.succeed();
+            }else if(phase.equals("BLOCKED") && stage!=8 && stage!=9 && stage!=13){h.fail("Collection blocked at stage "+stage+": "+status);}
         }
     }
 }

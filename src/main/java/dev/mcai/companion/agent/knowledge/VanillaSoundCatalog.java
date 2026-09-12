@@ -33,6 +33,22 @@ public final class VanillaSoundCatalog {
         double range=Math.max(volume*sample.volume(),1.0F)*sample.distance();
         return new Caption(key,label(key,key),range);
     }
+    /** Level-event packets have no client random seed. Emit only captions whose possible samples share one range. */
+    public Caption resolveUnseeded(String id,float volume){
+        if(!id.startsWith("minecraft:") || !events.has(id.substring(10)))return null;
+        String name=id.substring(10);var definition=events.getAsJsonObject(name);if(!definition.has("subtitle"))return null;
+        var samples=new java.util.ArrayList<Sample>();allSamples(name,1,0,samples);
+        double range=-1;for(var s:samples){double value=Math.max(volume*s.volume(),1F)*s.distance();if(range>=0 && Math.abs(value-range)>1e-6)return null;range=value;}
+        if(range<0)return null;String key=definition.get("subtitle").getAsString();return new Caption(key,label(key,key),range);
+    }
+    private void allSamples(String name,float volume,int depth,java.util.List<Sample> result){
+        if(depth>16 || !events.has(name) || result.size()>512)return;
+        for(var value:events.getAsJsonObject(name).getAsJsonArray("variants")){
+            var row=value.getAsJsonObject();float scale=volume*row.get("volume").getAsFloat();
+            if(row.has("event"))allSamples(row.get("event").getAsString(),scale,depth+1,result);
+            else result.add(new Sample(scale,row.get("distance").getAsInt()));
+        }
+    }
     private int weight(String name,int depth) {
         if(depth>16 || !events.has(name))return 0;
         int total=0;

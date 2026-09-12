@@ -28,6 +28,13 @@ public final class GameTestRegistrar {
         gathered.putAll(ForgeGameTestHooks.gatherTests(dev.mcai.companion.codex.MiningGameTests.class,null));
         gathered.putAll(ForgeGameTestHooks.gatherTests(dev.mcai.companion.codex.CollectionGameTests.class,null));
         gathered.putAll(ForgeGameTestHooks.gatherTests(dev.mcai.companion.codex.PlacementGameTests.class,null));
+        gathered.putAll(ForgeGameTestHooks.gatherTests(dev.mcai.companion.codex.ExcavationGameTests.class,null));
+        gathered.putAll(ForgeGameTestHooks.gatherTests(dev.mcai.companion.codex.ProvenanceGameTests.class,null));
+        gathered.putAll(ForgeGameTestHooks.gatherTests(dev.mcai.companion.codex.ItemDropGameTests.class,null));
+        gathered.putAll(ForgeGameTestHooks.gatherTests(dev.mcai.companion.codex.PlayExperienceGameTests.class,null));
+        gathered.putAll(ForgeGameTestHooks.gatherTests(dev.mcai.companion.codex.SurvivalGameTests.class,null));
+        gathered.putAll(ForgeGameTestHooks.gatherTests(dev.mcai.companion.codex.ResourceWaterGameTests.class,null));
+        gathered.putAll(ForgeGameTestHooks.gatherTests(dev.mcai.companion.codex.CampGameTests.class,null));
         tests = Map.copyOf(gathered);
         if (tests.isEmpty()) {
             throw new IllegalStateException("Navigation backend GameTest was not discovered");

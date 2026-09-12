@@ -11,7 +11,7 @@ import com.google.gson.JsonObject;
 /** Inventory-only tool preview. Equipping is deferred to approval and uses native menu swaps. */
 public record MiningToolChoice(int slot, ItemStack stack) {
     public static MiningToolChoice best(MinePilotServerPlayer body, BlockState state, boolean harvest, int blocks) {
-        int held=body.getInventory().getSelectedSlot(), best=-1; float speed=-1;
+        int held=body.getInventory().getSelectedSlot(), best=-1, bestWear=Integer.MAX_VALUE; float speed=-1;
         for(int n=-1;n<=40;n++) {
             int slot=n==-1?held:n;
             if(n==held || slot>=36 && slot<40)continue;
@@ -19,7 +19,8 @@ public record MiningToolChoice(int slot, ItemStack stack) {
             if(harvest && state.requiresCorrectToolForDrops() && !item.isCorrectToolForDrops(state))continue;
             if(item.isDamageableItem() && (data==null || item.getMaxDamage()-item.getDamageValue()<=Math.max(1,data.damagePerBlock())*blocks))continue;
             float candidate=item.isEmpty()?1:item.getDestroySpeed(state);
-            if(candidate>speed){speed=candidate;best=slot;}
+            int wear=item.isDamageableItem()?Math.max(1,data.damagePerBlock()):0;
+            if(candidate>speed || candidate==speed && (wear<bestWear || wear==bestWear && item.isEmpty() && best>=0 && !body.getInventory().getItem(best).isEmpty())){speed=candidate;best=slot;bestWear=wear;}
         }
         if(best<0)throw new IllegalArgumentException("No inventory tool can harvest this block with the required durability reserve");
         return new MiningToolChoice(best,body.getInventory().getItem(best).copy());

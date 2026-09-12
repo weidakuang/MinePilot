@@ -73,6 +73,7 @@ public final class SoundGameTests {
             zombie=new Zombie(h.getLevel());zombie.setNoAi(true);zombie.setNoGravity(true);zombie.setInvulnerable(true);zombie.setPos(start.add(4,0,0));h.getLevel().addFreshEntity(zombie);
             h.addCleanup(ignored->zombie.discard());began=h.getTick();h.onEachTick(this::tick);
         }
+        BlockPos originForEvent(int distance){return BlockPos.containing(start.add(-distance,0,0));}
         void tick() {
             var p=runtime.player();
             h.assertTrue(p.position().distanceTo(start)<.01 && p.getInventory().isEmpty(),"Listening changed body or inventory");
@@ -90,11 +91,15 @@ public final class SoundGameTests {
                 sound("music.game",SoundSource.MUSIC,start.add(1,0,0),1);
                 var chestPos=BlockPos.containing(start.add(0,0,4));h.getLevel().setBlockAndUpdate(chestPos,Blocks.CHEST.defaultBlockState());
                 ((ChestBlockEntity)h.getLevel().getBlockEntity(chestPos)).startOpen(p);
+                h.getLevel().levelEvent(2001,originForEvent(3),net.minecraft.world.level.block.Block.getId(Blocks.STONE.defaultBlockState()));
+                h.getLevel().levelEvent(1000,originForEvent(5),0);
                 phase=1;began=h.getTick();return;
             }
             if(phase==1 && h.getTick()>began) {
                 var data=listen(cursor,64);if(named(data,"entity.cow.ambient").size()<8)return;
                 evidence.add(data);
+                var broken=named(data,"block.stone.break");h.assertTrue(broken.size()==1 && broken.getFirst().getAsJsonObject("source").get("confidence").getAsString().equals("native_break_event_state"),"Native block-break level-event caption missing: "+data);
+                h.assertTrue(named(data,"block.dispenser.dispense").size()==1,"Native dispenser level-event caption missing");
                 var directions=new HashSet<String>();for(var row:named(data,"entity.cow.ambient"))directions.add(row.get("direction").getAsString());
                 h.assertTrue(directions.size()==8,"Eight body-relative directions not received: "+directions);
                 var zombies=named(data,"entity.zombie.ambient");h.assertTrue(zombies.size()==1,"Real zombie playback missing behind wall");

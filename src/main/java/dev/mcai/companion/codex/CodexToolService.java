@@ -82,8 +82,10 @@ final class CodexToolService {
         JsonObject poll=new JsonObject();
         for(String cursor:java.util.List.of("after_chat","after_system","after_inventory"))poll.add(cursor,integer("Exclusive cursor; default 0."));
         tools.add(tool("poll_events","Read chat, inventory events and navigation together on one server tick for the persistent listener.",schema(poll),true,false));
+        dev.mcai.companion.agent.survival.SurvivalTools.definitions().forEach(tools::add);
         dev.mcai.companion.agent.knowledge.KnowledgeTools.definitions().forEach(tools::add);
         dev.mcai.companion.agent.mining.MiningTools.definitions().forEach(tools::add);
+        dev.mcai.companion.agent.mining.ExcavationTools.definitions().forEach(tools::add);
         dev.mcai.companion.agent.mining.CollectionTools.definitions().forEach(tools::add);
         dev.mcai.companion.agent.placement.PlacementTools.definitions().forEach(tools::add);
         tools.add(tool("observe",
@@ -189,7 +191,11 @@ final class CodexToolService {
     }
 
     private JsonObject executeTool(String name, JsonObject arguments) {
+        if((runtime.camp().active() || runtime.gather().active() || runtime.survival().active()) && !java.util.Set.of("observe","poll_events","read_chat","say","listen","inventory","inventory_events","item_origins","annotate_item","drop_items","reclaim_drop","sense","find_resources","navigation_status","collection_status","mining_status","placement_status","excavation_status","mining_survey_status","gather_status","survival_status","inspect_container","cancel_gather","cancel_survival","camp_status","cancel_camp","remember_context","companion_mode").contains(name))throw new IllegalStateException("A continuous body job is active; use its cancel tool before changing the task");
+        if(dev.mcai.companion.agent.survival.SurvivalTools.NAMES.contains(name)){if(!dev.mcai.companion.agent.survival.SurvivalTools.READ_ONLY.contains(name))requireExternalControl();return dev.mcai.companion.agent.survival.SurvivalTools.execute(runtime,name,arguments);}
+        if(dev.mcai.companion.agent.mining.ExcavationTools.NAMES.contains(name)){if(!java.util.Set.of("excavation_status","mining_survey_status","survey_mining").contains(name))requireExternalControl();return dev.mcai.companion.agent.mining.ExcavationTools.execute(runtime,name,arguments);}
         if(dev.mcai.companion.agent.placement.PlacementTools.NAMES.contains(name)) {
+            if(runtime.excavation().ownsBody() && !dev.mcai.companion.agent.placement.PlacementTools.READ_ONLY.contains(name))throw new IllegalStateException("Use parent excavation controls first");
             if(!dev.mcai.companion.agent.placement.PlacementTools.READ_ONLY.contains(name))requireExternalControl();
             return dev.mcai.companion.agent.placement.PlacementTools.execute(runtime,name,arguments);
         }
@@ -198,13 +204,14 @@ final class CodexToolService {
             return dev.mcai.companion.agent.mining.CollectionTools.execute(runtime,name,arguments);
         }
         if(dev.mcai.companion.agent.mining.MiningTools.NAMES.contains(name)) {
+            if(runtime.excavation().ownsBody() && !name.equals("mining_status"))throw new IllegalStateException("Use parent excavation controls first");
             if(!name.equals("mining_status"))requireExternalControl();
             return dev.mcai.companion.agent.mining.MiningTools.execute(runtime,name,arguments);
         }
         return switch (name) {
             case "observe" -> observe();
             case "poll_events" -> pollEvents(arguments);
-            case "listen","turn","inventory","inventory_events","annotate_item","waypoint","sense" -> knowledgeTool(name,arguments);
+            case "drop_items","reclaim_drop","listen","turn","inventory","item_origins","inventory_events","annotate_item","waypoint","sense" -> knowledgeTool(name,arguments);
             case "jump_once" -> jumpOnce();
             case "read_chat" -> readChat(arguments);
             case "say" -> say(arguments);
@@ -223,7 +230,7 @@ final class CodexToolService {
         chatArgs.addProperty("after_system_sequence",optionalLong(args,"after_system",0));
         var result=new JsonObject();result.add("chat",readChat(chatArgs));
         result.add("inventoryEvents",runtime.player().inventoryLedger.events(optionalLong(args,"after_inventory",0),16));
-        result.add("navigation",navigationStatus());result.add("mining",runtime.mining().status());result.add("collection",runtime.collection().status());result.add("placement",runtime.placement().status());return result;
+        result.add("navigation",navigationStatus());result.add("excavation",runtime.excavation().status());result.add("miningSurvey",runtime.miningSurvey.status());result.add("mining",runtime.mining().status());result.add("collection",runtime.collection().status());result.add("autonomy",runtime.companionEvents.snapshot());result.add("breath",runtime.breath.status());result.add("camp",runtime.camp().status());result.add("gather",runtime.gather().status());result.add("survival",runtime.survival().status());result.add("placement",runtime.placement().status());return result;
     }
 
     private JsonObject observe() {
@@ -231,9 +238,11 @@ final class CodexToolService {
         JsonObject result = bodyState(player);
         result.addProperty("online", player.isAlive() && player.connection != null);
         result.addProperty("externalControlAvailable", runtime.externalControlAvailable());
-        result.add("mining",runtime.mining().status());result.add("collection",runtime.collection().status());result.add("placement",runtime.placement().status());
-        result.add("world",runtime.perception.summary());
+        result.add("excavation",runtime.excavation().status());result.add("miningSurvey",runtime.miningSurvey.status());result.add("mining",runtime.mining().status());result.add("collection",runtime.collection().status());result.add("autonomy",runtime.companionEvents.snapshot());result.add("breath",runtime.breath.status());result.add("camp",runtime.camp().status());result.add("gather",runtime.gather().status());result.add("survival",runtime.survival().status());result.add("placement",runtime.placement().status());
+        result.add("world",runtime.perception.summary());result.add("playerFocus",runtime.playerFocus.snapshot());
         result.add("inventorySummary",runtime.player().inventoryLedger.inventory());
+        result.add("workstationMemory",runtime.workstations.snapshot());
+        result.add("conversationMemory",runtime.memory.snapshot());
         result.addProperty("latestChatSequence", runtime.latestChatSequence());
         JsonArray players = new JsonArray();
         int playerCount = 0;
@@ -455,7 +464,7 @@ final class CodexToolService {
     }
 
     private JsonObject knowledgeTool(String name,JsonObject args) {
-        if(name.equals("turn") || name.equals("annotate_item") || name.equals("waypoint") && !optionalString(args,"operation","").equals("list"))requireExternalControl();
+        if(name.equals("drop_items") || name.equals("reclaim_drop") || name.equals("turn") || name.equals("annotate_item") || name.equals("waypoint") && !optionalString(args,"operation","").equals("list"))requireExternalControl();
         var result=new dev.mcai.companion.agent.knowledge.KnowledgeTools(runtime).execute(name,args);
         return name.equals("turn")?navigationStatus():result;
     }

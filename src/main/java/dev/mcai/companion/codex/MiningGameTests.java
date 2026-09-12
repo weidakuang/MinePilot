@@ -27,7 +27,7 @@ public final class MiningGameTests {
     }
     private static final class Gate {
         final GameTestHelper h;final AgentRuntime runtime;final CodexToolService tools;final BlockPos origin,target;
-        int phase;long phaseTick,eventSequence;String request,policy,pickupRequest;Vec3 start;JsonArray evidence=new JsonArray();
+        String sensorCursor="";boolean foundNear,foundCorner;BlockPos nearby,corner;int phase;long phaseTick,eventSequence;String request,policy,pickupRequest;Vec3 start;JsonArray evidence=new JsonArray();
         Gate(GameTestHelper h){this.h=h;runtime=AgentRuntime.active(h.getLevel().getServer());tools=new CodexToolService(runtime);origin=h.absolutePos(new BlockPos(12,3,12));target=origin.offset(0,0,-1);}
         JsonObject args(String text){return JsonParser.parseString(text).getAsJsonObject();}
         JsonObject call(String name,JsonObject args,boolean expectSuccess){
@@ -47,21 +47,12 @@ public final class MiningGameTests {
             }
             var p=runtime.player();p.setPos(Vec3.atBottomCenterOf(origin));p.setDeltaMovement(Vec3.ZERO);p.setOnGround(true);p.stopControlling();p.setGameMode(GameType.SURVIVAL);p.getInventory().clearContent();p.level().getChunkSource().move(p);
             p.setYRot(180);p.setXRot(0);p.stopControlling();
-            var nearby=origin.offset(0,0,8);var corner=origin.offset(8,0,8);
+            nearby=origin.offset(0,0,8);corner=origin.offset(8,0,8);
             h.getLevel().setBlock(nearby,Blocks.EMERALD_ORE.defaultBlockState(),2);
             h.getLevel().setBlock(corner,Blocks.EMERALD_ORE.defaultBlockState(),2);
-            String cursor="";boolean foundNear=false,foundCorner=false;
-            for(int page=0;page<20;page++){
-                var query=runtime.perception.blocks(12,"minecraft:emerald_ore","blocks",cursor,64);
-                for(var value:query.getAsJsonArray("results")){
-                    var row=value.getAsJsonObject();
-                    foundNear|=row.get("x").getAsDouble()==nearby.getX()+.5 && row.get("z").getAsDouble()==nearby.getZ()+.5;
-                    foundCorner|=row.get("x").getAsDouble()==corner.getX()+.5 && row.get("z").getAsDouble()==corner.getZ()+.5;
-                }
-                if(query.get("complete").getAsBoolean())break;
-                cursor=query.get("cursor").getAsString();
-            }
-            h.assertTrue(foundNear && !foundCorner,"Proximity sphere did not see behind or leaked a cube corner outside vision");
+            stage(-1);h.onEachTick(this::tick);h.addCleanup(ignored->{deniedActor=null;runtime.mining().cancelForChat();});
+        }
+        void beginMining(){var p=runtime.player();
             h.getLevel().setBlock(target,Blocks.COAL_ORE.defaultBlockState(),2);start=p.position();
             p.inventoryLedger.tick();plan(false);
             h.assertTrue(h.getLevel().getBlockState(target).is(Blocks.COAL_ORE),"Wrong-tool plan changed the world");
@@ -71,11 +62,17 @@ public final class MiningGameTests {
             request=plan(true).get("requestId").getAsString();
             h.assertTrue(h.getLevel().getBlockState(target).is(Blocks.COAL_ORE) && p.getMainHandItem().getDamageValue()==0,"Planning mutated target or tool");
             call("pause_mining",id(),false);
-            choose();stage(0);h.onEachTick(this::tick);h.addCleanup(ignored->{deniedActor=null;runtime.mining().cancelForChat();});
+            choose();stage(0);
         }
         void tick(){
             var p=runtime.player();long age=h.getTick()-phaseTick;
             h.assertTrue(age<500,"Mining phase timed out: "+phase+" status "+runtime.mining().status());
+            if(phase==-1){
+                var query=runtime.perception.blocks(10,"minecraft:emerald_ore","blocks",sensorCursor,64);
+                for(var value:query.getAsJsonArray("results")){var row=value.getAsJsonObject();foundNear|=row.get("x").getAsInt()==nearby.getX() && row.get("z").getAsInt()==nearby.getZ();foundCorner|=row.get("x").getAsInt()==corner.getX() && row.get("z").getAsInt()==corner.getZ();}
+                if(!query.get("complete").getAsBoolean()){sensorCursor=query.get("cursor").getAsString();return;}
+                h.assertTrue(foundNear && !foundCorner,"Proximity sphere did not see behind or leaked a cube corner outside vision");beginMining();return;
+            }
             if(phase==0 && runtime.mining().status().get("breakProgress").getAsDouble()>.15){
                 call("say",args("{\"message\":\"我正在挖煤，也能继续聊天。\"}"),true);
                 h.assertTrue(runtime.mining().running(),"Chat stopped mining");

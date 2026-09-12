@@ -1,28 +1,32 @@
 # MinePilot
 
-MinePilot is being rebuilt from a clean Forge baseline.
+MinePilot is a Forge server-side survival companion with a native player body.
+Players join with an unmodified Minecraft Java 26.2 client. Dialogue uses the
+persistent local Codex listener; no client mod, UI or streaming reply is required.
 
 ## Current status
 
-Version `0.2.0-dev-mc26.2` is an early rebuild checkpoint. It contains a visible
-headless player, chat and physical navigation, a persistent external Codex
-controller, bounded perception and sound queries, inventory acquisition records,
-item policies, and named waypoints. Internal model interfaces are implemented;
-a working external provider has not completed acceptance.
+The September 12 integration adds loaded-world perception up to 150 blocks,
+continuous resource acquisition, native crafting/container/furnace/food actions,
+water self-preservation, persistent conversation/workstation memory, and a small
+camp blueprint that can resume after interruption. Adapted Numen components use
+our existing movement, mining, placement and inventory/provenance systems.
 
-Controlled movement, follow and knowledge scenarios have physical test evidence.
-The supplied parkour still FAILS, ordinary-language replies/stops still take
-seconds, and general three-dimensional travel is not accepted. Mining, crafting,
-combat, autonomous survival, complete provenance and structure recognition remain
-unfinished. This is not a production companion release.
+Commands such as stopping and placing or reclaiming a nearby crafting table have
+local execution paths. Other language requests use gpt-5.6-luna with low reasoning
+and the requested Fast service tier. Model reply time is measured separately from
+native action time; a sub-two-second language response is not guaranteed.
 
-Start with [the handoff](docs/HANDOFF.md) and
-[the latest movement report](docs/reviews/2026-09-07-movement-continuation.md).
-The September 8 backup preserves the current rebuild on a separate branch;
-historical reports retain their original dates and test limitations.
+Use `/minepilot_mark` or chat `标记这里` to share the server ray from your crosshair.
+An unmodified client cannot transmit a custom N-key binding, so no such binding
+is claimed. Physical mining, placement, drops and movement retain normal reach,
+materials and survival physics. Loaded-but-obscured findings are labelled; unknown
+chunks are never treated as proof that resources do not exist.
 
-This branch exists so each capability can be added and physically verified one
-at a time without inheriting the retired implementation.
+The current integration is undergoing the acceptance recorded in
+[the migration report](docs/reviews/2026-09-12-numen-implementation.md).
+Older reports and [the handoff](docs/HANDOFF.md) retain historical limitations.
+A passing build alone does not establish natural-world or rendered-client success.
 
 ## Platform
 
@@ -30,6 +34,14 @@ at a time without inheriting the retired implementation.
 - Forge 65.x, declared loader range `[65,66)`
 - Java 25
 - Mod ID `mcai_companion`
+
+## Server installation and joining
+
+Install Forge 65.x and the MinePilot JAR only on the Minecraft Java 26.2 server.
+Run the companion's persistent Codex listener on the server host for AI dialogue
+and decisions. Players do not install Forge, MinePilot or an AI application:
+they use the unmodified Minecraft Java 26.2 client and join the server address
+through Multiplayer. Chat and `/minepilot_mark` use vanilla Minecraft packets.
 
 ## Build
 
@@ -50,4 +62,6 @@ of this branch.
 
 ## License
 
-Original MinePilot code is licensed under Apache License 2.0.
+Original MinePilot code is licensed under Apache License 2.0. Adapted Numen
+components remain LGPL-3.0-only; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Their exact modified sources and license texts are included in the JAR.

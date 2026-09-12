@@ -43,12 +43,15 @@ public final class MiningCoordinator {
     private int damageBefore, damageAfter;
 
     public MiningCoordinator(AgentRuntime runtime) { this.runtime=runtime;this.body=runtime.player(); }
+    public int reservedCount(ItemStack stack){return ownsBody() && !expectedTool.isEmpty() && runtime.player().inventoryLedger.key(stack).equals(runtime.player().inventoryLedger.key(expectedTool)) ? expectedTool.getCount() : 0;}
     public boolean ownsBody() { return phase.equals("EXECUTING") || phase.equals("PAUSED"); }
     public boolean running() { return phase.equals("EXECUTING"); }
     public String phase() { return phase; }
     private int tick() { return runtime.server().getTickCount(); }
     private void requireThread() { if(!runtime.server().isSameThread())throw new IllegalStateException("Mining requires the server thread"); }
     private void requireIdleBody() {
+        if(runtime.excavation()!=null && runtime.excavation().ownsBody() && !runtime.excavation().internalAction())throw new IllegalStateException("Pause or cancel excavation before an independent body action");
+
         if(runtime.collection()!=null && runtime.collection().ownsBody() && !runtime.collection().internalAction())throw new IllegalStateException("Cancel collection before an independent body action");
         if(runtime.placement()!=null && runtime.placement().ownsBody() && !runtime.placement().internalAction())throw new IllegalStateException("Cancel placement before an independent body action");
         var navigation=runtime.navigation().status();
@@ -183,16 +186,16 @@ public final class MiningCoordinator {
                 : body.getInventory().getSelectedSlot()!=selectedSlot || !ItemStack.matches(body.getMainHandItem(),expectedTool))return "Selected tool or durability changed since planning";
         return null;
     }
-    private String problem(BlockPos p,boolean requireHarvest){return problem(p,requireHarvest,true);}
+    public String problem(BlockPos p,boolean requireHarvest){return problem(p,requireHarvest,true);}
     private String problem(BlockPos p,boolean requireHarvest,boolean checkTool){
-        var box=body.getBoundingBox();
-        boolean contact=body.level().getBlockCollisions(body,new AABB(box.minX+.01,box.minY-.06,box.minZ+.01,box.maxX-.01,box.minY+.001,box.maxZ-.01)).iterator().hasNext();
-        if(!body.isAlive() || !contact || Math.abs(body.getDeltaMovement().y)>.1)return "Mining requires a living body on stable ground";
+        // Vanilla supports airborne mining and computes its slower progress itself.
+        // Reach and actual ray are rechecked every tick; transient landing is not failure.
+        if(!body.isAlive())return "Mining requires a living body";
         if(body.gameMode.getGameModeForPlayer()!=GameType.SURVIVAL)return "This mining capability requires survival mode; adventure/creative restrictions are not bypassed";
         if(!body.level().isLoaded(p))return "Target chunk is not loaded";
         BlockState state=body.level().getBlockState(p);
         if(state.isAir() || !state.getFluidState().isEmpty())return "Target is air or fluid";
-        if(body.level().getBlockEntity(p)!=null)return "Container/block-entity excavation is not supported by this single-block capability";
+        if(body.level().getBlockEntity(p) instanceof net.minecraft.world.Container)return "Container excavation requires a container-aware plan";
         if(Float.isNaN(state.getDestroyProgress(body,body.level(),p)) || state.getDestroyProgress(body,body.level(),p)<=0)return "Target is not breakable with current rules";
         if(body.level().getServer().isUnderSpawnProtection(body.level(),p,body) || !body.level().mayInteract(body,p) || body.blockActionRestricted(body.level(),p,body.gameMode.getGameModeForPlayer()))return "Server forbids interaction with this block";
         if(checkTool && requireHarvest && !state.canHarvestBlock(body.level(),p,body))return "Held tool cannot harvest this block; select an appropriate tool before planning";
@@ -200,17 +203,19 @@ public final class MiningCoordinator {
         var toolData=held.get(net.minecraft.core.component.DataComponents.TOOL);
         if(checkTool && held.isDamageableItem() && toolData==null)return "Unknown tool wear rules; use a supported mining tool";
         if(checkTool && held.isDamageableItem() && held.getMaxDamage()-held.getDamageValue()<=Math.max(1,toolData.damagePerBlock()))return "Tool durability reserve would be exhausted";
-        if(new AABB(p).intersects(body.getBoundingBox().move(0,-.05,0)))return "Cannot excavate the body's current support or occupied space";
+        if(!softVegetation(state) && new AABB(p).intersects(body.getBoundingBox().move(0,-.05,0)))return "Cannot excavate the body's current support or occupied space";
         if(body.level().getBlockState(p.above()).getBlock() instanceof FallingBlock)return "Falling material above target requires a different excavation plan";
         for(Direction direction:Direction.values()){
             BlockPos adjacent=p.relative(direction);
             if(!body.level().isLoaded(adjacent))return "Unobserved adjacent space prevents a safe break";
-            if(!body.level().getFluidState(adjacent).isEmpty())return "Adjacent fluid may enter the excavation";
+            if(!softVegetation(state) && !body.level().getFluidState(adjacent).isEmpty())return "Adjacent fluid may enter the excavation";
         }
         if(!body.level().getEntities(body,new AABB(p).inflate(.25),e->e instanceof net.minecraft.world.entity.LivingEntity).isEmpty())return "A player or creature occupies the work area";
         return null;
     }
     public boolean reachable(BlockPos p){return aim(p)!=null;}
+    /** These replaceable weeds have no collision or fluid-barrier function. */
+    public static boolean softVegetation(BlockState state){return Set.of("short_grass","tall_grass","fern","large_fern","dead_bush","bush","leaf_litter").contains(BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath());}
     public boolean reachableFrom(BlockPos p,Vec3 feet){return aimFrom(p,feet.add(0,body.getEyeHeight(),0))!=null;}
     private BlockHitResult aim(BlockPos p){return aimFrom(p,body.getEyePosition());}
     private BlockHitResult aimFrom(BlockPos p,Vec3 eyes){

@@ -56,6 +56,8 @@ public final class AgentBrain implements AutoCloseable {
     private String currentRequester = "player";
     private int protocolRepairAttempts;
     private JsonObject pendingMiningEvent;
+    private String excavationMarker="",miningSurveyMarker="";
+    private String campMarker="",gatherMarker="",survivalMarker="";
     private String miningMarker="",collectionMarker="",placementMarker="";
 
     public AgentBrain(
@@ -116,17 +118,23 @@ public final class AgentBrain implements AutoCloseable {
         }
         var runtime=AgentRuntime.active(server);
         if(runtime!=null){
+            var survey=runtime.miningSurvey.status();String surveyMarker=survey.get("phase")+"/"+survey.get("requestId");if(!surveyMarker.equals(miningSurveyMarker)){miningSurveyMarker=surveyMarker;if(java.util.Set.of("COMPLETED","FAILED","STALE").contains(survey.get("phase").getAsString()))pendingMiningEvent=survey;}
+            var excavation=runtime.excavation().status();String markerExc=excavation.get("phase")+"/"+excavation.get("requestId");
+            if(!markerExc.equals(excavationMarker)){excavationMarker=markerExc;if(java.util.Set.of("PLAN_READY","COMPLETED","PARTIAL","BLOCKED").contains(excavation.get("phase").getAsString()))pendingMiningEvent=excavation;}
             var placement=runtime.placement().status();String placementNext=placement.get("phase").getAsString()+placement.get("requestId")+placement.get("decisionId");
-            if(!placementNext.equals(placementMarker)){placementMarker=placementNext;if(java.util.Set.of("COMPLETED","PARTIAL","BLOCKED").contains(placement.get("phase").getAsString()))pendingMiningEvent=placement;}
+            if(!placementNext.equals(placementMarker)){placementMarker=placementNext;if(java.util.Set.of("COMPLETED","PARTIAL","BLOCKED").contains(placement.get("phase").getAsString()))if(!runtime.excavation().isChild(placement) && !runtime.camp().isPlacementChild(placement))pendingMiningEvent=placement;}
             var collection=runtime.collection().status();String next=collection.get("phase").getAsString()+collection.get("requestId");
             if(!next.equals(collectionMarker)){
                 collectionMarker=next;
-                if(java.util.Set.of("COMPLETED","BLOCKED").contains(collection.get("phase").getAsString()))pendingMiningEvent=collection;
+                if(java.util.Set.of("COMPLETED","BLOCKED").contains(collection.get("phase").getAsString()) && !runtime.gather().isChild(collection))pendingMiningEvent=collection;
             }
+            var camp=runtime.camp().status();String cm=camp.get("phase")+"/"+camp.get("requestId");if(!cm.equals(campMarker)){campMarker=cm;if(java.util.Set.of("COMPLETED","BLOCKED").contains(camp.get("phase").getAsString()))pendingMiningEvent=camp;}
+            var gather=runtime.gather().status();String gm=gather.get("phase")+"/"+gather.get("requestId");if(!gm.equals(gatherMarker)){gatherMarker=gm;if(!runtime.camp().isGatherChild(gather) && java.util.Set.of("COMPLETED","BLOCKED").contains(gather.get("phase").getAsString()))pendingMiningEvent=gather;}
+            var survival=runtime.survival().status();String sm=survival.get("phase")+"/"+survival.get("requestId");if(!sm.equals(survivalMarker)){survivalMarker=sm;if(java.util.Set.of("COMPLETED","BLOCKED").contains(survival.get("phase").getAsString()))pendingMiningEvent=survival;}
             var state=runtime.mining().status();String marker=state.get("phase").getAsString()+state.get("requestId");
             if(!marker.equals(miningMarker)){
                 miningMarker=marker;
-                if(!runtime.placement().ownsBody() && !runtime.placement().isChildRequest(state) && !runtime.collection().ownsBody() && !runtime.collection().isChildRequest(state) && java.util.Set.of("COMPLETED","BLOCKED").contains(state.get("phase").getAsString()))pendingMiningEvent=state;
+                if(!runtime.gather().isMiningChild(state) && !runtime.excavation().isChild(state) && !runtime.placement().ownsBody() && !runtime.placement().isChildRequest(state) && !runtime.collection().ownsBody() && !runtime.collection().isChildRequest(state) && java.util.Set.of("COMPLETED","BLOCKED").contains(state.get("phase").getAsString()))pendingMiningEvent=state;
             }
         }
         startQueuedInputIfPossible();
@@ -261,12 +269,18 @@ public final class AgentBrain implements AutoCloseable {
     }
 
     private ToolExecution execute(ToolCall call) {
+        if(dev.mcai.companion.agent.survival.SurvivalTools.NAMES.contains(call.name()))
+            return ToolExecution.continueWith(dev.mcai.companion.agent.survival.SurvivalTools.execute(AgentRuntime.active(server),call.name(),call.arguments()).toString());
         if (navigation == null) {
             throw new IllegalStateException("Navigation runtime is not attached");
         }
         boolean offered=false;
         for(var tool:toolsForCurrentPhase())if(tool.getAsJsonObject().getAsJsonObject("function").get("name").getAsString().equals(call.name()))offered=true;
         if(!offered)throw new IllegalArgumentException("Tool is not available in the current phase: "+call.name());
+        if(dev.mcai.companion.agent.mining.ExcavationTools.NAMES.contains(call.name())) {
+            var result=dev.mcai.companion.agent.mining.ExcavationTools.execute(AgentRuntime.active(server),call.name(),call.arguments());
+            return java.util.Set.of("CAPTURING","PLANNING","EXECUTING","PAUSED","CANCELLED").contains(result.get("phase").getAsString())?ToolExecution.waiting(result.toString()):ToolExecution.continueWith(result.toString());
+        }
         if(dev.mcai.companion.agent.placement.PlacementTools.NAMES.contains(call.name())) {
             var result=dev.mcai.companion.agent.placement.PlacementTools.execute(AgentRuntime.active(server),call.name(),call.arguments());
             return java.util.Set.of("place_block","choose_placement","resume_placement","resolve_placement","pause_placement","cancel_placement").contains(call.name()) && result.has("phase") && java.util.Set.of("EXECUTING","PAUSED","CANCELLED").contains(result.get("phase").getAsString()) ? ToolExecution.waiting(result.toString()) : ToolExecution.continueWith(result.toString());
@@ -278,7 +292,7 @@ public final class AgentBrain implements AutoCloseable {
         return switch (call.name()) {
             case "request_navigation" -> requestNavigation(call.arguments());
             case "say" -> say(call.arguments());
-            case "listen","turn","inventory","inventory_events","annotate_item","waypoint","sense" ->
+            case "drop_items","reclaim_drop","listen","turn","inventory","item_origins","inventory_events","annotate_item","waypoint","sense" ->
                     ToolExecution.continueWith(new dev.mcai.companion.agent.knowledge.KnowledgeTools(AgentRuntime.active(server)).execute(call.name(),call.arguments()).toString());
             case "plan_navigation" -> planNavigation(call.id(), call.arguments());
             case "choose_navigation" -> chooseNavigation(call.arguments());
@@ -439,7 +453,7 @@ public final class AgentBrain implements AutoCloseable {
                 : navigation.status().worldRevision());
 
         var runtime=AgentRuntime.active(server);
-        state.add("world",runtime.perception.summary());state.add("inventorySummary",player.inventoryLedger.inventory());state.add("mining",runtime.mining().status());state.add("collection",runtime.collection().status());state.add("placement",runtime.placement().status());
+        state.add("miningSurvey",runtime.miningSurvey.status());state.add("world",runtime.perception.summary());state.add("playerFocus",runtime.playerFocus.snapshot());state.add("recentAcquisitions",player.inventoryLedger.events(Math.max(0,player.inventoryLedger.inventory().get("latestEventSequence").getAsLong()-8),8));state.add("inventorySummary",player.inventoryLedger.inventory());state.add("excavation",runtime.excavation().status());state.add("mining",runtime.mining().status());state.add("collection",runtime.collection().status());state.add("placement",runtime.placement().status());
         if(navigation.status().requestId()!=null)state.addProperty("requestId",navigation.status().requestId().toString());
         JsonArray players=new JsonArray();int count=0;
         for(var other:server.getPlayerList().getPlayers()) {
@@ -486,14 +500,15 @@ public final class AgentBrain implements AutoCloseable {
 
     private JsonArray toolsForCurrentPhase() {
         var runtime=AgentRuntime.active(server);
+        if(runtime!=null && runtime.excavation().ownsBody())return AgentToolSchemas.navigationTools(false,"say","listen","sense","inventory","drop_items","reclaim_drop","item_origins","inventory_events","annotate_item","waypoint","survey_mining","mining_survey_status","excavation_status","pause_excavation","resume_excavation","cancel_excavation");
         if(runtime!=null && runtime.placement().ownsBody())return AgentToolSchemas.navigationTools(false,
-                "say","listen","sense","inventory","inventory_events","annotate_item","waypoint","inventory_capacity","inspect_placement",
+                "say","listen","sense","inventory","drop_items","reclaim_drop","item_origins","inventory_events","annotate_item","waypoint","inventory_capacity","inspect_placement",
                 "placement_status","pause_placement","resume_placement","cancel_placement","set_hand");
         if(runtime!=null && runtime.collection().ownsBody())return AgentToolSchemas.navigationTools(false,
-                "say","listen","sense","inventory","inventory_events","annotate_item","waypoint","inspect_tree","tree_farm",
+                "say","listen","sense","inventory","drop_items","reclaim_drop","item_origins","inventory_events","annotate_item","waypoint","inspect_tree","tree_farm",
                 "collection_status","pause_collection","resume_collection","cancel_collection");
         if(runtime!=null && runtime.mining().ownsBody())return AgentToolSchemas.navigationTools(false,
-                "say","listen","sense","inventory","inventory_events","annotate_item","waypoint",
+                "say","listen","sense","inventory","drop_items","reclaim_drop","item_origins","inventory_events","annotate_item","waypoint",
                 "mining_status","pause_mining","resume_mining","cancel_mining");
         NavigationToolCoordinator.Phase phase = navigation == null
                 ? NavigationToolCoordinator.Phase.IDLE
@@ -502,21 +517,22 @@ public final class AgentBrain implements AutoCloseable {
             case ACKNOWLEDGEMENT_REQUIRED ->
                     AgentToolSchemas.navigationTools(true, "say", "cancel_navigation");
             case ACKNOWLEDGED -> AgentToolSchemas.navigationTools(
-                    false, "plan_navigation", "cancel_navigation", "say", "listen", "sense", "inventory");
+                    false, "plan_navigation", "cancel_navigation", "say", "listen", "sense", "inventory","drop_items","reclaim_drop");
             case PLAN_READY -> AgentToolSchemas.navigationTools(
-                    false, "choose_navigation", "cancel_navigation", "say", "listen", "sense", "inventory");
+                    false, "choose_navigation", "cancel_navigation", "say", "listen", "sense", "inventory","drop_items","reclaim_drop");
             case REPLAN_REQUIRED -> AgentToolSchemas.navigationTools(
-                    false, "plan_navigation", "cancel_navigation", "say", "listen", "sense", "inventory");
+                    false, "plan_navigation", "cancel_navigation", "say", "listen", "sense", "inventory","drop_items","reclaim_drop");
             case PLANNING -> AgentToolSchemas.navigationTools(
-                    false, "cancel_navigation", "say", "listen", "sense", "inventory");
+                    false, "cancel_navigation", "say", "listen", "sense", "inventory","drop_items","reclaim_drop");
             case EXECUTING, FOLLOWING -> AgentToolSchemas.navigationTools(
-                    false, "request_navigation", "say", "cancel_navigation", "listen", "inventory", "inventory_events", "sense", "waypoint", "annotate_item");
+                    false, "request_navigation", "say", "cancel_navigation", "listen", "inventory","drop_items","reclaim_drop", "item_origins", "inventory_events", "sense", "waypoint", "annotate_item");
             case IDLE, COMPLETED, APPROACHED, FAILED, CANCELLED ->
                     AgentToolSchemas.navigationTools(
-                            false, "request_navigation", "say", "listen", "turn", "inventory", "inventory_events", "sense", "waypoint", "annotate_item",
+                            false, "request_navigation", "say", "listen", "turn", "inventory","drop_items","reclaim_drop", "item_origins", "inventory_events", "sense", "waypoint", "annotate_item",
+                            "plan_excavation","choose_excavation","survey_mining","mining_survey_status","excavation_status","pause_excavation","resume_excavation","cancel_excavation",
                             "equip_tool","plan_mining","choose_mining","mining_status","pause_mining","resume_mining","cancel_mining",
                             "inspect_tree","tree_farm","plan_collection","choose_collection","collection_status","pause_collection","resume_collection","cancel_collection",
-                            "set_hand","inventory_capacity","inspect_placement","place_block","plan_placement","choose_placement","placement_status","pause_placement","resume_placement","cancel_placement","resolve_placement");
+                            "set_hand","inventory_capacity","inspect_placement","place_block","plan_placement","choose_placement","placement_status","pause_placement","resume_placement","cancel_placement","resolve_placement", "craft", "interact_block", "inspect_container", "transfer_items", "close_container", "smelt", "eat", "survival_status", "cancel_survival", "gather", "gather_status", "cancel_gather", "find_resources", "remember_context", "companion_mode", "build_camp", "camp_status", "resume_camp", "cancel_camp");
         };
     }
 

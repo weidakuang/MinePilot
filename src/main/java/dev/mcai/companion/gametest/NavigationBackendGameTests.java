@@ -346,7 +346,7 @@ public final class NavigationBackendGameTests {
                     helper.assertTrue(status.worldRevision() > changedRevision,
                             "Observed corridor change did not invalidate its revision");
                     helper.assertTrue(current.distanceTo(start) < 0.5,
-                            "Body did not stop before the unsafe next segment");
+                            "Body did not stop before the unsafe next segment: start="+start+", current="+current+", velocity="+body.getDeltaMovement());
                     if (stableTicks < 20) {
                         return;
                     }

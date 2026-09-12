@@ -24,6 +24,15 @@ final class AnytimeNavigationPlannerTest {
     private static final Cell SOLID = new Cell(true, false, false, false, false, false, 0.0);
 
     @Test
+    void denseSnapshotRemainsDetachedFromItsMutableCapture() {
+        Bounds bounds=new Bounds(-400,50,100,-350,75,140);var cells=fill(bounds,AIR);
+        var snapshot=snapshot(bounds,new GridPosition(-375,60,120),destination(-360.5,60,120.5),0,cells);
+        cells.clear();assertEquals(51*26*41,snapshot.cells().size());
+        assertEquals(AIR,snapshot.cell(new GridPosition(-355,70,130)));
+        assertThrows(UnsupportedOperationException.class,()->snapshot.cells().clear());
+    }
+
+    @Test
     void fractionalSupportUsesItsActualHeightAndRejectsLowCeilings() {
         Bounds bounds=new Bounds(0,0,0,6,4,0);var cells=fill(bounds,AIR);
         for(int x=0;x<=6;x++)cells.put(new GridPosition(x,0,0),SOLID);

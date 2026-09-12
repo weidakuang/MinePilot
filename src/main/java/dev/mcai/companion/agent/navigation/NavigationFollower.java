@@ -61,11 +61,16 @@ public final class NavigationFollower {
         return active != null;
     }
 
+    public void start(NavigationPlan plan, RouteOption option, TravelPace pace, OptionalDouble arrivalHeading) {
+        start(plan, option, pace, arrivalHeading, false);
+    }
+
     public void start(
             NavigationPlan plan,
             RouteOption option,
             TravelPace pace,
-            OptionalDouble arrivalHeading
+            OptionalDouble arrivalHeading,
+            boolean continuousFollow
     ) {
         if (!option.feasibleNow()) {
             throw new IllegalArgumentException("Cannot execute an infeasible route");
@@ -79,6 +84,12 @@ public final class NavigationFollower {
                 plan.requestId(), plan, option, effectivePace, arrivalHeading,
                 0, player.tickCount, player.getX(), player.getY(), player.getZ(),
                 0, player.getX(), player.getY(), player.getZ(), 0.0);
+        if (continuousFollow && plan.partialDestination().isEmpty()) {
+            active.followTarget = plan.destination();
+            active.followSampleTick = player.tickCount;
+        }
+        if(plan.partialDestination().isEmpty() && option.steps().stream().allMatch(s->s.action()==RouteOption.Action.WALK))
+            retargetLevel(plan.destination());
         events.accept(event(NavigationEvent.Type.NAVIGATION_STARTED,
                 "Selected route " + option.optionId() + " started"));
     }
@@ -108,8 +119,69 @@ public final class NavigationFollower {
         }
         active.steps=java.util.List.copyOf(points); active.stepIndex=0;
         active.progressStep=-1; active.stableTicks=0; active.settlingTicks=0;
+        active.followDirect = active.followTarget != null;
+        active.retargetedDestination = destination;
         // Keep input, momentum, request identity, distance and elapsed time.
         return true;
+    }
+
+    /** Keep a live follow subscription on the existing, checked walking corridor.
+     * Positions are sampled because vanilla network players do not reliably expose
+     * horizontal motion through getDeltaMovement(). No predicted position is walked to.
+     */
+    public boolean trackFollowTarget(NavigationPlan.ResolvedDestination destination) {
+        if (active == null || active.followTarget == null) return false;
+        var route = active;
+        int elapsed = player.tickCount - route.followSampleTick;
+        if (elapsed > 0) {
+            var measured = new Vec3(destination.x() - route.followTarget.x(), 0,
+                    destination.z() - route.followTarget.z()).scale(1.0 / elapsed);
+            // A teleport is a new destination, not a request for impossible speed.
+            if (measured.horizontalDistanceSqr() > 1) measured = Vec3.ZERO;
+            route.followVelocity = route.followVelocity.scale(.5).add(measured.scale(.5));
+            route.followSampleTick = player.tickCount;
+        }
+        route.followTarget = destination;
+        var previous = route.retargetedDestination;
+        boolean changed = previous == null || square(destination.x() - previous.x())
+                + square(destination.y() - previous.y()) + square(destination.z() - previous.z()) > .01;
+        if (!route.followDirect || changed) {
+            route.followDirect = retargetLevel(destination);
+        }
+        return route.followDirect;
+    }
+
+    private double followDistance(ActiveRoute route) {
+        return Math.hypot(route.followTarget.x() - player.getX(), route.followTarget.z() - player.getZ());
+    }
+
+    private void holdFollow(ActiveRoute route) {
+        player.stopControlling();
+        route.stuckSamples = 0;
+        route.lastApproachTick = player.tickCount;
+        route.lastProgressSampleTick = player.tickCount;
+        route.sampleX = player.getX(); route.sampleY = player.getY(); route.sampleZ = player.getZ();
+        boolean stable = player.onGround() && route.horizontalMovementSquared < .0004;
+        route.stableTicks = stable ? route.stableTicks + 1 : 0;
+        if (!route.followWaiting && route.stableTicks >= REQUIRED_STABLE_TICKS) {
+            route.followWaiting = true;
+            events.accept(event(NavigationEvent.Type.NAVIGATION_FOLLOWING,
+                    "Inside follow radius; the live follow corridor remains ready for target movement"));
+        }
+    }
+
+    private double followSpeed(ActiveRoute route, double dx, double dz) {
+        double distance = Math.hypot(dx, dz);
+        double away = distance < .001 ? 0 : (route.followVelocity.x * dx + route.followVelocity.z * dz) / distance;
+        double spacing = Math.max(.4, route.followTarget.acceptanceRadius() - .25);
+        return Math.max(0, away + (followDistance(route) - spacing) * .12);
+    }
+
+    private float followInput(double desiredSpeed, boolean sprint, boolean sneak) {
+        // Vanilla ground walking displacement with full input; distance feedback
+        // compensates for terrain and acceleration. Inputs and native speed limits remain intact.
+        double fullSpeed = .21585 * (sprint ? 1.3 : sneak ? .3 : 1);
+        return (float) Math.min(1, desiredSpeed / fullSpeed);
     }
 
     public double distanceToRouteEnd() {
@@ -144,6 +216,9 @@ public final class NavigationFollower {
 
     /** Recheck before the body consumes the previous tick's control frame. */
     public void beforePhysicsTick() {
+        // A resident follow at rest owns no walking input. Revalidate on
+        // resumption in tick(), not by braking toward an old, unused waypoint.
+        if (active != null && active.followWaiting) return;
         if(active!=null && !materialsAvailable(active)) {
             requireDecision(active,"SUPPORT_MATERIAL_CHANGED: The declared material quantities are missing or protected; no substitution is allowed");
             return;
@@ -169,18 +244,19 @@ public final class NavigationFollower {
                 + velocity.z * Math.cos(yaw)) / speed);
         float strafe = (float) -((velocity.x * Math.cos(yaw)
                 + velocity.z * Math.sin(yaw)) / speed);
-        player.applyControlFrame(new AgentControlFrame(
+        player.applySingleTickControlFrame(new AgentControlFrame(
                 player.getYRot(), player.getXRot(), backward, strafe,
                 false, false, false));
     }
 
     public void tick() {
         ActiveRoute route = active;
-        if (route == null || !player.isAlive()) {
+        // An idle follower does not own input. Other native parent jobs can be
+        // using the same body; clearing their frame here prevented workstation approaches.
+        if (route == null) return;
+        if (!player.isAlive()) {
             player.stopControlling();
-            if (route != null) {
-                fail("Agent body is no longer alive");
-            }
+            fail("Agent body is no longer alive");
             return;
         }
 
@@ -193,6 +269,25 @@ public final class NavigationFollower {
         route.lastX = player.getX();
         route.lastY = player.getY();
         route.lastZ = player.getZ();
+
+        if (route.followWaiting && !route.followDirect) {
+            // A jump or changed corridor does not revive the old fixed endpoint.
+            // The coordinator either finds another checked corridor or repairs
+            // the route after the target leaves the waiting radius.
+            player.stopControlling();
+            return;
+        }
+        if (route.followDirect) {
+            if (route.followVelocity.horizontalDistanceSqr() < .000064
+                    && followDistance(route) <= route.followTarget.acceptanceRadius()) {
+                holdFollow(route);
+                return;
+            }
+            if (route.followWaiting) {
+                route.followWaiting = false;
+                events.accept(event(NavigationEvent.Type.NAVIGATION_STARTED, "Continuing the live follow corridor"));
+            }
+        }
 
         if (route.stepIndex >= route.steps.size()) {
             finish(route);
@@ -212,7 +307,7 @@ public final class NavigationFollower {
         if(finalProblem!=null && finalProblem.startsWith("The moving destination left")) {
             requireDecision(route,finalProblem);return;
         }
-        if(waypointReached && finalProblem==null) {
+        if(waypointReached && finalProblem==null && !(lastStep && route.followDirect)) {
             route.stepIndex++;
             route.actionAttempts = 0;
             if (route.stepIndex >= route.steps.size()) {
@@ -223,6 +318,12 @@ public final class NavigationFollower {
             dx = step.x() - player.getX();
             dz = step.z() - player.getZ();
             dy = step.y() - player.getY();
+            horizontalSquared = dx * dx + dz * dz;
+        }
+
+        if (route.followDirect) {
+            dx = route.followTarget.x() - player.getX();
+            dz = route.followTarget.z() - player.getZ();
             horizontalSquared = dx * dx + dz * dz;
         }
 
@@ -264,17 +365,25 @@ public final class NavigationFollower {
         boolean gapJump = step.action() == RouteOption.Action.GAP_JUMP;
         boolean finalApproach = !gapJump && !climbing && route.stepIndex == route.steps.size() - 1
                 && horizontalSquared < 2.25;
-        if (finalApproach && stepPace != TravelPace.SNEAK) {
+        if (finalApproach && stepPace != TravelPace.SNEAK && !route.followDirect) {
             stepPace = TravelPace.WALK;
         }
-        boolean jump = (climbing && dy > 0.1)
+        boolean jump = (player.isInWater() && dy > -.1)
+                || (climbing && dy > 0.1)
                 || (step.action() == RouteOption.Action.JUMP && route.jumpedStep != route.stepIndex);
         boolean sprint = (stepPace == TravelPace.SPRINT
                 || stepPace == TravelPace.SPRINT_JUMP)
                 && !edgeAction && yawError < 45.0F;
+        double followSpeed = route.followDirect ? followSpeed(route, dx, dz) : 0;
+        if (route.followDirect && sprint && followSpeed < (player.isSprinting() ? .225 : .255)) {
+            // An AUTO route may allow sprinting to catch up. Near a walking
+            // target, keep normal walking speed instead of toggling sprint at
+            // vanilla's 0.8 input threshold on alternating ticks.
+            sprint = false;
+        }
         float forward = yawError > step.yawTolerance() || horizontalSquared < 0.0025 ? 0.0F : 1.0F;
         if (climbing) forward *= (float) Math.min(1.0, Math.sqrt(horizontalSquared) * 3.0);
-        if (horizontalSquared < 0.36 && !climbing && (finalApproach || step.action() != RouteOption.Action.WALK)) {
+        if (!route.followDirect && horizontalSquared < 0.36 && !climbing && (finalApproach || step.action() != RouteOption.Action.WALK)) {
             double toward = horizontalSquared < 0.0001 ? 0.0
                     : (player.getDeltaMovement().x * dx + player.getDeltaMovement().z * dz)
                     / Math.sqrt(horizontalSquared);
@@ -299,7 +408,9 @@ public final class NavigationFollower {
             jump = false;
             sprint = forward >= .8F;
         }
-        if (finalApproach) {
+        if (route.followDirect) {
+            forward *= followInput(followSpeed, sprint, stepPace == TravelPace.SNEAK);
+        } else if (finalApproach) {
             forward *= (float) Math.min(1.0, Math.sqrt(horizontalSquared) * 2.0);
         }
         if (stepPace == TravelPace.SNEAK) {
@@ -309,6 +420,12 @@ public final class NavigationFollower {
             route.jumpedStep = route.stepIndex;
         }
 
+        if(!gapJump && !edgeAction && horizontalSquared>=.0025) {
+            // Inputs are interpreted after the body's bounded yaw update. Project
+            // desired world motion into that future frame to avoid curved steering.
+            double error=Math.toRadians(targetYaw-player.yawForNextFrame(targetYaw));
+            strafe=(float)(-forward*Math.sin(error));forward*=(float)Math.cos(error);
+        }
         player.applyControlFrame(new AgentControlFrame(
                 targetYaw,
                 pitchToward(step),
@@ -324,7 +441,8 @@ public final class NavigationFollower {
                     square(player.getX() - route.sampleX)
                             + square(player.getY() - route.sampleY)
                             + square(player.getZ() - route.sampleZ));
-            route.stuckSamples = progress < 0.12 ? route.stuckSamples + 1 : 0;
+            double minimumProgress = route.followDirect ? Math.min(.12, Math.abs(forward) * .4) : .12;
+            route.stuckSamples = progress < minimumProgress ? route.stuckSamples + 1 : 0;
             route.lastProgressSampleTick = player.tickCount;
             route.sampleX = player.getX();
             route.sampleY = player.getY();
@@ -435,8 +553,12 @@ public final class NavigationFollower {
         var bodyBox=new AABB(step.x()-.299,step.y()+.001,step.z()-.299,step.x()+.299,step.y()+1.799,step.z()+.299);
         var contact=new AABB(step.x()-.299,step.y()-.035,step.z()-.299,step.x()+.299,step.y()+.001,step.z()+.299);
         boolean supported=false;
+        // At a ledge the center cell can be air while part of the player's feet
+        // still rests on the neighboring block. Validate the actual body/contact footprint.
+        for(int x=(int)Math.floor(bodyBox.minX);x<=(int)Math.floor(bodyBox.maxX);x++)
+        for(int z=(int)Math.floor(bodyBox.minZ);z<=(int)Math.floor(bodyBox.maxZ);z++)
         for(int y=(int)Math.floor(step.y())-2;y<=(int)Math.floor(step.y()+1.8);y++) {
-            var pos=new BlockPos(feet.getX(),y,feet.getZ());
+            var pos=new BlockPos(x,y,z);
             if(!player.level().isLoaded(pos))return "The next body volume is no longer loaded";
             var state=player.level().getBlockState(pos);
             boolean canOpen=door && state.hasProperty(BlockStateProperties.OPEN);
@@ -752,6 +874,10 @@ public final class NavigationFollower {
         private double bestRemaining;
         private boolean gapLaunched;
         private boolean gapBackUp;
+        private NavigationPlan.ResolvedDestination followTarget, retargetedDestination;
+        private Vec3 followVelocity = Vec3.ZERO;
+        private int followSampleTick;
+        private boolean followDirect, followWaiting;
         private int gapPreparationTicks;
         private double gapCenterX, gapCenterZ, gapDirectionX, gapDirectionZ;
 

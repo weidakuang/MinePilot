@@ -1,3 +1,200 @@
+# Continuous following and completeness audit — 2026-09-12
+
+Production was backed up and updated with the continuous-follow correction.
+Game/MCP remain 25565/25766 in `run-peaceful-play-20260908-234254`. Verified server
+PID93138 and restarted Luna Fast listener PID93259; recheck transient PIDs.
+Installed JAR SHA-256:
+`bf469f5910a69b5cbe4d38ac13c78e1297eeb50a745711a3900557dca2f4309e`.
+Delivery/source/evidence: `deliveries/2026-09-12-follow/`.
+
+The exact final JAR was subsequently verified on installed Forge 65.0.9 using
+only vanilla Java 26.2 protocol packets: login, enter-play and `/minepilot_mark`
+passed without a Forge handshake or client mod. Evidence:
+`docs/reviews/2026-09-12-final-vanilla-client.json`. This is protocol verification,
+not a rendered desktop-client playthrough. Server-only installation/join steps
+are now explicit in README. No compatibility code or production JAR needed changing.
+
+Follow alone uses a resident live corridor, actual target displacement, analog
+spacing control and walking/sprinting hysteresis. Our planner and ordinary
+routes remain in place. A pre-existing reverse-brake input leak found in both
+old/new baselines was fixed by consuming that frame once in the native body.
+42 Java tests, 103 Python tests, all 14 ordinary navigation scenarios and native
+follow gates at WALK/AUTO passed. Old slow follow stopped 15/72 measured ticks;
+the corrected WALK/AUTO runs stopped 0/72 and the turning leg stopped 0/75.
+Resume took 5–8 game ticks; these accelerated fixtures are not wall-clock/model
+latency promises. Installed Forge 65.0.9 vanilla-wire login/mark also passed.
+
+The full Numen plan is **not complete**: persistent failed-location memory and
+automatic semantic conversation compression are still missing/partial; full
+exploration/village and a clean final ten-minute all-feature scenario are not
+verified. See `docs/reviews/2026-09-12-numen-completeness-audit.md`. All 15 copied
+classes + three adapters and 19 new tool routes were checked, not just counted.
+
+Backup `.minepilot-backup/production-follow-20260912-145150/` contains the stopped
+server and matching listener. Production position, dimension, health and all
+inventory entries matched before/after restart. Test server/listener are stopped.
+Do not run GameTests on production MCP25766; the isolated audit run uses25793.
+Do not issue AI mutations while the listener owns its controls. No commit/push
+was requested. The previous entries below describe historical versions.
+
+---
+
+# Numen server-side delivery — 2026-09-12 (previous version)
+
+Current production: `run-peaceful-play-20260908-234254`, 127.0.0.1:25565,
+MCP25766. Server PID85405 and Luna Fast listener PID85533 were verified running.
+Model: gpt-5.6-luna, low, requested fast, accepted priority, warm connection ready.
+Recheck transient PIDs before process actions. Test copy/listener are stopped.
+
+Installed JAR SHA-256: `b652843400db331f06fff12fde2410faf46265a3f3b04b9bdabe92c60033ade6`.
+150-block loaded-world sensing, native gathering/crafting/menus/smelting/eating,
+water recovery, persistent conversation/workstations and small-camp jobs are
+wired to both model controllers and MCP. Source, license and public evidence are
+in `deliveries/2026-09-12-numen/`; full review is
+`docs/reviews/2026-09-12-numen-implementation.md`.
+
+42 Java and 103 Python tests pass. Final camp fixtures pass twice (921/934 ticks).
+Natural copied-world proofs include four stone/log pickups, real 83-cell camp,
+restart, actual charcoal and model conversation. Remaining limits: no single
+clean final ten-minute all-feature session, narrow entrance navigation can still
+need replanning, and no rendered-client/natural-village expedition proof. Do not
+turn those limitations into claimed successes. All failed sessions are preserved.
+
+Original position, health20 and all12 carried item types matched saved NBT after
+production startup. Backup `.minepilot-backup/production-numen-20260912-135821/`
+contains full server and previous listener sources; follow delivery ROLLBACK.md.
+Do not copy test agent/world state to production. Do not run GameTests on MCP25766
+while production uses it. Do not issue manual AI mutations while the listener owns
+control. User authorized implementation, backup and original-server deployment;
+no commit, push or additional Codex task was requested.
+
+The historical notes below describe older binaries/configurations and are
+superseded by this checkpoint.
+
+---
+
+# Luna Fast configuration — 2026-09-10
+
+The user explicitly requested minimum reasoning and Fast. The active companion
+uses gpt-5.6-luna with low (its supported minimum) reasoning and requested Fast.
+The local Codex transport confirms serviceTier=priority; a real structured JSON
+probe completed successfully in 5.733 seconds including transport setup. This is
+not an end-to-end gameplay latency guarantee. 82 Python tests pass.
+
+The user server remains at 127.0.0.1:25565; only its companion listener restarted.
+Listener PID13316 is LISTENING and modelConnectionReady=true. Recheck transient
+IDs. The non-secret per-world profile serviceTier=fast persists this preference;
+the global Codex configuration was not changed. The CLI also accepts
+--service-tier fast/default and rejects reusing a listener with mismatched
+settings. Status exposes requested/accepted tier and reasoning effort.
+See docs/reviews/2026-09-10-luna-fast.json. JAR and Minecraft server were unchanged.
+
+---
+
+# Tree-search repair and physical drops — 2026-09-10
+
+The screenshot showed real trees while the model reported no eligible trees.
+Verified interface defects were generic/Chinese tree filters matched literally
+against block IDs, and block search returned half-block centers whereas tree
+inspection required integer block coordinates. Search now accepts generic tree
+aliases and supported species names; sensed block x/y/z are exact integers with
+a separate movement `center`. A wrong leaf/ground seed reports its actual block
+and nearby observed trunk candidates. Rejected tree plans retain bounded concrete
+reasons instead of implying no trees exist. This does not establish the exact
+private model arguments that caused the screenshot.
+
+A source-informed read-only test of the original world's stopped-backup copy at
+(-71.35, 70, 10.3) searched Chinese `trees/树` across eight pages in 0.42 seconds,
+returning 39 trunk cells. Five connected candidates included two harvestable oak
+candidates (7 and 6 logs) and three explicitly incomplete observations. No tree
+was changed by that read-only check. An independent gpt-5.6-luna subagent then chose the six-log oak using only the
+public Skill, felled all six logs, collected six oak logs and dropped two through
+`drop_items`. Parent verification found all six original cells air, four carried
+oak logs and a real two-log item entity with owner pickup avoidance. The operator
+reported 1734 native game ticks (86.7 game seconds), not a latency SLA. It received
+no target coordinates or route from the parent. This accepts one natural oak,
+not every species or large tree farm. The temporary copy server was stopped;
+the user server and persistent Luna remain available.
+
+`drop_items` / `reclaim_drop` are implemented and exposed through both controllers,
+including inventory events and active jobs. Native drops conserve real items,
+restore cancelled tosses, reject stale/ambiguous/excess selections, protect
+importance 0..2 from autonomous cleanup, and respect exact held tools and remaining
+job materials. Explicit player requests can hand over protected items without
+another approval. Bounded persistent request receipts prevent uncertain retries
+from tossing twice. Owner avoidance follows native merges; other players can
+pick up normally; reclaim releases the whole sensed mixed stack. Throws use the
+current facing. Read `docs/ITEM_DROP_DESIGN.md` for the implemented boundary.
+
+Seven selected real Forge server gates passed (drop, knowledge, collection,
+mining, placement, excavation, provenance), plus 33 JUnit and 80 Python tests;
+Skill validation and build passed. Sensor fixtures now consume asynchronous
+pages across ticks and use integer coordinates. The storage-failure fixture
+reloads its recovered ledger before the independent tree-recognition case.
+See `docs/reviews/2026-09-10-tree-drop-repair.json` for evidence and limitations.
+
+Production user world remains at **127.0.0.1:25565**, MCP25766, peaceful/offline
+with OP retained. Detached server PID12420; persistent Luna PID12446 LISTENING,
+modelConnectionReady=true. Use `run-peaceful-play-20260908-234254/profile.json`.
+Recheck transient IDs. Coordinates, dimension, inventory, hotbar and selected
+slot exactly matched the pre-update public observation. Full world/JAR backups
+are in that server's `.minepilot-backup/tree-drop-20260910/` and client mods backup.
+
+Repository, user server and XMCL JAR SHA-256 all match:
+`58d172e565666910f182d7aa1cc84e7b4a1ca5085e9ae5b68d79bd05742be56e`.
+Client restart is required; fresh client entry is not claimed. Server Forge65.0.9
+versus last-known XMCL configured65.0.8 remains visible. Existing expansion work
+and these repairs remain uncommitted on `codex/mining-expansion-20260909`; do not
+reset, restore or overwrite them. The prior GitHub backup remains70b24f6.
+
+---
+
+# Active recovery — 2026-09-09 23:23 local
+
+The user actually joined the original `127.0.0.1:25565` server and then reported
+a disconnect. Both terminal-managed Java processes were absent, without native
+crash/shutdown records. Exact exit cause remains unproven. The original
+`run-peaceful-play-20260908-234254/peaceful-world` was archived while stopped;
+its JAR was updated to `2bdf5f3158068fcc40dfc96d9572db60c28a6ef796d6eed8e52512009156d9bc`
+matching XMCL. It is now launched detached via `scripts/local-server.py`.
+Server PID 10294 (parent 1, no terminal), MCP 25766; persistent Luna PID 10328,
+LISTENING with model connection ready. Recheck transient IDs. Offline auth,
+peaceful survival and OP are preserved. Native status and public observation
+verify server recovery and the original two logs, wooden pickaxe and three leaf
+litter. Use this server/profile for the user, not the stopped 25581 test world.
+See `docs/reviews/2026-09-09-server-recovery.json` and `docs/ITEM_DROP_DESIGN.md`.
+Dropping is a proposal only: implement after the requested design step. Startup
+no longer falsely reports failure merely because a live listener is warming.
+77 Python tests pass. Expansion changes remain uncommitted; preserve them.
+
+---
+
+# Active player test server — 2026-09-09 23:07 local
+
+The user interrupted expansion verification to test personally. Use
+`run-expansion-packaged-20260909/profile.json` for the new peaceful survival
+server at `127.0.0.1:25581` (MCP 25782), **not** the preserved old 25565 server.
+Luna is persistently LISTENING with a warmed model connection. XMCL received the
+same expansion JAR as this server; restart the client. Client entry is unverified.
+See `docs/reviews/2026-09-09-expansion-play-server.json` for exact hashes, process
+hints, OP and the physically observed inventory. Recheck transient process IDs.
+
+GitHub pre-expansion backup is `codex/backup-rebuild-20260909` at `70b24f6`.
+Current branch `codex/mining-expansion-20260909` contains uncommitted expansion:
+local access/resource/region/tunnel/optional-fishbone/tree jobs, native collection
+and replant, cave survey, counted carried/container/merge/pickup provenance,
+native level-event sounds and sensor pagination. Preserve all changes. The
+expanded JAR build and ten Forge physical gate groups passed; 77 Python tests
+passed. An independent Luna tree operator was interrupted before its final report.
+Interim observation showed six logs; handoff showed eight. It is NOT accepted
+as independently verified complete felling/replant. Source-informed eight-log tree
+and cave fixtures did pass. Finish review/documentation and another backup after
+user testing. Unknown custom transfers, large trees, automated farm operation,
+complete natural-world performance and general survival/parkour remain bounded
+or unaccepted. The development artifact is not a professional release.
+
+---
+
 # Latest addition: native structure records within 96 blocks — 2026-09-09
 
 `sense kind=structures` now queries native server structure starts/references,

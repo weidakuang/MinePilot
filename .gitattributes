@@ -3,3 +3,9 @@
 # are changed when only line endings change.
 src/generated/**/.cache/cache text eol=lf
 src/generated/**/*.json text eol=lf
+
+# Preserve the audited third-party source and license bytes included in the JAR.
+# Only their existing trailing whitespace is exempt; other checks still apply.
+src/main/java/dev/mcai/companion/vendor/numen/task/RecoveryLadder.java whitespace=-blank-at-eol
+src/main/resources/META-INF/licenses/numen/COPYING whitespace=-blank-at-eof
+src/main/resources/META-INF/licenses/numen/LICENSE whitespace=-blank-at-eof

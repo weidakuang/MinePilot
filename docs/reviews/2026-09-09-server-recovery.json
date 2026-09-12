@@ -1,0 +1,71 @@
+{
+  "verifiedAt": "2026-09-09 23:23:16 JST",
+  "address": "127.0.0.1:25565",
+  "vanillaStatus": {
+    "description": "MinePilot Peaceful Play",
+    "players": {
+      "max": 20,
+      "online": 1,
+      "sample": [
+        {
+          "id": "00000000-0000-0000-0000-000000000000",
+          "name": "Anonymous Player"
+        }
+      ]
+    },
+    "version": {
+      "name": "26.2",
+      "protocol": 776
+    },
+    "forgeData": {
+      "fmlNetworkVersion": 0,
+      "d": "h\u0000\u0000\u0006\u3424\u734b\u3656\u2e4c\u1998\u023a\u3632\u645c\u1418\u7b30\u7726\u0cac\u0240\u30b4\u646e\u50e6\u2d85\u032b\u5010\u6d80\u59db\u3734\u0100\u4628\u05a1\u7373\u4656\u4bed\u595c\u34b3\u7473\u42e4\u25d1\u737b\u1006\u4000\u5b43\u30b1\u5f69\u5ec6\u41b5\u730b\u7696\u0dcd\u0c04\u1917\u302e\u485a\u5995\u696b\u2636\u46c6\u0c8b",
+      "channels": [],
+      "mods": [],
+      "truncated": false
+    }
+  },
+  "body": {
+    "dimension": "minecraft:overworld",
+    "x": -71.35372291904135,
+    "y": 70.0,
+    "z": 10.300000011920929,
+    "online": true,
+    "externalControlAvailable": true,
+    "inventory": [
+      {
+        "slot": 0,
+        "item": "minecraft:spruce_log",
+        "count": 2,
+        "damage": 0,
+        "maxDamage": 0
+      },
+      {
+        "slot": 1,
+        "item": "minecraft:wooden_pickaxe",
+        "count": 1,
+        "damage": 0,
+        "maxDamage": 59
+      },
+      {
+        "slot": 2,
+        "item": "minecraft:leaf_litter",
+        "count": 3,
+        "damage": 0,
+        "maxDamage": 0
+      }
+    ]
+  },
+  "process": {
+    "pid": 10294,
+    "port": 25565,
+    "mcpPort": 25766,
+    "startedAt": 1788963707.5583491,
+    "log": "/Users/weida/Documents/minecraft-ai-companion-forge/run-peaceful-play-20260908-234254/server-detached-1788963707557010000.log",
+    "directory": "/Users/weida/Documents/minecraft-ai-companion-forge/run-peaceful-play-20260908-234254"
+  },
+  "cause": "Both former terminal-managed server processes vanished without native shutdown/crash records. Exact exit cause unproven. Relaunched current user world detached from temporary terminals.",
+  "worldPreserved": true,
+  "backup": "run-peaceful-play-20260908-234254/.minepilot-backup/server-recovery-20260909-232147",
+  "clientJarUnchanged": true
+}

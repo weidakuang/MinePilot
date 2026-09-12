@@ -1,0 +1,79 @@
+{
+  "version": {
+    "name": "26.2",
+    "protocol": 776
+  },
+  "vanillaHandshake": true,
+  "forgeHandshakeSent": false,
+  "loginCustomQueriesDeclined": 0,
+  "enteredPlay": true,
+  "teleportAcknowledged": true,
+  "commandSent": "minepilot_mark",
+  "onlinePlayers": [
+    {
+      "name": "VanillaProbe",
+      "uuid": "c5c95f97-5416-3768-9f44-1229fee00082",
+      "observable": true,
+      "dimension": "minecraft:overworld",
+      "x": -413.50459845803454,
+      "y": 71.0,
+      "z": 103.41921172740379,
+      "alive": true
+    }
+  ],
+  "marker": [
+    {
+      "speaker": "VanillaProbe",
+      "speakerId": "c5c95f97-5416-3768-9f44-1229fee00082",
+      "dimension": "minecraft:overworld",
+      "gameTick": 1930690,
+      "explicitMarker": true,
+      "source": "human_crosshair_server_ray",
+      "meaning": "Human pointing evidence, not Agent eyesight or permission to act. Recheck before changing the world.",
+      "limitedByUnloadedSpace": true,
+      "heldItem": {
+        "entryId": "dfe162abe543e1f30b2a87e062dd96c4d806b14ccaa5ad819aa5056f6bcd164b",
+        "item": "minecraft:emerald",
+        "name": "Emerald",
+        "count": 3,
+        "importance": 2,
+        "protected": true,
+        "classified": true,
+        "note": "绿宝石：交易货币，保护"
+      },
+      "kind": "block",
+      "block": "minecraft:oak_leaves",
+      "position": {
+        "x": -414,
+        "y": 71,
+        "z": 103
+      },
+      "face": "up",
+      "distance": 0.1352499999999992,
+      "nearbyBlocks": [
+        {
+          "x": -415,
+          "y": 71,
+          "z": 102,
+          "block": "minecraft:oak_leaves",
+          "sampleCount": 16
+        },
+        {
+          "x": -414,
+          "y": 72,
+          "z": 104,
+          "block": "minecraft:oak_log",
+          "sampleCount": 1
+        }
+      ],
+      "nearbyIsComplete": false,
+      "nearbyEntities": [],
+      "ageTicks": 26
+    }
+  ],
+  "elapsedSeconds": 2.200845666,
+  "jarSha256": "bf469f5910a69b5cbe4d38ac13c78e1297eeb50a745711a3900557dca2f4309e",
+  "matchesProductionJar": true,
+  "testServer": "isolated Forge 65.0.9 / Minecraft Java 26.2 server on 25591",
+  "scope": "Vanilla protocol login, enter-play and marker command; not a rendered desktop-client playthrough."
+}

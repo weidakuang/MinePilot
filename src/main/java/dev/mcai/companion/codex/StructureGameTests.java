@@ -53,6 +53,7 @@ public final class StructureGameTests {
             var near=generate(ChunkPos.containing(origin.east(40)));
             generate(ChunkPos.containing(origin.east(300)));
             nearBox=near.getPieces().getFirst().getBoundingBox();
+            runtime.server().getCommands().performPrefixedCommand(runtime.server().createCommandSourceStack(),"forceload add "+(nearBox.minX()-16)+" "+(nearBox.minZ()-16)+" "+(nearBox.maxX()+16)+" "+(nearBox.maxZ()+16));
             long sandstone=0;
             for (int x=nearBox.minX();x<=nearBox.maxX();x++) for (int z=nearBox.minZ();z<=nearBox.maxZ();z++)
                 for (int y=Math.max(h.getLevel().getMinY(),nearBox.minY());y<=nearBox.maxY();y++) {
@@ -61,8 +62,8 @@ public final class StructureGameTests {
                 }
             h.assertTrue(sandstone>100,"Fixture did not physically generate a pyramid");
             setBody(nearBox.minX()-20,nearBox.minY()+8,nearBox.minZ()+5);
-            var rejected=call(args(97,"minecraft:desert_pyramid"));
-            h.assertTrue(rejected.get("isError").getAsBoolean(),"Radius above 96 was accepted");
+            var rejected=call(args(151,"minecraft:desert_pyramid"));
+            h.assertTrue(rejected.get("isError").getAsBoolean(),"Radius above 150 was accepted");
             var unknown=call(args(96,"unregistered_structure_id"));
             h.assertTrue(unknown.get("isError").getAsBoolean(),"Unknown type reported false absence");
             h.addCleanup(ignored -> runtime.player().stopControlling());
@@ -104,11 +105,13 @@ public final class StructureGameTests {
             h.assertTrue(System.nanoTime()-began<30_000_000_000L,"Structure gate timed out at "+phase);
             h.assertTrue(runtime.player().position().distanceTo(expectedPosition)<.05,"A structure query moved the body");
             h.assertTrue(runtime.player().getInventory().isEmpty(),"A structure query changed inventory");
+            if(h.getTick()<40)return;
             var raw=call(args(phase==3?10:96,phase==4?"村庄":"minecraft:desert_pyramid"));
             h.assertTrue(!raw.get("isError").getAsBoolean(),"Query failed: "+raw);
             var result=raw.getAsJsonObject("structuredContent");cursor=result.get("cursor").getAsString();
             if (!result.get("complete").getAsBoolean()) return;
-            h.assertTrue(result.get("coverageComplete").getAsBoolean(),"Native coverage remained incomplete: "+result);
+            h.assertTrue(result.get("scheduledChunks").getAsInt()==0,"Search scheduled terrain generation: "+result);
+            if(result.get("unavailableChunksOrRecords").getAsInt()>0)h.assertTrue(!result.get("coverageComplete").getAsBoolean(),"Unloaded terrain was falsely reported complete");
             var rows=result.getAsJsonArray("results");
             if (phase==0 || phase==2 || phase==6) {
                 h.assertTrue(rows.size()==1,"Nearby native pyramid missing or outside pyramid leaked: "+result);

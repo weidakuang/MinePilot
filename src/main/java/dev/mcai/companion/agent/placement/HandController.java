@@ -44,6 +44,7 @@ public final class HandController {
                 && (!a.has("entry_id") || p.inventoryLedger.key(s).equals(PlacementTools.string(a,"entry_id","")));
     }
     public static JsonObject equip(AgentRuntime r,JsonObject args){
+        if(r.excavation()!=null && r.excavation().ownsBody())throw new IllegalStateException("Cancel excavation before changing hands");
         if(!r.server().isSameThread())throw new IllegalStateException("Hands require the server thread");
         var n=r.navigation().status();
         if(r.placement().executing() || r.mining().ownsBody() || r.collection().ownsBody() || r.jumpActive() || r.turnActive() || !n.phase().terminal() && n.phase()!=dev.mcai.companion.agent.navigation.NavigationToolCoordinator.Phase.IDLE)

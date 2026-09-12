@@ -51,8 +51,12 @@ class ModelWorker:
 
 
 class PersistentModel:
-    def __init__(self, executable, workspace, model):
+    def __init__(self, executable, workspace, model, service_tier="default"):
         self.executable, self.workspace, self.model = executable, workspace, model
+        if service_tier not in {"default", "fast"}: raise ValueError("Unsupported service tier")
+        self.service_tier = service_tier
+        self.actual_service_tier = None
+        self.reasoning_effort = "low"
         self.process = None
         self.sequence = 0
         self.pending = {}
@@ -70,11 +74,15 @@ class PersistentModel:
     def _ensure_thread(self, instructions):
         if self.closed: raise RuntimeError('Model transport is closed')
         self._start()
-        if self.thread_id is None or self.turns >= 16 or self.worker is not None and self.worker.cancelled:
+        if self.thread_id is None or self.turns >= 1 or self.worker is not None and self.worker.cancelled:
             response = self.rpc('thread/start', {'model': self.model, 'ephemeral': True,
                 'cwd': str(self.workspace), 'sandbox': 'read-only', 'approvalPolicy': 'never',
                 'baseInstructions': instructions,
-                'config': {'model_reasoning_effort': 'low', 'web_search': 'disabled'}})
+                'config': {'model_reasoning_effort': self.reasoning_effort, 'web_search': 'disabled',
+                           'service_tier': self.service_tier, 'features.fast_mode': True}})
+            self.actual_service_tier = response.get('serviceTier')
+            if self.service_tier == 'fast' and self.actual_service_tier not in {'fast', 'priority'}:
+                raise RuntimeError('Requested Fast tier was not accepted by the model transport')
             self.thread_id = response['thread']['id']; self.turns = 0
         if self.closed: raise RuntimeError('Model transport is closed')
         self.ready.set()
@@ -111,7 +119,7 @@ class PersistentModel:
             with self.setup_lock:
                 if worker.cancelled:
                     worker.finish(-15); return
-                # Bound retained route snapshots while retaining warm conversation turns.
+                # Use a fresh ephemeral context; the server supplies persistent short memory.
                 self._ensure_thread(instructions)
                 if worker.cancelled:
                     worker.finish(-15); return
@@ -119,7 +127,7 @@ class PersistentModel:
                 worker.thread_id = self.thread_id
                 worker.submitted_at=time.monotonic()
                 response = self.rpc('turn/start', {'threadId': self.thread_id,
-                    'input': [{'type': 'text', 'text': event_text}], 'effort': 'low', 'outputSchema': schema})
+                    'input': [{'type': 'text', 'text': event_text}], 'effort': self.reasoning_effort, 'outputSchema': schema})
                 worker.turn_id = response['turn']['id']; self.turns += 1
                 if worker.cancelled: self.interrupt(worker)
         except (OSError, ValueError, KeyError, RuntimeError, queue.Empty):

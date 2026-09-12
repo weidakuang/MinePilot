@@ -34,13 +34,11 @@ public final class MinecraftAiCompanion {
         TickEvent.ServerTickEvent.Post.BUS.addListener(this::onServerTick);
         ServerChatEvent.BUS.addListener(this::onServerChat);
         RegisterCommandsEvent.BUS.addListener(this::registerBackendChat);
-        net.minecraftforge.event.entity.player.PlayerEvent.ItemPickupEvent.BUS.addListener(event -> {
-            if(event.getEntity() instanceof dev.mcai.companion.agent.body.MinePilotServerPlayer body && body.inventoryLedger != null)
-                body.inventoryLedger.pickedUp(event.getOriginalEntity(),event.getStack());
-        });
         net.minecraftforge.event.entity.EntityJoinLevelEvent.BUS.addListener(event -> {
-            if(event.getEntity() instanceof net.minecraft.world.entity.item.ItemEntity item)
+            if(event.getEntity() instanceof net.minecraft.world.entity.item.ItemEntity item){
+                dev.mcai.companion.agent.knowledge.ProvenanceHooks.spawned(item);
                 dev.mcai.companion.agent.mining.MiningCoordinator.onItemSpawn(item);
+            }
         });
         net.minecraftforge.event.entity.item.ItemTossEvent.BUS.addListener(event -> {
                 dev.mcai.companion.agent.knowledge.DropProvenance.mark(event.getEntity(),"player_toss",event.getPlayer()); });
@@ -85,6 +83,11 @@ public final class MinecraftAiCompanion {
     }
 
     private void registerBackendChat(RegisterCommandsEvent event) {
+        event.getDispatcher().register(Commands.literal("minepilot_mark").executes(context -> {
+            if(runtime==null)return 0;
+            var human=context.getSource().getPlayerOrException();
+            return runtime.markPlayerTarget(human)?1:0;
+        }));
         event.getDispatcher().register(Commands.literal("minepilot_chat")
                 .requires(source -> source.getEntity() == null)
                 .then(Commands.argument("message", StringArgumentType.greedyString())

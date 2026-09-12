@@ -26,6 +26,8 @@ public final class SoundPerception {
     private final LongSupplier clock;
     private final LinkedHashMap<String,Heard> recent=new LinkedHashMap<>();
     private long sequence;
+    private long receivedPackets,levelEventCaptions,unsupportedLevelEvents;
+    private double captureMillis;
     private long evictedUntil;
     private record Heard(long sequence,long time,String dimension,String sound,String category,
                          VanillaSoundCatalog.Caption caption,Vec3 position,JsonObject source) {}
@@ -33,6 +35,9 @@ public final class SoundPerception {
     public SoundPerception(MinePilotServerPlayer player,LongSupplier clock){this.player=player;this.clock=clock;}
 
     public void receive(Packet<?> packet) {
+        receivedPackets++;long began=System.nanoTime();try{receiveSound(packet);}finally{captureMillis+=(System.nanoTime()-began)/1_000_000.0;}
+    }
+    private void receiveSound(Packet<?> packet) {
         if(packet instanceof ClientboundSoundPacket sound) {
             Vec3 position=new Vec3(sound.getX(),sound.getY(),sound.getZ());
             capture(sound.getSound().value().location().toString(),sound.getSource(),sound.getVolume(),sound.getSeed(),position,positionSource(position,sound.getSource()));
@@ -42,12 +47,28 @@ public final class SoundPerception {
             // EntityBoundSoundInstance records float positions when playback starts.
             Vec3 position=new Vec3((float)entity.getX(),(float)entity.getY(),(float)entity.getZ());
             capture(sound.getSound().value().location().toString(),sound.getSource(),sound.getVolume(),sound.getSeed(),position,entitySource(entity,"entity_packet"));
+        } else if(packet instanceof net.minecraft.network.protocol.game.ClientboundLevelEventPacket effect) {
+            if(effect.isGlobalEvent()){unsupportedLevelEvents++;return;}
+            var position=Vec3.atCenterOf(effect.getPos());var mapped=LevelEventSounds.resolve(effect.getType(),effect.getData());
+            JsonObject source;String sound;SoundSource category;float volume;
+            if(effect.getType()==2001){
+                var state=net.minecraft.world.level.block.Block.stateById(effect.getData());if(state.isAir())return;
+                var type=state.getSoundType(player.level(),effect.getPos(),null);sound=type.getBreakSound().location().toString();category=SoundSource.BLOCKS;volume=(type.getVolume()+1)/2;
+                source=new JsonObject();source.addProperty("kind","block");source.addProperty("type",BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());source.addProperty("name",catalog.label(state.getBlock().getDescriptionId(),state.getBlock().getName().getString()));source.add("label",source.get("name"));source.addProperty("confidence","native_break_event_state");
+            }else if(mapped!=null){sound=mapped.sound().location().toString();category=mapped.category();volume=mapped.volume();source=positionSource(position,category);}
+            else {unsupportedLevelEvents++;return;}
+            var caption=catalog.resolveUnseeded(sound,volume);if(caption==null){unsupportedLevelEvents++;return;}
+            source.addProperty("delivery","native_level_event");source.addProperty("levelEventId",effect.getType());levelEventCaptions++;
+            capture(sound,category,caption,position,source);
         } else if(packet instanceof net.minecraft.network.protocol.game.ClientboundRespawnPacket) {
             recent.clear();
         }
     }
     private void capture(String sound,SoundSource category,float volume,long seed,Vec3 position,JsonObject source) {
         var caption=catalog.resolve(sound,volume,seed);if(caption==null)return;
+        capture(sound,category,caption,position,source);
+    }
+    private void capture(String sound,SoundSource category,VanillaSoundCatalog.Caption caption,Vec3 position,JsonObject source){
         long now=clock.getAsLong();purge(now);
         String identity=source.has("uuid")?source.get("uuid").getAsString():position.toString();
         String key=caption.key()+"|"+identity+"|"+position;
@@ -88,7 +109,8 @@ public final class SoundPerception {
         var listener=new JsonObject();listener.addProperty("x",ears.x);listener.addProperty("y",ears.y);listener.addProperty("z",ears.z);listener.addProperty("heading",heading);out.add("listenerEyes",listener);out.addProperty("totalMatched",matched);
         out.addProperty("truncated",matched>rows.size());out.addProperty("nextSequence",cursor);out.addProperty("latestSequence",sequence);out.addProperty("capacityHistoryLost",after>0 && after<evictedUntil);
         out.addProperty("displaySeconds",3);out.addProperty("rangePolicy","vanilla_26.2_selected_sound_attenuation_from_first_person_ears");
-        out.addProperty("coverage","received_sound_and_entity_sound_packets; client-local/level-event-only sounds and resource-pack overrides not emulated");
+        out.addProperty("coverage","received_sound_and_entity_sound_packets plus native block-break/dispenser/workstation/common mob level events; unmapped/global/client-local/resource-pack sounds remain outside coverage");
+        out.addProperty("receivedPackets",receivedPackets);out.addProperty("levelEventCaptions",levelEventCaptions);out.addProperty("unmappedOrUnsubtitledLevelEvents",unsupportedLevelEvents);out.addProperty("cumulativeCaptureMillis",captureMillis);
         out.addProperty("grouping","caption_and_source_position; multiple sources retained rather than collapsed to the nearest");
         return out;
     }

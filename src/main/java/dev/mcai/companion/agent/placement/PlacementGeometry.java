@@ -33,7 +33,7 @@ public final class PlacementGeometry {
     }
     public static List<Aim> aims(MinePilotServerPlayer p,BlockPos target,ItemStack stack,InteractionHand hand,Map<String,String> constraints,Vec3 feet){
         if(!(stack.getItem() instanceof BlockItem item) || target.distToCenterSqr(feet)>25)return List.of();
-        var eyes=feet.add(0,p.getEyeHeight(),0);var result=new ArrayList<Aim>();
+        var eyes=feet.add(0,p.getEyeHeight(net.minecraft.world.entity.Pose.CROUCHING),0);var result=new ArrayList<Aim>();
         var anchors=new ArrayList<BlockPos>();anchors.add(target);for(var d:Direction.values())anchors.add(target.relative(d));
         for(var anchor:anchors){
             if(!p.level().isLoaded(anchor))continue;
@@ -50,7 +50,9 @@ public final class PlacementGeometry {
                 point=switch(face){case EAST -> new Vec3(anchor.getX()+box.maxX-.00001,point.y,point.z);case WEST -> new Vec3(anchor.getX()+box.minX+.00001,point.y,point.z);case UP -> new Vec3(point.x,anchor.getY()+box.maxY-.00001,point.z);case DOWN -> new Vec3(point.x,anchor.getY()+box.minY+.00001,point.z);case SOUTH -> new Vec3(point.x,point.y,anchor.getZ()+box.maxZ-.00001);case NORTH -> new Vec3(point.x,point.y,anchor.getZ()+box.minZ+.00001);};
                 if(eyes.distanceToSqr(point)>Math.pow(Math.min(5,p.blockInteractionRange()),2))continue;
                 var hit=p.level().clip(new ClipContext(eyes,point,ClipContext.Block.OUTLINE,ClipContext.Fluid.NONE,p));
-                if(hit.getType()!=HitResult.Type.BLOCK || !hit.getBlockPos().equals(anchor) || hit.getDirection()!=face)continue;
+                // The real first hit may be replaceable grass in the target cell.
+                // BlockPlaceContext decides whether that native click places at target.
+                if(hit.getType()!=HitResult.Type.BLOCK)continue;
                 var look=hit.getLocation().subtract(eyes);float yaw=(float)Math.toDegrees(Math.atan2(-look.x,look.z));float pitch=(float)-Math.toDegrees(Math.atan2(look.y,Math.hypot(look.x,look.z)));
                 // Reject grazing corners: the finite-precision native view ray must
                 // still hit this face with a small aiming margin, not a neighbor.
@@ -58,6 +60,18 @@ public final class PlacementGeometry {
                 var context=new PreviewContext(p,hand,stack,hit,yaw,pitch);
                 if(!context.getClickedPos().equals(target) || !context.canPlace())continue;
                 BlockState state=item.getPlacementState(context);
+                // Native BlockItem preview sees the body's current collision box.
+                // For a planned approach of an ordinary block, evaluate its state
+                // and occupancy at the prospective feet; actual use still runs the
+                // complete native placement check after real travel.
+                if(state==null && feet.distanceToSqr(p.position())>.01 && item.getClass()==BlockItem.class){
+                    state=item.getBlock().getStateForPlacement(context);
+                    if(state!=null && !state.canSurvive(p.level(),target))state=null;
+                    if(state!=null){var placedShape=state.getCollisionShape(p.level(),target).move(target.getX(),target.getY(),target.getZ());
+                        var futureBody=p.getBoundingBox().move(feet.subtract(p.position()));
+                        if(placedShape.toAabbs().stream().anyMatch(futureBody::intersects) || !p.level().isUnobstructed(p,placedShape))state=null;
+                    }
+                }
                 if(state==null || !matches(state,constraints))continue;
                 result.add(new Aim(hit,yaw,pitch,state));
                 if(result.size()>=12)return result;

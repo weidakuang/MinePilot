@@ -33,25 +33,25 @@ public final class AgentRuntime implements AutoCloseable {
 
     private final MinecraftServer server;
     private final HeadlessPlayerSession session;
-    private final NavigationToolCoordinator navigation;
-    private final AgentBrain brain;
+    private NavigationToolCoordinator navigation;
+    private AgentBrain brain;
     public final dev.mcai.companion.agent.knowledge.CompanionMemory memory = new dev.mcai.companion.agent.knowledge.CompanionMemory(this);
     public final dev.mcai.companion.agent.knowledge.CompanionEvents companionEvents = new dev.mcai.companion.agent.knowledge.CompanionEvents(this);
     public final dev.mcai.companion.vendor.numen.movement.BreathChain breath = new dev.mcai.companion.vendor.numen.movement.BreathChain();
-    private final dev.mcai.companion.agent.survival.CampCoordinator camp = new dev.mcai.companion.agent.survival.CampCoordinator(this);
+    private dev.mcai.companion.agent.survival.CampCoordinator camp = new dev.mcai.companion.agent.survival.CampCoordinator(this);
     public dev.mcai.companion.agent.survival.CampCoordinator camp(){return camp;}
-    private final dev.mcai.companion.agent.mining.GatherCoordinator gather = new dev.mcai.companion.agent.mining.GatherCoordinator(this);
+    private dev.mcai.companion.agent.mining.GatherCoordinator gather = new dev.mcai.companion.agent.mining.GatherCoordinator(this);
     public dev.mcai.companion.agent.mining.GatherCoordinator gather(){return gather;}
-    private final dev.mcai.companion.agent.survival.SurvivalCoordinator survival = new dev.mcai.companion.agent.survival.SurvivalCoordinator(this);
+    private dev.mcai.companion.agent.survival.SurvivalCoordinator survival = new dev.mcai.companion.agent.survival.SurvivalCoordinator(this);
     public dev.mcai.companion.agent.survival.SurvivalCoordinator survival(){return survival;}
-    public final dev.mcai.companion.agent.mining.MiningSurvey miningSurvey;
-    private final dev.mcai.companion.agent.mining.ExcavationCoordinator excavation;
+    public dev.mcai.companion.agent.mining.MiningSurvey miningSurvey;
+    private dev.mcai.companion.agent.mining.ExcavationCoordinator excavation;
     public dev.mcai.companion.agent.mining.ExcavationCoordinator excavation(){return excavation;}
-    private final dev.mcai.companion.agent.placement.PlacementCoordinator placement;
+    private dev.mcai.companion.agent.placement.PlacementCoordinator placement;
     public dev.mcai.companion.agent.placement.PlacementCoordinator placement(){return placement;}
-    private final dev.mcai.companion.agent.mining.CollectionCoordinator collection;
+    private dev.mcai.companion.agent.mining.CollectionCoordinator collection;
     public dev.mcai.companion.agent.mining.CollectionCoordinator collection(){return collection;}
-    private final dev.mcai.companion.agent.mining.MiningCoordinator mining;
+    private dev.mcai.companion.agent.mining.MiningCoordinator mining;
     public dev.mcai.companion.agent.mining.MiningCoordinator mining(){return mining;}
     private final Deque<VisiblePlayerChat> playerChat = new ArrayDeque<>();
     private final Deque<ExternalToolCall> externalToolTrace = new ArrayDeque<>();
@@ -63,12 +63,12 @@ public final class AgentRuntime implements AutoCloseable {
     private double jumpStartY;
     private String jumpPhase = "IDLE";
     private java.util.UUID attentionTarget;
-    public final dev.mcai.companion.agent.knowledge.WorldPerception perception;
-    public final dev.mcai.companion.agent.knowledge.ResourceSearch resources = new dev.mcai.companion.agent.knowledge.ResourceSearch(this);
+    public dev.mcai.companion.agent.knowledge.WorldPerception perception;
+    public dev.mcai.companion.agent.knowledge.ResourceSearch resources = new dev.mcai.companion.agent.knowledge.ResourceSearch(this);
     public final dev.mcai.companion.agent.knowledge.WorkstationMemory workstations = new dev.mcai.companion.agent.knowledge.WorkstationMemory(this);
     public final dev.mcai.companion.agent.knowledge.PlayerFocus playerFocus = new dev.mcai.companion.agent.knowledge.PlayerFocus(this);
     public final dev.mcai.companion.agent.knowledge.PerceptionSweep perceptionSweep = new dev.mcai.companion.agent.knowledge.PerceptionSweep(this);
-    public final dev.mcai.companion.agent.knowledge.SoundPerception hearing;
+    public dev.mcai.companion.agent.knowledge.SoundPerception hearing;
     public final dev.mcai.companion.agent.knowledge.ItemDropService itemDrops;
     private final java.util.Deque<com.google.gson.JsonObject> systemChat = new java.util.ArrayDeque<>();
     private long systemSequence;
@@ -186,6 +186,11 @@ public final class AgentRuntime implements AutoCloseable {
         return server;
     }
 
+    public void attendToPlayer(java.util.UUID id) {
+        requireServerThread();
+        attentionTarget = id;
+    }
+
     public void onPlayerChat(ServerPlayer player, String text) {
         if (closed || player == session.player() || text == null || text.isBlank()) {
             return;
@@ -223,7 +228,8 @@ public final class AgentRuntime implements AutoCloseable {
         // match. Do not wait for a remote model to stop an active body.
         String stop = bounded.strip().toLowerCase(java.util.Locale.ROOT)
                 .replaceAll("[。.!！]+$", "");
-        boolean handledLocally = false;
+        boolean handledLocally = java.util.Set.of("到了", "到地方了", "我们到了", "we are here", "we’re here").contains(stop)
+                && navigation.finishFollow(speakerName);
         if (java.util.Set.of("停下", "停下来", "停一下", "别动", "停止", "取消", "取消吧", "取消操作", "取消任务", "取消当前任务", "别挖了", "不用挖了", "别跟了", "stop", "stop moving", "cancel").contains(stop)) {
             handledLocally = true;
             memory.pause(true);companionEvents.interrupted();
@@ -251,10 +257,67 @@ public final class AgentRuntime implements AutoCloseable {
         if (brain != null && !handledLocally) brain.onChat(speakerName, bounded);
     }
 
+    private int deathSeenTick = -1;
+    private long lifeSequence;
+    private String lifePhase = "ALIVE";
+    public com.google.gson.JsonObject lifecycle() {
+        var out=new com.google.gson.JsonObject();out.addProperty("sequence",lifeSequence);
+        out.addProperty("phase",lifePhase);out.addProperty("alive",player().isAlive());
+        player().getLastDeathLocation().ifPresent(point->{
+            var pos=dev.mcai.companion.agent.mining.TreeSurvey.position(point.pos());
+            pos.addProperty("dimension",point.dimension().identifier().toString());out.add("deathPoint",pos);
+        });
+        out.addProperty("meaning","Native death location; drops may have moved, been collected or despawned. Check before claiming recovery. Death cancels old body work; do not resume stale actions.");
+        return out;
+    }
+    private void tickRespawn() {
+        if (deathSeenTick < 0) {
+            deathSeenTick=server.getTickCount();lifeSequence=System.currentTimeMillis();lifePhase="DEAD";
+            camp.close();gather.close();survival.close();resources.close();miningSurvey.close();
+            excavation.close();placement.close();collection.close();mining.cancelForChat();navigation.close();
+            perception.structures.close();perceptionSweep.cancel();turnYaw=null;jumpStartedTick=-1;
+            if(brain!=null)brain.close();
+            companionEvents.interrupted();
+            var remembered=memory.snapshot();
+            if(remembered.has("goal")) {
+                var goal=remembered.getAsJsonObject("goal");
+                if(goal.has("objective") && goal.has("status") && goal.get("status").getAsString().equals("ACTIVE"))
+                    memory.update(null,goal.get("objective").getAsString(),"PAUSED",goal.has("autonomous") && goal.get("autonomous").getAsBoolean());
+            }
+        }
+        session.tick();
+        if(server.getTickCount()-deathSeenTick<20)return;
+        session.respawn();
+        // Controllers with cached player/follower references must bind to the new
+        // native body. Memory and chat cursors remain on this same runtime instance.
+        brain=null;
+        try { brain=new AgentBrain(server,player(),ModelConfig.fromEnvironment()); }
+        catch(ModelConfig.MissingModelConfigurationException ignored) {}
+        AgentBrain attached=brain;
+        navigation=new NavigationToolCoordinator(server,player(),NavigationPlannerConfig.defaults(),
+                NavigationSnapshotBuilder.CaptureConfig.defaults(),event->{if(attached!=null)attached.onNavigationEvent(event);});
+        if(brain!=null)brain.attachNavigation(navigation);
+        player().inventoryLedger=new dev.mcai.companion.agent.knowledge.InventoryLedger(player());
+        perception=new dev.mcai.companion.agent.knowledge.WorldPerception(player());
+        hearing=new dev.mcai.companion.agent.knowledge.SoundPerception(player());session.receivedSound=hearing::receive;
+        mining=new dev.mcai.companion.agent.mining.MiningCoordinator(this);
+        collection=new dev.mcai.companion.agent.mining.CollectionCoordinator(this);
+        placement=new dev.mcai.companion.agent.placement.PlacementCoordinator(this);
+        excavation=new dev.mcai.companion.agent.mining.ExcavationCoordinator(this);
+        miningSurvey=new dev.mcai.companion.agent.mining.MiningSurvey(this);
+        resources=new dev.mcai.companion.agent.knowledge.ResourceSearch(this);
+        gather=new dev.mcai.companion.agent.mining.GatherCoordinator(this);
+        survival=new dev.mcai.companion.agent.survival.SurvivalCoordinator(this);
+        camp=new dev.mcai.companion.agent.survival.CampCoordinator(this);
+        deathSeenTick=-1;lifeSequence=System.currentTimeMillis();lifePhase=player().isSpectator()?"SPECTATOR":"RESPAWNED";
+        MinecraftAiCompanion.LOGGER.info("Companion native respawn: {}",lifecycle());
+    }
+
     public void tick() {
         if (closed) {
             return;
         }
+        if(!player().isAlive()) { tickRespawn(); return; }
         navigation.beforePhysicsTick();
         collection.beforePhysics();
         placement.beforePhysics();

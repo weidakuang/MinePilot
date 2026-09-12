@@ -54,6 +54,7 @@ minecraft {
             def collectionGate = Boolean.parseBoolean(System.getProperty('minepilot.collectionTest', 'false'))
             def miningGate = Boolean.parseBoolean(System.getProperty('minepilot.miningTest', 'false'))
             def persistenceGate = Boolean.parseBoolean(System.getProperty('minepilot.persistenceTest', 'false'))
+            def respawnGate = Boolean.parseBoolean(System.getProperty('minepilot.respawnTest', 'false'))
             def dropGate = Boolean.parseBoolean(System.getProperty('minepilot.dropTest', 'false'))
             def provenanceGate = Boolean.parseBoolean(System.getProperty('minepilot.provenanceTest', 'false'))
             def excavationGate = Boolean.parseBoolean(System.getProperty('minepilot.excavationTest', 'false'))
@@ -62,7 +63,7 @@ minecraft {
             def survivalGate = Boolean.parseBoolean(System.getProperty('minepilot.survivalTest', 'false'))
             def playGate = Boolean.parseBoolean(System.getProperty('minepilot.playExperienceTest', 'false'))
             def structureGate = Boolean.parseBoolean(System.getProperty('minepilot.structureTest', 'false'))
-            if ([liveModelGate, codexSkillGate, repairGate, knowledgeGate, soundGate, followGate, miningGate, collectionGate, placementGate, persistenceGate, structureGate, excavationGate, provenanceGate, dropGate, playGate, survivalGate, resourceWaterGate, campGate].count { it } > 1) {
+            if ([respawnGate, liveModelGate, codexSkillGate, repairGate, knowledgeGate, soundGate, followGate, miningGate, collectionGate, placementGate, persistenceGate, structureGate, excavationGate, provenanceGate, dropGate, playGate, survivalGate, resourceWaterGate, campGate].count { it } > 1) {
                 throw new GradleException(
                     'Enable only one MinePilot external black-box gate per run')
             }
@@ -80,6 +81,7 @@ minecraft {
             if (playGate) selectedTest = 'mcai_companion:play_experience_regressions'
             if (structureGate) selectedTest = 'mcai_companion:structure_record_regressions'
             if (excavationGate) selectedTest = 'mcai_companion:excavation_regressions'
+            if (respawnGate) selectedTest = 'mcai_companion:respawn_regressions'
             if (dropGate) selectedTest = 'mcai_companion:item_drop_regressions'
             systemProperty 'minepilot.dropTest', Boolean.toString(dropGate)
             if (provenanceGate) selectedTest = 'mcai_companion:provenance_regressions'

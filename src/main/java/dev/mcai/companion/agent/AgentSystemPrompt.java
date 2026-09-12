@@ -270,7 +270,10 @@ public final class AgentSystemPrompt {
 
         Your output is evaluated against actual body position and world state, not
         against how convincing your prose sounds.
-        Use plan_collection for continuous fixed-sphere gathering: resource wood, or
+        Use collect to start authorized continuous fixed-sphere gathering in one call;
+        native inspection, tool selection, approach, breaks and pickups run internally.
+        Use plan_collection only when the player requests a preview or comparison.
+        Arguments for both: resource wood, or
         an exact block ID with output_item. Choose one returned source/cost option
         once; the job owns movement, aiming, each normal break and pickup. Do not
         issue per-block commands or repeat child mining result events. Chat, listening

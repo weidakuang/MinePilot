@@ -36,7 +36,9 @@ public final class HeadlessPlayerSession implements AutoCloseable {
     private final MinecraftServer server;
     private final Connection connection;
     private final EmbeddedChannel channel;
-    private final MinePilotServerPlayer player;
+    private MinePilotServerPlayer player;
+    private static final ThreadLocal<UUID> RESPAWNING = new ThreadLocal<>();
+    public static boolean respawning(UUID id) { return id.equals(RESPAWNING.get()); }
     private net.minecraft.world.phys.Vec3 pendingMotion;
     private boolean loadedAcknowledged;
     private boolean closed;
@@ -118,6 +120,25 @@ public final class HeadlessPlayerSession implements AutoCloseable {
 
     public MinePilotServerPlayer player() {
         return player;
+    }
+
+    /** Send the same request as the vanilla death screen; PlayerList owns restoration. */
+    public void respawn() {
+        if (player.isAlive() || closed) return;
+        var old = player;
+        RESPAWNING.set(old.getUUID());
+        try {
+            old.connection.handleClientCommand(new net.minecraft.network.protocol.game.ServerboundClientCommandPacket(
+                    net.minecraft.network.protocol.game.ServerboundClientCommandPacket.Action.PERFORM_RESPAWN));
+            var next = server.getPlayerList().getPlayer(old.getUUID());
+            if (!(next instanceof MinePilotServerPlayer replacement) || next == old)
+                throw new IllegalStateException("Native respawn did not replace the companion body");
+            player = replacement;
+            pendingMotion = null;
+            loadedAcknowledged = false;
+            player.stopControlling();
+            pumpPackets();
+        } finally { RESPAWNING.remove(); }
     }
 
     public void tick() {

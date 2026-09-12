@@ -5,7 +5,7 @@ import json
 def parse(text):
     text = text.strip().rstrip('。！!')
     if text in {'把工作台收回来','把工作台收回','收回工作台','把工作台收回来，挖完记得捡上'}:
-        return {'action':'tool','tool_name':'plan_collection',
+        return {'action':'tool','tool_name':'collect',
                 'arguments_json':json.dumps({'resource':'minecraft:crafting_table','output_item':'minecraft:crafting_table','source':'blocks','count':1,'radius':10}),
                 'message':'好，我把工作台收回来。'}
     if re.fullmatch(r'(?:请)?(?:你)?(?:放下|放置|放)(?:一个|个)?工作台', text) or text in {'把工作台放下', '把工作台放地上', '把工作台放到地上'}:

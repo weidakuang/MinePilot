@@ -54,16 +54,14 @@ class PlayRepairTests(unittest.TestCase):
     def test_exact_workbench_reclaim_approves_one_checked_block_without_model(self):
         class Game(Client):
             def call_tool(self,name,args):
-                if name=='plan_collection':
-                    self.calls.append((name,args))
-                    return {'phase':'PLAN_READY','requestId':'bench','options':[{'optionId':'one','maximumBlocksToBreak':1}]}
-                if name=='choose_collection':
+                if name=='collect':
                     self.calls.append((name,args));return {'phase':'EXECUTING','requestId':'bench'}
                 return super().call_tool(name,args)
         game=Game();loop=SessionLoop(game,lambda *a:self.fail('Reclaim must not wait for a model'))
         game.messages=[{'sequence':1,'text':'把工作台收回来，挖完记得捡上。','player':'TestHuman'}]
         loop.tick()
-        self.assertEqual([{'request_id':'bench','option_id':'one'}],[a for n,a in game.calls if n=='choose_collection'])
+        self.assertEqual(1, len([a for n,a in game.calls if n=='collect']))
+        self.assertFalse(any(n=='choose_collection' for n,a in game.calls))
         self.assertEqual(('bench','EXECUTING'),loop.last_collection)
 
     def test_yield_chooses_an_observed_side_away_from_player(self):

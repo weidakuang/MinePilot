@@ -22,7 +22,7 @@ wirelib=importlib.util.module_from_spec(spec);spec.loader.exec_module(wirelib)
 Wire,vi,utf,readvi=wirelib.Wire,wirelib.vi,wirelib.utf,wirelib.readvi
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--port',type=int,required=True);p.add_argument('--profile',type=Path,required=True);p.add_argument('--directory',type=Path,required=True);p.add_argument('--duration',type=int,default=610);p.add_argument('--output',type=Path,required=True);p.add_argument('--scenario',choices=['full','final-repairs'],default='full');args=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--port',type=int,required=True);p.add_argument('--profile',type=Path,required=True);p.add_argument('--directory',type=Path,required=True);p.add_argument('--duration',type=int,default=610);p.add_argument('--output',type=Path,required=True);p.add_argument('--scenario',choices=['full','final-repairs','runtime-repair'],default='full');args=p.parse_args()
     if args.port==25565 or args.directory.resolve().name!='run-takeover-natural-20260910':raise ValueError('Use the isolated copied-world server')
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'skills/minepilot-companion/scripts'));import minepilot
     config=json.loads(args.profile.read_text());client=minepilot.McpClient(config['url'],Path(config['tokenFile']).read_text().strip());client.initialize()
@@ -39,6 +39,8 @@ def main():
             (565,'停下'),(580,'我刚才说喜欢在哪里扎营？')]
     if args.scenario=='final-repairs':
         script=[(6,'你看看我现在手里拿的是什么？'),(25,'把工作台收回来，挖完记得捡上。'),(115,'停下'),(125,'放一个工作台'),(142,'把工作台收回来，挖完记得捡上。'),(165,'去找四块木头吧，你自己找。'),(270,'停下'),(283,'我喜欢在哪里扎营？')]
+    if args.scenario=='runtime-repair':
+        script=[(4,'你好'),(10,'放一个工作台'),(23,'把工作台收回来，挖完记得捡上。'),(42,'去找四块木头吧，你自己找。'),(94,'停下'),(103,'我喜欢在哪里扎营？')]
     def console(command):
         fd=os.open(args.directory/'server-console.fifo',os.O_WRONLY|os.O_NONBLOCK)
         try:os.write(fd,(command+'\n').encode())
@@ -64,7 +66,7 @@ def main():
                 if args.scenario=='full' and elapsed>174 and 'gift' not in sent:
                     dx=gift_body['x']-gift_pos['x'];dz=gift_body['z']-gift_pos['z'];yaw=math.degrees(math.atan2(-dx,dz));pitch=math.degrees(math.atan2(gift_pos['y']-gift_body['y']+1, max(.01,math.hypot(dx,dz))))
                     wire.send(32,struct.pack('>ffB',yaw,pitch,1));wire.send(53,struct.pack('>h',0));wire.send(41,vi(3)+struct.pack('>qB',0,0)+vi(1));sent.add('gift');events.append({'at':elapsed,'kind':'vanilla_player_toss','item':'emerald','count':3})
-                if elapsed>(18 if args.scenario=='final-repairs' else 400) and 'clear_work_area' not in sent:
+                if elapsed>(18 if args.scenario in ('final-repairs','runtime-repair') else 400) and 'clear_work_area' not in sent:
                     o=client.call_tool('observe',{});console('tp '+name+' '+str(o['x'])+' '+str(o['y']+4)+' '+str(o['z']));sent.add('clear_work_area');events.append({'at':elapsed,'kind':'move_probe_above_work_area_to_avoid_stealing_drops'})
                 for index,(at,text) in enumerate(script):
                     if elapsed>=at and index not in sent:

@@ -35,7 +35,7 @@ class InventorySessionTests(unittest.TestCase):
         c=InventoryClient();workers=[]
         def launch(e,s):w=Worker();workers.append(w);return w
         loop=SessionLoop(c,launch);c.gains=[{'sequence':1,'acquired':[{'item':'stone','count':1}]}];loop.tick()
-        workers[-1].returncode=0;workers[-1].decision=lambda:{'action':'say','message':'I picked up stone','speech_reason':'none'}
+        workers[-1].returncode=0;workers[-1].decision=lambda:{'action':'wait','message':''}
         loop.tick()
         self.assertEqual('inventory_review',loop.worker_event['type'])
         workers[-1].returncode=0;workers[-1].decision=lambda:{'action':'organize','annotations':[{'entry_id':'stone','importance':4,'note':'spare'}],'message':'Organized','speech_reason':'direct_player_relevance'}

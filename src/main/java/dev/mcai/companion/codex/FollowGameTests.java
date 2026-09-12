@@ -14,7 +14,7 @@ import net.minecraftforge.gametest.*;
 /** Source-informed real physics test; the followed player moves via normal control frames. */
 @GameTestNamespace("mcai_companion") @GameTestDontPrefix
 public final class FollowGameTests {
-    @GameTest(name="continuous_follow_regressions",structure="forge:empty48x32x48",maxTicks=1600,padding=8)
+    @GameTest(name="continuous_follow_regressions",structure="forge:empty48x32x48",maxTicks=5000,padding=8)
     public static void run(GameTestHelper h) {
         if(!Boolean.getBoolean("minepilot.followTest")){h.fail("Follow gate not selected");return;}
         new Gate(h).start();
@@ -53,6 +53,28 @@ public final class FollowGameTests {
             var option=status.getAsJsonArray("routeOptions").get(0).getAsJsonObject();
             call("choose_navigation","{\"request_id\":\""+request+"\",\"option_id\":\""+option.get("optionId").getAsString()+"\",\"pace\":\""+pace+"\"}");
         }
+        BlockPos supportOrigin;
+        void startSupport(boolean pillar) {
+            var p=runtime.player();supportOrigin=h.absolutePos(new BlockPos(8,18,8));
+            for(int x=-3;x<=11;x++)for(int z=-3;z<=3;z++)for(int y=-8;y<=8;y++)
+                h.getLevel().setBlockAndUpdate(supportOrigin.offset(x,y,z),Blocks.AIR.defaultBlockState());
+            h.getLevel().setBlockAndUpdate(supportOrigin.below(),Blocks.STONE.defaultBlockState());
+            if(!pillar)h.getLevel().setBlockAndUpdate(supportOrigin.offset(7,-1,0),Blocks.STONE.defaultBlockState());
+            p.stopControlling();p.setPos(Vec3.atBottomCenterOf(supportOrigin));p.setDeltaMovement(Vec3.ZERO);p.setOnGround(true);p.setGameMode(GameType.SURVIVAL);p.getInventory().clearContent();
+            p.getInventory().setItem(20,new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.COBBLESTONE,12));
+            p.inventoryLedger.tick();p.inventoryLedger.annotate(p.inventoryLedger.key(p.getInventory().getItem(20)),4,"navigation support fixture");
+            var args=new JsonObject();args.addProperty("target_kind","coordinates");args.addProperty("dimension",h.getLevel().dimension().identifier().toString());
+            args.addProperty("x",supportOrigin.getX()+(pillar?.5:7.5));args.addProperty("y",supportOrigin.getY()+(pillar?3:0));args.addProperty("z",supportOrigin.getZ()+.5);
+            args.addProperty("acceptance_radius",.5);args.addProperty("player_intent","build supports to reach this point");args.addProperty("preferred_pace","auto");
+            var accepted=call("request_navigation",args.toString());request=accepted.get("requestId").getAsString();
+            call("say","{\"navigation_request_id\":\""+request+"\",\"message\":\"我搭路过去。\"}");call("plan_navigation","{\"request_id\":\""+request+"\"}");
+        }
+        void startArrivalFollow(){
+            var accepted=call("request_navigation","{\"target_kind\":\"player\",\"target_name\":\"AttackHuman\",\"acceptance_radius\":2,\"preferred_pace\":\"walk\",\"continuous_follow\":true,\"player_intent\":\"follow me\"}");
+            request=accepted.get("requestId").getAsString();
+            call("say","{\"navigation_request_id\":\""+request+"\",\"message\":\"我跟着你。\"}");
+            call("plan_navigation","{\"request_id\":\""+request+"\"}");
+        }
         void saveEvidence(){
             try {java.nio.file.Files.writeString(runtime.server().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("follow-physical-evidence.json"),new GsonBuilder().setPrettyPrinting().create().toJson(evidence));}catch(java.io.IOException e){throw new IllegalStateException(e);}
         }
@@ -64,7 +86,7 @@ public final class FollowGameTests {
         void tick(){
             if(phase<5)human.tick();var p=runtime.player();var status=call("poll_events","{}").getAsJsonObject("navigation");var state=status.get("phase").getAsString();
             if(h.getTick()%100==0)dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Follow gate stage={} state={} distance={} body={} target={}",phase,state,p.distanceTo(human.player()),p.position(),human.player().position());
-            h.assertTrue(p.getInventory().isEmpty() && p.gameMode.getGameModeForPlayer()==GameType.ADVENTURE,"Follow changed adventure inventory/mode");
+            h.assertTrue(phase>=14 || p.getInventory().isEmpty() && p.gameMode.getGameModeForPlayer()==GameType.ADVENTURE,"Follow changed adventure inventory/mode");
             var row=new JsonObject();row.addProperty("tick",h.getTick());row.addProperty("phase",state);row.addProperty("leg",restCycles);row.addProperty("stage",phase);row.addProperty("x",p.getX());row.addProperty("y",p.getY());row.addProperty("z",p.getZ());row.addProperty("targetX",human.player().getX());row.addProperty("targetZ",human.player().getZ());row.addProperty("requestId",request);evidence.add(row);
             if(phase>=2 && phase<4)h.assertTrue(!state.equals("PLAN_READY"),"Safe follow unexpectedly needs a new choice: "+status);
             if(phase<4)h.assertTrue(!state.equals("FAILED") && !state.equals("REPLAN_REQUIRED"),"Safe follow failed or required model repair: "+status);
@@ -113,7 +135,7 @@ public final class FollowGameTests {
                 for(var message:visible)if(message.getAsJsonObject().get("text").getAsString().contains("可以，我还在跟着。"))
                     ownReply=message.getAsJsonObject().get("origin").getAsString().equals("received_agent_chat");
                 h.assertTrue(ownReply,"Public chat failed to expose actual delivered Agent reply");
-                h.assertTrue(p.distanceTo(human.player())<=2 && p.position().distanceTo(held)>7,"Follow did not physically reacquire moving player");
+                h.assertTrue((restingSince>=0 ? Math.hypot(p.getX()-human.player().getX(),p.getZ()-human.player().getZ())<=2 && Math.abs(p.getY()-human.player().getY())<1.5 : p.distanceTo(human.player())<=2) && p.position().distanceTo(held)>7,"Follow did not physically reacquire moving player");
                 h.assertTrue(resumed>0 && resumed<=35,"Follow resume exceeded 35 ticks: "+resumed);
                 h.assertTrue(stoppedWhileTargetMoved<=Math.max(2,movingTicks/10),"Follow repeatedly stopped while target walked, leg "+restCycles+": "+stoppedWhileTargetMoved+"/"+movingTicks);
                 if(restCycles<2) {
@@ -150,7 +172,57 @@ public final class FollowGameTests {
             if(phase==7 && h.getTick()-began>=12){
                 h.assertTrue(p.position().distanceTo(held)>.3,"Native player attack failed to knock body back: "+p.position().distanceTo(held));
                 dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Native player attack physically displaced MinePilot {} blocks",p.position().distanceTo(held));
-                human.close();phase=8;h.succeed();
+                human.player().setPos(p.getX()+7,p.getY(),p.getZ());human.player().stopControlling();
+                var accepted=call("request_navigation","{\"target_kind\":\"player\",\"target_name\":\"AttackHuman\",\"acceptance_radius\":0.5,\"preferred_pace\":\"walk\",\"player_intent\":\"come here once\"}");
+                request=accepted.get("requestId").getAsString();
+                call("say","{\"navigation_request_id\":\""+request+"\",\"message\":\"我过来。\"}");
+                call("plan_navigation","{\"request_id\":\""+request+"\"}");phase=8;
+            }
+            if(phase==8 && state.equals("PLAN_READY")){choose(status);phase=9;return;}
+            if(phase==9 && state.equals("COMPLETED")){
+                h.assertTrue(p.distanceTo(human.player())<=3.01,"Rendezvous completed outside three blocks");
+                held=p.position();began=h.getTick();phase=10;return;
+            }
+            if(phase==10 && h.getTick()-began>=40){
+                h.assertTrue(state.equals("COMPLETED") && p.position().distanceTo(held)<.35 && p.getDeltaMovement().horizontalDistanceSqr()<.0001,"Rendezvous orbited after arrival");
+                held=p.position();human.player().setPos(p.getX()+8,p.getY(),p.getZ());began=h.getTick();phase=11;return;
+            }
+            if(phase==11 && h.getTick()-began>=20){
+                h.assertTrue(state.equals("COMPLETED") && p.position().distanceTo(held)<.05,"One-shot arrival resumed when player left");
+                human.player().setPos(p.getX()+2,p.getY(),p.getZ());
+                startArrivalFollow();phase=12;return;
+            }
+            if(phase==12 && state.equals("PLAN_READY")){choose(status);return;}
+            if(phase==12 && state.equals("FOLLOWING")){
+                runtime.onChat("UnrelatedHuman","到了");
+                h.assertTrue(!runtime.navigation().status().phase().terminal(),"Unrelated player ended follow");
+                runtime.onChat("AttackHuman","到了");
+                h.assertTrue(runtime.navigation().status().phase()==dev.mcai.companion.agent.navigation.NavigationToolCoordinator.Phase.COMPLETED,"Arrival chat did not finish follow immediately");
+                startArrivalFollow();began=h.getTick();phase=13;return;
+            }
+            if(phase==13 && state.equals("PLAN_READY")){choose(status);return;}
+            if(phase==13 && state.equals("COMPLETED")){
+                h.assertTrue(h.getTick()-began>=600,"Follow timed out too early");
+                dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Player navigation verified: three-block arrival, no orbit/restart, scoped arrival chat, 30-second idle finish");
+                human.close();startSupport(false);phase=14;return;
+            }
+            if((phase==14 || phase==16) && state.equals("PLAN_READY")) {
+                var routes=status.getAsJsonArray("routeOptions");
+                JsonObject option=null;
+                for(var element:routes)if(element.getAsJsonObject().get("supportBlocksRequired").getAsInt()>0){option=element.getAsJsonObject();break;}
+                h.assertTrue(option!=null,"No support route was offered: "+status);
+                call("choose_navigation","{\"request_id\":\""+request+"\",\"option_id\":\""+option.get("optionId").getAsString()+"\",\"pace\":\"auto\"}");
+                phase++;return;
+            }
+            if(phase>=14)h.assertTrue(!state.equals("FAILED") && !state.equals("REPLAN_REQUIRED"),"Support movement failed: "+status);
+            if((phase==15 || phase==17) && state.equals("COMPLETED")) {
+                int blocks=0;
+                for(int x=0;x<=7;x++)for(int y=-1;y<5;y++)if(h.getLevel().getBlockState(supportOrigin.offset(x,y,0)).is(Blocks.COBBLESTONE))blocks++;
+                int remaining=0;for(int i=0;i<36;i++)if(p.getInventory().getItem(i).is(net.minecraft.world.item.Items.COBBLESTONE))remaining+=p.getInventory().getItem(i).getCount();
+                h.assertTrue(blocks>0 && blocks+remaining==12,"Support route did not debit actual placed blocks: "+blocks+"/"+remaining);
+                dev.mcai.companion.MinecraftAiCompanion.LOGGER.info("Support physics verified: pillar={} placed={} remaining={} position={}",phase==17,blocks,remaining,p.position());
+                if(phase==15){startSupport(true);phase=16;return;}
+                phase=18;h.succeed();
             }
         }
     }

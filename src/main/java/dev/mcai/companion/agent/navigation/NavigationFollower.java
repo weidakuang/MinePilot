@@ -303,10 +303,21 @@ public final class NavigationFollower {
         double waypointTolerance = step.action() == RouteOption.Action.OPEN_DOOR ? 0.0144 : STEP_REACHED_DISTANCE_SQUARED;
         boolean waypointReached=(horizontalSquared <= waypointTolerance || passedWalkWaypoint(route,step,dx,dz))
                 && Math.abs(dy)<.22 && (player.onGround() || player.onClimbable() || player.isInWater());
-        String finalProblem=waypointReached && lastStep ? completionProblem.apply(route.requestId) : null;
-        if(finalProblem!=null && finalProblem.startsWith("The moving destination left")) {
-            requireDecision(route,finalProblem);return;
+        if (step.action() == RouteOption.Action.PLACE_SUPPORT) {
+            var support = BlockPos.containing(step.x(),step.y()-1,step.z());
+            waypointReached &= !player.level().getBlockState(support).getCollisionShape(player.level(),support).isEmpty();
         }
+        String finalProblem=waypointReached && lastStep ? completionProblem.apply(route.requestId) : null;
+        // A route waypoint has a deliberately generous walking tolerance. A
+        // working stance must also satisfy the actual interaction predicate.
+        // Keep walking to its center before deciding that a target moved away;
+        // otherwise edge-of-radius arrival repeatedly selects the same unusable
+        // pickup stance. Allow native physics a short settling interval there.
+        if (finalProblem != null && horizontalSquared <= .0144 && Math.abs(dy) < .22) {
+            if (++route.arrivalMismatchTicks > 10) {
+                requireDecision(route, finalProblem); return;
+            }
+        } else route.arrivalMismatchTicks = 0;
         if(waypointReached && finalProblem==null && !(lastStep && route.followDirect)) {
             route.stepIndex++;
             route.actionAttempts = 0;
@@ -584,6 +595,26 @@ public final class NavigationFollower {
                     player.level(), floor).isEmpty()) {
                 route.actionAttempts = 0;
                 return true;
+            }
+            // As in Numen MovementTraverse, expose the anchor's side face by
+            // sneaking to its edge first. A ray from the center is occluded by
+            // the block we are standing on; retrying that ray cannot place it.
+            double supportDx=step.x()-player.getX(),supportDz=step.z()-player.getZ();
+            double supportDistance=Math.hypot(supportDx,supportDz);
+            if (supportDistance>.42 && Math.abs(step.y()-player.getY())<.22) {
+                float yaw=(float)Math.toDegrees(Math.atan2(-supportDx,supportDz));
+                float forward=Math.abs(Mth.wrapDegrees(yaw-player.getYRot()))<12 ? .65F : 0;
+                player.applyControlFrame(new AgentControlFrame(yaw,65,forward,0,false,false,true));
+                return false;
+            }
+            // Adapted from Numen MovementPillar: rise clear of the destination
+            // block before native useItemOn, preserving collision and inventory.
+            boolean pillar = Math.abs(player.getX()-step.x())<.45
+                    && Math.abs(player.getZ()-step.z())<.45 && step.y()>player.getY()+.01;
+            if (pillar && player.getY()<step.y()) {
+                player.applyControlFrame(new AgentControlFrame(player.getYRot(),90,0,0,
+                        player.onGround(),false,false));
+                return false;
             }
             if (player.tickCount - route.lastActionTick < ACTION_RETRY_TICKS) {
                 return false;
@@ -875,6 +906,7 @@ public final class NavigationFollower {
         private boolean gapLaunched;
         private boolean gapBackUp;
         private NavigationPlan.ResolvedDestination followTarget, retargetedDestination;
+        private int arrivalMismatchTicks;
         private Vec3 followVelocity = Vec3.ZERO;
         private int followSampleTick;
         private boolean followDirect, followWaiting;

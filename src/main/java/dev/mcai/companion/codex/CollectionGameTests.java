@@ -126,6 +126,27 @@ public final class CollectionGameTests {
                 h.assertTrue(p.getMainHandItem().is(Items.WOODEN_PICKAXE) && p.getMainHandItem().getDamageValue()==4,"Alternative count consumed excessive durability");
                 for(int z=-1;z<=2;z++)h.assertTrue(h.getLevel().getBlockState(origin.offset(6,0,z)).isAir(),"Exposed target remains");
                 record("Numen palette scan and alternate surface targets: four cobblestone receipts; buried nearest stone untouched");
+                resetBodyForFixture();
+                h.getLevel().setBlock(origin.west(3),Blocks.CRAFTING_TABLE.defaultBlockState(),2);
+                before=count(Items.CRAFTING_TABLE);
+                var started=call("collect",obj("{\"resource\":\"minecraft:crafting_table\",\"source\":\"blocks\",\"radius\":6,\"count\":1}"),true);
+                h.assertTrue(started.get("phase").getAsString().equals("EXECUTING"),"One collection call did not start native execution: "+started);
+                stage(13);
+            }else if(stage==13 && phase.equals("COMPLETED")){
+                h.assertTrue(count(Items.CRAFTING_TABLE)==before+1 && h.getLevel().getBlockState(origin.west(3)).isAir(),"One-call workbench recovery lacks physical break and pickup");
+                record("generic one-call collection: native workbench break and inventory pickup, without a separate model approval");
+                resetBodyForFixture();
+                var remnant=origin.east(2).above();
+                h.getLevel().setBlock(remnant,Blocks.OAK_LOG.defaultBlockState(),2);
+                h.getLevel().setBlock(remnant.above(),Blocks.OAK_LEAVES.defaultBlockState().setValue(BlockStateProperties.PERSISTENT,false),2);
+                h.getLevel().setBlock(remnant.below(),Blocks.AIR.defaultBlockState(),2);
+                before=count(Items.OAK_LOG);
+                var args=obj("{\"resource\":\"wood\",\"source\":\"tree\",\"radius\":6,\"count\":1,\"whole_tree\":false}");
+                args.addProperty("tree_x",remnant.getX());args.addProperty("tree_y",remnant.getY());args.addProperty("tree_z",remnant.getZ());
+                call("collect",args,true);stage(14);
+            }else if(stage==14 && phase.equals("COMPLETED")){
+                h.assertTrue(count(Items.OAK_LOG)==before+1 && h.getLevel().getBlockState(origin.east(2).above()).isAir(),"Remaining natural log was refused or not picked up");
+                record("partially harvested natural canopy: overhead remaining log broken and picked up without grounded whole-tree proof");
                 try{var path=r.server().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("collection-physical-evidence.json");java.nio.file.Files.writeString(path,new GsonBuilder().setPrettyPrinting().create().toJson(evidence));}catch(java.io.IOException e){throw new IllegalStateException(e);}stage(13);h.succeed();
             }else if(phase.equals("BLOCKED") && stage!=8 && stage!=9 && stage!=13){h.fail("Collection blocked at stage "+stage+": "+status);}
         }

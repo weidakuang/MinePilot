@@ -38,10 +38,17 @@ the transport accepts it. These settings apply only to this companion process.
 new player chat even after an individual model turn, reply or movement ends.
 Return to the user once LISTENING is confirmed; do not run a competing manual
 controller. Starting again reuses the listener and delivers the new request.
-For an authorized goal, the listener starts a single evaluated route locally only
-when it predicts no damage, requires no support blocks, has no listed hazards and
-supports the requested pace. Multiple or partial routes still require a model
-choice. This fast path is part of normal play, not independent model-choice tests.
+For an authorized goal, eligible routes with zero predicted damage and no support
+materials start locally, including ordinary water travel. Checked alternatives and
+bounded repairs do not require repeated model choices. Newly introduced hazards stop
+execution. This fast path is part of normal play, not independent model-choice tests.
+
+A world's `modelProvider` can select `type: openai_compatible`, `baseUrl`, a private
+`apiKeyFile`, `contextWindow`, `maxOutputTokens`, `nativeTools: true`, `stream: true`,
+and provider-specific `thinking: disabled`. The profile's `model` is authoritative.
+DeepSeek uses `https://api.deepseek.com` and `deepseek-flash`. Keep keys outside the
+repository. Model-to-listener SSE is assembled privately; players receive complete
+messages only. Never render reasoning, partial JSON or tool-call fragments in chat.
 
 Use `companion_session.py stop` only when asked to stop the companion session.
 An unavailable world is a connection failure, not successful companionship.
@@ -54,9 +61,9 @@ stale model completions cannot execute actions.
 Connection preparation starts when the listener connects, without a dummy model
 turn. `modelConnectionReady` reports transport readiness, not a completed game
 request. `decisionTimings` retains up to 32 timing-only records and no model text.
-New collection/mining/placement requests receive a brief model-authored acknowledgement
-with their planning call. The model compares returned options and approves one;
-accepted jobs run without a redundant decision just to wait. Completion remains
+Use `collect`, `gather`, `place_block` and other composite tasks to start actual work
+in one call. Preview-and-choose interfaces remain for explicit comparisons. Native
+jobs approach, act and pick up without per-block model requests. Completion remains
 physical evidence, and new instructions never inherit a previous job's success.
 Stopping the session cancels placement, collection and mining as well as navigation.
 For access/region/tunnel excavation and optional fishbone segments, read
@@ -117,12 +124,15 @@ body heading. Never substitute chat for either action.
 For an explicitly ongoing follow request, add `--continuous-follow` to direct
 `request`/`prepare` calls, or set `continuous_follow=true` in the navigation tool.
 Use an observed player/entity identity. `FOLLOWING` means physically inside the
-radius with the goal still active; wait for new chat and cancel when asked to stop.
-The target moving more than radius+1.5 blocks from the Agent resumes navigation.
-Subsequent unique, hazard-free, zero-damage, zero-material routes supporting the
+radius with the goal still active; stop on request. Player follow also finishes
+when the followed player says “到了” or stays nearby for 30 seconds.
+The target leaving the resting follow radius resumes navigation through the checked corridor.
+Subsequent unique, hazard-free, zero-damage routes with at most 16 manifested
+expendable support blocks and supporting the
 chosen pace may resume locally without another model turn. Ambiguous/risky routes
 still need a decision. Target loss/dimension change reports failure rather than
-silently changing identities. Ordinary 'come here' is a one-time arrival.
+silently changing identities. Ordinary 'come here' is a one-time arrival within three blocks; it stops and
+looks at the player without resuming when they leave.
 
 Normal companion requests to reach a player permit a safe partial approach.
 `partialDestination` describes the reachable endpoint; explain it before
@@ -361,3 +371,15 @@ listener keeps its Codex process, refreshes each short decision context, batches
 ordinary events and handles bounded tool failures without asking the same
 permission again. Public decisions, tool receipts and timings are journaled in
 the session's `decisions.jsonl`; credentials and model internals are excluded.
+
+### Immediate acquisition speech decisions
+
+The listener batches newly acquired items from the next 0.2-second poll into an
+`inventory_event` with `speechFirst: true` and a counted `pickupNotice`. It queues
+this ahead of background task notifications, including while native work owns the
+body. An already running model request finishes first; new player chat retains
+priority. This first decision permits only `say` or `wait`, never body actions.
+No fixed thank-you is sent. Inventory organization is a separate idle decision.
+Unknown attribution stays unknown; a player toss is not proof of gifting intent.
+Merged quantities have separate source counts. Death emitter and killer are
+separate fields; dropped-item recovery is not confused with a fresh gift.

@@ -14,7 +14,8 @@
     "BlockEntityOriginsMixin",
     "CompoundContainerAccess",
     "HopperProvenanceMixin",
-    "EntityDropProvenanceMixin"
+    "EntityDropProvenanceMixin",
+    "CompanionRespawnMixin"
   ],
   "injectors": {
     "defaultRequire": 1

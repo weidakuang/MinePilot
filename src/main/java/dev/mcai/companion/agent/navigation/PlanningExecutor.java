@@ -60,6 +60,13 @@ public final class PlanningExecutor implements AutoCloseable {
         executor.shutdownNow();
     }
 
+    public CompletableFuture<NavigationPlan> submitAny(UUID requestId,NavigationWorldSnapshot snapshot,
+            java.util.List<NavigationPlan.ResolvedDestination> destinations) {
+        var goals=java.util.List.copyOf(destinations);
+        try{return CompletableFuture.supplyAsync(()->planner.planAny(requestId,snapshot,goals),executor);}
+        catch(RejectedExecutionException rejected){return CompletableFuture.failedFuture(new PlanningBusyException("Navigation planner queue is full",rejected));}
+    }
+
     public static final class PlanningBusyException extends RuntimeException {
         public PlanningBusyException(String message, Throwable cause) {
             super(message, cause);

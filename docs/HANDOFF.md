@@ -1,3 +1,29 @@
+## Acquisition notifications — 2026-09-12 22:51 JST
+
+Deployed JAR `fc1dfa69a62be4a3b881c02bfa0a4e1f1d4f7826cd1aa6e08f031c1d473db125`; backup `.minepilot-backup/pickup-notification-1789220842/production/`. Pickup/other acquired inventory units are summarized from authoritative receipts in `pickup_notifications.py`. Each item has an acquired quantity and counted sources: latest emitter/dropper, native category, production origin, block/entity type and known cause. Mixed/unknown parts remain separate, without proximity-based giver guesses. LivingDropsEvent now records the deceased emitter separately from killer and damage cause; native last-transfer lineage is retained and self-loot correctly identified.
+
+The listener's next available model turn decides only speech or silence, including while gathering/crafting jobs own the body. Receipts are batched on the 0.2-second poll; a running inference or direct chat can add delay. Chat interruption requeues unspoken receipts; deduplication prevents repeats. The speech-only decision cannot drop/organize items or cancel movement. Idle inventory review remains separate. Native SSE stays private; chat is complete messages only.
+
+127 Python tests pass, including mixed counted provenance, unknown remainder, latest dropper, killer vs deceased, notification during active work, silence, interruption and restricted actions. Native respawn/death-drop gate and build pass (43 Java tests). A synthetic DeepSeek test chose Chinese thanks for Alice's three emeralds in 1476 ms, and silence for routine own-mined cobblestone in 820 ms. This model probe did not inject test items into production. Source event timing is actual receipt timing, not a guarantee of instant remote inference.
+
+## Automatic native respawn — 2026-09-12 22:43 JST
+
+Deployed JAR SHA-256 `528d3428cc2db505514ee04a3a73bf10db21c55701db72832d904d17b5b427cd`. Backup `.minepilot-backup/respawn-1789220560/` contains the stopped world, old JAR/config/profile. Production server and DeepSeek listener are running.
+
+HeadlessPlayerSession now sends vanilla PERFORM_RESPAWN after 20 server ticks dead. A scoped constructor mixin preserves the companion player subclass while PlayerList performs normal spawn/restoration and Forge hooks. Hardcore remains native spectator behavior. Cached body controllers are rebuilt, old goals paused, chat/memory cursors retained. Native last-death dimension/position persists in player data and is exposed through observe/poll_events.lifecycle. The listener drops old work, receives one respawn event and does not invent restored loot.
+
+Physical regression: two consecutive native deaths, same UUID, connection rebound, forced native spawn honored, normal movement after respawn, three emerald death drops with empty respawn inventory, old goal paused and death coordinates verified. 43 Java and 120 Python tests pass. Production previously dead companion respawned at (-7.5,71,7.5), health 20. Death point is minecraft:overworld (-424,68,182); the DeepSeek respawn event produced a complete in-game acknowledgement containing this location. No claim that old death drops have been recovered. Tests do not cover every bed/anchor/hardcore configuration; those use vanilla semantics.
+
+## Event and drop repair — 2026-09-12 22:35 JST
+
+Python listener repaired and restarted without restarting the world. Drop adapters generate/reuse idempotency keys, convert flat item/count into items, and attach the originating player instruction. Native drop tools are resident. Cancelled/replaced tasks are fenced; post-action scheduling re-polls instead of overwriting markers with the old snapshot. Stale job decisions are rejected and completion speech is deduplicated by originating request. Extra provider calls are serialized by executing only the first and re-deciding from its real result. 119 Python tests and native item-drop regression pass. Backup: `.minepilot-backup/event-repair-1789219893/`.
+
+Production MinePilot was killed by a zombie at 22:30:52, before listener restart. The listener now reconnects to the dead body and suppresses background body-action retries; this repair does not implement or claim respawning. The world remains running. Do not claim physical delivery of the player's sword: it was dropped on death, not handed over by this repair.
+
+## Latest runtime checkpoint — 2026-09-12 17:43 JST
+
+Production is backed up and running DeepSeek Flash with private model streaming and complete vanilla chat. See [runtime repair and acceptance](DEEPSEEK_RUNTIME_REPAIR_20260912.md). Server 25565/MCP 25766 and one persistent listener are running; isolated test servers/listeners are stopped. This provider supersedes earlier Luna/o-c1 entries. Production JAR SHA-256 is `8248033976d3f3b775b964f8d36f69dec9aeb1d3422101456351c57fd0680982`. Recovery backup: `.minepilot-backup/deepseek-deploy-20260912-1740/`. No commit or push was performed during this repair.
+
 # Continuous following and completeness audit — 2026-09-12
 
 Production was backed up and updated with the continuous-follow correction.
@@ -943,3 +969,14 @@ Start by reading `AGENTS.md`, `CODEX_GOAL_REBUILD.md`, this file, and
 backup artifacts. Continue from the first unverified physical gate; do not
 restart from the retired implementation and do not claim the long-term product
 plan from the current narrow evidence.
+
+
+## 2026-09-12 23:08 — player arrival and construction navigation
+
+See `NAVIGATION_ARRIVAL_REPAIR_20260912.md`. Player one-shot arrival finishes within
+three blocks; follow ends on scoped arrival chat or 600 stationary nearby ticks.
+Six-block native bridge and three-block native pillar now physically pass with
+exact inventory debit. Automatic routes accept up to 16 manifested expendable
+supports. 44 Java / 128 Python tests and both native navigation gates passed.
+Production backup: `/Users/weida/Documents/minecraft-ai-companion-forge/.minepilot-backup/navigation-arrival-1789222097`.
+Installed JAR: `3f81fa164d26733f80e03b8002660d80eae10f6c6a3826199d71fd9df958c1e8`.

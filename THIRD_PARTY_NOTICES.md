@@ -14,6 +14,7 @@ All destination paths below are relative to `src/main/java/dev/mcai/companion/ve
 | `core/scan/SearchGeometry.java` | `scan/SearchGeometry.java` | Nearest-first section order and distance stop bound retained; include unequal X/Z chunk offsets. |
 | `core/scan/SearchBudget.java` | `scan/SearchBudget.java` | Shared time/section budget retained; Forge 26.2 server ticking adapter. |
 | `core/scan/BlockSearch.java` | `scan/BlockSearch.java` | Incremental loaded-column search, result sorting, caps/deadline and coverage ledger retained; per-server ownership, exposed-resource predicate and cancellation. |
+| `core/act/Interaction.java` (`fireUseBlock`) | `tools/BlockInteraction.java` | Native hand-order use and consumed-action swing retained; resolved-hit execution shared by placement and workstation use, 26.2 server player adapter. Placement keeps its exact authorized hand and receipt checks. |
 | `core/tools/CraftOps.java` | `tools/CraftOps.java` | Recipe batches, ingredient selection, native menu crafting and leftover cleanup retained; 26.2 recipe display/placement APIs, MinePilot body/inventory adapters, actual output delta verification, and a bounded native log-to-planks prerequisite for one workbench. |
 | `core/tools/MenuOps.java` | `tools/MenuOps.java` | Native pickup/quick-move/drip/sweep sequences retained; 26.2 ContainerInput and body adapter. |
 | `core/tools/ContainerOps.java` | `tools/ContainerOps.java` | Slot checks and exact/native automatic transfers retained; server-side adapter, bounded public moves and result snapshots. |
@@ -37,3 +38,13 @@ at the same pinned commit. Their resident/live-target navigation behavior inform
 an independent MinePilot implementation in `NavigationFollower` and
 `NavigationToolCoordinator`. No Numen path executor or body-control source was
 copied into those classes; normal MinePilot navigation is retained.
+
+The external listener also adapts `ai/src/main/java/com/dwinovo/numen/agent/prompt/NumenPrompts.java` (ENTITY_PROMPT) into `skills/minepilot-companion/scripts/numen_prompt.py`, under LGPL-3.0-only at the same pinned revision. The prompt retains direct tool execution, resident/deferred tools and companion style; tool names, current-state attachment and server-only restrictions are adapted. The Python source and license texts are distributed with the skill.
+
+Player rendezvous completion additionally follows the live proximity check in
+`FollowCompanionTask`. Bridge edge approach and jump-then-place pillar execution
+adapt the action ordering in `MovementTraverse` and `MovementPillar` at the same
+pinned Numen revision. MinePilot retains its snapshot planner, collision checks,
+real material manifest, native item use, and server-player physics. The local
+adaptations are in `AnytimeNavigationPlanner`, `NavigationFollower`, and
+`NavigationToolCoordinator`; the upstream movement classes are not wholesale ports.

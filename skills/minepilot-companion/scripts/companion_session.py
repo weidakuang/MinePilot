@@ -15,18 +15,32 @@ import time
 import minepilot
 import codex_decisions
 import fast_commands
+from decision_context import compact_observation
 
 
 TERMINAL = {"APPROACHED", "COMPLETED", "FAILED", "CANCELLED", "REPLAN_REQUIRED"}
+
+def automatic_support_route(option):
+    """Only bounded, fully manifested expendable construction is automatic."""
+    count = option.get("supportBlocksRequired")
+    if count == 0:
+        return True
+    stock = option.get("supportMaterials", [])
+    return (isinstance(count, int) and 0 < count <= 16 and bool(stock)
+            and all(isinstance(m.get("count"), int) and m["count"] > 0
+                    and m.get("entryId") and 3 <= m.get("importance", 0) <= 5 for m in stock)
+            and sum(m["count"] for m in stock) == count)
 
 class IncompatibleMod(RuntimeError):
     pass
 
 def check_mod_tools(client):
-    present={tool["name"] for tool in client.request("tools/list").get("tools",[])}
-    missing={"observe","read_chat","navigation_status","poll_events","inventory","drop_items","reclaim_drop","inventory_events","annotate_item","turn","sense","listen","waypoint","craft","smelt","gather","find_resources","build_camp","remember_context"}-present
+    definitions=client.request("tools/list").get("tools",[])
+    present={tool["name"] for tool in definitions}
+    missing={"observe","read_chat","navigation_status","poll_events","inventory","drop_items","reclaim_drop","inventory_events","annotate_item","turn","sense","listen","waypoint","craft","smelt","gather","collect","find_resources","build_camp","remember_context"}-present
     if missing:
         raise IncompatibleMod("运行中的 MinePilot 模组版本缺少接口，请安装匹配的新版 JAR 后重启世界："+", ".join(sorted(missing)))
+    return definitions
 
 
 def observation_for_event(observation, event):
@@ -80,13 +94,15 @@ def observation_for_event(observation, event):
         historical = []
         for kind in ("navigation","mining","collection","placement","excavation","camp","gather","survival"):
             if observation.get(kind, {}).get("phase") in {"COMPLETED","PARTIAL","APPROACHED","FAILED","BLOCKED","CANCELLED"}:
-                observation.pop(kind)
+                state = observation[kind]
+                observation[kind] = {k:v for k,v in state.items() if k in {
+                    "phase", "ownsBody", "verifiedInventoryIncrease", "brokenBlocks", "wholeTreeVerified", "resource"}}
                 historical.append(kind + "_status")
         if historical: observation["historicalJobStatusTools"] = historical
     if event["type"] == "navigation_event": observation.pop("navigation", None)
     if event["type"] == "tool_result" and event.get("tool") in {"plan_collection", "plan_mining", "plan_placement", "plan_excavation"}:
         observation.pop(event["tool"].removeprefix("plan_"), None)
-    return observation
+    return compact_observation(observation)
 
 
 class SessionLoop:
@@ -104,6 +120,7 @@ class SessionLoop:
         self.pending_event = None
         self.deferred_event = None
         self.recovery_attempts = 0
+        self.blocked_objective = False
         self.journal = journal
         self.action_history = []
         self.pending_scan = None
@@ -142,6 +159,19 @@ class SessionLoop:
         self.argument_repairs = 0
         self.recent_acquisitions = []
         self.reported_acquisitions = set()
+        self.reported_requests = set()
+        self.retired_requests = set()
+        self.last_lifecycle = 0
+        self.lifecycle_pending = None
+
+    @staticmethod
+    def request_key(event):
+        import hashlib
+        request = event or {}
+        while isinstance(request.get("request"), dict): request = request["request"]
+        if request.get("type") not in {"player_chat", "initial_request"}: return None
+        source = {k:request[k] for k in ("type", "messages", "message") if k in request}
+        return hashlib.sha256(json.dumps(source,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 
     def record(self, **fields):
         decision=fields.get("decision") or {};result=(fields.get("result") or {}).get("result", {})
@@ -194,14 +224,16 @@ class SessionLoop:
                 and decision["action"] == "say" and not decision["message"]):
             reason = event.get("state", {}).get("lastEventMessage") or "没有获得完整到达的验证结果"
             decision["message"] = "这次未能到达完整目标。原因：" + reason[:384]
-        quiet = False
+        report_key = self.request_key(event)
+        quiet = (event.get("type") not in {"player_chat", "initial_request"}
+                 and report_key is not None and report_key in self.reported_requests)
         if decision.get("action")=="tool" and event.get("type") in {"tool_result","gather_event","collection_event","mining_event","placement_event","camp_event","survival_event","autonomy_event"}:
             quiet=True
         if event.get("type")=="autonomy_event" and decision.get("goal_status")!="COMPLETED" and decision.get("speech_reason") not in {"direct_player_relevance","requested_report"}:
             quiet=True
-        if event.get("type") in {"inventory_event", "inventory_review"}:
+        if event.get("type") in {"inventory_event", "inventory_review"} and not event.get("speechFirst"):
             reason = decision.get("speech_reason", "none")
-            quiet = reason not in {"player_gift_or_loan", "requested_collection", "requested_report", "direct_player_relevance"}
+            quiet = quiet or reason not in {"player_gift_or_loan", "requested_collection", "requested_report", "direct_player_relevance"}
             if event["type"] == "inventory_review" and reason != "requested_report": quiet = True
         batches = self.acquisition_context(event)
         if batches and all(e["sequence"] in self.reported_acquisitions for e in batches):
@@ -213,6 +245,19 @@ class SessionLoop:
 
     def tick(self):
         batch = self.client.poll_events(self.last_chat,self.last_system,self.last_inventory) if hasattr(self.client,"poll_events") else None
+        life = batch.get("lifecycle",{}) if batch else {}
+        if life.get("sequence",0)>self.last_lifecycle:
+            self.last_lifecycle=life["sequence"]
+            self.stop_worker()
+            self.pending_event=self.deferred_event=self.pending_scan=None
+            self.last_player_event=None
+            self.autonomy_pending=None
+            for kind in ("navigation","camp","gather","survival","mining","collection","placement","excavation"):
+                setattr(self,kind+"_origin_request",None)
+            self.authorized_request=None
+            if life.get("phase") in {"RESPAWNED","SPECTATOR"}:
+                self.lifecycle_pending={"type":"respawn_event","state":life,
+                    "message":"Your body respawned through vanilla rules. State the death dimension and coordinates once. Dropped items are not restored automatically; inspect current world before claiming recovery. Old actions have ended."}
         inventory = batch["inventoryEvents"] if batch is not None else self.client.call_tool("inventory_events", {"after_sequence":self.last_inventory,"limit":16})
         gains = inventory.get("events", [])
         if gains:
@@ -317,7 +362,7 @@ class SessionLoop:
                     self.placement_origin_request = origin
                     state = result.get("result", {})
                     self.last_placement = (state.get("requestId"),state.get("phase"),state.get("decisionId"))
-                if direct.get("tool_name")=="plan_collection" and result:
+                if direct.get("tool_name") in {"plan_collection", "collect"} and result:
                     self.collection_origin_request=origin;state=result.get("result",{});self.last_collection=(state.get("requestId"),state.get("phase"))
                 refreshed=self.client.call_tool("navigation_status",{})
                 self.last_navigation=(refreshed.get("requestId"),refreshed.get("phase"))
@@ -348,6 +393,15 @@ class SessionLoop:
                     if self.worker_event and decision["action"] == "tool":
                         allowed = codex_decisions.event_schema(self.worker_event)["properties"].get("tool_name", {}).get("enum", [])
                         if decision.get("tool_name") not in allowed: raise ValueError("Tool is not valid for this event")
+                    event_state = (self.worker_event or {}).get("state",{})
+                    kind = (self.worker_event or {}).get("type","").removesuffix("_event")
+                    if event_state.get("requestId") and kind in {"gather","collection","placement","mining","camp","survival","excavation"}:
+                        if event_state["requestId"] in self.retired_requests: return self.tick()
+                        if hasattr(self.client,"initialize"):
+                            fresh=self.client.call_tool(kind+"_status",{})
+                            if any(fresh.get(k)!=event_state.get(k) for k in ("requestId","phase","revision")):
+                                self.record(event="stale_event_discarded", kind=kind, requestId=event_state["requestId"])
+                                return self.tick()
                     decision = codex_decisions.bind_plan_decision(decision, self.worker_event or {})
                     if self.worker_event and self.worker_event.get("type") == "navigation_event":
                         expected = self.worker_event["state"]
@@ -368,13 +422,22 @@ class SessionLoop:
                             and decision["action"] in {"tool", "navigate"}):
                         self.last_player_event = self.worker_event.get("request")
                     decision = self.quiet_inventory_decision(decision)
-                    if decision["action"] == "tool" and decision.get("tool_name") in {"gather","build_camp","craft","smelt","eat","place_block","plan_collection","plan_excavation","plan_placement"} or decision["action"] == "navigate":
+                    if hasattr(self.client,"initialize") and decision.get("action") not in {"say","wait","organize"}:
+                        live = self.client.call_tool("observe",{})
+                        if live.get("health",1)<=0:
+                            # Death cannot be repaired by repeatedly issuing body tools.
+                            direct = (self.worker_event or {}).get("type") in {"player_chat","initial_request"}
+                            decision={"action":"say" if direct else "wait", "message":"我现在已经死亡，暂时无法移动或丢东西，需要先复活。" if direct else ""}
+                            self.pending_event=self.deferred_event=None
+                    starts_body_task = (decision["action"] == "tool" and decision.get("tool_name") in {"gather","build_camp","craft","smelt","eat","place_block","collect","plan_collection","plan_excavation","plan_placement"} or decision["action"] == "navigate")
+                    if starts_body_task:
                         # A chosen replacement action follows the newest conversation;
                         # ordinary speech does not stop or steal the body job.
                         if hasattr(self.client,"initialize") and (self.worker_event or {}).get("type") in {"player_chat","initial_request"}:
                             self.deferred_event = None
                             ended = cancel_body_work(self.client,"Player chose a new task")
                             for kind,state in ended.items():
+                                if state.get("requestId"): self.retired_requests.add(state["requestId"])
                                 mark=(state.get("requestId"),state.get("phase"))
                                 if kind=="placement": mark+=(state.get("decisionId"),)
                                 setattr(self,"last_"+kind,mark)
@@ -382,16 +445,53 @@ class SessionLoop:
                         origin = (self.worker_event or {}).get("request") or self.last_player_event or {}
                         intent = origin.get("message") or " / ".join(m.get("text", "") for m in origin.get("messages", []))
                         if intent: decision = {**decision, "player_intent": intent[:512]}
+                    if decision.get("tool_name") == "drop_items":
+                        import hashlib
+                        args = json.loads(decision.get("arguments_json") or "{}")
+                        origin_key = self.request_key(self.worker_event) or self.request_key(self.request_for_action())
+                        request = self.worker_event or self.request_for_action() or {}
+                        while isinstance(request.get("request"),dict): request=request["request"]
+                        if origin_key:
+                            instruction = request.get("message") or " / ".join(m.get("text","") for m in request.get("messages",[]))
+                            if instruction:
+                                args.setdefault("reason","player_request")
+                                args.setdefault("player_request",instruction[:512])
+                        if origin_key and not args.get("request_key"):
+                            args["request_key"] = "drop-" + hashlib.sha256((origin_key+json.dumps(args,sort_keys=True)).encode()).hexdigest()
+                        decision = {**decision,"arguments_json":json.dumps(args)}
                     tool_result = codex_decisions.apply(self.client, decision)
+                    report_key = self.request_key(self.worker_event)
+                    if report_key and decision.get("action") == "say" and decision.get("message") and (self.worker_event or {}).get("state",{}).get("phase") == "COMPLETED":
+                        self.reported_requests.add(report_key)
+
                     self.record(event=(self.worker_event or {}).get("type"), decision=decision,
                                 result=tool_result, timing=self.last_decision_timing)
                     result_state = (tool_result or {}).get("result", {})
+                    # Consume synchronous terminal results once, via tool_result.
+                    if result_state.get("requestId") and result_state.get("phase") in {"COMPLETED","BLOCKED","CANCELLED"}:
+                        names = {"place_block":"placement", "collect":"collection", "gather":"gather"}
+                        kind = names.get(decision.get("tool_name"))
+                        if kind:
+                            mark=(result_state["requestId"],result_state["phase"])
+                            if kind=="placement": mark+=(result_state.get("decisionId"),)
+                            setattr(self,"last_"+kind,mark)
+
                     goal_decision = decision
+                    if starts_body_task and (self.worker_event or {}).get("type") in {"player_chat","initial_request"}:
+                        request = self.worker_event
+                        goal = request.get("message") or " / ".join(row.get("text","") for row in request.get("messages",[]))
+                        if goal:
+                            # Bind replacement work to the player's actual new
+                            # request. A model-authored objective cannot silently
+                            # append a previously abandoned task to it.
+                            goal_decision = {**decision, "objective":goal[:512], "goal_status":
+                                "BLOCKED" if result_state.get("phase") in {"BLOCKED","FAILED"} or result_state.get("status") in {"BLOCKED","TOOL_ERROR"} else "ACTIVE"}
                     if decision.get("goal_status") == "COMPLETED" and (result_state.get("phase") in {"EXECUTING","BLOCKED","FAILED"} or result_state.get("status") in {"BLOCKED","PARTIAL","TOOL_ERROR"}):
-                        goal_decision = {**decision, "goal_status":"KEEP"}
+                        if goal_decision is decision: goal_decision = {**decision, "goal_status":"KEEP"}
                     self.remember_goal(goal_decision)
                     if result_state.get("phase") in {"EXECUTING","COMPLETED"} or result_state.get("success") is True:
                         self.recovery_attempts = 0
+                        self.blocked_objective = False
                     if decision["action"] == "tool" and decision.get("tool_name") in {"build_camp", "resume_camp", "gather", "smelt", "eat"}:
                         kind = "camp" if decision["tool_name"] in {"build_camp","resume_camp"} else "gather" if decision["tool_name"] == "gather" else "survival"
                         setattr(self, kind + "_origin_request", self.request_for_action())
@@ -406,7 +506,7 @@ class SessionLoop:
                     if decision["action"] == "tool" and decision.get("tool_name") in {"cancel_placement","pause_placement","resume_placement","resolve_placement"} and tool_result:
                         result=tool_result.get("result",{})
                         self.last_placement=(result.get("requestId"),result.get("phase"),result.get("decisionId"))
-                    if decision["action"] == "tool" and decision.get("tool_name") == "choose_collection":
+                    if decision["action"] == "tool" and decision.get("tool_name") in {"collect", "choose_collection"}:
                         self.collection_origin_request = self.request_for_action()
                     if decision["action"] == "tool" and decision.get("tool_name") in {"cancel_collection","pause_collection","resume_collection"} and tool_result:
                         result=tool_result.get("result",{})
@@ -430,7 +530,7 @@ class SessionLoop:
                         elif name in {"plan_excavation","survey_mining"} and phase in {"CAPTURING","PLANNING","ANALYZING"}:
                             self.pending_event = None
                             tool_result = None
-                        elif name in {"build_camp","resume_camp","gather","smelt","eat","choose_excavation","resume_excavation","choose_collection","resume_collection","choose_mining","resume_mining","choose_placement","place_block","resume_placement","resolve_placement"} and phase == "EXECUTING" or name in {"cancel_camp","cancel_gather","cancel_survival","pause_excavation","cancel_excavation","pause_collection","cancel_collection","pause_mining","cancel_mining","pause_placement","cancel_placement"} and phase in {"PAUSED","CANCELLED"}:
+                        elif name in {"build_camp","resume_camp","gather","smelt","eat","choose_excavation","resume_excavation","collect","choose_collection","resume_collection","choose_mining","resume_mining","choose_placement","place_block","resume_placement","resolve_placement"} and phase == "EXECUTING" or name in {"cancel_camp","cancel_gather","cancel_survival","pause_excavation","cancel_excavation","pause_collection","cancel_collection","pause_mining","cancel_mining","pause_placement","cancel_placement"} and phase in {"PAUSED","CANCELLED"}:
                             # The accepted job proceeds in the game; its terminal event
                             # or fresh chat is the next reason to ask the model.
                             self.query_turns = 0
@@ -468,10 +568,23 @@ class SessionLoop:
                         self.last_player_event = None
                 except minepilot.ToolError as failure:
                     self.recover_failure(failure, decision)
-                except (ValueError, OSError, minepilot.ClientError):
-                    self.client.call_tool("say", {"message": "这次操作没有成功，我会继续接收消息。"})
+                except (ValueError, OSError, minepilot.ClientError) as failure:
+                    self.record(event="controller_error", reason=type(failure).__name__+": "+str(failure)[:256], requestType=(self.worker_event or {}).get("type"))
+                    if (self.worker_event or {}).get("type") in {"player_chat","initial_request"}:
+                        self.client.call_tool("say", {"message": "刚才这条指令没有执行成功，我已记录具体错误。"})
             if code:
-                self.client.call_tool("say", {"message": "这次模型连接没有成功，我仍在这里接收聊天，请稍后再试。"})
+                failed_event = self.worker_event or {}
+                self.record(event="model_error", reason=getattr(finished,"error","Model response failed"),
+                            requestType=failed_event.get("type"), timing=self.last_decision_timing)
+                # No action has been dispatched for a failed model response.
+                # Retry once, retaining the current request, without repeating work.
+                if not failed_event.get("modelRetry"):
+                    self.pending_event = {**failed_event, "modelRetry":True}
+                else:
+                    self.client.call_tool("say", {"message": "这次回复没有成功，我仍在这里接收聊天。"})
+            # The snapshot above predates actions/cancellations. Re-poll before
+            # scheduling events; otherwise old markers undo the cancellation fence.
+            return self.tick()
         if (not messages and self.worker is None and marker == (self.authorized_request, "COMPLETED")
                 and (self.navigation_origin_request or {}).get("directControl")):
             # The server has already reached the exact short-control destination.
@@ -479,11 +592,10 @@ class SessionLoop:
             self.last_navigation = marker
         if not messages and self.worker is None and marker == (self.authorized_request, "PLAN_READY"):
             options = status.get("routeOptions", [])
-            if len(options) == 1:
-                option = options[0]
+            for option in sorted(options, key=lambda o:(o.get("supportBlocksRequired", 0)>0, o.get("estimatedSeconds", float("inf")))):
                 pace = self.requested_pace if self.requested_pace != "auto" else option.get("suggestedPace")
                 if (option.get("feasibleNow") and option.get("estimatedHealthLost") == 0
-                        and option.get("supportBlocksRequired") == 0 and all(h == "water traversal" for h in option.get("hazards", []))
+                        and automatic_support_route(option) and all(h == "water traversal" for h in option.get("hazards", []))
                         and pace in option.get("supportedPaces", []) and not status.get("partialDestination")):
                     self.client.call_tool("choose_navigation", {"request_id": marker[0], "option_id": option["optionId"], "pace": pace})
                     self.last_navigation = marker
@@ -508,11 +620,16 @@ class SessionLoop:
                 self.pending_event={"type":"operation_failed","reason":str(failure)}
                 self.pending_scan=None
         if messages:
+            self.blocked_objective = False
             self.query_turns = 0
             self.argument_repairs = 0
             self.recovery_attempts = 0
             # Chat may interrupt inference about a completed child. Preserve that
             # result for after the reply; only a chosen new objective replaces it.
+            if self.worker is not None and (self.worker_event or {}).get("speechFirst"):
+                queued = {e["sequence"]:e for e in self.worker_event.get("events",[])+self.inventory_pending}
+                self.inventory_pending = list(queued.values())[-32:]
+                self.inventory_overflow |= len(queued)>32
             interrupted = self.pending_event or (self.worker_event if self.worker is not None else None)
             if interrupted and interrupted.get("type") in {"tool_result","gather_event","camp_event","survival_event","placement_event","collection_event","mining_event","operation_failed"}:
                 self.deferred_event = {k:v for k,v in interrupted.items() if k not in {"observation","receivedSystemChat","conversation"}}
@@ -527,6 +644,15 @@ class SessionLoop:
             event = {"type": "initial_request", "message": self.initial_message}
             self.initial_message = None
             self.last_player_event = event
+        elif self.worker is None and self.lifecycle_pending:
+            event,self.lifecycle_pending=self.lifecycle_pending,None
+        elif self.worker is None and self.inventory_pending:
+            from pickup_notifications import summarize
+            event = {"type":"inventory_event", "speechFirst":True, "events":self.inventory_pending,
+                     "pickupNotice":summarize(self.inventory_pending,self.inventory_overflow),
+                     "historyTruncated":self.inventory_overflow}
+            self.inventory_pending=[]
+            self.inventory_overflow=False
         elif self.worker is None and self.pending_event:
             event, self.pending_event = self.pending_event, None
         elif self.worker is None and self.deferred_event:
@@ -565,15 +691,13 @@ class SessionLoop:
             event = {"type":"mining_event", "state":mining, "request":self.mining_origin_request, "recentAcquisitions":self.recent_acquisitions}
             self.last_mining = mining_marker
             self.query_turns = 0
-        elif self.worker is None and self.autonomy_pending and autonomy.get("idle") and not autonomy.get("paused") and autonomy.get("onlinePlayers",0)>0:
+        elif (self.worker is None and self.autonomy_pending and autonomy.get("idle") and not autonomy.get("paused")
+                and autonomy.get("onlinePlayers",0)>0 and not self.blocked_objective and marker[1] in {"IDLE","COMPLETED","APPROACHED","FAILED","CANCELLED"}
+                and not any(state.get("ownsBody") for state in (camp,gather,survival,excavation,placement,collection,mining))):
             event = {"type":"autonomy_event", "state":self.autonomy_pending, "message":"Act as an active survival companion, respecting the player's current goal and remembered preferences."}
             self.autonomy_pending = None
             self.query_turns = 0
             self.last_player_event = event
-        elif self.worker is None and self.inventory_pending and not camp.get("ownsBody") and not gather.get("ownsBody") and not survival.get("ownsBody"):
-            event = {"type":"inventory_event", "events":self.inventory_pending,"historyTruncated":self.inventory_overflow}
-            self.inventory_pending = []
-            self.inventory_overflow = False
         elif self.worker is None and self.inventory_review and not camp.get("ownsBody") and not gather.get("ownsBody") and not survival.get("ownsBody") and not excavation.get("ownsBody") and not placement.get("ownsBody") and not collection.get("ownsBody") and mining.get("phase") not in {"EXECUTING","PAUSED"} and marker[1] in {"IDLE","COMPLETED","APPROACHED","FAILED","CANCELLED"}:
             event = {"type":"inventory_review"}
             self.inventory_review = False
@@ -588,6 +712,11 @@ class SessionLoop:
         if collection_marker[1] not in {"COMPLETED","BLOCKED","CANCELLED"}: self.last_collection = collection_marker
         if mining_marker[1] not in {"COMPLETED","BLOCKED","CANCELLED"}: self.last_mining = mining_marker
         if event is not None:
+            event_state=event.get("state",{})
+            if event_state.get("requestId") in self.retired_requests or event_state.get("phase")=="CANCELLED":
+                return
+            if event.get("state", {}).get("phase") in {"BLOCKED", "FAILED"}:
+                self.blocked_objective = True
             if event["type"]=="navigation_event" and "DROPPED_ITEM_UNAVAILABLE" in event.get("state",{}).get("lastEventMessage",""):
                 event["recentAcquisitions"] = self.recent_acquisitions
                 matched = self.acquisition_context(event)
@@ -599,6 +728,13 @@ class SessionLoop:
             self.stop_worker()
             if hasattr(self.client, "initialize"):
                 observation = observation_for_event(self.client.call_tool("observe", {}), event)
+                if event.get("speechFirst"):
+                    observation={k:v for k,v in observation.items() if k in {"agentName","health","conversationMemory","lifecycle"}}
+                if event.get("state",{}).get("phase") in {"BLOCKED","FAILED"}:
+                    goal = observation.get("conversationMemory",{}).get("goal",{})
+                    if goal.get("objective") and goal.get("status")=="ACTIVE":
+                        observation["conversationMemory"] = self.client.call_tool("remember_context", {
+                            "objective":goal["objective"], "status":"BLOCKED", "autonomous":goal.get("autonomous",False)})
                 event = {**event, "observation": observation}
                 if event["type"] in {"player_chat", "initial_request", "continue_player_request"}:
                     now_tick = observation.get("world", {}).get("gameTick")
@@ -695,10 +831,10 @@ def serve(args, directory):
                     url, token = minepilot.load_connection()
                     client = minepilot.McpClient(url, token)
                     client.initialize()
-                    check_mod_tools(client)
+                    definitions = check_mod_tools(client)
+                    model = codex_decisions.model_for(args, directory)
+                    if hasattr(model,"configure_tools"): model.configure_tools(definitions)
                     observation = client.call_tool("observe", {})
-                    if not observation.get("online"):
-                        raise RuntimeError("MinePilot body is not alive and online")
                     if not observation.get("externalControlAvailable"):
                         raise RuntimeError("The in-mod model already owns control")
                     loop = SessionLoop(client, lambda e, s: launch_worker(args, directory, e, s), args.message,
@@ -726,14 +862,22 @@ def serve(args, directory):
                     loop.initial_message = json.loads(inbox.read_text())["message"]
                     inbox.unlink()
                 loop.tick()
+                model = codex_decisions.model_for(args, directory)
                 write_state(directory, status="LISTENING", model=args.model,
+                            modelProvider=args.model_provider.get("type", "codex"),
+                            providerFingerprint=args.provider_fingerprint,
+                            contextWindow=getattr(model, "context_window", None),
+                            modelStreaming=getattr(model, "stream", True),
+                            playerStreaming=False,
+                            modelUsage=getattr(model, "last_usage", None),
+                            modelError=getattr(model, "last_error", None),
                             requestedServiceTier=args.service_tier,
-                            serviceTier=codex_decisions.model_for(args, directory).actual_service_tier,
-                            reasoningEffort=codex_decisions.model_for(args, directory).reasoning_effort,
+                            serviceTier=model.actual_service_tier,
+                            reasoningEffort=model.reasoning_effort,
                             profile=str(args.profile), workerActive=loop.worker is not None,
                             lastChatSequence=loop.last_chat, lastDecisionTiming=loop.last_decision_timing,
                             decisionTimings=loop.decision_timings,
-                            modelConnectionReady=codex_decisions.model_for(args, directory).ready.is_set())
+                            modelConnectionReady=model.ready.is_set())
             except IncompatibleMod as failure:
                 incompatibility = str(failure)
                 break
@@ -748,6 +892,8 @@ def serve(args, directory):
         if loop is not None:
             loop.stop_worker()
             cancel_body_work(loop.client)
+            try: loop.client.call_tool("companion_mode", {"active":False})
+            except minepilot.ClientError: pass
         codex_decisions.close()
         write_state(directory, status="INCOMPATIBLE_MOD" if incompatibility else "STOPPED", model=args.model, reason=incompatibility)
         guard.close()
@@ -758,14 +904,20 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("command", choices=["start", "serve", "status", "stop"])
     p.add_argument("--profile", type=Path, default=minepilot.config_path())
-    p.add_argument("--model", default="gpt-5.6-luna")
+    p.add_argument("--model", help="Override the profile model (default: gpt-5.6-luna)")
     p.add_argument("--service-tier", choices=["default", "fast"], help="Override the profile serviceTier for this listener")
     p.add_argument("--codex")
     p.add_argument("--message", help="Optional initial game request; subsequent requests come from game chat")
     args = p.parse_args()
     args.profile = args.profile.expanduser().resolve()
-    args.service_tier = args.service_tier or json.loads(args.profile.read_text()).get("serviceTier", "default")
+    profile = json.loads(args.profile.read_text())
+    args.model = args.model or profile.get("model", "gpt-5.6-luna")
+    args.model_provider = profile.get("modelProvider", {"type": "codex"})
+    args.provider_fingerprint = hashlib.sha256(json.dumps(args.model_provider, sort_keys=True).encode()).hexdigest()
+    args.service_tier = args.service_tier or profile.get("serviceTier", "default")
     if args.service_tier not in {"default", "fast"}: raise ValueError("Profile serviceTier must be default or fast")
+    if args.model_provider.get("type", "codex") == "openai_compatible" and args.service_tier != "default":
+        raise ValueError("Codex Fast service tier is not supported by a compatible endpoint")
     directory = paths(args.profile)
     if args.command == "serve":
         return serve(args, directory)
@@ -784,7 +936,8 @@ def main():
                 else:
                     if state.get("profile") != str(args.profile):
                         raise RuntimeError("This endpoint already has a listener for a different world profile; stop it before switching worlds")
-                    if state.get("requestedServiceTier", "default") != args.service_tier or state.get("model") != args.model:
+                    if (state.get("requestedServiceTier", "default") != args.service_tier or state.get("model") != args.model
+                            or state.get("providerFingerprint", hashlib.sha256(b'{"type": "codex"}').hexdigest()) != args.provider_fingerprint):
                         raise RuntimeError("Listener uses different model/speed settings; stop it before restarting with the requested settings")
                     if args.message:
                         temp = directory / "inbox.tmp"

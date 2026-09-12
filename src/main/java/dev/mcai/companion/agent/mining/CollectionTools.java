@@ -8,7 +8,7 @@ import net.minecraft.world.phys.Vec3;
 
 /** Identical collection interface for the internal model and authenticated external controller. */
 public final class CollectionTools {
-    public static final Set<String> NAMES=Set.of("inspect_tree","tree_farm","plan_collection","choose_collection","collection_status","pause_collection","resume_collection","cancel_collection");
+    public static final Set<String> NAMES=Set.of("inspect_tree","tree_farm","collect","plan_collection","choose_collection","collection_status","pause_collection","resume_collection","cancel_collection");
     public static JsonArray definitions(){
         var result=new JsonArray();var inspect=new JsonObject();coords(inspect,"","A currently sensed trunk block");
         result.add(tool("inspect_tree","Inspect a connected mature-tree candidate, species, exact logs, farm/machine/construction evidence and uncertainty. Read only; never infers player ownership from looks.",inspect,"x","y","z"));
@@ -23,6 +23,7 @@ public final class CollectionTools {
         plan.add("whole_tree",field("boolean","Default true for source tree. Harvest every observed connected trunk block of the chosen tree, regardless of count. Completion requires all approved logs broken and collected. False explicitly requests only a quantity."));
         plan.add("allow_managed_grove",field("boolean","Default false. True allows evaluated mature trees in manual groves; never permits automated machinery or sapling destruction."));
         result.add(tool("plan_collection","Preview bounded continuous wood/ore collection with selected inventory-tool durability, target list, source alternatives, break-time estimate and movement budget. For wood source any offers loose logs or mature trees; source tree enforces felling. Normal movement, mining and pickup; no containers, crafting, scaffolding, access excavation or torches.",plan,"resource"));
+        result.add(tool("collect","Start authorized local resource collection in one call: select a matching source and suitable inventory tool, approach, break and collect real drops. Uses the same arguments and scope as plan_collection. A specific tree is retained; no substitute tree. Native checks and recovery require no separate model approval. Use plan_collection only for an explicit preview or comparison.",plan.deepCopy(),"resource"));
         var choose=new JsonObject();choose.add("request_id",field("string","Current collection request UUID"));choose.add("option_id",field("string","Exact returned optionId"));
         result.add(tool("choose_collection","Approve one source/target/cost policy and start its continuous normal-player collection. No per-block model commands needed; chat and item notes remain usable.",choose,"request_id","option_id"));
         result.add(tool("collection_status","Read job progress, physical coordinates, route, pickup receipts and actual matching inventory increase. BLOCKED reports partial progress; never means success.",new JsonObject()));
@@ -33,7 +34,25 @@ public final class CollectionTools {
         return switch(name){
             case "inspect_tree" -> inspect(r,position(a,""));
             case "tree_farm" -> farm(r,a);
-            case "plan_collection" -> r.collection().plan(resource(string(a,"resource","")),string(a,"output_item",""),string(a,"species","any"),string(a,"source","any"),coordinates(a,"")?new Vec3(integer(a,"x",0),integer(a,"y",0),integer(a,"z",0)):r.player().position(),integer(a,"radius",5),integer(a,"count",4),coordinates(a,"tree_")?position(a,"tree_"):null,bool(a,"allow_managed_grove",false),bool(a,"whole_tree",string(a,"source","any").equals("tree")));
+            case "collect", "plan_collection" -> {
+                BlockPos seed=coordinates(a,"tree_")?position(a,"tree_"):null;
+                if(seed!=null && !r.perception.observableBlock(seed))throw new IllegalArgumentException("Target must be in the loaded observation range");
+                // Crosshair hits can be leaves or ground beside the trunk. Resolve
+                // the closest loaded trunk locally, without another model round trip.
+                if(name.equals("collect") && seed!=null && TreeSurvey.species(TreeSurvey.id(r.player().level().getBlockState(seed))).isEmpty()) {
+                    final BlockPos focus=seed;
+                    var trunks=new ArrayList<BlockPos>();
+                    for(int dx=-3;dx<=3;dx++)for(int dy=-3;dy<=3;dy++)for(int dz=-3;dz<=3;dz++) {
+                        var at=focus.offset(dx,dy,dz);
+                        if(r.perception.observableBlock(at) && !TreeSurvey.species(TreeSurvey.id(r.player().level().getBlockState(at))).isEmpty())trunks.add(at);
+                    }
+                    if(!trunks.isEmpty())seed=trunks.stream().min(Comparator.comparingDouble(focus::distSqr)).orElseThrow();
+                }
+                var plan=r.collection().plan(resource(string(a,"resource","")),string(a,"output_item",""),string(a,"species","any"),string(a,"source","any"),coordinates(a,"")?new Vec3(integer(a,"x",0),integer(a,"y",0),integer(a,"z",0)):r.player().position(),integer(a,"radius",name.equals("collect")?10:5),integer(a,"count",4),seed,bool(a,"allow_managed_grove",false),bool(a,"whole_tree",string(a,"source","any").equals("tree")));
+                if(name.equals("collect") && plan.get("phase").getAsString().equals("PLAN_READY"))
+                    yield r.collection().choose(UUID.fromString(plan.get("requestId").getAsString()),plan.getAsJsonArray("options").get(0).getAsJsonObject().get("optionId").getAsString());
+                yield plan;
+            }
             case "choose_collection" -> r.collection().choose(id(a),string(a,"option_id",""));
             case "collection_status" -> r.collection().status();
             case "pause_collection" -> r.collection().interrupt(id(a),true);

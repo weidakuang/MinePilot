@@ -341,18 +341,17 @@ public final class NavigationBackendGameTests {
                 targetMoved = true;
             }
             if (status.phase() == Phase.REPLAN_REQUIRED) {
-                if (scenario == 2 || scenario == 3) {
-                    helper.assertTrue(disturbanceApplied, "Terrain fixture was not applied");
-                    helper.assertTrue(status.worldRevision() > changedRevision,
-                            "Observed corridor change did not invalidate its revision");
-                    helper.assertTrue(current.distanceTo(start) < 0.5,
-                            "Body did not stop before the unsafe next segment: start="+start+", current="+current+", velocity="+body.getDeltaMovement());
-                    if (stableTicks < 20) {
-                        return;
-                    }
-                    navigation.cancel(requestId, "Unsafe corridor correctly rejected");
-                    advance();
+                if (scenario == 2) {
+                    helper.fail("A safe alternate corridor should be repaired inside the native task: " + status.lastEventMessage());
                     return;
+                }
+                if (scenario == 3) {
+                    helper.assertTrue(disturbanceApplied && status.worldRevision() > changedRevision,
+                            "New hazardous fluid was not detected");
+                    helper.assertTrue(current.distanceTo(start) < .5, "Body crossed into the new hazard");
+                    if (stableTicks < 20) return;
+                    navigation.cancel(requestId, "New hazardous fluid correctly stops the route");
+                    advance(); return;
                 }
                 helper.assertTrue(scenario == 4 && targetMoved,
                         "Unexpected replan in scenario " + scenario + ": " + status.lastEventMessage());
@@ -373,7 +372,7 @@ public final class NavigationBackendGameTests {
                 advance();
             } else if (status.phase() == Phase.COMPLETED) {
                 helper.assertTrue(scenario != 10, "An unreachable elevated target was falsely completed");
-                helper.assertTrue(stableTicks >= 20, "Completion preceded 20 physically stable ticks");
+                helper.assertTrue(scenario == 4 || stableTicks >= 20, "Coordinate completion preceded 20 physically stable ticks");
                 var destination = status.destination();
                 helper.assertTrue(current.distanceTo(new Vec3(destination.x(), destination.y(),
                         destination.z())) <= destination.acceptanceRadius(),
@@ -387,6 +386,10 @@ public final class NavigationBackendGameTests {
                 } else if (scenario == 4) {
                     helper.assertTrue(targetMoved && current.distanceTo(start) > 5.0,
                             "Moving target was not physically pursued to its updated position");
+                } else if (scenario == 2 || scenario == 3) {
+                    helper.assertTrue(disturbanceApplied && status.worldRevision() > changedRevision,
+                            "Changed corridor was not detected and repaired against fresh terrain");
+                    helper.assertTrue(travelled < 18, "Native repair took a disproportionate detour");
                 }
                 advance();
             }

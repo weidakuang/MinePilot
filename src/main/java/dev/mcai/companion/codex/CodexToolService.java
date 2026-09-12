@@ -113,7 +113,7 @@ final class CodexToolService {
 
         JsonObject request = new JsonObject();
         request.add("replace_request_id", string("Optional exact current request UUID to replace after validation, without an extra model turn."));
-        request.add("continuous_follow", booleanSchema("Maintain a player/entity following goal until cancelled; false means arrive once."));
+        request.add("continuous_follow", booleanSchema("Follow continuously; player follow ends on their arrival chat or 30 seconds stationary nearby. False means arrive once within 3 blocks of a player and stop, then look at them."));
         request.add("target_kind", enumString(
                 "coordinates", "player", "entity", "dropped_item", "waypoint",
                 "world_spawn", "respawn_point", "death_point"));
@@ -230,7 +230,7 @@ final class CodexToolService {
         chatArgs.addProperty("after_system_sequence",optionalLong(args,"after_system",0));
         var result=new JsonObject();result.add("chat",readChat(chatArgs));
         result.add("inventoryEvents",runtime.player().inventoryLedger.events(optionalLong(args,"after_inventory",0),16));
-        result.add("navigation",navigationStatus());result.add("excavation",runtime.excavation().status());result.add("miningSurvey",runtime.miningSurvey.status());result.add("mining",runtime.mining().status());result.add("collection",runtime.collection().status());result.add("autonomy",runtime.companionEvents.snapshot());result.add("breath",runtime.breath.status());result.add("camp",runtime.camp().status());result.add("gather",runtime.gather().status());result.add("survival",runtime.survival().status());result.add("placement",runtime.placement().status());return result;
+        result.add("navigation",navigationStatus());result.add("excavation",runtime.excavation().status());result.add("miningSurvey",runtime.miningSurvey.status());result.add("mining",runtime.mining().status());result.add("collection",runtime.collection().status());result.add("autonomy",runtime.companionEvents.snapshot());result.add("lifecycle",runtime.lifecycle());result.add("breath",runtime.breath.status());result.add("camp",runtime.camp().status());result.add("gather",runtime.gather().status());result.add("survival",runtime.survival().status());result.add("placement",runtime.placement().status());return result;
     }
 
     private JsonObject observe() {
@@ -238,7 +238,7 @@ final class CodexToolService {
         JsonObject result = bodyState(player);
         result.addProperty("online", player.isAlive() && player.connection != null);
         result.addProperty("externalControlAvailable", runtime.externalControlAvailable());
-        result.add("excavation",runtime.excavation().status());result.add("miningSurvey",runtime.miningSurvey.status());result.add("mining",runtime.mining().status());result.add("collection",runtime.collection().status());result.add("autonomy",runtime.companionEvents.snapshot());result.add("breath",runtime.breath.status());result.add("camp",runtime.camp().status());result.add("gather",runtime.gather().status());result.add("survival",runtime.survival().status());result.add("placement",runtime.placement().status());
+        result.add("excavation",runtime.excavation().status());result.add("miningSurvey",runtime.miningSurvey.status());result.add("mining",runtime.mining().status());result.add("collection",runtime.collection().status());result.add("autonomy",runtime.companionEvents.snapshot());result.add("lifecycle",runtime.lifecycle());result.add("breath",runtime.breath.status());result.add("camp",runtime.camp().status());result.add("gather",runtime.gather().status());result.add("survival",runtime.survival().status());result.add("placement",runtime.placement().status());
         result.add("world",runtime.perception.summary());result.add("playerFocus",runtime.playerFocus.snapshot());
         result.add("inventorySummary",runtime.player().inventoryLedger.inventory());
         result.add("workstationMemory",runtime.workstations.snapshot());

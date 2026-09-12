@@ -43,7 +43,7 @@ public final class MinecraftAiCompanion {
         net.minecraftforge.event.entity.item.ItemTossEvent.BUS.addListener(event -> {
                 dev.mcai.companion.agent.knowledge.DropProvenance.mark(event.getEntity(),"player_toss",event.getPlayer()); });
         net.minecraftforge.event.entity.living.LivingDropsEvent.BUS.addListener(event -> {
-            for(var item:event.getDrops())dev.mcai.companion.agent.knowledge.DropProvenance.mark(item,"death_drop",event.getSource().getEntity());
+            for(var item:event.getDrops())dev.mcai.companion.agent.knowledge.DropProvenance.markDeath(item,event.getEntity(),event.getSource());
         });
         LOGGER.info("MinePilot {} navigation rebuild initialized", BuildInfo.VERSION);
     }

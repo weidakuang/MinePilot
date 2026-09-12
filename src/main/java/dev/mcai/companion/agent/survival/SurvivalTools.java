@@ -96,8 +96,7 @@ public final class SurvivalTools {
         var direction = hit.getLocation().subtract(eyes);
         p.setYRot((float)Math.toDegrees(Math.atan2(-direction.x,direction.z))); p.setYHeadRot(p.getYRot());
         p.setXRot((float)-Math.toDegrees(Math.atan2(direction.y,Math.hypot(direction.x,direction.z)))); p.stopControlling();
-        var result = p.gameMode.useItemOn(p,p.level(),p.getMainHandItem(),InteractionHand.MAIN_HAND,hit);
-        p.swing(InteractionHand.MAIN_HAND);
+        var result = dev.mcai.companion.vendor.numen.tools.BlockInteraction.use(p,hit,InteractionHand.MAIN_HAND,InteractionHand.OFF_HAND);
         if (!result.consumesAction()) throw new IllegalStateException("Native block interaction did not consume an action");
         var r = AgentRuntime.active(p.level().getServer()); if(r!=null) r.workstations.placed(pos);
     }

@@ -85,8 +85,11 @@ public final class TreeSurvey {
         if(rows)evidence.add("Three trunks on compatible ground in a regularly spaced row (planting clue, not proof of ownership)");
         boolean grove=declared || saplings>=2 || rows;
         String classification=machine?"automated_tree_farm_candidate":danger?"inhabited_tree":construction?"constructed_wood_candidate":ambiguousRoots?"connected_tree_cluster":!complete?"incomplete_observation":!canopy || !grounded || logs.size()<2?"unconfirmed_wood":grove?"managed_grove_candidate":"mature_tree_candidate";
+        // Partial harvesting needs observed natural canopy, not proof of an entire tree.
+        // Ground may already have been mined; occluded neighbours do not forbid reachable logs.
+        // Explicit farms, construction and living fixtures remain protected.
         return new Survey(species,List.copyOf(logs),classification,List.copyOf(evidence),complete,
-                memoryOk && complete && canopy && grounded && logs.size()>=2 && !machine && !danger && !construction && !ambiguousRoots,roots);
+                memoryOk && canopy && !logs.isEmpty() && !machine && !danger && !construction,roots);
     }
     public static boolean contains(JsonObject f,BlockPos p){return p.getX()>=f.get("min_x").getAsInt() && p.getX()<=f.get("max_x").getAsInt() && p.getY()>=f.get("min_y").getAsInt() && p.getY()<=f.get("max_y").getAsInt() && p.getZ()>=f.get("min_z").getAsInt() && p.getZ()<=f.get("max_z").getAsInt();}
     public static boolean isMachine(BlockState s){String id=id(s);return s.is(Blocks.PISTON) || s.is(Blocks.STICKY_PISTON) || s.is(Blocks.MOVING_PISTON) || s.is(Blocks.PISTON_HEAD) || s.is(Blocks.OBSERVER) || s.is(Blocks.DISPENSER) || s.is(Blocks.DROPPER) || s.is(Blocks.HOPPER) || s.is(Blocks.TNT) || s.is(Blocks.REDSTONE_WIRE) || s.is(Blocks.REPEATER) || s.is(Blocks.COMPARATOR) || s.is(Blocks.SLIME_BLOCK) || s.is(Blocks.HONEY_BLOCK) || id.contains("redstone");}

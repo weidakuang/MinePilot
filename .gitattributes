@@ -9,3 +9,6 @@ src/generated/**/*.json text eol=lf
 src/main/java/dev/mcai/companion/vendor/numen/task/RecoveryLadder.java whitespace=-blank-at-eol
 src/main/resources/META-INF/licenses/numen/COPYING whitespace=-blank-at-eof
 src/main/resources/META-INF/licenses/numen/LICENSE whitespace=-blank-at-eof
+
+skills/minepilot-companion/licenses/numen/COPYING whitespace=-blank-at-eof
+skills/minepilot-companion/licenses/numen/LICENSE whitespace=-blank-at-eof

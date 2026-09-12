@@ -14,6 +14,21 @@ public final class DropProvenance {
         data.putString("minepilot.source",category);if(actor==null){data.remove("minepilot.actorId");data.remove("minepilot.actor");}
         if(actor!=null){data.putString("minepilot.actorId",actor.getUUID().toString());data.putString("minepilot.actor",InventoryLedger.bounded(actor.getName().getString(),128));}
     }
+    /** Keep the deceased owner and the killer distinct, including merged origins. */
+    public static void markDeath(ItemEntity item,Entity deceased,net.minecraft.world.damagesource.DamageSource damage) {
+        var rows=segments(item,item.getItem().getCount());
+        var cause=new JsonObject();cause.addProperty("category","death_drop");
+        cause.addProperty("actorId",deceased.getUUID().toString());cause.addProperty("actorName",InventoryLedger.bounded(deceased.getName().getString(),128));
+        cause.addProperty("sourceEntityType",net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(deceased.getType()).toString());
+        cause.addProperty("damageType",damage.getMsgId());
+        if(damage.getEntity()!=null){cause.addProperty("killerId",damage.getEntity().getUUID().toString());cause.addProperty("killerName",InventoryLedger.bounded(damage.getEntity().getName().getString(),128));}
+        var transfer=cause.deepCopy();transfer.remove("category");transfer.addProperty("kind","death_drop");
+        for(var value:rows){var source=value.getAsJsonObject().getAsJsonObject("source");
+            if(!source.has("originCategory"))source.addProperty("originCategory",source.has("category")?source.get("category").getAsString():"unknown");
+            cause.entrySet().forEach(e->source.add(e.getKey(),e.getValue().deepCopy()));source.add("lastTransfer",transfer.deepCopy());
+        }
+        markCause(item,cause);save(item,rows);
+    }
     private static JsonObject legacySource(ItemEntity item,Player agent) {
         var data=item.getPersistentData();String category=data.getString("minepilot.source").orElse("unknown");
         String actor=data.getString("minepilot.actorId").orElse("");
@@ -84,7 +99,7 @@ public final class DropProvenance {
     public static JsonObject source(ItemEntity item,Player agent){return summarize(segments(item,item.getItem().getCount()),agent);}
     /** Default model observations summarize long histories; full carried segments have a separate paged tool. */
     public static JsonObject compact(JsonObject source,int limit){
-        var out=new JsonObject();for(String key:java.util.List.of("category","discardOwner","discardRequest","originCategory","actorId","actorName","requestId","block","dimension","x","y","z","originEntityId","sourceEntityType","confidence","mergedStackLineageKnown","allOriginsKnown","lineageCount","lastTransfer","transferHistoryTruncated"))if(source.has(key))out.add(key,source.get(key).deepCopy());
+        var out=new JsonObject();for(String key:java.util.List.of("category","discardOwner","discardRequest","originCategory","actorId","actorName","requestId","block","dimension","x","y","z","originEntityId","sourceEntityType","confidence","mergedStackLineageKnown","allOriginsKnown","lineageCount","lastTransfer","damageType","killerId","killerName","transferHistoryTruncated"))if(source.has(key))out.add(key,source.get(key).deepCopy());
         if(source.has("lineage")){var all=source.getAsJsonArray("lineage");var rows=new com.google.gson.JsonArray();for(int i=0;i<Math.min(limit,all.size());i++){var row=all.get(i).getAsJsonObject();var copy=new JsonObject();copy.add("count",row.get("count"));copy.add("source",compact(row.getAsJsonObject("source"),0));rows.add(copy);}out.add("lineage",rows);out.addProperty("lineageSegments",all.size());out.addProperty("lineageDetailsTruncated",rows.size()<all.size());}
         return out;
     }

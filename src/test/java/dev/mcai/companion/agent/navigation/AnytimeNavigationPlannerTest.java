@@ -24,6 +24,24 @@ final class AnytimeNavigationPlannerTest {
     private static final Cell SOLID = new Cell(true, false, false, false, false, false, 0.0);
 
     @Test
+    void compositeSearchFindsAReachableStanceBehindAnUnreachableNearestChoice() {
+        for(int direction:new int[]{-1,1}) {
+            Bounds bounds=new Bounds(-8,0,-8,8,5,8);var cells=fill(bounds,AIR);
+            for(int x=-8;x<=8;x++)for(int z=-8;z<=8;z++)cells.put(new GridPosition(x,0,z),SOLID);
+            for(int x=1;x<=3;x++)for(int y=1;y<=4;y++)for(int z=-1;z<=1;z++)cells.put(new GridPosition(direction*x,y,z),SOLID);
+            var inaccessible=destination(direction*2+.5,1,.5);
+            var reachable=destination(direction*6+.5,1,4.5);
+            var world=snapshot(bounds,new GridPosition(0,1,0),inaccessible,0,cells);
+            var result=planner().planAny(UUID.randomUUID(),world,java.util.List.of(inaccessible,reachable));
+            assertEquals(reachable,result.destination());
+            var option=result.options().getFirst();var end=option.steps().getLast();
+            assertEquals(reachable.x(),end.x(),.5);assertEquals(reachable.z(),end.z(),.5);
+            assertEquals(0,option.supportBlocksRequired());assertEquals(0,option.estimatedHealthLost());
+            assertTrue(option.steps().stream().noneMatch(step->cells.get(new GridPosition((int)Math.floor(step.x()),(int)Math.floor(step.y()),(int)Math.floor(step.z()))).equals(SOLID)));
+        }
+    }
+
+    @Test
     void denseSnapshotRemainsDetachedFromItsMutableCapture() {
         Bounds bounds=new Bounds(-400,50,100,-350,75,140);var cells=fill(bounds,AIR);
         var snapshot=snapshot(bounds,new GridPosition(-375,60,120),destination(-360.5,60,120.5),0,cells);

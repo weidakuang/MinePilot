@@ -48,6 +48,38 @@ public final class AnytimeNavigationPlanner {
         finally { OCCUPANCY.remove(); }
     }
 
+    /** One search over alternative working stances, following Numen's composite-goal flow. */
+    public NavigationPlan planAny(UUID requestId, NavigationWorldSnapshot snapshot,
+                                  List<NavigationPlan.ResolvedDestination> destinations) {
+        if(destinations.isEmpty() || destinations.size()>128)throw new IllegalArgumentException("Expected 1..128 working stances");
+        var goals=destinations.stream().map(AnytimeNavigationPlanner::goalFor).toList();
+        for(var destination:destinations)if(!destination.dimension().equals(snapshot.dimension()))throw new IllegalArgumentException("Working stances must share a dimension");
+        var first=goals.getFirst();var composite=new Goal(first.position(),first.x(),first.y(),first.z(),first.acceptanceRadius(),goals);
+        long deadline=System.nanoTime()+config.planningBudgetMillis()*1_000_000L;
+        OCCUPANCY.set(new HashMap<>());
+        try {
+            SearchResult result=null;NavigationPlan.ResolvedDestination chosen=null;
+            for(int i=0;i<goals.size() && !expired(deadline);i++) {
+                var direct=directWalk(snapshot,goals.get(i));
+                if(direct!=null && (result==null || direct.transitions().stream().mapToDouble(Transition::distance).sum()<result.transitions().stream().mapToDouble(Transition::distance).sum())) {
+                    result=direct;chosen=destinations.get(i);
+                }
+            }
+            if(result==null) {
+                var diagnostics=new SearchDiagnostics(snapshot.start());
+                long walkingDeadline=Math.min(deadline,System.nanoTime()+config.planningBudgetMillis()*1_000_000L/2);
+                result=search(snapshot,composite,Policy.SAFEST,walkingDeadline,diagnostics,false);
+                if(result==null)result=search(snapshot,composite,Policy.SAFEST,deadline,diagnostics,true);
+                if(result==null)throw new NoRouteException("No reachable working stance within the bounded composite search; this does not prove any individual resource is invalid");
+                var end=result.transitions().isEmpty()?snapshot.start():result.transitions().getLast().to();
+                for(int i=0;i<goals.size();i++)if(reached(snapshot,end,goals.get(i)) || end.equals(goals.get(i).position())) {chosen=destinations.get(i);break;}
+                if(chosen==null)throw new NoRouteException("Composite search ended outside all working stances");
+            }
+            var resolved=new NavigationWorldSnapshot(snapshot.worldRevision(),snapshot.observedGameTick(),snapshot.dimension(),snapshot.bounds(),snapshot.start(),snapshot.exactStart(),chosen,snapshot.resources(),snapshot.cells());
+            return new NavigationPlan(requestId,snapshot.worldRevision(),Instant.now(),chosen,List.of(toOption(0,result,resolved,Policy.SAFEST)));
+        } finally {OCCUPANCY.remove();}
+    }
+
     private NavigationPlan planSnapshot(UUID requestId, NavigationWorldSnapshot snapshot, boolean allowPartial) {
         Objects.requireNonNull(requestId, "requestId");
         Objects.requireNonNull(snapshot, "snapshot");
@@ -137,7 +169,7 @@ public final class AnytimeNavigationPlanner {
         Map<SearchState, Double> best = new HashMap<>();
         SearchState start = new SearchState(snapshot.start(), 0, 0);
         open.add(new SearchNode(start, null, null, 0.0,
-                heuristic(start.position(), goal.position(), policy), 0.0));
+                heuristic(start.position(), goal, policy), 0.0));
         best.put(start, 0.0);
         int expanded = 0;
 
@@ -154,7 +186,7 @@ public final class AnytimeNavigationPlanner {
                 return reconstruct(current);
             }
             if (reached(snapshot, current.state().position(), goal)
-                    || current.state().position().equals(goal.position())) {
+                    || goalCell(current.state().position(),goal)) {
                 if (current.previous() == null) {
                     // A cell center can be inside the goal while the actual body is outside.
                     // Physically approach that center instead of returning an empty route.
@@ -176,7 +208,8 @@ public final class AnytimeNavigationPlanner {
             }
 
             for (Transition transition : transitions(
-                    snapshot, current.state().position(), current.state().supportBlocksUsed(), includeGaps)) {
+                    snapshot, current.state().position(), current.state().supportBlocksUsed(), includeGaps,
+                    current.transition() != null && current.transition().action() == RouteOption.Action.PLACE_SUPPORT)) {
                 if (transition.action() == RouteOption.Action.GAP_JUMP && !snapshot.resources().canSprint()) continue;
                 int nextSupport = current.state().supportBlocksUsed() + transition.supportBlocks();
                 double nextDamage = current.predictedDamage() + transition.expectedDamage();
@@ -194,7 +227,7 @@ public final class AnytimeNavigationPlanner {
                     continue;
                 }
                 best.put(nextState, nextCost);
-                double estimate = heuristic(transition.to(), goal.position(), policy);
+                double estimate = heuristic(transition.to(), goal, policy);
                 open.add(new SearchNode(
                         nextState,
                         current,
@@ -248,10 +281,23 @@ public final class AnytimeNavigationPlanner {
             NavigationWorldSnapshot snapshot,
             GridPosition from,
             int supportBlocksUsed,
-            boolean includeGaps
+            boolean includeGaps,
+            boolean standingOnPlannedSupport
     ) {
         List<Transition> result = new ArrayList<>(24);
         Cell fromCell = snapshot.cell(from);
+        // Numen MovementPillar flow: clear headroom, jump, place underfoot.
+        // A previous support step is a real dependency of this route, not an
+        // assumed block elsewhere in the immutable world snapshot.
+        if (supportBlocksUsed < snapshot.resources().supportBlocks()
+                && !fromCell.water() && !fromCell.lava() && !fromCell.climbable()
+                && fromCell.passable() && !fromCell.damaging()
+                && (standingOnPlannedSupport || canOccupy(snapshot, from, true))
+                && Math.abs(snapshot.feetY(from)-from.y())<.01
+                && bodySpacePassable(snapshot, from.offset(0,1,0))
+                && !snapshot.cell(from.offset(0,2,0)).water()) {
+            addTransition(snapshot,result,from,from.offset(0,1,0),RouteOption.Action.PLACE_SUPPORT,false);
+        }
         if (fromCell.climbable() || snapshot.cell(from.offset(0, -1, 0)).climbable()) {
             for (int dy : new int[]{1, -1}) {
                 GridPosition next = from.offset(0, dy, 0);
@@ -322,7 +368,7 @@ public final class AnytimeNavigationPlanner {
                 }
             }
 
-            if (!diagonal && canBridge(snapshot, from, same, supportBlocksUsed)) {
+            if (!diagonal && canBridge(snapshot, from, same, supportBlocksUsed, standingOnPlannedSupport)) {
                 addTransition(snapshot, result, from, same,
                         RouteOption.Action.PLACE_SUPPORT, diagonal);
             }
@@ -384,7 +430,8 @@ public final class AnytimeNavigationPlanner {
             NavigationWorldSnapshot snapshot,
             GridPosition from,
             GridPosition feet,
-            int supportBlocksUsed
+            int supportBlocksUsed,
+            boolean standingOnPlannedSupport
     ) {
         GridPosition head = feet.offset(0, 1, 0);
         GridPosition floor = feet.offset(0, -1, 0);
@@ -402,7 +449,7 @@ public final class AnytimeNavigationPlanner {
                 && !feetCell.water() && !feetCell.lava() && !headCell.lava()
                 && !feetCell.damaging() && !headCell.damaging()
                 && !floorCell.collision() && !floorCell.water() && !floorCell.lava()
-                && anchorCell.collision() && !anchorCell.unstable();
+                && (standingOnPlannedSupport || anchorCell.collision() && !anchorCell.unstable());
     }
 
     private static void addTransition(
@@ -682,7 +729,10 @@ public final class AnytimeNavigationPlanner {
     }
 
     private static Goal effectiveGoal(NavigationWorldSnapshot snapshot) {
-        NavigationPlan.ResolvedDestination destination = snapshot.destination();
+        return goalFor(snapshot.destination());
+    }
+
+    private static Goal goalFor(NavigationPlan.ResolvedDestination destination) {
         double x = destination.x();
         double y = destination.y();
         double z = destination.z();
@@ -699,6 +749,7 @@ public final class AnytimeNavigationPlanner {
     }
 
     private static boolean reached(NavigationWorldSnapshot snapshot, GridPosition position, Goal goal) {
+        if(!goal.members().isEmpty())return goal.members().stream().anyMatch(member->reached(snapshot,position,member));
         // A cell exactly on the radius leaves no room for physical braking error.
         // Choose an interior endpoint; actual-body verification keeps the full
         // requested radius and never reports an outside position as arrived.
@@ -708,10 +759,20 @@ public final class AnytimeNavigationPlanner {
     }
 
     private static boolean reached(double x, double y, double z, Goal goal) {
+        if(!goal.members().isEmpty())return goal.members().stream().anyMatch(member->reached(x,y,z,member));
         double dx = x - goal.x();
         double dy = y - goal.y();
         double dz = z - goal.z();
         return dx * dx + dy * dy + dz * dz <= goal.acceptanceRadius() * goal.acceptanceRadius();
+    }
+
+    private static boolean goalCell(GridPosition position,Goal goal) {
+        return goal.members().isEmpty()?position.equals(goal.position()):goal.members().stream().anyMatch(member->position.equals(member.position()));
+    }
+
+    private static double heuristic(GridPosition from, Goal goal, Policy policy) {
+        if(!goal.members().isEmpty())return goal.members().stream().mapToDouble(member->heuristic(from,member,policy)).min().orElseThrow();
+        return heuristic(from,goal.position(),policy);
     }
 
     private static double heuristic(GridPosition from, GridPosition goal, Policy policy) {
@@ -782,8 +843,10 @@ public final class AnytimeNavigationPlanner {
             double x,
             double y,
             double z,
-            double acceptanceRadius
+            double acceptanceRadius,
+            List<Goal> members
     ) {
+        Goal(GridPosition position,double x,double y,double z,double radius){this(position,x,y,z,radius,List.of());}
     }
 
     private enum Policy {

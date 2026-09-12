@@ -70,7 +70,8 @@ class LatencyTests(unittest.TestCase):
         observation={'collection':{'phase':'COMPLETED','requestId':'old'},'mining':{'phase':'COMPLETED'},
             'navigation':{'phase':'EXECUTING','requestId':'active'},'inventory':[]}
         current=observation_for_event(observation,{'type':'player_chat'})
-        self.assertNotIn('collection',current);self.assertNotIn('mining',current)
+        self.assertEqual({'phase':'COMPLETED'},current['collection'])
+        self.assertEqual({'phase':'COMPLETED'},current['mining'])
         self.assertEqual('active',current['navigation']['requestId'])
         self.assertIn('collection_status',current['historicalJobStatusTools'])
         self.assertEqual([],current['inventory'])

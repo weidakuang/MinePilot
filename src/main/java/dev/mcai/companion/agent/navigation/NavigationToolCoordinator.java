@@ -99,6 +99,7 @@ public final class NavigationToolCoordinator implements AutoCloseable {
         var runtime=dev.mcai.companion.agent.AgentRuntime.active(server);
         if(runtime!=null && (runtime.excavation()!=null && runtime.excavation().ownsBody() || runtime.placement().ownsBody() || runtime.mining().ownsBody() || runtime.collection().ownsBody()))throw new ProtocolException("Cancel mining/collection before starting navigation");
         ActiveNavigation current = requireActive(requestId);
+        if (current.phase == Phase.COMPLETED && current.intent.target().kind() == NavigationTarget.Kind.PLAYER) return;
         if (current.phase != Phase.ACKNOWLEDGED
                 && current.phase != Phase.REPLAN_REQUIRED) {
             throw new ProtocolException(
@@ -144,6 +145,7 @@ public final class NavigationToolCoordinator implements AutoCloseable {
     ) {
         requireServerThread();
         ActiveNavigation current = requireActive(requestId);
+        if (current.phase == Phase.COMPLETED && current.intent.target().kind() == NavigationTarget.Kind.PLAYER) return true;
         if (current.phase != Phase.PLAN_READY || current.plan == null) {
             throw new ProtocolException("choose_navigation requires NAVIGATION_PLAN_READY");
         }
@@ -205,11 +207,12 @@ public final class NavigationToolCoordinator implements AutoCloseable {
 
     public void beforePhysicsTick() {
         requireServerThread();
-        follower.beforePhysicsTick();
+        if (!finishPlayerProximity()) follower.beforePhysicsTick();
     }
 
     public void tick() {
         requireServerThread();
+        if (finishPlayerProximity()) return;
         advanceCapture();
         Runnable completion;
         while ((completion = serverCompletions.poll()) != null) {
@@ -217,6 +220,69 @@ public final class NavigationToolCoordinator implements AutoCloseable {
         }
         updateDynamicTarget();
         follower.tick();
+    }
+
+    /** Numen's live closeEnough check belongs before waypoint/retarget work. */
+    private boolean finishPlayerProximity() {
+        var current = active;
+        if (current == null || current.phase.terminal()
+                || current.phase == Phase.ACKNOWLEDGEMENT_REQUIRED || current.phase == Phase.ACKNOWLEDGED
+                || current.intent.target().kind() != NavigationTarget.Kind.PLAYER) return false;
+        try {
+            var target = targetResolver.resolve(server, player, current.intent.target());
+            if (!target.dimension().equals(player.level().dimension().identifier().toString())) return false;
+            var position = new net.minecraft.world.phys.Vec3(target.x(), target.y(), target.z());
+            if (!current.intent.continuousFollow()) {
+                if (player.position().distanceToSqr(position) > 9) return false;
+                finishAtPlayer(target, "Arrived within three blocks of the player; movement finished.");
+                return true;
+            }
+            // Position, not gaze changes, renews the stationary timer. Only
+            // finish after we have caught up, never while stranded far away.
+            if (current.stationaryAnchor == null || position.distanceToSqr(current.stationaryAnchor) > .0625) {
+                current.stationaryAnchor = position;
+                current.stationarySince = player.tickCount;
+            }
+            if (player.tickCount - current.stationarySince >= 600
+                    && player.position().distanceToSqr(position) <= 9) {
+                finishAtPlayer(target, "Follow finished: player stayed here for 30 seconds.");
+                return true;
+            }
+        } catch (NavigationTargetResolver.UnresolvedTargetException ignored) {
+            // The normal target-loss handler reports the authoritative failure.
+        }
+        return false;
+    }
+
+    /** Explicit arrival chat ends only this speaker's active follow. */
+    public boolean finishFollow(String speaker) {
+        requireServerThread();
+        if (active == null || active.phase.terminal() || !active.intent.continuousFollow()
+                || active.intent.target().kind() != NavigationTarget.Kind.PLAYER) return false;
+        try {
+            var target = targetResolver.resolve(server, player, active.intent.target());
+            var human = server.getPlayerList().getPlayer(UUID.fromString(target.targetIdentity()));
+            if (human == null || !human.getGameProfile().name().equalsIgnoreCase(speaker)) return false;
+            finishAtPlayer(target, "Follow finished: followed player said we have arrived.");
+            return true;
+        } catch (NavigationTargetResolver.UnresolvedTargetException ignored) { return false; }
+    }
+
+    private void finishAtPlayer(NavigationPlan.ResolvedDestination target, String reason) {
+        var current = active;
+        current.suppressFollowerEvents = true;
+        try {
+            if (current.planningFuture != null) current.planningFuture.cancel(true);
+            current.capture = null;
+            follower.cancel(reason);
+            player.stopControlling();
+        } finally { current.suppressFollowerEvents = false; }
+        current.destination = target;
+        current.phase = Phase.COMPLETED;
+        var runtime = dev.mcai.companion.agent.AgentRuntime.active(server);
+        if (runtime != null) runtime.attendToPlayer(UUID.fromString(target.targetIdentity()));
+        emit(new NavigationEvent(NavigationEvent.Type.NAVIGATION_COMPLETED, current.intent.requestId(),
+                reason, observedState(), List.of("say", "request_navigation")));
     }
 
     public Status status() {
@@ -321,6 +387,28 @@ public final class NavigationToolCoordinator implements AutoCloseable {
         planNavigation(active.intent.requestId());
     }
 
+    private boolean repairWithoutModel(NavigationEvent event) {
+        if (active == null || active.selectedOption == null || active.plan == null
+                || event.type() != NavigationEvent.Type.NAVIGATION_DECISION_REQUIRED
+                || event.message().startsWith("SUPPORT_MATERIAL_CHANGED")
+                || event.message().equals("A hazardous block or fluid occupies the next path segment")) return false;
+        var prior = active.plan.options().stream().filter(option -> option.optionId().equals(active.selectedOption)).findFirst().orElse(null);
+        if (prior == null || prior.supportBlocksRequired() > 16 || prior.estimatedHealthLost() != 0) return false;
+        // Numen's progress-bounded recovery principle: movement, not jumping or
+        // rotating in place, renews the repair allowance. A hard limit also
+        // bounds loops that move without ever reaching the destination.
+        var here = player.position();
+        if (active.repairAnchor == null || here.distanceToSqr(active.repairAnchor) >= 4) {
+            active.repairAnchor = here;
+            active.repairsWithoutProgress = 0;
+        }
+        if (active.repairsWithoutProgress >= 3 || active.totalRepairs >= 48) return false;
+        active.repairsWithoutProgress++;
+        active.totalRepairs++;
+        repairFollow();
+        return true;
+    }
+
     private void completePlanning(
             UUID requestId,
             NavigationPlan plan,
@@ -335,7 +423,8 @@ public final class NavigationToolCoordinator implements AutoCloseable {
         if (failure != null) {
             Throwable cause = unwrap(failure);
             boolean retryFollow=active.intent.continuousFollow()
-                    && cause instanceof AnytimeNavigationPlanner.NoRouteException;
+                    && cause instanceof AnytimeNavigationPlanner.NoRouteException
+                    && ++active.noRouteFailures <= 3;
             active.phase = retryFollow ? Phase.FOLLOWING : Phase.FAILED;
             if(retryFollow) {
                 active.lastDynamicCheckTick=player.tickCount+80;
@@ -364,14 +453,16 @@ public final class NavigationToolCoordinator implements AutoCloseable {
             return;
         }
         active.waitingForPath=false;
+        active.noRouteFailures=0;
         active.plan = plan;
         active.phase = Phase.PLAN_READY;
         if(active.followRepair && active.selectedOption!=null && plan.partialDestination().isEmpty()) {
             var pace=active.selectedPace;
-            var option=plan.options().stream().filter(o->o.feasibleNow() && o.estimatedHealthLost()==0 && o.supportBlocksRequired()==0
+            var option=plan.options().stream().filter(o->o.feasibleNow() && o.estimatedHealthLost()==0 && o.supportBlocksRequired()<=16
                     && o.hazards().isEmpty() && o.supportedPaces().contains(pace))
-                    .min(java.util.Comparator.comparingDouble(RouteOption::estimatedSeconds)).orElse(plan.options().getFirst());
-            if(option.feasibleNow() && option.estimatedHealthLost()==0 && option.supportBlocksRequired()==0
+                    .min(java.util.Comparator.comparingInt((RouteOption o) -> o.supportBlocksRequired()>0 ? 1 : 0)
+                            .thenComparingDouble(RouteOption::estimatedSeconds)).orElse(plan.options().getFirst());
+            if(option.feasibleNow() && option.estimatedHealthLost()==0 && option.supportBlocksRequired()<=16
                     && option.hazards().isEmpty() && option.supportedPaces().contains(pace)) {
                 active.followRepair=false;
                 chooseNavigation(requestId,option.optionId(),pace);
@@ -404,14 +495,8 @@ public final class NavigationToolCoordinator implements AutoCloseable {
                 event=new NavigationEvent(NavigationEvent.Type.NAVIGATION_FAILED,event.requestId(),failure.getMessage(),event.observedState(),List.of("say","request_navigation"));
             }
         }
-        if(active!=null && active.intent.requestId().equals(event.requestId()) && active.destination!=null && active.destination.dynamic()
-                && event.type()==NavigationEvent.Type.NAVIGATION_DECISION_REQUIRED
-                && event.message().startsWith("The moving destination left")) {repairFollow();return;}
+        if(active!=null && active.intent.requestId().equals(event.requestId()) && repairWithoutModel(event)) return;
         if(active!=null && active.intent.requestId().equals(event.requestId()) && active.intent.continuousFollow()) {
-            if(event.type()==NavigationEvent.Type.NAVIGATION_DECISION_REQUIRED
-                    && event.message().startsWith("The moving destination left")) {
-                repairFollow();return;
-            }
             if(event.type()==NavigationEvent.Type.NAVIGATION_COMPLETED && partialDestination().isEmpty()) {
                 event=new NavigationEvent(NavigationEvent.Type.NAVIGATION_FOLLOWING,event.requestId(),
                         "Inside follow radius; waiting for target movement. Follow remains active until cancelled.",
@@ -582,8 +667,13 @@ public final class NavigationToolCoordinator implements AutoCloseable {
         private String selectedOption;
         private TravelPace selectedPace;
         private int lastDynamicCheckTick;
+        private net.minecraft.world.phys.Vec3 stationaryAnchor;
+        private int stationarySince;
+        private int noRouteFailures;
         private boolean followRepair;
         private boolean suppressFollowerEvents;
+        private net.minecraft.world.phys.Vec3 repairAnchor;
+        private int repairsWithoutProgress, totalRepairs;
 
         private ActiveNavigation(NavigationIntent intent, Phase phase) {
             this.intent = intent;

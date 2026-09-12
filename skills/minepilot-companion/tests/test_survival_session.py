@@ -28,7 +28,7 @@ class SurvivalSessionTests(unittest.TestCase):
         import codex_decisions
         class Game(Client):
             def call_tool(self,name,args):
-                if name=='plan_collection': return {'requestId':'bench','phase':'BLOCKED','reason':'Outside local radius'}
+                if name=='collect': return {'requestId':'bench','phase':'BLOCKED','reason':'Outside local radius'}
                 return super().call_tool(name,args)
         game=Game();loop,events,workers=self.setup_loop(game)
         game.messages=[{'sequence':1,'text':'收回工作台','player':'Alice'}]
@@ -141,7 +141,7 @@ class SurvivalSessionTests(unittest.TestCase):
         current = observation_for_event({'conversationMemory': memory,
             'camp': {'phase': 'BLOCKED', 'requestId': 'old', 'receipts': ['large history']},
             'gather': {'phase': 'EXECUTING', 'requestId': 'current'}}, {'type': 'player_chat'})
-        self.assertNotIn('camp', current)
+        self.assertEqual({'phase':'BLOCKED'}, current['camp'])
         self.assertEqual('current', current['gather']['requestId'])
         self.assertEqual(memory, current['conversationMemory'])
 

@@ -2,7 +2,7 @@
 
 MinePilot is a Forge server-side survival companion with a native player body.
 Players join with an unmodified Minecraft Java 26.2 client. Dialogue uses the
-persistent local Codex listener; no client mod, UI or streaming reply is required.
+persistent server-side model listener; no client mod, UI or streaming reply is required.
 
 ## Current status
 
@@ -13,8 +13,9 @@ camp blueprint that can resume after interruption. Adapted Numen components use
 our existing movement, mining, placement and inventory/provenance systems.
 
 Commands such as stopping and placing or reclaiming a nearby crafting table have
-local execution paths. Other language requests use gpt-5.6-luna with low reasoning
-and the requested Fast service tier. Model reply time is measured separately from
+local execution paths. Other language requests use the world profile model. The current local play server
+uses DeepSeek `deepseek-flash` with native tools and private SSE; complete messages
+are delivered to vanilla chat. Codex transport remains available as a profile option. Model reply time is measured separately from
 native action time; a sub-two-second language response is not guaranteed.
 
 Use `/minepilot_mark` or chat `标记这里` to share the server ray from your crosshair.

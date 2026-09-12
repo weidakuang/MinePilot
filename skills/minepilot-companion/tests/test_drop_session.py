@@ -9,7 +9,7 @@ from test_inventory_session import InventoryClient
 from test_session import Worker
 
 class DropSessionTests(unittest.TestCase):
-    def test_inventory_event_can_drop_without_speech_or_cancelling_movement(self):
+    def test_first_pickup_decision_cannot_drop_or_cancel_movement(self):
         client=InventoryClient();workers=[]
         def launch(event,state):
             w=Worker();workers.append(w);return w
@@ -22,7 +22,7 @@ class DropSessionTests(unittest.TestCase):
         workers[-1].returncode=0
         workers[-1].decision=lambda:{'action':'tool','tool_name':'drop_items','arguments_json':json.dumps(args),'message':'Unnecessary announcement','speech_reason':'none'}
         loop.tick()
-        self.assertIn(('drop_items',args),client.calls)
+        self.assertNotIn(('drop_items',args),client.calls)
         self.assertFalse(any(name in {'say','cancel_navigation','request_navigation'} for name,_ in client.calls))
         self.assertEqual('walk',client.state['requestId'])
 

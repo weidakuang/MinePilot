@@ -282,7 +282,7 @@ public final class PlacementCoordinator implements AutoCloseable {
         }
         if(pendingFootprint.keySet().stream().anyMatch(reservedAir::contains)){block("COMPOUND_CONFLICTS_WITH_RESERVED_AIR",c.pos);return;}
         beforeCount=count(c.entry);var before=p.level().getBlockState(c.pos);
-        p.swing(c.hand);p.gameMode.useItemOn(p,p.level(),p.getItemInHand(c.hand),c.hand,current.hit());
+        dev.mcai.companion.vendor.numen.tools.BlockInteraction.use(p,current.hit(),c.hand);
         if(!p.level().getBlockState(c.pos).equals(before) && count(c.entry)<beforeCount)r.workstations.placed(c.pos);
         var row=new JsonObject();row.addProperty("operation","place");row.addProperty("tick",tick());row.add("target",PlacementTools.xyz(c.pos));row.addProperty("before",before.toString());row.addProperty("after",p.level().getBlockState(c.pos).toString());row.addProperty("entryId",c.entry);row.addProperty("consumed",beforeCount-count(c.entry));receipts.add(row);
         if(beforeCount-count(c.entry)!=1){block("NATIVE_USE_DID_NOT_CONSUME_ONE_PLACEMENT_ITEM",c.pos);return;}

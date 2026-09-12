@@ -27,6 +27,12 @@ public record NavigationIntent(
         Objects.requireNonNull(preferredPace, "preferredPace");
         Objects.requireNonNull(playerIntent, "playerIntent");
         Objects.requireNonNull(requestedBy, "requestedBy");
+        // Player rendezvous is a one-shot proximity goal, independent of a
+        // model-supplied precise radius. Entity/coordinate goals retain theirs.
+        if (!continuousFollow && target instanceof NavigationTarget.Named named
+                && named.kind() == NavigationTarget.Kind.PLAYER) {
+            target = new NavigationTarget.Named(named.kind(), named.name(), 3.0, named.arrivalHeading());
+        }
         if (continuousFollow && target.kind()!=NavigationTarget.Kind.PLAYER && target.kind()!=NavigationTarget.Kind.ENTITY) {
             throw new IllegalArgumentException("Continuous follow requires a player or living-entity target");
         }

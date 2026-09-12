@@ -47,6 +47,7 @@ public final class CollectionCoordinator implements AutoCloseable {
     private NavigationEvent routeEvent;
     private Vec3 routeStart;
     private String routeFailure="",lastDrop="";
+    private final Set<String> deferredDrops=new HashSet<>();
     private int dropRepairs,dropSettleSince;
     private record Option(String id,String source,List<BlockPos> blocks,List<String> drops,JsonObject description,Map<BlockPos,BlockState> states,ItemStack tool,int slot) {}
 
@@ -91,7 +92,7 @@ thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsB
         if(resource.equals("minecraft:air") || resource.equals("minecraft:cave_air") || resource.equals("minecraft:void_air"))throw new IllegalArgumentException("Air is omitted from collection");
         this.allowGrove=allowGrove;this.resource=resource;this.outputItem=outputItem;this.species=species;this.center=center;this.radius=radius;this.desired=count;
         this.origin=body.position();this.dimension=body.level().dimension().identifier().toString();this.request=UUID.randomUUID();plannedTick=tick();
-        mineRequests.clear();approvedDropIds.clear();drop=null;target=null;
+        mineRequests.clear();approvedDropIds.clear();deferredDrops.clear();drop=null;target=null;
         rejectedTrees.asList().clear();phase="PLAN_READY";reason="";step="";options.clear();done.clear();inaccessible.clear();breaks.asList().clear();receipts.asList().clear();received=0;distance=0;selected=null;route=null;chosenRoute=null;
         var foundDrops=new ArrayList<String>();
         if(!source.equals("tree") && !source.equals("blocks") && !wholeTree){
@@ -128,6 +129,7 @@ thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsB
                     if(!survey.harvestable() || survey.classification().equals("managed_grove_candidate") && !allowGrove){
                         var rejected=survey.json();rejected.add("seed",TreeSurvey.position(seed));if(rejectedTrees.size()<8)rejectedTrees.add(rejected);reason="Observed trunk candidates could not yet be approved; see rejectedTrees for exact reasons. This is not proof of no trees.";continue;
                     }
+                    if(wholeTree && (!survey.bounded() || survey.roots().isEmpty() || survey.classification().equals("connected_tree_cluster"))) {reason="Whole-tree extent remains unknown; partial log collection is available.";continue;}
                     if(wholeTree && survey.logs().stream().anyMatch(p->!inside(Vec3.atCenterOf(p)))) {reason="Whole tree extends outside fixed task sphere; replan its center/radius. No tree was felled.";continue;}
                     var blocks=survey.logs().stream().filter(p->inside(Vec3.atCenterOf(p))).sorted(Comparator.comparingInt((BlockPos p)->p.getY()).thenComparingDouble(p->p.distToCenterSqr(body.position()))).limit(wholeTree?128:count).toList();
                     if(!blocks.isEmpty())addOption("tree-"+(options.size()+1),"tree",blocks,List.of(),survey.json());
@@ -224,7 +226,7 @@ thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsB
             if(verifiedCount()>=desired && (!wholeTree || done.containsAll(selected.blocks))){stopChildren();phase="COMPLETED";reason=wholeTree?"Every approved trunk block was physically broken and all matching log pickups verified":"Matching pickup receipts and current inventory increase meet the requested count; this is NOT proof of felling a whole tree";return;}
             if(step.equals("BREAK")){
                 var state=runtime.mining().status();String childPhase=state.get("phase").getAsString();
-                if(childPhase.equals("COMPLETED")){done.add(target);inaccessible.clear();breaks.add(state);for(var row:state.getAsJsonArray("emittedDrops"))approvedDropIds.add(row.getAsJsonObject().get("entityId").getAsString());step="WAIT";waitUntil=tick()+15;}
+                if(childPhase.equals("COMPLETED")){done.add(target);inaccessible.clear();deferredDrops.clear();breaks.add(state);for(var row:state.getAsJsonArray("emittedDrops"))approvedDropIds.add(row.getAsJsonObject().get("entityId").getAsString());step="WAIT";waitUntil=tick()+5;}
                 else if(childPhase.equals("BLOCKED") || childPhase.equals("CANCELLED")){block("Block operation stopped: "+state.get("reason").getAsString());return;}else return;
             }
             if(step.equals("SETTLING_DROP")){if(tick()<waitUntil)return;step="SELECT";selectNext();return;}
@@ -236,7 +238,12 @@ thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsB
                 follower.tick();
                 if(routeEvent!=null){var e=routeEvent;routeEvent=null;if(e.type()==NavigationEvent.Type.NAVIGATION_COMPLETED){step="WAIT";waitUntil=tick()+12;}
                     else if(Set.of(NavigationEvent.Type.NAVIGATION_FAILED,NavigationEvent.Type.NAVIGATION_DECISION_REQUIRED,NavigationEvent.Type.NAVIGATION_CANCELLED).contains(e.type())){
-                        if(drop==null && target!=null){inaccessible.add(target);target=null;step="SELECT";}
+                        if(drop!=null && drop.isAlive() && dropRepairs++<3) {
+                            // Drops keep moving after spawn. Refresh their working
+                            // stances inside this job instead of returning to the model.
+                            drop=null;step="SELECT";
+                        }
+                        else if(drop==null && target!=null){inaccessible.add(target);target=null;step="SELECT";}
                         else block("Collection route stopped: "+e.message());
                     }}
                 return;
@@ -249,9 +256,17 @@ thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsB
         }catch(RuntimeException failure){block("Collection cannot continue: "+failure.getMessage());}
     }
     private void selectNext(){
-        // Prefer the job's own drops; do not destroy more blocks while reachable loot is waiting.
+        // Mine from the current working position before pathing. Native pickups
+        // continue during the break; an inaccessible drop must not monopolize the job.
+        if(!selected.source.equals("drops") && done.size()<(wholeTree?selected.blocks.size():Math.min(desired,selected.blocks.size()))) {
+            for(var candidate:selected.blocks)if(!done.contains(candidate) && !inaccessible.contains(candidate)
+                    && body.level().getBlockState(candidate).equals(selected.states.get(candidate))
+                    && runtime.mining().problem(candidate,true)==null && !body.isInWater()
+                    && !new AABB(candidate).intersects(body.getBoundingBox().move(0,-.05,0))
+                    && runtime.mining().reachable(candidate)) {drop=null;startBreak(candidate);return;}
+        }
         drop=null;
-        for(String id:approvedDropIds){var e=body.level().getEntity(UUID.fromString(id));if(e instanceof ItemEntity item && item.isAlive() && !dev.mcai.companion.agent.knowledge.DiscardedItems.avoided(item,body) && insideTravel(item.position()) && runtime.perception.sensed(item) && matchesItem(BuiltInRegistries.ITEM.getKey(item.getItem().getItem()).toString()) && (drop==null || item.distanceToSqr(body)<drop.distanceToSqr(body)))drop=item;}
+        for(String id:approvedDropIds){if(deferredDrops.contains(id))continue;var e=body.level().getEntity(UUID.fromString(id));if(e instanceof ItemEntity item && item.isAlive() && !dev.mcai.companion.agent.knowledge.DiscardedItems.avoided(item,body) && insideTravel(item.position()) && runtime.perception.sensed(item) && matchesItem(BuiltInRegistries.ITEM.getKey(item.getItem().getItem()).toString()) && (drop==null || item.distanceToSqr(body)<drop.distanceToSqr(body)))drop=item;}
         if(drop!=null){
             target=null;receivedBeforeDrop=received;approaches.clear();
             if(!lastDrop.equals(drop.getUUID().toString())){lastDrop=drop.getUUID().toString();dropRepairs=0;dropSettleSince=tick();}
@@ -340,11 +355,12 @@ thread();if(ownsBody() || runtime.placement()!=null && runtime.placement().ownsB
         if(approaches.isEmpty()){
             if(drop==null && target!=null){inaccessible.add(target);target=null;step="SELECT";return;}
             if (drop != null && clearPickupHeadroom()) return;
+            if(drop!=null) {deferredDrops.add(drop.getUUID().toString());drop=null;step="SELECT";return;}
             block("No evaluated safe approach route; a new decision is required. "+routeFailure);return;
         }
-        var dest=approaches.removeFirst();
-        var destination=new NavigationPlan.ResolvedDestination(dimension,dest.x,dest.y,dest.z,.5,false,"collection:"+request,OptionalDouble.empty(),Optional.empty());
-        routeStart=body.position();pendingRoute=planner.submit(UUID.randomUUID(),snapshots.capture(body,destination,0));step="PLAN_ROUTE";routeEvent=null;
+        var destinations=approaches.stream().limit(128).map(dest->new NavigationPlan.ResolvedDestination(dimension,dest.x,dest.y,dest.z,.5,false,"collection:"+request,OptionalDouble.empty(),Optional.empty())).toList();
+        approaches.clear();
+        routeStart=body.position();pendingRoute=planner.submitAny(UUID.randomUUID(),snapshots.capture(body,destinations.getFirst(),0),destinations);step="PLAN_ROUTE";routeEvent=null;
     }
     private boolean clearPickupHeadroom(){
         // A drop in the one-block notch just mined may need its matching resource
